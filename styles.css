@@ -27,6 +27,23 @@ body::before {
   pointer-events: none;
 }
 
+.video-banner {
+  position: relative;
+  width: 100%;
+  padding-top: 42%;
+  overflow: hidden;
+  border-top: 4px solid lime;
+  border-bottom: 4px solid lime;
+}
+
+.video-banner iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .warning {
   display: block;
   width: 100%;
@@ -215,4 +232,107 @@ footer {
   margin-top: 32px;
   color: #888;
   font-size: 0.9rem;
+}
+
+.invasive-ad {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  background: radial-gradient(circle at top left, rgba(255, 255, 0, 0.95), rgba(255, 0, 0, 0.94));
+  color: #080808;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  z-index: 99999;
+  animation: ad-shake 0.5s infinite alternate;
+}
+
+.ad-topper {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  margin-bottom: 0.3rem;
+}
+
+.ad-message {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  max-width: 1000px;
+}
+
+.ad-message strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.ad-close {
+  background: #000;
+  color: #fff;
+  border: 2px solid #fff;
+  width: 2.2rem;
+  height: 2.2rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+@keyframes ad-shake {
+  from { transform: translateX(-4px); }
+  to { transform: translateX(4px); }
+}
+
+.popup-ad {
+  position: fixed;
+  z-index: 999999;
+  animation: popup-wobble 0.3s ease-out;
+}
+
+.popup-ad-inner {
+  background: linear-gradient(135deg, #ffff00, #ff6600);
+  border: 3px solid #ff0000;
+  box-shadow: 4px 4px 0 #000, 0 0 18px rgba(255, 0, 0, 0.7);
+  padding: 10px 12px 12px;
+  font-family: "Comic Sans MS", "Courier New", monospace;
+  color: #000;
+  position: relative;
+}
+
+.popup-ad-title {
+  font-size: 0.78rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  line-height: 1.2;
+}
+
+.popup-ad-body {
+  font-size: 0.7rem;
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+
+.popup-ad-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #ff0000;
+  color: #fff;
+  border: 2px solid #000;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  line-height: 1;
+}
+
+@keyframes popup-wobble {
+  0% { transform: scale(0.5) rotate(-8deg); opacity: 0; }
+  70% { transform: scale(1.05) rotate(2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }

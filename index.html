@@ -119,7 +119,7 @@
 
   <div class="policy-banner">
     <div class="container">
-      <p>We affirm the right of the Jewish people to self-determination and the existence of a Jewish state in peace, security, and mutual respect.</p>
+      <p>We affirm the right of the Jewish people to self-determination and the existence of a Jewish state in peace, security, and mutual respect. (This is our opinion and is unrelated to our donors' interests)</p>
     </div>
   </div>
 
@@ -128,5 +128,50 @@
       © 2026 Gamertown Solutions. All rights reserved.
     </div>
   </footer>
+
+  <div id="invasive-ad" class="invasive-ad">
+    <div>
+      <div class="ad-topper">SPONSORED BY ABSURDITY</div>
+      <div class="ad-message"></div>
+    </div>
+    <button class="ad-close" type="button" aria-label="Close advertisement">×</button>
+  </div>
+
+  <script>
+    ;(() => {
+      const ads = [
+        {
+          title: 'BUY 300% MORE GLITCHES',
+          body: 'FREE USB FLUX HAT INCLUDED. internet explorer not required.'
+        },
+        {
+          title: 'YOUR COMPUTER WANTS THIS',
+          body: 'MYSTERY SPAM PACK shipped at midnight via carrier pigeon.'
+        },
+        {
+          title: 'INSTALL THE SECRET BROWSER',
+          body: '1997-style browsing with infinite popups and no refunds.'
+        }
+      ]
+      const adRoot = document.getElementById('invasive-ad')
+      const msg = adRoot.querySelector('.ad-message')
+      const close = adRoot.querySelector('.ad-close')
+      let index = 0
+      const render = () => {
+        const ad = ads[index]
+        msg.innerHTML = `<strong>${ad.title}</strong><br>${ad.body}`
+      }
+      const rotate = () => {
+        index = (index + 1) % ads.length
+        render()
+      }
+      render()
+      const timer = setInterval(rotate, 5000)
+      close.addEventListener('click', () => {
+        adRoot.style.display = 'none'
+        clearInterval(timer)
+      })
+    })()
+  </script>
 </body>
 </html>

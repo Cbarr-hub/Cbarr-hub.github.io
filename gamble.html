@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>High Card Table | Gamertown Solutions</title>
+  <meta name="description" content="A simple virtual-credit high card gambling game." />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --felt: #136f63;
+      --felt-dark: #0c443e;
+      --rail: #26180f;
+      --rail-light: #6f3f22;
+      --ink: #171717;
+      --paper: #fffaf0;
+      --gold: #f2c14e;
+      --red: #c0392b;
+      --blue: #1d4ed8;
+      --muted: rgba(255, 255, 255, 0.72);
+      --line: rgba(255, 255, 255, 0.18);
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(0, 0, 0, 0.22) 25%, transparent 25%) 0 0 / 18px 18px,
+        linear-gradient(225deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%) 0 0 / 18px 18px,
+        var(--felt-dark);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+    }
+
+    .container {
+      width: min(1100px, 92vw);
+      margin: 0 auto;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      min-height: 68px;
+    }
+
+    .brand {
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .brand span {
+      color: var(--gold);
+    }
+
+    .nav a:last-child {
+      color: var(--gold);
+      font-weight: 700;
+    }
+
+    main {
+      padding: 2rem 0 3rem;
+    }
+
+    .table {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 1.5rem;
+      min-height: calc(100vh - 140px);
+      padding: clamp(1rem, 3vw, 2rem);
+      overflow: hidden;
+      background:
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.08), transparent 42%),
+        var(--felt);
+      border: 14px solid var(--rail);
+      border-radius: 18px;
+      box-shadow:
+        inset 0 0 0 5px var(--rail-light),
+        0 30px 80px rgba(0, 0, 0, 0.35);
+    }
+
+    .play-area {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 1.5rem;
+      min-width: 0;
+    }
+
+    .scorebar {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+
+    .stat {
+      min-height: 76px;
+      padding: 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.22);
+    }
+
+    .stat > span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 0.35rem;
+      font-size: clamp(1.25rem, 3vw, 1.8rem);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 260px));
+      justify-content: center;
+      gap: clamp(1rem, 4vw, 2rem);
+      padding: 1rem 0;
+    }
+
+    .hand {
+      display: grid;
+      gap: 0.75rem;
+      justify-items: center;
+    }
+
+    .hand h2 {
+      font-size: 0.92rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .card {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: min(100%, 220px);
+      aspect-ratio: 5 / 7;
+      color: var(--ink);
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.8), transparent 38%),
+        var(--paper);
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      box-shadow: 0 18px 35px rgba(0, 0, 0, 0.32);
+      transform: rotate(var(--tilt));
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+
+    .card.winner {
+      box-shadow: 0 0 0 4px var(--gold), 0 22px 42px rgba(0, 0, 0, 0.36);
+      transform: rotate(var(--tilt)) translateY(-8px);
+    }
+
+    .card.red {
+      color: var(--red);
+    }
+
+    .corner {
+      position: absolute;
+      display: grid;
+      gap: 0.1rem;
+      justify-items: center;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .corner.top {
+      top: 0.8rem;
+      left: 0.8rem;
+    }
+
+    .corner.bottom {
+      right: 0.8rem;
+      bottom: 0.8rem;
+      transform: rotate(180deg);
+    }
+
+    .rank {
+      font-size: clamp(3.5rem, 9vw, 5.7rem);
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .suit {
+      font-size: clamp(2.1rem, 6vw, 3.5rem);
+      line-height: 1;
+    }
+
+    .message {
+      min-height: 76px;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.24);
+      text-align: center;
+    }
+
+    .message strong {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: var(--gold);
+      font-size: clamp(1.25rem, 3vw, 1.8rem);
+    }
+
+    .message span {
+      color: var(--muted);
+    }
+
+    .controls {
+      display: grid;
+      align-content: start;
+      gap: 1rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.28);
+    }
+
+    .controls h1 {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .controls p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .bet-label {
+      display: block;
+      margin-bottom: 0.35rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .bet-row {
+      display: grid;
+      grid-template-columns: 44px 1fr 44px;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .bet {
+      display: grid;
+      place-items: center;
+      min-height: 56px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--gold);
+    }
+
+    button {
+      min-height: 44px;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      color: #111;
+      font: inherit;
+      font-weight: 800;
+      transition: transform 160ms ease, filter 160ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+      transform: none;
+    }
+
+    .stepper {
+      background: #f8fafc;
+      font-size: 1.25rem;
+    }
+
+    .deal {
+      min-height: 56px;
+      background: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .reset {
+      color: #fff;
+      background: transparent;
+      border: 1px solid var(--line);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .chip {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      aspect-ratio: 1;
+      color: #fff;
+      border: 5px dashed rgba(255, 255, 255, 0.75);
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.18);
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+
+    .chip:nth-child(2n) {
+      background: var(--red);
+    }
+
+    .chip:nth-child(3n) {
+      background: #0f766e;
+    }
+
+    .fine-print {
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.82rem;
+      color: rgba(255, 255, 255, 0.62);
+    }
+
+    @media (max-width: 860px) {
+      .table {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        order: -1;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .nav {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 1rem 0;
+      }
+
+      .table {
+        border-width: 9px;
+        border-radius: 12px;
+      }
+
+      .scorebar,
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        max-width: 170px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <a class="brand" href="index.html">Gamertown<span>.Solutions</span></a>
+      <a href="index.html">Back Home</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="table" aria-label="High card gambling table">
+      <div class="play-area">
+        <div class="scorebar" aria-live="polite">
+          <div class="stat">
+            <span>Credits</span>
+            <strong id="credits">100</strong>
+          </div>
+          <div class="stat">
+            <span>Streak</span>
+            <strong id="streak">0</strong>
+          </div>
+          <div class="stat">
+            <span>Record</span>
+            <strong><span id="wins">0</span>-<span id="losses">0</span></strong>
+          </div>
+        </div>
+
+        <div class="cards">
+          <div class="hand">
+            <h2>Your Card</h2>
+            <div class="card" id="player-card" style="--tilt: -3deg;">
+              <div class="corner top"><span>A</span><span>S</span></div>
+              <div class="rank">?</div>
+              <div class="suit">S</div>
+              <div class="corner bottom"><span>A</span><span>S</span></div>
+            </div>
+          </div>
+
+          <div class="hand">
+            <h2>House Card</h2>
+            <div class="card" id="house-card" style="--tilt: 3deg;">
+              <div class="corner top"><span>K</span><span>H</span></div>
+              <div class="rank">?</div>
+              <div class="suit">H</div>
+              <div class="corner bottom"><span>K</span><span>H</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="message" aria-live="polite">
+          <strong id="result-title">Place a bet</strong>
+          <span id="result-copy">Higher card wins. Ties return your bet.</span>
+        </div>
+      </div>
+
+      <aside class="controls">
+        <h1>High Card Table</h1>
+        <p>Bet virtual credits, draw against the house, and try to build a streak before your stack runs dry.</p>
+
+        <div class="chips" aria-hidden="true">
+          <div class="chip">5</div>
+          <div class="chip">10</div>
+          <div class="chip">25</div>
+          <div class="chip">50</div>
+        </div>
+
+        <div>
+          <span class="bet-label">Current Bet</span>
+          <div class="bet-row">
+            <button class="stepper" id="lower-bet" type="button" aria-label="Lower bet">-</button>
+            <div class="bet" id="bet-value">10</div>
+            <button class="stepper" id="raise-bet" type="button" aria-label="Raise bet">+</button>
+          </div>
+        </div>
+
+        <button class="deal" id="deal" type="button">Deal Cards</button>
+        <button class="reset" id="reset" type="button">Reset Stack</button>
+
+        <p class="fine-print">For fun only. This game uses virtual credits and does not support real wagers, prizes, deposits, or cashouts.</p>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const ranks = [
+      { label: "2", value: 2 },
+      { label: "3", value: 3 },
+      { label: "4", value: 4 },
+      { label: "5", value: 5 },
+      { label: "6", value: 6 },
+      { label: "7", value: 7 },
+      { label: "8", value: 8 },
+      { label: "9", value: 9 },
+      { label: "10", value: 10 },
+      { label: "J", value: 11 },
+      { label: "Q", value: 12 },
+      { label: "K", value: 13 },
+      { label: "A", value: 14 }
+    ];
+    const suits = [
+      { label: "S", color: "black" },
+      { label: "H", color: "red" },
+      { label: "D", color: "red" },
+      { label: "C", color: "black" }
+    ];
+
+    const state = {
+      credits: 100,
+      bet: 10,
+      streak: 0,
+      wins: 0,
+      losses: 0
+    };
+
+    const creditsEl = document.getElementById("credits");
+    const betEl = document.getElementById("bet-value");
+    const streakEl = document.getElementById("streak");
+    const winsEl = document.getElementById("wins");
+    const lossesEl = document.getElementById("losses");
+    const titleEl = document.getElementById("result-title");
+    const copyEl = document.getElementById("result-copy");
+    const dealButton = document.getElementById("deal");
+    const lowerBetButton = document.getElementById("lower-bet");
+    const raiseBetButton = document.getElementById("raise-bet");
+    const resetButton = document.getElementById("reset");
+    const playerCardEl = document.getElementById("player-card");
+    const houseCardEl = document.getElementById("house-card");
+
+    function drawCard() {
+      return {
+        rank: ranks[Math.floor(Math.random() * ranks.length)],
+        suit: suits[Math.floor(Math.random() * suits.length)]
+      };
+    }
+
+    function renderCard(cardEl, card) {
+      const cornerTop = cardEl.querySelector(".corner.top");
+      const cornerBottom = cardEl.querySelector(".corner.bottom");
+      const rankEl = cardEl.querySelector(".rank");
+      const suitEl = cardEl.querySelector(".suit");
+
+      cornerTop.innerHTML = `<span>${card.rank.label}</span><span>${card.suit.label}</span>`;
+      cornerBottom.innerHTML = `<span>${card.rank.label}</span><span>${card.suit.label}</span>`;
+      rankEl.textContent = card.rank.label;
+      suitEl.textContent = card.suit.label;
+      cardEl.classList.toggle("red", card.suit.color === "red");
+      cardEl.classList.remove("winner");
+    }
+
+    function clampBet() {
+      state.bet = Math.max(5, Math.min(state.bet, state.credits || 5));
+      betEl.textContent = state.bet;
+    }
+
+    function render() {
+      creditsEl.textContent = state.credits;
+      streakEl.textContent = state.streak;
+      winsEl.textContent = state.wins;
+      lossesEl.textContent = state.losses;
+      clampBet();
+
+      const outOfCredits = state.credits <= 0;
+      dealButton.disabled = outOfCredits;
+      lowerBetButton.disabled = state.bet <= 5 || outOfCredits;
+      raiseBetButton.disabled = state.bet >= state.credits || outOfCredits;
+
+      if (outOfCredits) {
+        titleEl.textContent = "Stack empty";
+        copyEl.textContent = "Reset your virtual credits to play another round.";
+      }
+    }
+
+    function deal() {
+      const playerCard = drawCard();
+      const houseCard = drawCard();
+
+      renderCard(playerCardEl, playerCard);
+      renderCard(houseCardEl, houseCard);
+
+      if (playerCard.rank.value > houseCard.rank.value) {
+        state.credits += state.bet;
+        state.streak += 1;
+        state.wins += 1;
+        playerCardEl.classList.add("winner");
+        titleEl.textContent = "You win";
+        copyEl.textContent = `You earned ${state.bet} credits.`;
+      } else if (playerCard.rank.value < houseCard.rank.value) {
+        state.credits -= state.bet;
+        state.streak = 0;
+        state.losses += 1;
+        houseCardEl.classList.add("winner");
+        titleEl.textContent = "House wins";
+        copyEl.textContent = `You lost ${state.bet} credits.`;
+      } else {
+        state.streak = 0;
+        titleEl.textContent = "Push";
+        copyEl.textContent = "Same rank. Your bet comes back.";
+      }
+
+      render();
+    }
+
+    lowerBetButton.addEventListener("click", () => {
+      state.bet -= 5;
+      render();
+    });
+
+    raiseBetButton.addEventListener("click", () => {
+      state.bet += 5;
+      render();
+    });
+
+    dealButton.addEventListener("click", deal);
+
+    resetButton.addEventListener("click", () => {
+      state.credits = 100;
+      state.bet = 10;
+      state.streak = 0;
+      state.wins = 0;
+      state.losses = 0;
+      playerCardEl.classList.remove("winner");
+      houseCardEl.classList.remove("winner");
+      titleEl.textContent = "Place a bet";
+      copyEl.textContent = "Higher card wins. Ties return your bet.";
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

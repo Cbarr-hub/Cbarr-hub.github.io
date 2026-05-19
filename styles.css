@@ -30,7 +30,7 @@ body::before {
 .video-banner {
   position: relative;
   width: 100%;
-  padding-top: 42%;
+  padding-top: 25%;
   overflow: hidden;
   border-top: 4px solid lime;
   border-bottom: 4px solid lime;

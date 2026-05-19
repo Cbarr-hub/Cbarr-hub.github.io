@@ -30,6 +30,16 @@ FILE: index.html
     <p class="sub">an experimental web strange attractor from the pre-cloud era.</p>
   </header>
 
+  <div class="video-banner">
+    <iframe
+      src="https://www.youtube.com/embed/PIjnHUp9XVE?autoplay=1&mute=1&loop=1&playlist=PIjnHUp9XVE"
+      title="YouTube video banner"
+      frameborder="0"
+      allow="autoplay; encrypted-media; picture-in-picture"
+      allowfullscreen
+    ></iframe>
+  </div>
+
   <div class="banner">
     <span>*** UNDER CONSTRUCTION ***</span>
     <span>VISITOR #0000</span>
@@ -40,6 +50,7 @@ FILE: index.html
     <a href="#about">[ ABOUT ]</a>
     <a href="#contact">[ CONTACT ]</a>
     <a href="#void">[ THE VOID ]</a>
+    <a href="tablets.html">[ THE TABLETS ]</a>
     <a href="map.html" style="font-size: 1.3em;">[ FIND THE CYBER BARN ]</a>
   </nav>
 
@@ -130,9 +141,45 @@ FILE: index.html
       }
       render()
       const timer = setInterval(rotate, 5000)
+      const adMessages = [
+        { title: 'CONGRATULATIONS YOU HAVE WON', body: 'CLICK HERE TO CLAIM YOUR FREE LAPTOP. no purchase necessary (purchase required).' },
+        { title: 'YOUR IP ADDRESS HAS BEEN STOLEN', body: 'Call 1-800-SCAM-NOW to recover it. operators standing by.' },
+        { title: 'HOT SINGLES IN YOUR BROWSER', body: 'They are already inside your computer. please advise.' },
+        { title: 'FREE VIRUS SCAN!!!', body: 'We already found 47 viruses. the good news: they are friendly.' },
+        { title: 'DOWNLOAD MORE RAM', body: 'Unlimited RAM available for the low price of your soul.' },
+        { title: 'ACT NOW BEFORE ITS TOO LATE', body: 'It is already too late. buy anyway.' },
+        { title: 'YOUR PRINTER IS HAUNTED', body: 'Print this coupon to exorcise it. $0.00 off nothing.' },
+        { title: 'CLICK TO SPIN THE WHEEL', body: 'You have been pre-selected to lose. congratulations.' },
+        { title: 'LIMITED TIME OFFER', body: 'Time limit: forever. offer expires: never. act now.' },
+        { title: 'INSTALL OUR TOOLBAR', body: 'It will only replace 9 of your other toolbars.' },
+      ]
+
+      const spawnAd = () => {
+        const el = document.createElement('div')
+        el.className = 'popup-ad'
+        const ad = adMessages[Math.floor(Math.random() * adMessages.length)]
+        const size = 180 + Math.random() * 160
+        const x = Math.random() * (window.innerWidth - size - 20)
+        const y = Math.random() * (window.innerHeight - 160)
+        el.style.cssText = `left:${x}px;top:${y}px;width:${size}px;`
+        el.innerHTML = `
+          <div class="popup-ad-inner">
+            <div class="popup-ad-title">${ad.title}</div>
+            <div class="popup-ad-body">${ad.body}</div>
+            <button class="popup-ad-close" aria-label="close">×</button>
+          </div>`
+        el.querySelector('.popup-ad-close').addEventListener('click', () => {
+          el.remove()
+          spawnAd()
+          spawnAd()
+        })
+        document.body.appendChild(el)
+      }
+
       close.addEventListener('click', () => {
         adRoot.style.display = 'none'
         clearInterval(timer)
+        for (let i = 0; i < 12; i++) spawnAd()
       })
     })()
   </script>

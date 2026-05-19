@@ -165,6 +165,22 @@ footer {
   text-align: center;
 }
 
+.policy-banner {
+  background: rgba(56, 189, 248, 0.12);
+  border-top: 1px solid rgba(56, 189, 248, 0.18);
+  padding: 1.5rem 0;
+  text-align: center;
+  color: #e2e8f0;
+}
+
+.policy-banner p {
+  margin: 0;
+  max-width: 900px;
+  margin-inline: auto;
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
 @media (max-width: 800px) {
   .about {
     grid-template-columns: 1fr;

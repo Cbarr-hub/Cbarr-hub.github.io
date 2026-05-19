@@ -1,0 +1,217 @@
+<!-- =========================
+Gamertown Solutions (Chaotic Early-Internet Edition)
+Files:
+- index.html
+- styles.css
+========================= -->
+
+<!-- =========================
+FILE: index.html
+========================= -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GAMERTOWN.SOLUTIONS :: WELCOME :: DO NOT PANIC</title>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <div class="bg-noise"></div>
+
+  <marquee behavior="alternate" scrollamount="10" class="warning">
+    !!! WELCOME TO GAMERTOWN.SOLUTIONS !!! SYSTEM STATUS: ??? ONLINE ??? MAYBE ???
+  </marquee>
+
+  <header class="glitch-header">
+    <h1 class="glitch" data-text="GAMERTOWN.SOLUTIONS">GAMERTOWN.SOLUTIONS</h1>
+    <p class="sub">we build things. sometimes correctly. sometimes not.</p>
+  </header>
+
+  <nav class="nav">
+    <a href="#services">[ services ]</a>
+    <a href="#about">[ about ]</a>
+    <a href="#contact">[ contact ]</a>
+    <a href="#void">[ void ]</a>
+  </nav>
+
+  <main>
+
+    <section id="services" class="panel">
+      <h2>WHAT WE DO (APPROXIMATELY)</h2>
+
+      <ul>
+        <li>⚙ custom websites (may or may not compile)</li>
+        <li>🧠 backend APIs (they think for themselves sometimes)</li>
+        <li>🎮 gaming systems (fragile but powerful)</li>
+        <li>☁ cloud hosting (clouds included? unclear)</li>
+      </ul>
+
+      <div class="blink-box">
+        STATUS: EVERYTHING IS RUNNING (DEFINITION OF RUNNING IS FLEXIBLE)
+      </div>
+    </section>
+
+    <section id="about" class="panel">
+      <h2>ABOUT</h2>
+      <p>
+        Gamertown Solutions is a collective of code fragments, late-night ideas,
+        and questionable architectural decisions.
+      </p>
+
+      <p class="quote">
+        "if it works, don't touch it. if it doesn't work, also don't touch it."
+      </p>
+    </section>
+
+    <section id="contact" class="panel">
+      <h2>CONTACT THE VOID</h2>
+      <p>Email: <span class="blink">hello@gamertown.solutions</span></p>
+      <p>Response time: uncertain</p>
+    </section>
+
+    <section id="void" class="panel void">
+      <h2>THE VOID</h2>
+      <p>You weren't supposed to click this.</p>
+      <div class="matrixish">
+        01001000 01100101 01101100 01110000
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <marquee scrollamount="6">© 1998–2026 GAMERTOWN.SOLUTIONS // ALL REALITIES RESERVED</marquee>
+  </footer>
+
+</body>
+</html>
+
+
+<!-- =========================
+FILE: styles.css
+========================= -->
+
+body {
+  background: #05010a;
+  color: #39ff14;
+  font-family: "Comic Sans MS", "Courier New", monospace;
+  overflow-x: hidden;
+}
+
+.bg-noise {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('https://www.transparenttextures.com/patterns/asfalt-dark.png');
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.warning {
+  background: red;
+  color: black;
+  font-weight: bold;
+}
+
+.glitch-header {
+  text-align: center;
+  padding: 40px;
+}
+
+.glitch {
+  font-size: 3rem;
+  position: relative;
+}
+
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.glitch::before {
+  color: magenta;
+  animation: glitchTop 2s infinite linear alternate-reverse;
+}
+
+.glitch::after {
+  color: cyan;
+  animation: glitchBottom 1.5s infinite linear alternate-reverse;
+}
+
+@keyframes glitchTop {
+  0% { transform: translate(2px, -2px); }
+  100% { transform: translate(-2px, 2px); }
+}
+
+@keyframes glitchBottom {
+  0% { transform: translate(-2px, 2px); }
+  100% { transform: translate(2px, -2px); }
+}
+
+.nav {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 10px;
+}
+
+.nav a {
+  color: #00ffff;
+  text-decoration: none;
+  border: 1px dashed #00ffff;
+  padding: 5px;
+}
+
+.panel {
+  border: 2px dotted lime;
+  margin: 20px;
+  padding: 20px;
+  background: rgba(0, 255, 0, 0.05);
+}
+
+.blink {
+  animation: blink 0.8s infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.blink-box {
+  margin-top: 20px;
+  padding: 10px;
+  border: 1px solid yellow;
+  animation: blink 1s infinite;
+}
+
+.quote {
+  font-style: italic;
+  color: hotpink;
+}
+
+.void {
+  background: black;
+  color: red;
+  border: 3px solid red;
+}
+
+.matrixish {
+  margin-top: 20px;
+  font-family: monospace;
+  color: lime;
+}
+
+footer {
+  text-align: center;
+  margin-top: 40px;
+  color: #888;
+}

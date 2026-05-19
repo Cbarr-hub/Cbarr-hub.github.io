@@ -92,126 +92,50 @@ FILE: index.html
     <marquee scrollamount="6">© 1998–2026 GAMERTOWN.SOLUTIONS // ALL REALITIES RESERVED // VIEWED BEST IN AOL 4.0</marquee>
   </footer>
 
+  <div id="invasive-ad" class="invasive-ad">
+    <div>
+      <div class="ad-topper">SPONSORED BY ABSURDITY</div>
+      <div class="ad-message"></div>
+    </div>
+    <button class="ad-close" type="button" aria-label="Close advertisement">×</button>
+  </div>
+
+  <script>
+    ;(() => {
+      const ads = [
+        {
+          title: 'BUY 300% MORE GLITCHES',
+          body: 'FREE USB FLUX HAT INCLUDED. internet explorer not required.'
+        },
+        {
+          title: 'YOUR COMPUTER WANTS THIS',
+          body: 'MYSTERY SPAM PACK shipped at midnight via carrier pigeon.'
+        },
+        {
+          title: 'INSTALL THE SECRET BROWSER',
+          body: '1997-style browsing with infinite popups and no refunds.'
+        }
+      ]
+      const adRoot = document.getElementById('invasive-ad')
+      const msg = adRoot.querySelector('.ad-message')
+      const close = adRoot.querySelector('.ad-close')
+      let index = 0
+      const render = () => {
+        const ad = ads[index]
+        msg.innerHTML = `<strong>${ad.title}</strong><br>${ad.body}`
+      }
+      const rotate = () => {
+        index = (index + 1) % ads.length
+        render()
+      }
+      render()
+      const timer = setInterval(rotate, 5000)
+      close.addEventListener('click', () => {
+        adRoot.style.display = 'none'
+        clearInterval(timer)
+      })
+    })()
+  </script>
+
 </body>
 </html>
-body {
-  background: #05010a;
-  color: #39ff14;
-  font-family: "Comic Sans MS", "Courier New", monospace;
-  overflow-x: hidden;
-}
-
-.bg-noise {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image: url('https://www.transparenttextures.com/patterns/asfalt-dark.png');
-  opacity: 0.2;
-  pointer-events: none;
-}
-
-.warning {
-  background: red;
-  color: black;
-  font-weight: bold;
-}
-
-.glitch-header {
-  text-align: center;
-  padding: 40px;
-}
-
-.glitch {
-  font-size: 3rem;
-  position: relative;
-}
-
-.glitch::before,
-.glitch::after {
-  content: attr(data-text);
-  position: absolute;
-  left: 0;
-  width: 100%;
-  overflow: hidden;
-}
-
-.glitch::before {
-  color: magenta;
-  animation: glitchTop 2s infinite linear alternate-reverse;
-}
-
-.glitch::after {
-  color: cyan;
-  animation: glitchBottom 1.5s infinite linear alternate-reverse;
-}
-
-@keyframes glitchTop {
-  0% { transform: translate(2px, -2px); }
-  100% { transform: translate(-2px, 2px); }
-}
-
-@keyframes glitchBottom {
-  0% { transform: translate(-2px, 2px); }
-  100% { transform: translate(2px, -2px); }
-}
-
-.nav {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  padding: 10px;
-}
-
-.nav a {
-  color: #00ffff;
-  text-decoration: none;
-  border: 1px dashed #00ffff;
-  padding: 5px;
-}
-
-.panel {
-  border: 2px dotted lime;
-  margin: 20px;
-  padding: 20px;
-  background: rgba(0, 255, 0, 0.05);
-}
-
-.blink {
-  animation: blink 0.8s infinite;
-}
-
-@keyframes blink {
-  50% { opacity: 0; }
-}
-
-.blink-box {
-  margin-top: 20px;
-  padding: 10px;
-  border: 1px solid yellow;
-  animation: blink 1s infinite;
-}
-
-.quote {
-  font-style: italic;
-  color: hotpink;
-}
-
-.void {
-  background: black;
-  color: red;
-  border: 3px solid red;
-}
-
-.matrixish {
-  margin-top: 20px;
-  font-family: monospace;
-  color: lime;
-}
-
-footer {
-  text-align: center;
-  margin-top: 40px;
-  color: #888;
-}

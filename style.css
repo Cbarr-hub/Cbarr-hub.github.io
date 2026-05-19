@@ -179,6 +179,60 @@ footer {
   line-height: 1.75;
 }
 
+.invasive-ad {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(255, 235, 0, 0.98), rgba(255, 0, 0, 0.95));
+  color: #080808;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  z-index: 9999;
+  animation: ad-shake 0.4s infinite alternate;
+}
+
+.ad-topper {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  margin-bottom: 0.3rem;
+}
+
+.ad-message {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  max-width: 1000px;
+}
+
+.ad-message strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.ad-close {
+  background: #000;
+  color: #fff;
+  border: 2px solid #fff;
+  border-radius: 0;
+  width: 2.2rem;
+  height: 2.2rem;
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+@keyframes ad-shake {
+  from { transform: translateX(-3px); }
+  to { transform: translateX(3px); }
+}
+
 @media (max-width: 800px) {
   .about {
     grid-template-columns: 1fr;

@@ -1,4 +1,4 @@
-import { getRecentGamblingEvents } from './gamble-data.js';
+import { getRecentGamblingEvents } from './gamble-data.js?v=events-1';
 
 const gameLabels = {
   high_card: 'High Card',

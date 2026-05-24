@@ -373,6 +373,7 @@
       red: 'linear-gradient(135deg,#ff5a5a,#ff1e1e)',
       gold: 'linear-gradient(135deg,#ffd166,#ffb000)'
     };
+    const nameColorMap = {};
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
@@ -383,14 +384,21 @@
     function buildSlot() {
       slotTrack.innerHTML = '';
       const repeatedNames = [...names, ...names, ...names];
+      // ensure each name gets a stable color assignment
+      names.forEach(n => {
+        if (!nameColorMap[n]) {
+          nameColorMap[n] = slotColors[Math.floor(Math.random() * slotColors.length)];
+        }
+      });
+
       repeatedNames.forEach((name) => {
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = name;
-        const colorKey = slotColors[Math.floor(Math.random() * slotColors.length)];
+        const colorKey = nameColorMap[name];
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
-        if (colorKey === 'gold') item.style.color = '#000';
+        item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
         slotTrack.appendChild(item);
       });
 
@@ -430,7 +438,8 @@
       window.setTimeout(() => {
         const selectedName = names[selectedIndex];
         resultDisplay.textContent = selectedName;
-        showPopup(selectedName);
+        const selectedColorKey = nameColorMap[selectedName];
+        showPopup(selectedName, selectedColorKey);
         spinButton.textContent = 'Spin';
         spinButton.disabled = false;
         isSpinning = false;
@@ -438,10 +447,15 @@
       }, spinDuration + 50);
     }
 
-    function showPopup(name) {
+    function showPopup(name, colorKey) {
       const modal = document.getElementById('popupModal');
       const popupName = document.getElementById('popupName');
+      const modalBox = modal.querySelector('.modal');
       popupName.textContent = name;
+      const bg = slotColorMap[colorKey] || colorKey || 'rgba(10,10,22,0.96)';
+      modalBox.style.background = bg;
+      modalBox.style.color = (colorKey === 'gold') ? '#000' : '#fff';
+      popupName.style.color = (colorKey === 'gold') ? '#503000' : 'var(--accent)';
       modal.classList.add('show');
     }
 

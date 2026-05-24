@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faith</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      font-family: Georgia, "Times New Roman", serif;
+      color: #f5e9c8;
+      background:
+        linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),
+        url("faith/Mosaic_from_Daphni_Monastery_in_Greece.jpg") center / cover no-repeat fixed;
+    }
+
+    header {
+      text-align: center;
+      padding: 3rem 1rem 1rem;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 3rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+    }
+
+    header p {
+      margin-top: 0.5rem;
+      font-style: italic;
+      opacity: 0.9;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 6rem;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .gallery figure {
+      margin: 0;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(245, 233, 200, 0.25);
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .gallery img {
+      display: block;
+      width: 100%;
+      height: 260px;
+      object-fit: cover;
+    }
+
+    .gallery figcaption {
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+
+    .audio-frame {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      width: 320px;
+      height: 180px;
+      border: 1px solid rgba(245, 233, 200, 0.4);
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      background: #000;
+    }
+
+    .audio-frame iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 600px) {
+      header h1 { font-size: 2rem; }
+      .audio-frame { width: 220px; height: 124px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Faith</h1>
+    <p>Reflections across traditions</p>
+  </header>
+
+  <main>
+    <section class="gallery">
+      <figure>
+        <img src="faith/Mosaic_from_Daphni_Monastery_in_Greece.jpg" alt="Mosaic from Daphni Monastery, Greece" />
+        <figcaption>Mosaic — Daphni Monastery, Greece</figcaption>
+      </figure>
+      <figure>
+        <img src="faith/Christ-Monastery-of-Saint-Catherine-at-Mount-Sinai-6th-century.jpg" alt="Christ icon, Monastery of Saint Catherine, Mount Sinai (6th century)" />
+        <figcaption>Christ — Saint Catherine's Monastery, Mount Sinai (6th c.)</figcaption>
+      </figure>
+      <figure>
+        <img src="faith/Isfahan_Lotfollah_mosque_ceiling_symmetric.jpg" alt="Ceiling of Sheikh Lotfollah Mosque, Isfahan" />
+        <figcaption>Sheikh Lotfollah Mosque Ceiling — Isfahan</figcaption>
+      </figure>
+      <figure>
+        <img src="faith/Shakyamuni_Buddha_-_Google_Art_Project.jpg" alt="Shakyamuni Buddha" />
+        <figcaption>Shakyamuni Buddha</figcaption>
+      </figure>
+    </section>
+  </main>
+
+  <div class="audio-frame" aria-label="Background audio">
+    <iframe
+      src="https://www.youtube.com/embed/z96qe75LOF8?autoplay=1&loop=1&playlist=z96qe75LOF8&rel=0"
+      title="Faith background audio"
+      allow="autoplay; encrypted-media"
+      allowfullscreen></iframe>
+  </div>
+
+  <script>
+    ;(() => {
+      const rand = (min, max) => Math.random() * (max - min) + min
+      const pick = arr => arr[Math.floor(Math.random() * arr.length)]
+
+      const effects = [
+        () => `hue-rotate(${Math.floor(rand(0, 360))}deg) saturate(${rand(1.2, 2.5).toFixed(2)})`,
+        () => `grayscale(1) contrast(${rand(1.1, 1.8).toFixed(2)})`,
+        () => `sepia(1) saturate(${rand(1.5, 3).toFixed(2)}) hue-rotate(${Math.floor(rand(-40, 40))}deg)`,
+        () => `invert(1) hue-rotate(${Math.floor(rand(0, 360))}deg)`,
+        () => `blur(${rand(1, 3).toFixed(1)}px) brightness(${rand(1.1, 1.5).toFixed(2)})`,
+        () => `contrast(${rand(1.5, 2.5).toFixed(2)}) brightness(${rand(0.8, 1.3).toFixed(2)})`,
+        () => `saturate(0) brightness(${rand(0.7, 1.2).toFixed(2)}) contrast(${rand(1.3, 2).toFixed(2)})`,
+        () => `hue-rotate(${Math.floor(rand(0, 360))}deg) invert(${rand(0.2, 0.6).toFixed(2)})`,
+        () => `drop-shadow(0 0 ${Math.floor(rand(8, 24))}px ${pick(['#f5e9c8', '#7ad7ff', '#ff7ad0', '#a0ffb0'])}) saturate(${rand(1.2, 2).toFixed(2)})`,
+        () => `sepia(${rand(0.6, 1).toFixed(2)}) contrast(${rand(1.2, 1.8).toFixed(2)})`
+      ]
+
+      const transforms = [
+        () => `rotate(${rand(-4, 4).toFixed(2)}deg) scale(${rand(1, 1.08).toFixed(3)})`,
+        () => `scaleX(-1) rotate(${rand(-2, 2).toFixed(2)}deg)`,
+        () => `scaleY(-1)`,
+        () => `skew(${rand(-3, 3).toFixed(2)}deg, ${rand(-2, 2).toFixed(2)}deg)`,
+        () => ``
+      ]
+
+      const blendModes = ['normal', 'normal', 'multiply', 'screen', 'overlay', 'difference', 'color-dodge', 'hard-light']
+
+      document.querySelectorAll('.gallery img').forEach(img => {
+        img.style.filter = pick(effects)()
+        img.style.transform = pick(transforms)()
+        img.style.mixBlendMode = pick(blendModes)
+        img.style.transition = 'filter 0.6s ease, transform 0.6s ease'
+      })
+    })()
+  </script>
+</body>
+</html>

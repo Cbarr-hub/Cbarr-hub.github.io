@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Game Spinner</title>
-  <link rel="stylesheet" href="wheel.css">
+  <link rel="stylesheet" href="wheel.css?v=user-wheel-1">
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
 </head>
@@ -51,6 +51,40 @@
     </div>
 
     <p class="note">Use the filters to narrow the game list, then press spin.</p>
+
+    <section class="user-spinner-panel" aria-label="User roulette spinner">
+      <header class="user-spinner-header">
+        <div>
+          <h2>User Roulette</h2>
+          <p>Filter the user table, then spin to select someone.</p>
+        </div>
+        <span id="userWheelStatus">Loading users...</span>
+      </header>
+
+      <div class="user-spinner-grid">
+        <div class="user-wheel-shell">
+          <div class="user-wheel-pointer" aria-hidden="true"></div>
+          <div class="user-wheel" id="userWheel" aria-hidden="true"></div>
+          <div class="user-wheel-result" id="userWheelResult">Ready</div>
+        </div>
+
+        <div class="user-wheel-controls">
+          <label class="user-search-label" for="userFilter">Filter users</label>
+          <input id="userFilter" class="user-search" type="search" autocomplete="off" placeholder="Search usernames">
+
+          <div class="user-actions">
+            <button id="selectAllUsers" type="button">All</button>
+            <button id="selectVisibleUsers" type="button">Visible</button>
+            <button id="clearUsers" type="button">Clear</button>
+          </div>
+
+          <div class="user-choice-list" id="userChoiceList" aria-label="Available users"></div>
+
+          <button class="user-spin-button" id="spinUserWheel" type="button">Spin User</button>
+        </div>
+      </div>
+    </section>
+
     <p class="return"><a href="index.html">&laquo; Back to home</a></p>
   </div>
 
@@ -92,6 +126,15 @@
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
     const filterInputs = document.querySelectorAll('.filters input');
+    const userWheel = document.getElementById('userWheel');
+    const userWheelResult = document.getElementById('userWheelResult');
+    const userWheelStatus = document.getElementById('userWheelStatus');
+    const userFilter = document.getElementById('userFilter');
+    const userChoiceList = document.getElementById('userChoiceList');
+    const selectAllUsers = document.getElementById('selectAllUsers');
+    const selectVisibleUsers = document.getElementById('selectVisibleUsers');
+    const clearUsers = document.getElementById('clearUsers');
+    const spinUserWheel = document.getElementById('spinUserWheel');
     let allGames = [
       { id: 1, name: 'Lethal Company', maxplayers: 2, timeMinutes: 45 },
       { id: 2, name: 'Lockdown Protocol', maxplayers: 2, timeMinutes: 20 },
@@ -115,6 +158,16 @@
     let selectedTimes = ['<30','<60','no limit'];
     let isSpinning = false;
     const spinDuration = 6000;
+    const userWheelState = {
+      users: [],
+      selected: new Set(),
+      filter: '',
+      isLoading: true,
+      isSpinning: false,
+      rotation: 0,
+      winner: '',
+      error: ''
+    };
 
     async function initPage() {
       try {
@@ -133,6 +186,7 @@
       }
 
       await loadGames();
+      await loadUsers();
     }
 
     function setSlotMessage(message) {
@@ -267,6 +321,188 @@
       return slotColors[Math.floor(Math.random() * slotColors.length)];
     }
 
+    function normalizeAngle(angle) {
+      return ((angle % 360) + 360) % 360;
+    }
+
+    function nextClockwiseRotation(current, targetAngle, spins) {
+      const currentAngle = normalizeAngle(current);
+      const target = normalizeAngle(targetAngle);
+      return current + spins * 360 + normalizeAngle(target - currentAngle);
+    }
+
+    function userWheelColor(index) {
+      const palette = ['#007bff', '#7a3fff', '#ff4fb3', '#ff3b3b', '#ffbf38', '#00b894', '#00ffff', '#e8ff00'];
+      return palette[index % palette.length];
+    }
+
+    function visibleUsers() {
+      const filter = userWheelState.filter.trim().toLowerCase();
+      if (!filter) {
+        return userWheelState.users;
+      }
+
+      return userWheelState.users.filter(username => username.toLowerCase().includes(filter));
+    }
+
+    function selectedUsers() {
+      return userWheelState.users.filter(username => userWheelState.selected.has(username));
+    }
+
+    async function loadUsers() {
+      userWheelState.isLoading = true;
+      renderUserWheel();
+
+      if (!supabase) {
+        userWheelState.isLoading = false;
+        userWheelState.error = 'Could not connect to database.';
+        renderUserWheel();
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('Users')
+        .select('Username')
+        .order('Username', { ascending: true });
+
+      if (error) {
+        console.error('Unable to load users', error);
+        userWheelState.users = [];
+        userWheelState.selected = new Set();
+        userWheelState.isLoading = false;
+        userWheelState.error = 'Could not load users.';
+        renderUserWheel();
+        return;
+      }
+
+      const users = (data || [])
+        .map(row => row.Username)
+        .filter(Boolean);
+
+      userWheelState.users = users;
+      userWheelState.selected = new Set(users);
+      userWheelState.isLoading = false;
+      userWheelState.error = '';
+      renderUserWheel();
+    }
+
+    function renderUserWheel() {
+      const pickedUsers = selectedUsers();
+      const shownUsers = visibleUsers();
+      const count = pickedUsers.length;
+
+      userWheel.innerHTML = '';
+      userWheel.classList.toggle('empty', count === 0);
+      userWheel.classList.toggle('dense', count > 18);
+
+      if (count > 0) {
+        const segment = 360 / count;
+        const gradient = pickedUsers.map((username, index) => {
+          const start = index * segment;
+          const end = (index + 1) * segment;
+          return `${userWheelColor(index)} ${start}deg ${end}deg`;
+        });
+
+        userWheel.style.background = `radial-gradient(circle, #050008 0 18%, transparent 19%), conic-gradient(${gradient.join(', ')})`;
+
+        pickedUsers.forEach((username, index) => {
+          const label = document.createElement('span');
+          label.className = 'user-wheel-name';
+          label.textContent = username;
+          label.title = username;
+          label.style.setProperty('--angle', `${index * segment + segment / 2}deg`);
+          userWheel.appendChild(label);
+        });
+      } else {
+        userWheel.style.background = '';
+      }
+
+      userChoiceList.innerHTML = '';
+      if (shownUsers.length > 0) {
+        shownUsers.forEach(username => {
+          const button = document.createElement('button');
+          button.className = 'user-choice';
+          button.type = 'button';
+          button.dataset.user = username;
+          button.textContent = username;
+          button.classList.toggle('active', userWheelState.selected.has(username));
+          button.setAttribute('aria-pressed', String(userWheelState.selected.has(username)));
+          button.disabled = userWheelState.isSpinning;
+          userChoiceList.appendChild(button);
+        });
+      } else {
+        const empty = document.createElement('div');
+        empty.className = 'user-choice-empty';
+        empty.textContent = userWheelState.isLoading ? 'Loading users...' : 'No users match this filter.';
+        userChoiceList.appendChild(empty);
+      }
+
+      userWheelResult.textContent = userWheelState.isSpinning
+        ? 'Spinning'
+        : userWheelState.winner || (count ? 'Ready' : '--');
+      userWheelResult.classList.toggle('pop', Boolean(userWheelState.winner));
+
+      if (userWheelState.isLoading) {
+        userWheelStatus.textContent = 'Loading users...';
+      } else if (userWheelState.error) {
+        userWheelStatus.textContent = userWheelState.error;
+      } else {
+        userWheelStatus.textContent = `${count}/${userWheelState.users.length} selected`;
+      }
+
+      spinUserWheel.disabled = userWheelState.isLoading || userWheelState.isSpinning || count === 0;
+      selectAllUsers.disabled = userWheelState.isLoading || userWheelState.isSpinning || userWheelState.users.length === 0;
+      selectVisibleUsers.disabled = userWheelState.isLoading || userWheelState.isSpinning || shownUsers.length === 0;
+      clearUsers.disabled = userWheelState.isLoading || userWheelState.isSpinning || count === 0;
+      userFilter.disabled = userWheelState.isLoading || userWheelState.isSpinning;
+    }
+
+    function toggleUser(username) {
+      if (userWheelState.isSpinning) {
+        return;
+      }
+
+      if (userWheelState.selected.has(username)) {
+        userWheelState.selected.delete(username);
+      } else {
+        userWheelState.selected.add(username);
+      }
+
+      userWheelState.winner = '';
+      renderUserWheel();
+    }
+
+    function spinUserRoulette() {
+      if (userWheelState.isSpinning) {
+        return;
+      }
+
+      const users = selectedUsers();
+      if (users.length === 0) {
+        return;
+      }
+
+      const winnerIndex = Math.floor(Math.random() * users.length);
+      const winner = users[winnerIndex];
+      const segment = 360 / users.length;
+      const targetAngle = winnerIndex * segment + segment / 2;
+      const spins = 5 + Math.floor(Math.random() * 3);
+
+      userWheelState.isSpinning = true;
+      userWheelState.winner = '';
+      userWheelResult.classList.remove('pop');
+      userWheelState.rotation = nextClockwiseRotation(userWheelState.rotation, -targetAngle, spins);
+      userWheel.style.transform = `rotate(${userWheelState.rotation}deg)`;
+      renderUserWheel();
+
+      window.setTimeout(() => {
+        userWheelState.isSpinning = false;
+        userWheelState.winner = winner;
+        renderUserWheel();
+        showPopup(winner, 'purple', 'User Selected', 'The wheel chose:');
+      }, 4250);
+    }
+
     function shuffleArray(arr) {
       for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -382,10 +618,14 @@
       }, spinDuration + 50);
     }
 
-    function showPopup(name, colorKey) {
+    function showPopup(name, colorKey, title = 'Game Selected', label = 'The slot chose:') {
       const modal = document.getElementById('popupModal');
+      const popupTitle = document.getElementById('popupTitle');
+      const popupLabel = modal.querySelector('p');
       const popupName = document.getElementById('popupName');
       const modalBox = modal.querySelector('.modal');
+      popupTitle.textContent = title;
+      popupLabel.textContent = label;
       popupName.textContent = name;
       const bg = slotColorMap[colorKey] || colorKey || 'rgba(10,10,22,0.96)';
       modalBox.style.background = bg;
@@ -426,6 +666,35 @@
     });
 
     spinButton.addEventListener('click', spinSlot);
+    userFilter.addEventListener('input', () => {
+      userWheelState.filter = userFilter.value;
+      userWheelState.winner = '';
+      renderUserWheel();
+    });
+    selectAllUsers.addEventListener('click', () => {
+      userWheelState.selected = new Set(userWheelState.users);
+      userWheelState.winner = '';
+      renderUserWheel();
+    });
+    selectVisibleUsers.addEventListener('click', () => {
+      userWheelState.selected = new Set(visibleUsers());
+      userWheelState.winner = '';
+      renderUserWheel();
+    });
+    clearUsers.addEventListener('click', () => {
+      userWheelState.selected = new Set();
+      userWheelState.winner = '';
+      renderUserWheel();
+    });
+    userChoiceList.addEventListener('click', event => {
+      const button = event.target.closest('[data-user]');
+      if (!button) {
+        return;
+      }
+
+      toggleUser(button.dataset.user);
+    });
+    spinUserWheel.addEventListener('click', spinUserRoulette);
 
     initPage();
   </script>

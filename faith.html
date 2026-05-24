@@ -29,6 +29,15 @@
       line-height: 1.85;
       font-size: 1.05rem;
       text-align: justify;
+      transition: filter 15s linear, opacity 1s ease;
+    }
+
+    .passage.blurring {
+      filter: blur(18px);
+    }
+
+    .passage.fading {
+      opacity: 0;
     }
 
     .passage p {
@@ -154,7 +163,7 @@
 
   <section class="gallery" id="gallery"></section>
 
-  <audio id="bg-audio" src="faith/faith.mp3" autoplay loop></audio>
+  <audio id="bg-audio" src="faith/faith_project.mp3" autoplay loop></audio>
 
   <script>
     ;(() => {
@@ -247,8 +256,33 @@
         })
       }
 
-      layout()
-      window.addEventListener('resize', layout)
+      window.__rerollImages = layout
+    })()
+  </script>
+
+  <script>
+    ;(() => {
+      const passage = document.querySelector('.passage')
+      if (!passage) return
+
+      requestAnimationFrame(() => {
+        passage.classList.add('blurring')
+      })
+
+      // Start fading out 1 second before removal for a smooth transition
+      setTimeout(() => {
+        passage.classList.add('fading')
+      }, 14000)
+
+      setTimeout(() => {
+        passage.remove()
+        if (typeof window.__rerollImages === 'function') {
+          // Initialize the gallery and its resize listener only after text is gone
+          window.__rerollImages()
+          window.addEventListener('resize', window.__rerollImages)
+          setInterval(window.__rerollImages, 5000)
+        }
+      }, 15000)
     })()
   </script>
 </body>

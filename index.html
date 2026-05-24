@@ -84,31 +84,36 @@
             </p>
           </div>
         </div>
+
+        <div class="ad-block"></div>
       </div>
     </section>
 
     <section id="about">
-      <div class="container about">
+      <div class="container">
         <div style="text-align: center; margin-bottom: 2rem;">
           <img src="gamertown_logo_optimized.png" alt="Gamertown" class="logo logo-about" style="margin: 0 auto;" />
         </div>
-        <div>
-          <h2 class="section-title">About Gamertown Solutions</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: start;">
+          <div>
+            <h2 class="section-title">About Gamertown Solutions</h2>
 
-          <p>
-            We focus on building practical, modern software with clean design and strong performance.
-            Whether it's a gaming platform, a startup landing page, or a custom backend service,
-            our goal is to create reliable systems that scale.
-          </p>
+            <p>
+              We focus on building practical, modern software with clean design and strong performance.
+              Whether it's a gaming platform, a startup landing page, or a custom backend service,
+              our goal is to create reliable systems that scale.
+            </p>
+          </div>
+
+          <div class="about-box">
+            <h3 style="margin-bottom: 1rem;">Tech Stack</h3>
+
+            <p>
+              HTML • CSS • JavaScript • Node.js • APIs • PostgreSQL • Cloud Infrastructure
+            </p>
+          </div>
         </div>
-
-        <div class="about-box">
-          <h3 style="margin-bottom: 1rem;">Tech Stack</h3>
-
-          <p>
-            HTML • CSS • JavaScript • Node.js • APIs • PostgreSQL • Cloud Infrastructure
-          </p>
-        </div>
+        <div class="ad-block" style="min-height: 250px;"></div>
       </div>
     </section>
 
@@ -231,6 +236,7 @@
   </script>
 
   <script src="site.js"></script>
+  <script src="ad-block.js"></script>
 
   <script type="module">
     import { supabase } from './supabase-client.js';

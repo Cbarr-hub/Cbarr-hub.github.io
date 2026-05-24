@@ -1,12 +1,5 @@
-import { getRecentGamblingEvents } from './gamble-data.js?v=dashboard-clean-1';
-
-const gameLabels = {
-  high_card: 'High Card',
-  blackjack: 'Blackjack',
-  roulette: 'Roulette',
-  slots: 'Slots',
-  system: 'System'
-};
+import { getRecentGamblingEvents } from './gamble-data.js?v=money-events-1';
+import { gameLabels, normalizeGamblingEvent } from './gamble-stats-utils.js?v=money-events-1';
 
 const filterLabels = {
   all: 'All',
@@ -46,45 +39,8 @@ function formatTime(value) {
   });
 }
 
-function isResetEvent(event) {
-  return event.event_type === 'bankroll_reset' || event.outcome === 'reset';
-}
-
-function moneyOutcome(event) {
-  if (isResetEvent(event)) {
-    return 'reset';
-  }
-
-  const net = numberValue(event.net_change);
-  if (net > 0) {
-    return 'win';
-  }
-  if (net < 0) {
-    return 'loss';
-  }
-  return event.outcome;
-}
-
-function isBigEvent(event) {
-  return isResetEvent(event) ||
-    (event.outcome === 'win' && numberValue(event.payout_amount) >= 1000) ||
-    (event.outcome === 'loss' && Math.abs(numberValue(event.net_change)) >= 1000);
-}
-
-function normalizeEvent(event) {
-  return {
-    ...event,
-    bet_amount: numberValue(event.bet_amount),
-    payout_amount: numberValue(event.payout_amount),
-    net_change: numberValue(event.net_change),
-    moneyOutcome: moneyOutcome(event),
-    isBig: event.isBig ?? isBigEvent(event),
-    isReset: event.isReset ?? isResetEvent(event)
-  };
-}
-
 function filterEvents(events, filter) {
-  const normalized = events.map(normalizeEvent);
+  const normalized = events.map(normalizeGamblingEvent);
 
   if (filter === 'wins') {
     return normalized.filter((event) => event.moneyOutcome === 'win');
@@ -99,12 +55,18 @@ function filterEvents(events, filter) {
     return normalized.filter((event) => event.isBig);
   }
 
-  return normalized.filter((event) => event.moneyOutcome === 'win' || event.moneyOutcome === 'loss' || event.isReset);
+  return normalized.filter((event) => event.isMoneyEvent || event.isReset);
 }
 
 function eventTitle(event) {
   if (event.isReset) {
     return 'Bankroll reset';
+  }
+  if (event.event_type === 'bonus_awarded') {
+    return 'Crazy Mode awarded';
+  }
+  if (event.event_type === 'free_spin_settled') {
+    return `Crazy Mode ${event.moneyOutcome}`;
   }
   return `${gameLabels[event.game] ?? event.game} ${event.moneyOutcome}`;
 }
@@ -112,6 +74,9 @@ function eventTitle(event) {
 function eventMeta(event) {
   if (event.isReset) {
     return `${formatSignedDollars(event.net_change)} reset swing`;
+  }
+  if (event.event_type === 'bonus_awarded') {
+    return `Bet ${formatDollars(event.bet_amount)} / free spins loaded`;
   }
   return `Bet ${formatDollars(event.bet_amount)} / payout ${formatDollars(event.payout_amount)}`;
 }

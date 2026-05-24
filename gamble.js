@@ -1260,15 +1260,6 @@ function canChangeBet() {
   return !state.balanceLoading && state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
 }
 
-function setBet(value) {
-  if (!canChangeBet()) {
-    return;
-  }
-
-  state.bet = value;
-  render();
-}
-
 function changeBet(amount) {
   if (!canChangeBet()) {
     return;

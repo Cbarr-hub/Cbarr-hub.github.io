@@ -1,0 +1,113 @@
+:root {
+  --global-tab-height: 42px;
+}
+
+html {
+  scroll-padding-top: calc(var(--global-tab-height) + 16px);
+}
+
+body.has-global-tabs {
+  padding-top: calc(var(--global-tab-height) + var(--global-tabs-body-padding, 0px)) !important;
+}
+
+body.has-global-tabs header {
+  top: var(--global-tab-height);
+}
+
+.global-tabbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  min-height: var(--global-tab-height);
+  padding: 0 10px;
+  background: #101418;
+  border-bottom: 1px solid #42f527;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  color: #e8f6e8;
+  font-family: Verdana, Arial, sans-serif;
+}
+
+.global-tabbar,
+.global-tabbar * {
+  box-sizing: border-box;
+}
+
+.global-tabbar__links {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #42f527 #101418;
+}
+
+.global-tabbar__links::-webkit-scrollbar {
+  height: 7px;
+}
+
+.global-tabbar__links::-webkit-scrollbar-track {
+  background: #101418;
+}
+
+.global-tabbar__links::-webkit-scrollbar-thumb {
+  background: #42f527;
+}
+
+.global-tabbar__tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #334155;
+  border-bottom-color: #42f527;
+  border-radius: 6px 6px 0 0;
+  background: #1f2937;
+  color: #d8ffd8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.global-tabbar__tab:hover,
+.global-tabbar__tab:focus-visible {
+  background: #2b3a48;
+  color: #ffffff;
+  outline: none;
+}
+
+.global-tabbar__tab[aria-current="page"] {
+  background: #42f527;
+  border-color: #42f527;
+  color: #101418;
+}
+
+body.has-global-tabs #video-panel {
+  top: var(--global-tab-height);
+  height: calc(100vh - var(--global-tab-height));
+}
+
+@media (max-width: 640px) {
+  :root {
+    --global-tab-height: 40px;
+  }
+
+  .global-tabbar {
+    padding: 0 6px;
+  }
+
+  .global-tabbar__tab {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+}

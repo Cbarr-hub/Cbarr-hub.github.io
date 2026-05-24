@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>High Card Table | Gamertown Solutions</title>
-  <meta name="description" content="A simple virtual-credit high card gambling game." />
+  <title>Gambling Section | Gamertown Solutions</title>
+  <meta name="description" content="Virtual-credit gambling games including High Card and Blackjack." />
 
   <style>
     * {
@@ -49,7 +49,7 @@
     }
 
     .container {
-      width: min(1100px, 92vw);
+      width: min(1120px, 92vw);
       margin: 0 auto;
     }
 
@@ -66,10 +66,7 @@
       letter-spacing: 0.04em;
     }
 
-    .brand span {
-      color: var(--gold);
-    }
-
+    .brand span,
     .nav a:last-child {
       color: var(--gold);
       font-weight: 700;
@@ -79,12 +76,31 @@
       padding: 2rem 0 3rem;
     }
 
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .section-head h1 {
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      line-height: 1;
+    }
+
+    .section-head p {
+      max-width: 620px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
     .table {
       position: relative;
       display: grid;
       grid-template-columns: 1fr 320px;
       gap: 1.5rem;
-      min-height: calc(100vh - 140px);
+      min-height: calc(100vh - 190px);
       padding: clamp(1rem, 3vw, 2rem);
       overflow: hidden;
       background:
@@ -101,7 +117,7 @@
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      gap: 1.5rem;
+      gap: 1.4rem;
       min-width: 0;
     }
 
@@ -111,15 +127,22 @@
       gap: 0.75rem;
     }
 
+    .stat,
+    .message,
+    .controls {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.24);
+    }
+
     .stat {
       min-height: 76px;
       padding: 0.9rem;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(0, 0, 0, 0.22);
     }
 
-    .stat > span {
+    .stat > span,
+    .bet-label,
+    .game-panel h2 {
       display: block;
       color: var(--muted);
       font-size: 0.78rem;
@@ -133,25 +156,37 @@
       font-size: clamp(1.25rem, 3vw, 1.8rem);
     }
 
+    .game-panel {
+      display: none;
+      gap: 1.2rem;
+    }
+
+    .game-panel.active {
+      display: grid;
+    }
+
     .cards {
       display: grid;
       grid-template-columns: repeat(2, minmax(180px, 260px));
       justify-content: center;
       gap: clamp(1rem, 4vw, 2rem);
-      padding: 1rem 0;
+      padding: 0.5rem 0;
     }
 
     .hand {
       display: grid;
       gap: 0.75rem;
       justify-items: center;
+      min-width: 0;
     }
 
-    .hand h2 {
-      font-size: 0.92rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
+    .hand-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.7rem;
+      min-height: 184px;
+      padding: 0.5rem 0;
     }
 
     .card {
@@ -164,20 +199,31 @@
       background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.8), transparent 38%),
         var(--paper);
-      border-radius: 8px;
       border: 1px solid rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
       box-shadow: 0 18px 35px rgba(0, 0, 0, 0.32);
-      transform: rotate(var(--tilt));
+      transform: rotate(var(--tilt, 0deg));
       transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+
+    .hand-row .card {
+      width: clamp(86px, 13vw, 124px);
     }
 
     .card.winner {
       box-shadow: 0 0 0 4px var(--gold), 0 22px 42px rgba(0, 0, 0, 0.36);
-      transform: rotate(var(--tilt)) translateY(-8px);
+      transform: rotate(var(--tilt, 0deg)) translateY(-8px);
     }
 
     .card.red {
       color: var(--red);
+    }
+
+    .card.back {
+      color: rgba(255, 255, 255, 0.9);
+      background:
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 8px, transparent 8px 16px),
+        #1d4ed8;
     }
 
     .corner {
@@ -190,33 +236,34 @@
     }
 
     .corner.top {
-      top: 0.8rem;
-      left: 0.8rem;
+      top: 0.65rem;
+      left: 0.65rem;
     }
 
     .corner.bottom {
-      right: 0.8rem;
-      bottom: 0.8rem;
+      right: 0.65rem;
+      bottom: 0.65rem;
       transform: rotate(180deg);
     }
 
     .rank {
-      font-size: clamp(3.5rem, 9vw, 5.7rem);
+      font-size: clamp(2.7rem, 7vw, 5.7rem);
       font-weight: 900;
       line-height: 1;
     }
 
+    .hand-row .rank {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+    }
+
     .suit {
-      font-size: clamp(2.1rem, 6vw, 3.5rem);
+      font-size: clamp(1.8rem, 5vw, 3.5rem);
       line-height: 1;
     }
 
     .message {
       min-height: 76px;
       padding: 1rem;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(0, 0, 0, 0.24);
       text-align: center;
     }
 
@@ -227,8 +274,10 @@
       font-size: clamp(1.25rem, 3vw, 1.8rem);
     }
 
-    .message span {
+    .message span,
+    .controls p {
       color: var(--muted);
+      line-height: 1.5;
     }
 
     .controls {
@@ -236,30 +285,30 @@
       align-content: start;
       gap: 1rem;
       padding: 1rem;
-      border: 1px solid var(--line);
-      border-radius: 8px;
       background: rgba(0, 0, 0, 0.28);
     }
 
-    .controls h1 {
-      font-size: clamp(1.8rem, 4vw, 2.6rem);
-      line-height: 1;
-      letter-spacing: 0;
+    .tabs,
+    .action-row {
+      display: grid;
+      gap: 0.55rem;
     }
 
-    .controls p {
-      color: var(--muted);
-      line-height: 1.5;
+    .tabs {
+      grid-template-columns: 1fr 1fr;
     }
 
-    .bet-label {
-      display: block;
-      margin-bottom: 0.35rem;
-      color: var(--muted);
-      font-size: 0.82rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
+    .tab {
+      min-height: 44px;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--line);
+    }
+
+    .tab.active {
+      color: #111;
+      background: var(--gold);
+      border-color: transparent;
     }
 
     .bet-row {
@@ -308,13 +357,14 @@
       font-size: 1.25rem;
     }
 
-    .deal {
+    .primary {
       min-height: 56px;
       background: var(--gold);
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
 
+    .secondary,
     .reset {
       color: #fff;
       background: transparent;
@@ -357,6 +407,11 @@
     }
 
     @media (max-width: 860px) {
+      .section-head {
+        align-items: start;
+        flex-direction: column;
+      }
+
       .table {
         grid-template-columns: 1fr;
       }
@@ -386,6 +441,10 @@
       .card {
         max-width: 170px;
       }
+
+      .hand-row {
+        min-height: 140px;
+      }
     }
   </style>
 </head>
@@ -398,7 +457,14 @@
   </header>
 
   <main class="container">
-    <section class="table" aria-label="High card gambling table">
+    <div class="section-head">
+      <div>
+        <h1>Gambling Section</h1>
+      </div>
+      <p>Play virtual-credit tables for fun. Pick a game, set a bet, and try to leave with more credits than you brought in.</p>
+    </div>
+
+    <section class="table" aria-label="Virtual-credit gambling section">
       <div class="play-area">
         <div class="scorebar" aria-live="polite">
           <div class="stat">
@@ -415,37 +481,55 @@
           </div>
         </div>
 
-        <div class="cards">
-          <div class="hand">
-            <h2>Your Card</h2>
-            <div class="card" id="player-card" style="--tilt: -3deg;">
-              <div class="corner top"><span>A</span><span>S</span></div>
-              <div class="rank">?</div>
-              <div class="suit">S</div>
-              <div class="corner bottom"><span>A</span><span>S</span></div>
+        <section class="game-panel active" id="high-card-panel" aria-label="High Card">
+          <div class="cards">
+            <div class="hand">
+              <h2>Your Card</h2>
+              <div class="card" id="player-card" style="--tilt: -3deg;">
+                <div class="corner top"><span>A</span><span>S</span></div>
+                <div class="rank">?</div>
+                <div class="suit">S</div>
+                <div class="corner bottom"><span>A</span><span>S</span></div>
+              </div>
             </div>
+
+            <div class="hand">
+              <h2>House Card</h2>
+              <div class="card" id="house-card" style="--tilt: 3deg;">
+                <div class="corner top"><span>K</span><span>H</span></div>
+                <div class="rank">?</div>
+                <div class="suit">H</div>
+                <div class="corner bottom"><span>K</span><span>H</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="game-panel" id="blackjack-panel" aria-label="Blackjack">
+          <div class="hand">
+            <h2>Dealer <span id="dealer-total"></span></h2>
+            <div class="hand-row" id="dealer-hand"></div>
           </div>
 
           <div class="hand">
-            <h2>House Card</h2>
-            <div class="card" id="house-card" style="--tilt: 3deg;">
-              <div class="corner top"><span>K</span><span>H</span></div>
-              <div class="rank">?</div>
-              <div class="suit">H</div>
-              <div class="corner bottom"><span>K</span><span>H</span></div>
-            </div>
+            <h2>You <span id="player-total"></span></h2>
+            <div class="hand-row" id="blackjack-hand"></div>
           </div>
-        </div>
+        </section>
 
         <div class="message" aria-live="polite">
           <strong id="result-title">Place a bet</strong>
-          <span id="result-copy">Higher card wins. Ties return your bet.</span>
+          <span id="result-copy">Choose High Card or Blackjack to begin.</span>
         </div>
       </div>
 
       <aside class="controls">
-        <h1>High Card Table</h1>
-        <p>Bet virtual credits, draw against the house, and try to build a streak before your stack runs dry.</p>
+        <div class="tabs" role="tablist" aria-label="Game selection">
+          <button class="tab active" id="high-card-tab" type="button" data-game="high-card">High Card</button>
+          <button class="tab" id="blackjack-tab" type="button" data-game="blackjack">Blackjack</button>
+        </div>
+
+        <p id="game-copy">Higher card wins. Ties return your bet.</p>
 
         <div class="chips" aria-hidden="true">
           <div class="chip">5</div>
@@ -463,29 +547,34 @@
           </div>
         </div>
 
-        <button class="deal" id="deal" type="button">Deal Cards</button>
+        <div class="action-row">
+          <button class="primary" id="deal" type="button">Deal</button>
+          <button class="secondary" id="hit" type="button" hidden>Hit</button>
+          <button class="secondary" id="stand" type="button" hidden>Stand</button>
+        </div>
+
         <button class="reset" id="reset" type="button">Reset Stack</button>
 
-        <p class="fine-print">For fun only. This game uses virtual credits and does not support real wagers, prizes, deposits, or cashouts.</p>
+        <p class="fine-print">For fun only. These games use virtual credits and do not support real wagers, prizes, deposits, or cashouts.</p>
       </aside>
     </section>
   </main>
 
   <script>
     const ranks = [
-      { label: "2", value: 2 },
-      { label: "3", value: 3 },
-      { label: "4", value: 4 },
-      { label: "5", value: 5 },
-      { label: "6", value: 6 },
-      { label: "7", value: 7 },
-      { label: "8", value: 8 },
-      { label: "9", value: 9 },
-      { label: "10", value: 10 },
-      { label: "J", value: 11 },
-      { label: "Q", value: 12 },
-      { label: "K", value: 13 },
-      { label: "A", value: 14 }
+      { label: "2", value: 2, blackjack: 2 },
+      { label: "3", value: 3, blackjack: 3 },
+      { label: "4", value: 4, blackjack: 4 },
+      { label: "5", value: 5, blackjack: 5 },
+      { label: "6", value: 6, blackjack: 6 },
+      { label: "7", value: 7, blackjack: 7 },
+      { label: "8", value: 8, blackjack: 8 },
+      { label: "9", value: 9, blackjack: 9 },
+      { label: "10", value: 10, blackjack: 10 },
+      { label: "J", value: 11, blackjack: 10 },
+      { label: "Q", value: 12, blackjack: 10 },
+      { label: "K", value: 13, blackjack: 10 },
+      { label: "A", value: 14, blackjack: 11 }
     ];
     const suits = [
       { label: "S", color: "black" },
@@ -495,11 +584,16 @@
     ];
 
     const state = {
+      game: "high-card",
       credits: 100,
       bet: 10,
       streak: 0,
       wins: 0,
-      losses: 0
+      losses: 0,
+      blackjackActive: false,
+      dealerHand: [],
+      playerHand: [],
+      hideDealerHole: false
     };
 
     const creditsEl = document.getElementById("credits");
@@ -509,12 +603,24 @@
     const lossesEl = document.getElementById("losses");
     const titleEl = document.getElementById("result-title");
     const copyEl = document.getElementById("result-copy");
+    const gameCopyEl = document.getElementById("game-copy");
     const dealButton = document.getElementById("deal");
+    const hitButton = document.getElementById("hit");
+    const standButton = document.getElementById("stand");
     const lowerBetButton = document.getElementById("lower-bet");
     const raiseBetButton = document.getElementById("raise-bet");
     const resetButton = document.getElementById("reset");
     const playerCardEl = document.getElementById("player-card");
     const houseCardEl = document.getElementById("house-card");
+    const dealerHandEl = document.getElementById("dealer-hand");
+    const playerHandEl = document.getElementById("blackjack-hand");
+    const dealerTotalEl = document.getElementById("dealer-total");
+    const playerTotalEl = document.getElementById("player-total");
+    const tabs = Array.from(document.querySelectorAll(".tab"));
+    const panels = {
+      "high-card": document.getElementById("high-card-panel"),
+      blackjack: document.getElementById("blackjack-panel")
+    };
 
     function drawCard() {
       return {
@@ -523,44 +629,130 @@
       };
     }
 
-    function renderCard(cardEl, card) {
-      const cornerTop = cardEl.querySelector(".corner.top");
-      const cornerBottom = cardEl.querySelector(".corner.bottom");
-      const rankEl = cardEl.querySelector(".rank");
-      const suitEl = cardEl.querySelector(".suit");
+    function createCard(card, hidden = false) {
+      const cardEl = document.createElement("div");
+      cardEl.className = hidden ? "card back" : "card";
+      cardEl.style.setProperty("--tilt", `${Math.floor(Math.random() * 7) - 3}deg`);
 
-      cornerTop.innerHTML = `<span>${card.rank.label}</span><span>${card.suit.label}</span>`;
-      cornerBottom.innerHTML = `<span>${card.rank.label}</span><span>${card.suit.label}</span>`;
-      rankEl.textContent = card.rank.label;
-      suitEl.textContent = card.suit.label;
+      if (hidden) {
+        cardEl.innerHTML = `<div class="rank">?</div><div class="suit">GS</div>`;
+        return cardEl;
+      }
+
+      cardEl.classList.toggle("red", card.suit.color === "red");
+      cardEl.innerHTML = `
+        <div class="corner top"><span>${card.rank.label}</span><span>${card.suit.label}</span></div>
+        <div class="rank">${card.rank.label}</div>
+        <div class="suit">${card.suit.label}</div>
+        <div class="corner bottom"><span>${card.rank.label}</span><span>${card.suit.label}</span></div>
+      `;
+      return cardEl;
+    }
+
+    function renderCard(cardEl, card) {
+      cardEl.replaceChildren(...createCard(card).childNodes);
+      cardEl.className = "card";
       cardEl.classList.toggle("red", card.suit.color === "red");
       cardEl.classList.remove("winner");
     }
 
+    function handTotal(hand) {
+      let total = hand.reduce((sum, card) => sum + card.rank.blackjack, 0);
+      let aces = hand.filter((card) => card.rank.label === "A").length;
+
+      while (total > 21 && aces > 0) {
+        total -= 10;
+        aces -= 1;
+      }
+
+      return total;
+    }
+
+    function isBlackjack(hand) {
+      return hand.length === 2 && handTotal(hand) === 21;
+    }
+
     function clampBet() {
-      state.bet = Math.max(5, Math.min(state.bet, state.credits || 5));
+      const maxBet = Math.floor(state.credits / 5) * 5;
+      state.bet = Math.max(5, Math.min(state.bet, maxBet || 5));
       betEl.textContent = state.bet;
     }
 
+    function formatCredits(value) {
+      return Number.isInteger(value) ? value : value.toFixed(1);
+    }
+
+    function renderBlackjackHands() {
+      dealerHandEl.innerHTML = "";
+      playerHandEl.innerHTML = "";
+
+      state.dealerHand.forEach((card, index) => {
+        dealerHandEl.appendChild(createCard(card, state.hideDealerHole && index === 1));
+      });
+      state.playerHand.forEach((card) => {
+        playerHandEl.appendChild(createCard(card));
+      });
+
+      const visibleDealerHand = state.hideDealerHole ? state.dealerHand.slice(0, 1) : state.dealerHand;
+      dealerTotalEl.textContent = visibleDealerHand.length ? `(${handTotal(visibleDealerHand)})` : "";
+      playerTotalEl.textContent = state.playerHand.length ? `(${handTotal(state.playerHand)})` : "";
+    }
+
     function render() {
-      creditsEl.textContent = state.credits;
+      creditsEl.textContent = formatCredits(state.credits);
       streakEl.textContent = state.streak;
       winsEl.textContent = state.wins;
       lossesEl.textContent = state.losses;
       clampBet();
+      renderBlackjackHands();
 
-      const outOfCredits = state.credits <= 0;
-      dealButton.disabled = outOfCredits;
-      lowerBetButton.disabled = state.bet <= 5 || outOfCredits;
-      raiseBetButton.disabled = state.bet >= state.credits || outOfCredits;
+      tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.game === state.game));
+      Object.entries(panels).forEach(([game, panel]) => {
+        panel.classList.toggle("active", game === state.game);
+      });
+
+      const outOfCredits = state.credits < 5;
+      const lockedBet = state.blackjackActive;
+      dealButton.hidden = state.game === "blackjack" && state.blackjackActive;
+      hitButton.hidden = state.game !== "blackjack" || !state.blackjackActive;
+      standButton.hidden = state.game !== "blackjack" || !state.blackjackActive;
+      dealButton.disabled = outOfCredits || lockedBet;
+      hitButton.disabled = outOfCredits || !state.blackjackActive;
+      standButton.disabled = outOfCredits || !state.blackjackActive;
+      lowerBetButton.disabled = state.bet <= 5 || outOfCredits || lockedBet;
+      raiseBetButton.disabled = state.bet >= Math.floor(state.credits / 5) * 5 || outOfCredits || lockedBet;
+
+      if (state.game === "high-card") {
+        dealButton.textContent = "Deal Cards";
+        gameCopyEl.textContent = "Higher card wins. Ties return your bet.";
+      } else {
+        dealButton.textContent = "Deal Blackjack";
+        gameCopyEl.textContent = "Dealer stands on 17. Natural blackjack pays 3:2.";
+      }
 
       if (outOfCredits) {
         titleEl.textContent = "Stack empty";
-        copyEl.textContent = "Reset your virtual credits to play another round.";
+          copyEl.textContent = "Reset your virtual credits to play another round.";
       }
     }
 
-    function deal() {
+    function settleWin(amount, title, copy) {
+      state.credits += amount;
+      state.streak += 1;
+      state.wins += 1;
+      titleEl.textContent = title;
+      copyEl.textContent = copy;
+    }
+
+    function settleLoss(title, copy) {
+      state.credits -= state.bet;
+      state.streak = 0;
+      state.losses += 1;
+      titleEl.textContent = title;
+      copyEl.textContent = copy;
+    }
+
+    function dealHighCard() {
       const playerCard = drawCard();
       const houseCard = drawCard();
 
@@ -568,19 +760,11 @@
       renderCard(houseCardEl, houseCard);
 
       if (playerCard.rank.value > houseCard.rank.value) {
-        state.credits += state.bet;
-        state.streak += 1;
-        state.wins += 1;
+        settleWin(state.bet, "You win", `You earned ${state.bet} credits.`);
         playerCardEl.classList.add("winner");
-        titleEl.textContent = "You win";
-        copyEl.textContent = `You earned ${state.bet} credits.`;
       } else if (playerCard.rank.value < houseCard.rank.value) {
-        state.credits -= state.bet;
-        state.streak = 0;
-        state.losses += 1;
+        settleLoss("House wins", `You lost ${state.bet} credits.`);
         houseCardEl.classList.add("winner");
-        titleEl.textContent = "House wins";
-        copyEl.textContent = `You lost ${state.bet} credits.`;
       } else {
         state.streak = 0;
         titleEl.textContent = "Push";
@@ -589,6 +773,91 @@
 
       render();
     }
+
+    function startBlackjack() {
+      state.blackjackActive = true;
+      state.hideDealerHole = true;
+      state.dealerHand = [drawCard(), drawCard()];
+      state.playerHand = [drawCard(), drawCard()];
+      titleEl.textContent = "Blackjack dealt";
+      copyEl.textContent = "Hit to draw or stand to hold.";
+
+      const playerNatural = isBlackjack(state.playerHand);
+      const dealerNatural = isBlackjack(state.dealerHand);
+
+      if (playerNatural || dealerNatural) {
+        state.hideDealerHole = false;
+        state.blackjackActive = false;
+
+        if (playerNatural && dealerNatural) {
+          state.streak = 0;
+          titleEl.textContent = "Push";
+          copyEl.textContent = "Both hands have blackjack. Your bet comes back.";
+        } else if (playerNatural) {
+          const payout = state.bet * 1.5;
+          settleWin(payout, "Blackjack", `Natural blackjack pays ${formatCredits(payout)} credits.`);
+        } else {
+          settleLoss("Dealer blackjack", `You lost ${state.bet} credits.`);
+        }
+      }
+
+      render();
+    }
+
+    function hitBlackjack() {
+      state.playerHand.push(drawCard());
+
+      if (handTotal(state.playerHand) > 21) {
+        state.hideDealerHole = false;
+        state.blackjackActive = false;
+        settleLoss("Bust", `You went over 21 and lost ${state.bet} credits.`);
+      }
+
+      render();
+    }
+
+    function standBlackjack() {
+      state.hideDealerHole = false;
+
+      while (handTotal(state.dealerHand) < 17) {
+        state.dealerHand.push(drawCard());
+      }
+
+      const playerTotal = handTotal(state.playerHand);
+      const dealerTotal = handTotal(state.dealerHand);
+      state.blackjackActive = false;
+
+      if (dealerTotal > 21) {
+        settleWin(state.bet, "Dealer busts", `You earned ${state.bet} credits.`);
+      } else if (playerTotal > dealerTotal) {
+        settleWin(state.bet, "You win", `${playerTotal} beats ${dealerTotal}. You earned ${state.bet} credits.`);
+      } else if (playerTotal < dealerTotal) {
+        settleLoss("Dealer wins", `${dealerTotal} beats ${playerTotal}. You lost ${state.bet} credits.`);
+      } else {
+        state.streak = 0;
+        titleEl.textContent = "Push";
+        copyEl.textContent = `${playerTotal} ties ${dealerTotal}. Your bet comes back.`;
+      }
+
+      render();
+    }
+
+    function switchGame(game) {
+      if (state.blackjackActive) {
+        return;
+      }
+
+      state.game = game;
+      titleEl.textContent = game === "high-card" ? "High Card" : "Blackjack";
+      copyEl.textContent = game === "high-card"
+        ? "Higher card wins. Ties return your bet."
+        : "Get closer to 21 than the dealer without going over.";
+      render();
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => switchGame(tab.dataset.game));
+    });
 
     lowerBetButton.addEventListener("click", () => {
       state.bet -= 5;
@@ -600,7 +869,16 @@
       render();
     });
 
-    dealButton.addEventListener("click", deal);
+    dealButton.addEventListener("click", () => {
+      if (state.game === "high-card") {
+        dealHighCard();
+      } else {
+        startBlackjack();
+      }
+    });
+
+    hitButton.addEventListener("click", hitBlackjack);
+    standButton.addEventListener("click", standBlackjack);
 
     resetButton.addEventListener("click", () => {
       state.credits = 100;
@@ -608,10 +886,14 @@
       state.streak = 0;
       state.wins = 0;
       state.losses = 0;
+      state.blackjackActive = false;
+      state.dealerHand = [];
+      state.playerHand = [];
+      state.hideDealerHole = false;
       playerCardEl.classList.remove("winner");
       houseCardEl.classList.remove("winner");
       titleEl.textContent = "Place a bet";
-      copyEl.textContent = "Higher card wins. Ties return your bet.";
+      copyEl.textContent = "Choose High Card or Blackjack to begin.";
       render();
     });
 

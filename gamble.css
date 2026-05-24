@@ -1736,6 +1736,10 @@ button:disabled {
   animation: panelIn 520ms ease 120ms both;
 }
 
+.stats-panel-wide {
+  grid-column: 1 / -1;
+}
+
 .stats-panel-header {
   display: flex;
   align-items: end;
@@ -1765,7 +1769,7 @@ button:disabled {
 
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  grid-template-columns: 2rem minmax(0, 1fr) auto auto auto auto;
   align-items: center;
   gap: 0.55rem;
   min-height: 42px;
@@ -1801,6 +1805,23 @@ button:disabled {
 .leaderboard-balance {
   color: var(--gold);
   font-size: 0.95rem;
+}
+
+.leaderboard-record,
+.leaderboard-rate,
+.leaderboard-net {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.leaderboard-net.win {
+  color: #86efac;
+}
+
+.leaderboard-net.loss {
+  color: #fca5a5;
 }
 
 .leaderboard-empty {
@@ -1868,6 +1889,131 @@ button:disabled {
   text-align: center;
 }
 
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.viz-card {
+  min-height: 100px;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.viz-card.danger {
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+.viz-card span,
+.viz-card em,
+.viz-chart-title {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.viz-card strong {
+  display: block;
+  margin: 0.35rem 0 0.25rem;
+  overflow: hidden;
+  color: var(--gold);
+  font-size: clamp(1.25rem, 2.2vw, 1.8rem);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-charts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.viz-chart {
+  display: grid;
+  gap: 0.65rem;
+  min-height: 210px;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.viz-chart-title {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.viz-bars {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+}
+
+.viz-bar-row {
+  display: grid;
+  grid-template-columns: minmax(74px, 0.8fr) minmax(80px, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 28px;
+  font-size: 0.84rem;
+}
+
+.viz-bar-row > span {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.86);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-bar-row > strong {
+  color: var(--gold);
+  font-size: 0.82rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.viz-bar-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.viz-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #86efac;
+  box-shadow: 0 0 14px rgba(134, 239, 172, 0.28);
+}
+
+.viz-bar.loss {
+  background: #fca5a5;
+  box-shadow: 0 0 14px rgba(252, 165, 165, 0.24);
+}
+
+.viz-bar.streak {
+  background: linear-gradient(90deg, #38bdf8, var(--gold));
+}
+
+.viz-bar.game {
+  background: linear-gradient(90deg, #c084fc, #38bdf8);
+}
+
+.viz-empty {
+  padding: 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
 @media (max-width: 860px) {
   .section-head {
     align-items: start;
@@ -1892,12 +2038,26 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .gamble-stats {
-    grid-template-columns: 1fr;
-  }
+      .gamble-stats {
+        grid-template-columns: 1fr;
+      }
 
-  .controls {
-    order: -1;
+      .viz-grid,
+      .viz-charts {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .leaderboard-row {
+        grid-template-columns: 2rem minmax(0, 1fr) auto;
+      }
+
+      .leaderboard-rate,
+      .leaderboard-net {
+        display: none;
+      }
+
+      .controls {
+        order: -1;
   }
 
   .roulette-number-grid {
@@ -1952,12 +2112,21 @@ button:disabled {
     justify-items: start;
   }
 
-  .slot-win-panel {
-    grid-template-columns: 1fr;
-  }
+      .slot-win-panel {
+        grid-template-columns: 1fr;
+      }
 
-  .slot-win-amount {
-    text-align: left;
+      .viz-grid,
+      .viz-charts {
+        grid-template-columns: 1fr;
+      }
+
+      .viz-bar-row {
+        grid-template-columns: minmax(62px, 0.8fr) minmax(70px, 1fr) auto;
+      }
+
+      .slot-win-amount {
+        text-align: left;
   }
 
   .slot-reels {

@@ -154,7 +154,30 @@
 
   <section class="gallery" id="gallery"></section>
 
-  <audio src="faith/faith.mp3" autoplay loop></audio>
+  <audio id="bg-audio" src="faith/faith.mp3" autoplay loop></audio>
+
+  <script>
+    ;(() => {
+      const audio = document.getElementById('bg-audio')
+      const tryPlay = () => {
+        const p = audio.play()
+        if (p && typeof p.then === 'function') {
+          p.catch(() => {
+            const start = () => {
+              audio.play().catch(() => {})
+              window.removeEventListener('pointerdown', start)
+              window.removeEventListener('keydown', start)
+              window.removeEventListener('touchstart', start)
+            }
+            window.addEventListener('pointerdown', start, { once: false })
+            window.addEventListener('keydown', start, { once: false })
+            window.addEventListener('touchstart', start, { once: false })
+          })
+        }
+      }
+      tryPlay()
+    })()
+  </script>
 
   <script>
     ;(() => {

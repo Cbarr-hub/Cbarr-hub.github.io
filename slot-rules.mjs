@@ -24,8 +24,8 @@ export const SLOT_PAYLINES = [
   { id: "inverted-v", name: "Inv V", rows: [2, 1, 0, 1, 2] },
   { id: "zigzag", name: "Zig", rows: [0, 1, 0, 1, 0] },
   { id: "zag", name: "Zag", rows: [2, 1, 2, 1, 2] },
-  { id: "rise", name: "Rise", rows: [2, 2, 1, 0, 0] },
-  { id: "fall", name: "Fall", rows: [0, 0, 1, 2, 2] },
+  { id: "rise", name: "Rise", rows: [2, 2, 0, 0, 0] },
+  { id: "fall", name: "Fall", rows: [0, 0, 2, 2, 2] },
   { id: "diamond-line", name: "Gem", rows: [1, 0, 1, 2, 1] }
 ];
 

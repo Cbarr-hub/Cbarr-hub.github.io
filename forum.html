@@ -6,40 +6,40 @@
   <title>GAMERTOWN.SOLUTIONS :: FORUM</title>
   <style>
     body {
-      background: #000000;
-      color: #cccccc;
+      background: #2a2a2a;
+      color: #d4d4b8;
       font-family: Verdana, Arial, sans-serif;
       font-size: 12px;
       margin: 0;
     }
 
-    a { color: #00ccff; }
-    a:visited { color: #9966ff; }
-    a:hover { color: #ffffff; }
+    a { color: #7bb85f; }
+    a:visited { color: #7bb85f; }
+    a:hover { color: #42F527; }
 
     #banner {
-      background: #000066;
-      border-bottom: 2px solid #ffff00;
+      background: #1a1a1a;
+      border-bottom: 2px solid #42F527;
       padding: 6px 8px;
     }
     #banner h1 {
-      color: #ffff00;
+      color: #42F527;
       font-size: 20px;
       margin: 0 0 2px 0;
       letter-spacing: 2px;
       text-transform: uppercase;
     }
-    #banner p { margin: 0; color: #aaaaaa; font-size: 11px; }
+    #banner p { margin: 0; color: #999999; font-size: 11px; }
 
     #topnav {
-      background: #001133;
-      border-bottom: 1px solid #333399;
+      background: #222222;
+      border-bottom: 1px solid #3a3a3a;
       padding: 4px 8px;
       font-size: 11px;
     }
-    #topnav a { margin-right: 10px; color: #66aaff; text-decoration: none; }
-    #topnav a:hover { color: #ffffff; text-decoration: underline; }
-    #topnav a.active { color: #ffff00; font-weight: bold; }
+    #topnav a { margin-right: 10px; color: #7bb85f; text-decoration: none; }
+    #topnav a:hover { color: #42F527; text-decoration: underline; }
+    #topnav a.active { color: #42F527; font-weight: bold; }
 
     #wrap { padding: 8px; }
 
@@ -48,11 +48,11 @@
 
     /* ── section headers ── */
     .sec-head {
-      background: #003366;
-      border: 1px solid #336699;
+      background: #1e2e1e;
+      border: 1px solid #7bb85f;
       border-bottom: none;
       padding: 4px 6px;
-      color: #ffffff;
+      color: #d4d4b8;
       font-weight: bold;
       font-size: 12px;
       text-transform: uppercase;
@@ -63,130 +63,130 @@
     #thread-table {
       width: 100%;
       border-collapse: collapse;
-      border: 1px solid #333333;
+      border: 1px solid #3a3a3a;
       margin-bottom: 16px;
     }
     #thread-table th {
-      background: #111133;
-      color: #ffff00;
-      border: 1px solid #333366;
+      background: #1a1a1a;
+      color: #42F527;
+      border: 1px solid #3a3a3a;
       padding: 4px 6px;
       text-align: left;
       font-size: 11px;
       text-transform: uppercase;
     }
     #thread-table td {
-      border: 1px solid #222222;
+      border: 1px solid #333333;
       padding: 5px 6px;
       vertical-align: top;
     }
-    #thread-table tr.row-a td { background: #0a0a0a; }
-    #thread-table tr.row-b td { background: #111111; }
-    #thread-table tr:hover td { background: #0a1a2a; cursor: pointer; }
+    #thread-table tr.row-a td { background: #252525; }
+    #thread-table tr.row-b td { background: #2a2a2a; }
+    #thread-table tr:hover td { background: #1e2e1e; cursor: pointer; }
 
-    .t-title { color: #ffffff; font-weight: bold; font-size: 12px; }
-    .t-author { color: #aaaaaa; font-size: 11px; margin-top: 2px; }
-    .t-count { color: #ffaa00; font-weight: bold; text-align: center; }
-    .t-date { color: #777777; font-size: 11px; white-space: nowrap; }
+    .t-title { color: #d4d4b8; font-weight: bold; font-size: 12px; }
+    .t-author { color: #999999; font-size: 11px; margin-top: 2px; }
+    .t-count { color: #42F527; font-weight: bold; text-align: center; }
+    .t-date { color: #999999; font-size: 11px; white-space: nowrap; }
 
-    .empty-row td { color: #666666; font-style: italic; text-align: center; padding: 12px; }
+    .empty-row td { color: #999999; font-style: italic; text-align: center; padding: 12px; }
 
     /* ── new thread form ── */
     .form-box {
-      border: 1px solid #333333;
-      background: #0a0a0a;
+      border: 1px solid #3a3a3a;
+      background: #222222;
       padding: 8px;
       margin-bottom: 16px;
     }
     .form-box table { width: 100%; border-collapse: collapse; }
     .form-box td { padding: 3px 4px; vertical-align: middle; }
-    .form-box td.lbl { color: #ffff00; font-size: 11px; font-weight: bold; white-space: nowrap; width: 80px; }
+    .form-box td.lbl { color: #7bb85f; font-size: 11px; font-weight: bold; white-space: nowrap; width: 80px; }
     .form-box input[type=text] {
       width: 100%;
-      background: #111111;
-      border: 1px solid #444444;
-      color: #ffffff;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      color: #d4d4b8;
       padding: 3px 4px;
       font-family: Verdana, Arial, sans-serif;
       font-size: 12px;
     }
     .form-box textarea {
       width: 100%;
-      background: #111111;
-      border: 1px solid #444444;
-      color: #ffffff;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      color: #d4d4b8;
       padding: 3px 4px;
       font-family: Verdana, Arial, sans-serif;
       font-size: 12px;
       height: 80px;
       resize: vertical;
     }
-    .form-box input:focus, .form-box textarea:focus { border-color: #0099ff; outline: none; }
+    .form-box input:focus, .form-box textarea:focus { border-color: #7bb85f; outline: none; }
 
     input[type=submit], button.retro-btn {
-      background: #003399;
-      color: #ffffff;
-      border: 1px solid #6699ff;
+      background: #2a4a1a;
+      color: #d4d4b8;
+      border: 1px solid #7bb85f;
       padding: 3px 12px;
       font-family: Verdana, Arial, sans-serif;
       font-size: 11px;
       cursor: pointer;
       font-weight: bold;
     }
-    input[type=submit]:hover, button.retro-btn:hover { background: #0044cc; }
-    input[type=submit]:disabled, button.retro-btn:disabled { background: #222222; color: #555555; border-color: #333333; cursor: default; }
+    input[type=submit]:hover, button.retro-btn:hover { background: #3a6a2a; color: #42F527; }
+    input[type=submit]:disabled, button.retro-btn:disabled { background: #333333; color: #555555; border-color: #3a3a3a; cursor: default; }
 
     /* ── thread detail ── */
     #thread-op {
-      border: 1px solid #333366;
-      background: #050510;
+      border: 1px solid #3a5a3a;
+      background: #1a1a1a;
       margin-bottom: 10px;
     }
     #thread-op .op-head {
-      background: #001155;
-      border-bottom: 1px solid #333366;
+      background: #1e2e1e;
+      border-bottom: 1px solid #3a5a3a;
       padding: 4px 8px;
-      color: #ffffff;
+      color: #d4d4b8;
       font-weight: bold;
     }
-    #thread-op .op-meta { color: #888888; font-size: 11px; font-weight: normal; margin-top: 2px; }
-    #thread-op .op-body { padding: 8px; color: #dddddd; line-height: 1.6; white-space: pre-wrap; }
+    #thread-op .op-meta { color: #999999; font-size: 11px; font-weight: normal; margin-top: 2px; }
+    #thread-op .op-body { padding: 8px; color: #d4d4b8; line-height: 1.6; white-space: pre-wrap; }
 
     #comment-list { margin-bottom: 12px; }
 
     .comment-box {
-      border: 1px solid #222222;
+      border: 1px solid #333333;
       margin-bottom: 4px;
     }
     .comment-box .c-head {
-      background: #111122;
-      border-bottom: 1px solid #222233;
+      background: #1e1e1e;
+      border-bottom: 1px solid #2a2a2a;
       padding: 3px 6px;
       display: flex;
       justify-content: space-between;
     }
-    .c-author { color: #ff9900; font-weight: bold; font-size: 11px; }
-    .c-date   { color: #555555; font-size: 11px; }
-    .c-body   { padding: 6px 8px; color: #cccccc; line-height: 1.5; white-space: pre-wrap; background: #080808; }
+    .c-author { color: #7bb85f; font-weight: bold; font-size: 11px; }
+    .c-date   { color: #999999; font-size: 11px; }
+    .c-body   { padding: 6px 8px; color: #d4d4b8; line-height: 1.5; white-space: pre-wrap; background: #222222; }
 
     #comments-label {
-      color: #ffff00;
+      color: #42F527;
       font-weight: bold;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      border-bottom: 1px solid #333300;
+      border-bottom: 1px solid #3a5a3a;
       margin-bottom: 6px;
       padding-bottom: 3px;
     }
 
-    hr { border: none; border-top: 1px solid #222222; margin: 10px 0; }
+    hr { border: none; border-top: 1px solid #333333; margin: 10px 0; }
 
     #footer-bar {
-      border-top: 1px solid #333333;
-      background: #050505;
+      border-top: 1px solid #3a3a3a;
+      background: #1f1f1f;
       padding: 6px 8px;
-      color: #555555;
+      color: #999999;
       font-size: 10px;
       margin-top: 20px;
     }

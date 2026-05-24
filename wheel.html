@@ -141,7 +141,7 @@
       display: flex;
       align-items: center;
       height: 100%;
-      transition: transform 4s cubic-bezier(0.22, 1, 0.36, 1);
+      transition: transform 14s cubic-bezier(0.22, 1, 0.36, 1);
       will-change: transform;
     }
 
@@ -367,30 +367,71 @@
     ];
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
-      blue: 'linear-gradient(135deg,#00b4ff,#0066ff)',
-      purple: 'linear-gradient(135deg,#8a4fff,#5a00ff)',
-      pink: 'linear-gradient(135deg,#ff6fb4,#ff39ff)',
-      red: 'linear-gradient(135deg,#ff5a5a,#ff1e1e)',
-      gold: 'linear-gradient(135deg,#ffd166,#ffb000)'
+      blue: '#007bff',
+      purple: '#7a3fff',
+      pink: '#ff4fb3',
+      red: '#ff3b3b',
+      gold: '#ffbf38'
     };
+    const overlayColorMap = {
+      blue: 'rgba(0,123,255,0.64)',
+      purple: 'rgba(122,63,255,0.64)',
+      pink: 'rgba(255,79,179,0.64)',
+      red: 'rgba(255,59,59,0.64)',
+      gold: 'rgba(255,191,56,0.64)'
+    };
+    const nameColorMap = {};
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
     let names = [...defaultNames];
     let isSpinning = false;
-    const spinDuration = 4200;
+    const spinDuration = 14000;
 
     function buildSlot() {
       slotTrack.innerHTML = '';
       const repeatedNames = [...names, ...names, ...names];
+      // ensure each name gets a stable color assignment
+      // set blue probability to 4/5 and scale other probabilities to fill the remainder
+      names.forEach(n => {
+        if (!nameColorMap[n]) {
+          const r = Math.random();
+          const blueProb = 4/5; // 0.8
+          const orig = {
+            gold: 1/385,
+            red: 1/156,
+            pink: 1/31,
+            purple: 1/6
+          };
+          const sumOrig = orig.gold + orig.red + orig.pink + orig.purple;
+          const scale = (1 - blueProb) / sumOrig;
+          const goldProb = orig.gold * scale;
+          const redProb = orig.red * scale;
+          const pinkProb = orig.pink * scale;
+          const purpleProb = orig.purple * scale;
+
+          if (r < goldProb) {
+            nameColorMap[n] = 'gold';
+          } else if (r < goldProb + redProb) {
+            nameColorMap[n] = 'red';
+          } else if (r < goldProb + redProb + pinkProb) {
+            nameColorMap[n] = 'pink';
+          } else if (r < goldProb + redProb + pinkProb + purpleProb) {
+            nameColorMap[n] = 'purple';
+          } else {
+            nameColorMap[n] = 'blue';
+          }
+        }
+      });
+
       repeatedNames.forEach((name) => {
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = name;
-        const colorKey = slotColors[Math.floor(Math.random() * slotColors.length)];
+        const colorKey = nameColorMap[name];
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
-        if (colorKey === 'gold') item.style.color = '#000';
+        item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
         slotTrack.appendChild(item);
       });
 
@@ -430,7 +471,8 @@
       window.setTimeout(() => {
         const selectedName = names[selectedIndex];
         resultDisplay.textContent = selectedName;
-        showPopup(selectedName);
+        const selectedColorKey = nameColorMap[selectedName];
+        showPopup(selectedName, selectedColorKey);
         spinButton.textContent = 'Spin';
         spinButton.disabled = false;
         isSpinning = false;
@@ -438,16 +480,31 @@
       }, spinDuration + 50);
     }
 
-    function showPopup(name) {
+    function showPopup(name, colorKey) {
       const modal = document.getElementById('popupModal');
       const popupName = document.getElementById('popupName');
+      const modalBox = modal.querySelector('.modal');
       popupName.textContent = name;
+      const bg = slotColorMap[colorKey] || colorKey || 'rgba(10,10,22,0.96)';
+      modalBox.style.background = bg;
+      modalBox.style.color = (colorKey === 'gold') ? '#000' : '#fff';
+      popupName.style.color = (colorKey === 'gold') ? '#503000' : 'var(--accent)';
+      // set overlay to a semi-transparent color matching the slot
+      const overlayBg = overlayColorMap[colorKey] || 'rgba(0,0,0,0.72)';
+      modal.style.background = overlayBg;
       modal.classList.add('show');
     }
 
     function hidePopup() {
       const modal = document.getElementById('popupModal');
+      const modalBox = modal.querySelector('.modal');
+      const popupName = document.getElementById('popupName');
       modal.classList.remove('show');
+      // clear inline styles so next popup uses fresh values
+      modal.style.background = '';
+      modalBox.style.background = '';
+      modalBox.style.color = '';
+      popupName.style.color = '';
     }
 
     document.getElementById('closePopup').addEventListener('click', hidePopup);

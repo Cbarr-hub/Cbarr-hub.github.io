@@ -1,4 +1,4 @@
-import { getLeaderboardRows } from './gamble-data.js?v=events-1';
+import { getLeaderboardRows } from './gamble-data.js?v=stats-1';
 
 function esc(value) {
   return String(value ?? '')
@@ -10,6 +10,11 @@ function esc(value) {
 
 function formatDollars(value) {
   return `$${Math.round(value).toLocaleString('en-US')}`;
+}
+
+function formatSignedDollars(value) {
+  const amount = Math.abs(Math.round(Number(value) || 0)).toLocaleString('en-US');
+  return `${Number(value) < 0 ? '-' : '+'}$${amount}`;
 }
 
 export async function renderLeaderboard({ listEl, statusEl, currentUsername }) {
@@ -30,10 +35,15 @@ export async function renderLeaderboard({ listEl, statusEl, currentUsername }) {
 
     listEl.innerHTML = rows.map((row, index) => {
       const isCurrent = row.username === currentUsername;
+      const games = row.wins + row.losses;
+      const winRate = games ? Math.round((row.wins / games) * 100) : 0;
       return `
         <li class="leaderboard-row${isCurrent ? ' current' : ''}">
           <span class="leaderboard-rank">${index + 1}</span>
           <span class="leaderboard-name">${esc(row.username)}</span>
+          <span class="leaderboard-record">${row.wins}-${row.losses}</span>
+          <span class="leaderboard-rate">${winRate}%</span>
+          <strong class="leaderboard-net ${row.net < 0 ? 'loss' : 'win'}">${formatSignedDollars(row.net)}</strong>
           <strong class="leaderboard-balance">${formatDollars(row.balance)}</strong>
         </li>
       `;

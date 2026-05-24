@@ -86,14 +86,19 @@ export async function getLeaderboardRows() {
       wins: 0,
       losses: 0,
       net: 0,
-      biggestWin: 0
+      biggestWin: 0,
+      currentWinStreak: 0,
+      bestWinStreak: 0
     };
 
     if (event.outcome === 'win') {
       stats.wins += 1;
       stats.biggestWin = Math.max(stats.biggestWin, Number(event.payout_amount ?? 0));
+      stats.currentWinStreak += 1;
+      stats.bestWinStreak = Math.max(stats.bestWinStreak, stats.currentWinStreak);
     } else if (event.outcome === 'loss') {
       stats.losses += 1;
+      stats.currentWinStreak = 0;
     }
 
     stats.net += Number(event.net_change ?? 0);
@@ -107,7 +112,9 @@ export async function getLeaderboardRows() {
         wins: 0,
         losses: 0,
         net: 0,
-        biggestWin: 0
+        biggestWin: 0,
+        currentWinStreak: 0,
+        bestWinStreak: 0
       };
 
       return {
@@ -132,8 +139,7 @@ export async function insertGamblingEvent(event) {
 export async function getRecentGamblingEvents(limit = 12) {
   const { data, error } = await supabase
     .from('gambling_events')
-    .select('created_at,username,game,outcome,bet_amount,payout_amount,net_change,details')
-    .in('outcome', ['win', 'loss'])
+    .select('created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details')
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -155,7 +161,7 @@ export async function getGamblingDashboardData() {
       .select('Name,Dollers'),
     supabase
       .from('gambling_events')
-      .select('created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change')
+      .select('created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details')
       .order('created_at', { ascending: true })
       .limit(2000)
   ]);

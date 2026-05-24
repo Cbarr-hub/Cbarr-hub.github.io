@@ -1720,7 +1720,7 @@ button:disabled {
 
 .gamble-stats {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1.25rem;
   margin-top: 1.25rem;
 }
@@ -1769,10 +1769,10 @@ button:disabled {
 
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: 2rem minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.55rem;
-  min-height: 42px;
+  min-height: 58px;
   padding: 0.45rem 0.55rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
@@ -1799,28 +1799,56 @@ button:disabled {
   overflow: hidden;
   font-weight: 800;
   text-overflow: ellipsis;
+}
+
+.leaderboard-name strong,
+.leaderboard-name em,
+.leaderboard-bankroll strong,
+.leaderboard-bankroll em,
+.leaderboard-net strong,
+.leaderboard-net em,
+.leaderboard-detail {
+  display: block;
+}
+
+.leaderboard-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.leaderboard-balance {
-  color: var(--gold);
-  font-size: 0.95rem;
+.leaderboard-name em,
+.leaderboard-bankroll em,
+.leaderboard-net em,
+.leaderboard-detail {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 700;
 }
 
-.leaderboard-record,
-.leaderboard-rate,
+.leaderboard-bankroll,
 .leaderboard-net {
-  color: var(--muted);
-  font-size: 0.82rem;
+  text-align: right;
+}
+
+.leaderboard-bankroll strong,
+.leaderboard-net strong {
+  color: var(--gold);
+  font-size: 0.95rem;
   font-weight: 800;
   white-space: nowrap;
 }
 
-.leaderboard-net.win {
+.leaderboard-detail {
+  grid-column: 2 / -1;
+}
+
+.leaderboard-net.win strong {
   color: #86efac;
 }
 
-.leaderboard-net.loss {
+.leaderboard-net.loss strong {
   color: #fca5a5;
 }
 
@@ -1836,6 +1864,28 @@ button:disabled {
   display: grid;
   gap: 0.45rem;
   list-style: none;
+}
+
+.activity-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.activity-tab {
+  min-height: 34px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.78rem;
+}
+
+.activity-tab.active {
+  border-color: rgba(242, 193, 78, 0.72);
+  background: rgba(242, 193, 78, 0.16);
+  color: var(--gold);
 }
 
 .activity-row {
@@ -1858,15 +1908,26 @@ button:disabled {
   border-color: rgba(248, 113, 113, 0.38);
 }
 
+.activity-row.reset {
+  border-color: rgba(147, 197, 253, 0.4);
+}
+
+.activity-row.big {
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
 .activity-row strong,
-.activity-row span {
+.activity-row span,
+.activity-row em {
   display: block;
 }
 
-.activity-row span {
+.activity-row span,
+.activity-row em {
   margin-top: 0.18rem;
   color: var(--muted);
   font-size: 0.82rem;
+  font-style: normal;
 }
 
 .activity-money {
@@ -1879,6 +1940,10 @@ button:disabled {
 
 .activity-row.loss .activity-money strong {
   color: #fca5a5;
+}
+
+.activity-row.reset .activity-money strong {
+  color: #93c5fd;
 }
 
 .activity-empty {
@@ -1896,11 +1961,21 @@ button:disabled {
 }
 
 .viz-card {
+  display: grid;
+  align-content: space-between;
   min-height: 100px;
   padding: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
+}
+
+.viz-card.primary {
+  border-color: rgba(242, 193, 78, 0.32);
+}
+
+.viz-card.success {
+  border-color: rgba(34, 197, 94, 0.3);
 }
 
 .viz-card.danger {
@@ -1921,7 +1996,7 @@ button:disabled {
   margin: 0.35rem 0 0.25rem;
   overflow: hidden;
   color: var(--gold);
-  font-size: clamp(1.25rem, 2.2vw, 1.8rem);
+  font-size: clamp(1.05rem, 1.8vw, 1.45rem);
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1956,11 +2031,16 @@ button:disabled {
 
 .viz-bar-row {
   display: grid;
-  grid-template-columns: minmax(74px, 0.8fr) minmax(80px, 1fr) auto;
+  grid-template-columns: minmax(74px, 0.85fr) minmax(96px, 1.15fr) minmax(76px, auto);
   align-items: center;
   gap: 0.55rem;
-  min-height: 28px;
+  min-height: 32px;
   font-size: 0.84rem;
+}
+
+.viz-bar-row.outlier {
+  padding-left: 0.35rem;
+  border-left: 3px solid var(--gold);
 }
 
 .viz-bar-row > span {
@@ -1998,8 +2078,13 @@ button:disabled {
   box-shadow: 0 0 14px rgba(252, 165, 165, 0.24);
 }
 
-.viz-bar.streak {
-  background: linear-gradient(90deg, #38bdf8, var(--gold));
+.viz-bar.reset {
+  background: #93c5fd;
+  box-shadow: 0 0 14px rgba(147, 197, 253, 0.22);
+}
+
+.viz-bar.big {
+  background: linear-gradient(90deg, #f59e0b, var(--gold));
 }
 
 .viz-bar.game {
@@ -2038,26 +2123,25 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-      .gamble-stats {
-        grid-template-columns: 1fr;
-      }
+  .gamble-stats {
+    grid-template-columns: 1fr;
+  }
 
-      .viz-grid,
-      .viz-charts {
-        grid-template-columns: 1fr 1fr;
-      }
+  .viz-grid,
+  .viz-charts {
+    grid-template-columns: 1fr 1fr;
+  }
 
-      .leaderboard-row {
-        grid-template-columns: 2rem minmax(0, 1fr) auto;
-      }
+  .leaderboard-row {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
 
-      .leaderboard-rate,
-      .leaderboard-net {
-        display: none;
-      }
+  .leaderboard-net {
+    display: none;
+  }
 
-      .controls {
-        order: -1;
+  .controls {
+    order: -1;
   }
 
   .roulette-number-grid {
@@ -2112,21 +2196,29 @@ button:disabled {
     justify-items: start;
   }
 
-      .slot-win-panel {
-        grid-template-columns: 1fr;
-      }
+  .slot-win-panel {
+    grid-template-columns: 1fr;
+  }
 
-      .viz-grid,
-      .viz-charts {
-        grid-template-columns: 1fr;
-      }
+  .viz-grid,
+  .viz-charts {
+    grid-template-columns: 1fr;
+  }
 
-      .viz-bar-row {
-        grid-template-columns: minmax(62px, 0.8fr) minmax(70px, 1fr) auto;
-      }
+  .viz-bar-row {
+    grid-template-columns: minmax(62px, 0.8fr) minmax(70px, 1fr) auto;
+  }
 
-      .slot-win-amount {
-        text-align: left;
+  .leaderboard-row {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
+
+  .leaderboard-detail {
+    display: none;
+  }
+
+  .slot-win-amount {
+    text-align: left;
   }
 
   .slot-reels {

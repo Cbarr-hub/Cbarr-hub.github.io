@@ -4,10 +4,10 @@ import {
   getPlayerBalance,
   insertGamblingEvent,
   savePlayerBalance as persistPlayerBalance
-} from './gamble-data.js?v=stats-1';
-import { renderRecentEvents } from './gamble-activity.js?v=stats-1';
-import { renderGamblingDashboard } from './gamble-dashboard.js?v=stats-1';
-import { renderLeaderboard } from './gamble-leaderboard.js?v=stats-1';
+} from './gamble-data.js?v=dashboard-clean-1';
+import { renderRecentEvents } from './gamble-activity.js?v=dashboard-clean-1';
+import { renderGamblingDashboard } from './gamble-dashboard.js?v=dashboard-clean-1';
+import { renderLeaderboard } from './gamble-leaderboard.js?v=dashboard-clean-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
@@ -113,8 +113,9 @@ const activityStatusEl = document.getElementById("activity-status");
 const dashboardStatusEl = document.getElementById("dashboard-status");
 const dashboardKpiEl = document.getElementById("dashboard-kpis");
 const netChartEl = document.getElementById("net-chart");
-const streakChartEl = document.getElementById("streak-chart");
+const mixChartEl = document.getElementById("mix-chart");
 const gameChartEl = document.getElementById("game-chart");
+const activityTabs = Array.from(document.querySelectorAll("[data-activity-filter]"));
 const slotLineEls = Array.from(document.querySelectorAll(".slot-line"));
 const messageEl = document.querySelector(".message");
 const betBoxEl = document.querySelector(".bet");
@@ -958,6 +959,8 @@ function formatDollars(value) {
 }
 
 let balanceSaveTimer = null;
+let dashboardModel = null;
+let activityFilter = "all";
 
 function gameEventKey(game = state.game) {
   return game === "high-card" ? "high_card" : game;
@@ -1006,30 +1009,33 @@ async function refreshLeaderboard() {
   await renderLeaderboard({
     listEl: leaderboardListEl,
     statusEl: leaderboardStatusEl,
-    currentUsername: state.username
+    currentUsername: state.username,
+    rows: dashboardModel?.players ?? null
   });
 }
 
 async function refreshRecentEvents() {
   await renderRecentEvents({
     listEl: activityListEl,
-    statusEl: activityStatusEl
+    statusEl: activityStatusEl,
+    events: dashboardModel?.recentEvents ?? null,
+    filter: activityFilter
   });
 }
 
 async function refreshDashboard() {
-  await renderGamblingDashboard({
+  dashboardModel = await renderGamblingDashboard({
     statusEl: dashboardStatusEl,
     kpiEl: dashboardKpiEl,
     netChartEl,
-    streakChartEl,
+    mixChartEl,
     gameChartEl
   });
 }
 
 async function refreshStatsSection() {
+  await refreshDashboard();
   await Promise.all([
-    refreshDashboard(),
     refreshLeaderboard(),
     refreshRecentEvents()
   ]);
@@ -1041,7 +1047,7 @@ function recordGamblingEvent(event) {
   }
 
   insertGamblingEvent(event)
-    .then(refreshRecentEvents)
+    .then(refreshStatsSection)
     .catch((error) => {
       console.warn("Gambling event save failed:", error.message);
     });
@@ -1623,6 +1629,18 @@ chipButtons.forEach((button) => {
 
 roulettePickButtons.forEach((button) => {
   button.addEventListener("click", () => selectRouletteBet(button.dataset.rouletteType, button.dataset.rouletteValue));
+});
+
+activityTabs.forEach((button) => {
+  button.addEventListener("click", async () => {
+    activityFilter = button.dataset.activityFilter || "all";
+    activityTabs.forEach((tab) => {
+      const active = tab === button;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+    await refreshRecentEvents();
+  });
 });
 
 minBetButton.addEventListener("click", () => setBet(5));

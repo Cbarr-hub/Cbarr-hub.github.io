@@ -78,13 +78,21 @@ header {
   border-bottom: 3px solid var(--border);
 }
 
+header .container {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-left: clamp(1.5rem, 4vw, 7rem);
+  padding-right: clamp(1.5rem, 4vw, 7rem);
+}
+
 .nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0;
-  min-height: 110px;
+  gap: clamp(1rem, 3vw, 4rem);
+  padding: 0.75rem 0;
+  min-height: clamp(120px, 9vw, 240px);
 }
 
 .logo,
@@ -99,13 +107,14 @@ header {
 }
 
 .logo-image {
-  flex: 0 0 25%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .logo-image img {
-  height: 90px;
+  height: clamp(100px, 7vw, 210px);
   width: auto;
-  max-width: 100%;
   display: block;
 }
 
@@ -124,8 +133,9 @@ header {
 .navbar-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: clamp(0.1rem, 0.6vw, 0.75rem);
   align-items: center;
+  justify-content: flex-end;
 }
 
 .nav-links a,
@@ -134,7 +144,8 @@ header {
 .nav-btn {
   color: var(--text);
   font-weight: 600;
-  padding: 0.75rem 1rem;
+  font-size: clamp(0.8rem, 0.85vw, 1.3rem);
+  padding: clamp(0.4rem, 0.6vw, 0.9rem) clamp(0.5rem, 0.7vw, 1rem);
   border: 2px solid transparent;
   transition: all 0.25s ease;
 }
@@ -233,8 +244,8 @@ main {
 .logo-bg-icon {
   position: absolute;
   top: 50%;
-  right: -10%;
-  transform: translateY(-50%);
+  left: 50%;
+  transform: translate(-50%, -50%);
   opacity: 0.08;
   z-index: 0;
   pointer-events: none;

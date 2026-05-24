@@ -1,4 +1,4 @@
-import { getLeaderboardRows } from './gamble-data.js?v=stats-1';
+import { getLeaderboardRows } from './gamble-data.js?v=dashboard-clean-1';
 
 function esc(value) {
   return String(value ?? '')
@@ -8,16 +8,38 @@ function esc(value) {
     .replace(/"/g, '&quot;');
 }
 
+function numberValue(value) {
+  return Number(value ?? 0);
+}
+
 function formatDollars(value) {
-  return `$${Math.round(value).toLocaleString('en-US')}`;
+  return `$${Math.round(numberValue(value)).toLocaleString('en-US')}`;
 }
 
 function formatSignedDollars(value) {
-  const amount = Math.abs(Math.round(Number(value) || 0)).toLocaleString('en-US');
-  return `${Number(value) < 0 ? '-' : '+'}$${amount}`;
+  const amount = Math.abs(Math.round(numberValue(value))).toLocaleString('en-US');
+  return `${numberValue(value) < 0 ? '-' : '+'}$${amount}`;
 }
 
-export async function renderLeaderboard({ listEl, statusEl, currentUsername }) {
+function normalizeRows(rows) {
+  return rows.map((row) => {
+    const wins = numberValue(row.wins);
+    const losses = numberValue(row.losses);
+    const games = numberValue(row.games) || wins + losses;
+    return {
+      username: row.username,
+      balance: numberValue(row.balance),
+      wins,
+      losses,
+      winRate: games ? Math.round((wins / games) * 100) : 0,
+      net: numberValue(row.net),
+      biggestWin: numberValue(row.biggestWin),
+      bestWinStreak: numberValue(row.bestWinStreak)
+    };
+  });
+}
+
+export async function renderLeaderboard({ listEl, statusEl, currentUsername, rows = null }) {
   if (!listEl || !statusEl) {
     return;
   }
@@ -25,31 +47,39 @@ export async function renderLeaderboard({ listEl, statusEl, currentUsername }) {
   statusEl.textContent = 'Loading...';
 
   try {
-    const rows = await getLeaderboardRows();
+    const sourceRows = rows ?? await getLeaderboardRows();
+    const rankedRows = normalizeRows(sourceRows)
+      .sort((a, b) => b.balance - a.balance || b.net - a.net || a.username.localeCompare(b.username));
 
-    if (!rows.length) {
+    if (!rankedRows.length) {
       listEl.innerHTML = '<li class="leaderboard-empty">No users yet</li>';
       statusEl.textContent = '0 players';
       return;
     }
 
-    listEl.innerHTML = rows.map((row, index) => {
+    listEl.innerHTML = rankedRows.map((row, index) => {
       const isCurrent = row.username === currentUsername;
-      const games = row.wins + row.losses;
-      const winRate = games ? Math.round((row.wins / games) * 100) : 0;
       return `
         <li class="leaderboard-row${isCurrent ? ' current' : ''}">
           <span class="leaderboard-rank">${index + 1}</span>
-          <span class="leaderboard-name">${esc(row.username)}</span>
-          <span class="leaderboard-record">${row.wins}-${row.losses}</span>
-          <span class="leaderboard-rate">${winRate}%</span>
-          <strong class="leaderboard-net ${row.net < 0 ? 'loss' : 'win'}">${formatSignedDollars(row.net)}</strong>
-          <strong class="leaderboard-balance">${formatDollars(row.balance)}</strong>
+          <span class="leaderboard-name" title="${esc(row.username)}">
+            <strong>${esc(row.username)}</strong>
+            <em>${row.wins}-${row.losses} record / ${row.winRate}% win rate</em>
+          </span>
+          <span class="leaderboard-bankroll">
+            <strong>${formatDollars(row.balance)}</strong>
+            <em>bankroll</em>
+          </span>
+          <span class="leaderboard-net ${row.net < 0 ? 'loss' : 'win'}">
+            <strong>${formatSignedDollars(row.net)}</strong>
+            <em>net</em>
+          </span>
+          <span class="leaderboard-detail">Max win ${formatDollars(row.biggestWin)} / streak ${row.bestWinStreak}</span>
         </li>
       `;
     }).join('');
 
-    statusEl.textContent = `${rows.length} player${rows.length === 1 ? '' : 's'}`;
+    statusEl.textContent = `${rankedRows.length} player${rankedRows.length === 1 ? '' : 's'}`;
   } catch (error) {
     listEl.innerHTML = '<li class="leaderboard-empty">Could not load leaderboard</li>';
     statusEl.textContent = error.message || 'Load failed';

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gambling Section | Gamertown Solutions</title>
   <meta name="description" content="Fictional-dollar gambling games including High Card, Blackjack, Roulette, and Slots." />
-  <link rel="stylesheet" href="gamble.css">
+  <link rel="stylesheet" href="gamble.css?v=dashboard-clean-1">
 </head>
 <body>
   <header>
@@ -247,8 +247,8 @@
             <div class="viz-bars" id="net-chart"></div>
           </div>
           <div class="viz-chart">
-            <div class="viz-chart-title">Best win streaks</div>
-            <div class="viz-bars" id="streak-chart"></div>
+            <div class="viz-chart-title">Win/loss mix</div>
+            <div class="viz-bars" id="mix-chart"></div>
           </div>
           <div class="viz-chart">
             <div class="viz-chart-title">Game volume</div>
@@ -272,6 +272,13 @@
           <strong class="stats-panel-title">Recent wins/losses</strong>
           <span class="stats-panel-status" id="activity-status">Loading...</span>
         </div>
+        <div class="activity-tabs" role="tablist" aria-label="Recent event filter">
+          <button class="activity-tab active" type="button" data-activity-filter="all" aria-selected="true">All</button>
+          <button class="activity-tab" type="button" data-activity-filter="wins" aria-selected="false">Wins</button>
+          <button class="activity-tab" type="button" data-activity-filter="losses" aria-selected="false">Losses</button>
+          <button class="activity-tab" type="button" data-activity-filter="resets" aria-selected="false">Resets</button>
+          <button class="activity-tab" type="button" data-activity-filter="big" aria-selected="false">Big Events</button>
+        </div>
         <ol class="activity-list" id="activity-list">
           <li class="activity-empty">Loading results...</li>
         </ol>
@@ -279,6 +286,6 @@
     </section>
   </main>
 
-  <script type="module" src="./gamble.js?v=stats-1"></script>
+  <script type="module" src="./gamble.js?v=dashboard-clean-1"></script>
 </body>
 </html>

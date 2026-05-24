@@ -358,8 +358,8 @@
         this.x += this.vx
         this.y += Math.sin(t * this.bobFreq + this.bobPhase) * this.bobAmp
 
-        if (this.vx > 0 && this.x + this.w > canvas.width)  this.vx *= -1
-        if (this.vx < 0 && this.x < 0)                       this.vx *= -1
+        if (this.vx > 0 && this.x + this.w > canvas.width)  { this.vx *= -1.005 }
+        if (this.vx < 0 && this.x < 0)                       { this.vx *= -1.005 }
 
         const minY = 20, maxY = canvas.height - 60 - this.h
         if (this.y < minY) this.y = minY
@@ -417,7 +417,7 @@
       update() {
         this.x += this.vx
         this.y += this.vy
-        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
+        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1.005
         if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
       }
 

@@ -1,4 +1,5 @@
 # sync.ps1 — commit, pull, fix conflicts with Claude, push
+param([string]$Message = "")
 $env:GIT_MERGE_AUTOEDIT = 'no'
 
 Write-Host "`n==> Staging all changes..." -ForegroundColor Cyan
@@ -7,7 +8,8 @@ git add -A
 $dirty = git status --porcelain
 if ($dirty) {
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
-    git commit -m "chore: save work $timestamp"
+    $commitMsg = if ($Message) { $Message } else { "chore: save work $timestamp" }
+    git commit -m $commitMsg
     Write-Host "==> Committed." -ForegroundColor Green
 } else {
     Write-Host "==> Nothing to commit." -ForegroundColor Yellow

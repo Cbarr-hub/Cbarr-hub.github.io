@@ -101,6 +101,26 @@ header {
   font-size: inherit;
 }
 
+.logo {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.logo-navbar {
+  max-width: 140px;
+}
+
+.logo-about {
+  max-width: 220px;
+}
+
+.logo-footer {
+  max-width: 180px;
+}
+
 .logo-image img {
   height: 90px;
   width: auto;

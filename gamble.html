@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gambling Section | Gamertown Solutions</title>
   <meta name="description" content="Fictional-dollar gambling games including High Card, Blackjack, Roulette, and Slots." />
-  <link rel="stylesheet" href="gamble.css?v=dashboard-clean-1">
+  <link rel="stylesheet" href="gamble.css?v=slot-rtp-1">
 </head>
 <body>
   <header>
@@ -162,6 +162,11 @@
                 <span class="slot-line" data-line="bottom">Bottom</span>
                 <span class="slot-line" data-line="v">V</span>
                 <span class="slot-line" data-line="inverted-v">Inv V</span>
+                <span class="slot-line" data-line="zigzag">Zig</span>
+                <span class="slot-line" data-line="zag">Zag</span>
+                <span class="slot-line" data-line="rise">Rise</span>
+                <span class="slot-line" data-line="fall">Fall</span>
+                <span class="slot-line" data-line="diamond-line">Gem</span>
               </div>
 
               <div class="slot-payline-summary" aria-live="polite">
@@ -184,6 +189,18 @@
                 <div class="slot-badge">
                   <span>Multiplier</span>
                   <strong id="slot-multiplier">1x</strong>
+                </div>
+                <div class="slot-badge">
+                  <span>Bonus Total</span>
+                  <strong id="slot-bonus-total">$0</strong>
+                </div>
+                <div class="slot-badge">
+                  <span>Target RTP</span>
+                  <strong id="slot-rtp">95%</strong>
+                </div>
+                <div class="slot-badge slot-retrigger-badge">
+                  <span>Retrigger</span>
+                  <strong id="slot-retrigger">Ready</strong>
                 </div>
               </div>
             </div>
@@ -286,6 +303,6 @@
     </section>
   </main>
 
-  <script type="module" src="./gamble.js?v=dashboard-clean-1"></script>
+  <script type="module" src="./gamble.js?v=slot-rtp-1"></script>
 </body>
 </html>

@@ -83,8 +83,8 @@ header {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.5rem 0;
-  min-height: 110px;
+  padding: 0.75rem 0;
+  min-height: 80px;
 }
 
 .logo,
@@ -99,7 +99,7 @@ header {
 }
 
 .logo-image {
-  flex: 0 0 25%;
+  flex: 0 0 auto;
 }
 
 .logo {
@@ -111,7 +111,9 @@ header {
 }
 
 .logo-navbar {
-  max-width: 140px;
+  height: 72px;
+  width: auto;
+  max-width: none;
 }
 
 .logo-about {

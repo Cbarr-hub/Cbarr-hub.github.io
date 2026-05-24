@@ -1747,6 +1747,7 @@ button:disabled {
 .stats-panel {
   display: grid;
   gap: 0.75rem;
+  align-content: start;
   padding: 1rem;
   border: 1px solid var(--line);
   border-radius: 8px;

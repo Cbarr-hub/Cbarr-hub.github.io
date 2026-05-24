@@ -174,57 +174,98 @@
     };
   }
 
-  async function fetchPage(url){
-    const res = await fetch(url, {cache:'no-store'}).catch(e=>null);
-    if(!res || !res.ok) throw new Error('Fetch failed: '+url);
-    const text = await res.text();
-    const doc = new DOMParser().parseFromString(text, 'text/html');
-    return {text, doc, url};
+  async function fetchPage(url, timeoutMs = 8000){
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), timeoutMs);
+    try{
+      const res = await fetch(url, {cache:'no-store', signal: ctrl.signal});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const text = await res.text();
+      const doc = new DOMParser().parseFromString(text, 'text/html');
+      return {text, doc, url};
+    } catch(e){
+      throw new Error(e.name === 'AbortError' ? 'Timeout' : (e.message || 'Fetch failed'));
+    } finally { clearTimeout(t); }
   }
 
   // --- CRAWLER: discover pages (same-origin) and build a tree ---
+  // Skip schemes we shouldn't crawl, and non-HTML extensions that would
+  // make the crawler download large binaries (the main cause of hangs).
+  const SKIP_SCHEME = /^(mailto:|tel:|javascript:|data:|blob:|sms:)/i;
+  const SKIP_EXT = /\.(png|jpe?g|gif|svg|webp|ico|bmp|mp4|webm|mov|m4v|avi|mp3|wav|ogg|flac|pdf|zip|tar|gz|tgz|rar|7z|css|js|mjs|json|xml|rss|woff2?|ttf|eot|otf|map|wasm)$/i;
+
   async function crawlSite(startPath, maxPages = 50){
     const origin = location.origin;
-    const toAbsolute = p => new URL(p, location.href).href;
     const normalize = (href, base) => {
+      if(!href) return null;
+      const trimmed = href.trim();
+      if(!trimmed || trimmed.startsWith('#') || SKIP_SCHEME.test(trimmed)) return null;
       try{
         const baseAbs = new URL(base, location.href);
-        const u = new URL(href, baseAbs);
+        const u = new URL(trimmed, baseAbs);
         if(u.origin !== origin) return null;
-        let p = (u.pathname + u.search + u.hash) || '/';
+        // Drop the fragment so index.html and index.html#services collapse to one entry.
+        let p = u.pathname + u.search;
         if(p.startsWith('/')) p = p.slice(1);
-        if(!p) p = 'index.html';
+        if(!p || p.endsWith('/')) p = (p || '') + 'index.html';
+        if(SKIP_EXT.test(u.pathname)) return null;
         return p;
       }catch(e){ return null }
     };
 
     const seen = new Map(); // path -> node {url, children: [], parent: null}
+    const queued = new Set(); // O(1) dedup for the crawl queue
     function makeNode(path){ if(!seen.has(path)) seen.set(path, {url:path, children:[], parent:null}); return seen.get(path); }
 
-    const q = [];
+    const queue = [];
     makeNode(startPath);
-    q.push(startPath);
+    queue.push(startPath);
+    queued.add(startPath);
 
-    while(q.length && seen.size < maxPages){
-      const cur = q.shift();
+    const status = document.getElementById('crawlStatus');
+    const CONCURRENCY = 6;
+    let nextIdx = 0;
+    let active = 0;
+    let done;
+    const allDone = new Promise(r => { done = r; });
+
+    async function processOne(cur){
       const node = makeNode(cur);
       try{
         const {text, doc} = await fetchPage(cur);
-        // cache metrics
         metricsCache.set(cur, computeMetrics(text, doc, cur));
         const anchors = Array.from(doc.querySelectorAll('a[href]')).map(a=>a.getAttribute('href'));
         for(const a of anchors){
           const np = normalize(a, cur);
           if(!np) continue;
-          if(!seen.has(np) && !q.includes(np)) q.push(np);
           const child = makeNode(np);
           if(child.parent === null && np !== startPath) child.parent = cur;
           if(!node.children.includes(np)) node.children.push(np);
+          if(!queued.has(np) && seen.size < maxPages){
+            queued.add(np);
+            queue.push(np);
+          }
         }
       }catch(e){
         metricsCache.set(cur, {error: e.message, url: cur});
       }
+      if(status) status.textContent = `Crawling... ${metricsCache.size}/${seen.size} pages`;
     }
+
+    function pump(){
+      while(active < CONCURRENCY && nextIdx < queue.length && nextIdx < maxPages){
+        const cur = queue[nextIdx++];
+        active++;
+        processOne(cur).finally(()=>{
+          active--;
+          if(nextIdx < queue.length && nextIdx < maxPages) pump();
+          else if(active === 0) done();
+        });
+      }
+      if(active === 0 && nextIdx >= queue.length) done();
+    }
+    pump();
+    await allDone;
 
     const roots = Array.from(seen.values()).filter(n=>!n.parent);
     return {seen, roots};

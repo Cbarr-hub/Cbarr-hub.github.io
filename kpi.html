@@ -72,6 +72,8 @@
     <div style="width:100%;height:300px"><canvas id="h2CountChart"></canvas></div>
     <div style="width:100%;height:300px"><canvas id="totalHeadingsChart"></canvas></div>
     <div style="width:100%;height:300px"><canvas id="longestWordLengthChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="avgSentenceLengthChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="headingsBreakdownChart"></canvas></div>
   </div>
 
   <div id="pageDetails"></div>
@@ -315,6 +317,8 @@
       renderH2CountChart(good);
       renderTotalHeadingsChart(good);
       renderLongestWordLengthChart(good);
+      renderAvgSentenceLengthChart(good);
+      renderHeadingsBreakdownChart(good);
     }catch(e){ status.textContent = 'Crawl failed: '+e.message }
   });
 
@@ -662,6 +666,42 @@
     });
   }
 
+  function renderAvgSentenceLengthChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('avgSentenceLengthChart');
+    if(!canvas) return;
+    if(window.__avgSentenceLengthChart) window.__avgSentenceLengthChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>parseFloat(m.avgSentenceWords));
+    const colors = metricsList.map((_, i) => `hsl(${(i * 360 / metricsList.length)}, 70%, 60%)`);
+    window.__avgSentenceLengthChart = new Chart(canvas.getContext('2d'), {
+      type: 'polarArea',
+      data: {labels, datasets: [{label: 'Avg sentence length', data, backgroundColor: colors, borderColor: '#fff', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'bottom', labels: {font: {size: 10}}}}}
+    });
+  }
+
+  function renderHeadingsBreakdownChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('headingsBreakdownChart');
+    if(!canvas) return;
+    if(window.__headingsBreakdownChart) window.__headingsBreakdownChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const palette = ['rgba(255,99,132,0.7)','rgba(54,162,235,0.7)','rgba(255,206,86,0.7)','rgba(75,192,192,0.7)','rgba(153,102,255,0.7)','rgba(255,159,64,0.7)'];
+    const datasets = [1,2,3,4,5,6].map((n, i)=>({
+      label: 'H'+n,
+      data: metricsList.map(m=>m.headings['h'+n]),
+      backgroundColor: palette[i],
+      borderColor: palette[i].replace('0.7','1'),
+      borderWidth: 1
+    }));
+    window.__headingsBreakdownChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'bottom', labels: {font: {size: 10}}}}, scales: {x: {stacked: true}, y: {stacked: true, beginAtZero: true}}}
+    });
+  }
+
   function renderTable(metricsList){
     renderKeyMetrics(metricsList);
     renderPageDetails(metricsList);
@@ -683,6 +723,8 @@
     renderH2CountChart(metricsList);
     renderTotalHeadingsChart(metricsList);
     renderLongestWordLengthChart(metricsList);
+    renderAvgSentenceLengthChart(metricsList);
+    renderHeadingsBreakdownChart(metricsList);
   }
 
   function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
@@ -730,6 +772,8 @@
     renderH2CountChart(good);
     renderTotalHeadingsChart(good);
     renderLongestWordLengthChart(good);
+    renderAvgSentenceLengthChart(good);
+    renderHeadingsBreakdownChart(good);
     // show raw errors
     const errs = metrics.filter(r=>r.error);
     if(errs.length){

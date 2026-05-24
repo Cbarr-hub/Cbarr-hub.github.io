@@ -222,6 +222,7 @@
   <script type="module">
     import { supabase } from './supabase-client.js';
     import { setSession, getSession, requireAuth, updateNavbar } from './auth.js';
+    import { ensureBalance } from './gamble-data.js';
 
     const authOverlay = document.getElementById('auth-overlay');
     const authClose = document.getElementById('authClose');
@@ -253,12 +254,6 @@
       document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
       loginForm.classList.toggle('hidden', tabName !== 'login');
       registerForm.classList.toggle('hidden', tabName !== 'register');
-    }
-
-    async function ensureBalance(username) {
-      await supabase
-        .from('Balance')
-        .upsert({ Name: username, Dollers: 5000 }, { onConflict: 'Name', ignoreDuplicates: true });
     }
 
     authTabs.forEach(tab => {

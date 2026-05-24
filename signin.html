@@ -193,6 +193,7 @@
   <script type="module">
     import { supabase } from './supabase-client.js'
     import { getSession, setSession } from './auth.js'
+    import { ensureBalance } from './gamble-data.js'
 
     const authStatus = document.getElementById('authStatus')
     const signInForm = document.getElementById('signInForm')
@@ -210,12 +211,6 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
-
-    async function ensureBalance(username) {
-      await supabase
-        .from('Balance')
-        .upsert({ Name: username, Dollers: 5000 }, { onConflict: 'Name', ignoreDuplicates: true })
-    }
 
     async function loadUsers() {
       const { data, error } = await supabase

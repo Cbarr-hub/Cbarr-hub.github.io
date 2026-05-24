@@ -78,6 +78,8 @@
   - ~~Includes map component~~ [complete](https://cbarr-hub.github.io/map.html)
 - 1.f.12 Store page:
   - T-shirt drops scheduled for 2030
+- 1.f.13 Surprise feature:
+  - Hidden easter egg hunt page for secret visitors
   - Dynamic delay system:
     - If browser time approaches release, push release back +5 years
     - Manufacturing note: PK (Pakistan)  

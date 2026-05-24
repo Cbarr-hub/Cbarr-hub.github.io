@@ -98,6 +98,20 @@
       0%, 100% { transform: scale(1);   }
       50%       { transform: scale(1.18); }
     }
+
+    #sign-out {
+      background: none;
+      border: 1.5px solid #e05080;
+      color: #e05080;
+      border-radius: 20px;
+      padding: 6px 20px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 0.85rem;
+      cursor: pointer;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    #sign-out:hover { opacity: 1; }
   </style>
 </head>
 <body>
@@ -112,9 +126,19 @@
     <h1>The Final Solution is Love</h1>
     <p>you made it here &mdash; that means something &#128149;</p>
     <div class="sparkles">&#127800; &#128149; &#127800;</div>
+    <button id="sign-out">sign out</button>
   </div>
 
-  <script>
+  <script type="module">
+    if (!sessionStorage.getItem('gt_user')) {
+      window.location.href = 'index2.html'
+    }
+
+    document.getElementById('sign-out').addEventListener('click', () => {
+      sessionStorage.removeItem('gt_user')
+      window.location.href = 'index2.html'
+    })
+
     const emojis = ['❤️','💛','💚','💙','💜','🌸','✨','💖','🌼','💫']
     const container = document.getElementById('hearts')
     for (let i = 0; i < 22; i++) {

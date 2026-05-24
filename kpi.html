@@ -4,28 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>KPI Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body{font-family:system-ui,Segoe UI,Arial;padding:20px;max-width:1000px;margin:auto}
+    body{font-family:system-ui,Segoe UI,Arial;padding:20px;max-width:calc(100% - 400px);margin:auto}
     h1{margin-bottom:6px}
     table{border-collapse:collapse;width:100%;margin-top:12px}
     th,td{border:1px solid #ddd;padding:8px;text-align:left}
     th{background:#f4f4f4}
+    details{margin-left:16px;margin-top:6px}
+    summary{cursor:pointer;font-weight:600;display:flex;align-items:center;gap:0.5em}
+    .tree-button{font-size:0.85em;padding:2px 6px;border:1px solid #999;border-radius:4px;background:#f4f4f4;cursor:pointer}
+    .tree-button:hover{background:#e8e8e8}
     .ok{color:green}.warn{color:darkorange}.bad{color:crimson}
     pre{white-space:pre-wrap;background:#f9f9f9;padding:10px;border:1px solid #eee}
+    #video-panel{position:fixed;right:0;top:0;width:400px;height:100vh;background:#000;display:flex;flex-direction:column;box-shadow:-2px 0 8px rgba(0,0,0,0.3);z-index:1000}
+    #video-close{position:absolute;top:8px;right:8px;width:32px;height:32px;border:none;background:#fff;color:#000;font-size:1.5em;cursor:pointer;border-radius:4px;z-index:1001}
+    #video-close:hover{background:#eee}
+    #video-container{flex:1;display:flex;align-items:center;justify-content:center}
+    #video-container iframe{width:100%;height:100%;border:none}
   </style>
 </head>
 <body>
   <h1>KPI Dashboard — Quirky HTML Metrics</h1>
   <p>Scans the site pages and reports unusual/interesting HTML statistics.</p>
-
-  <div>
-    <label>Pages to scan (comma-separated):</label>
-    <input id="pagesInput" style="width:100%" value="index.html,index2.html,design_phil.html,gamble.html,map.html,tablets.html">
-  </div>
-  <p><button id="run">Run scan</button> <span id="status"></span></p>
-
-  <div id="summary"></div>
-  <div id="results"></div>
 
   <h2>Site Crawler</h2>
   <div>
@@ -37,6 +38,51 @@
     <span id="crawlStatus"></span>
   </div>
   <div id="tree" style="margin-top:12px"></div>
+
+  <div>
+    <label>Pages to scan (comma-separated):</label>
+    <input id="pagesInput" style="width:100%" value="">
+  </div>
+  <p><button id="run">Run scan</button> <span id="status"></span></p>
+
+  <div id="summary"></div>
+  <div id="keyMetrics"></div>
+  <div style="width:500px;height:350px;margin:20px 0">
+    <canvas id="wordCountChart"></canvas>
+  </div>
+  <div style="width:600px;height:350px;margin:20px 0">
+    <canvas id="readabilityChart"></canvas>
+  </div>
+
+  <h3>Detailed Analytics</h3>
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin:20px 0">
+    <div style="width:100%;height:300px"><canvas id="sentenceCountChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="avgWordLengthChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="imageCountChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="scriptCountChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="metaCountChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="commentCountChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="domDepthChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="inlineStylesChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="wordDiversityChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="missingAltChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="externalLinksChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="duplicateIDsChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="h1CountChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="h2CountChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="totalHeadingsChart"></canvas></div>
+    <div style="width:100%;height:300px"><canvas id="longestWordLengthChart"></canvas></div>
+  </div>
+
+  <div id="pageDetails"></div>
+  <div id="results"></div>
+
+  <div id="video-panel">
+    <button id="video-close" type="button">×</button>
+    <div id="video-container">
+      <iframe src="https://www.youtube.com/embed/-DX_9sF4i00?autoplay=1" allowfullscreen allow="autoplay"></iframe>
+    </div>
+  </div>
 
   <script>
   // List of quirky metrics we'll compute for each page.
@@ -64,9 +110,12 @@
       try{const u=new URL(a.href, location.href); return u.hostname !== location.hostname}catch(e){return false}
     });
 
-    // longest word
+    // longest word (excluding HTML-like words)
     let longest = '';
-    for(const w of words) if(w.length>longest.length) longest=w;
+    for(const w of words){
+      if(/[<>\/\&]/.test(w)) continue; // skip HTML-like words
+      if(w.length>longest.length) longest=w;
+    }
 
     // compute DOM max depth
     function maxDepth(node){
@@ -76,6 +125,31 @@
 
     const headings = [1,2,3,4,5,6].reduce((acc,n)=>{acc['h'+n]=doc.querySelectorAll('h'+n).length;return acc},{})
 
+    // Readability: Flesch-Kincaid Grade Level
+    const syllables = (text) => {
+      const word = text.toLowerCase();
+      let count = 0;
+      let vowels = 'aeiouy';
+      let prevWasVowel = false;
+      for(const char of word){
+        const isVowel = vowels.includes(char);
+        if(isVowel && !prevWasVowel) count++;
+        prevWasVowel = isVowel;
+      }
+      if(word.endsWith('e')) count--;
+      if(word.endsWith('le') && word.length > 2) count++;
+      return Math.max(1, count);
+    };
+    let totalSyllables = 0;
+    for(const w of words) totalSyllables += syllables(w);
+    const avgSyllablesPerWord = words.length ? totalSyllables / words.length : 0;
+    const readabilityScore = sentences.length && words.length ? 
+      0.39 * (words.length / sentences.length) + 11.8 * avgSyllablesPerWord - 15.59 : 0;
+
+    // Word diversity ratio
+    const uniqueWords = new Set(words.map(w=>w.toLowerCase())).size;
+    const wordDiversity = words.length ? (uniqueWords / words.length).toFixed(3) : 0;
+
     return {
       url,
       wordCount: words.length,
@@ -83,6 +157,8 @@
       longestWord: longest,
       sentenceCount: sentences.length,
       avgSentenceWords: sentences.length? (words.length/sentences.length).toFixed(2):0,
+      readabilityScore: readabilityScore.toFixed(1),
+      wordDiversity,
       inlineStyleCount,
       comments,
       imgsTotal: imgs.length,
@@ -157,39 +233,43 @@
     if(!roots || roots.length===0){ rootEl.innerHTML = '<em>No pages discovered</em>'; return }
     const seenMap = window.__kpi_seen || new Map();
     rootEl.innerHTML = '';
-    const ul = document.createElement('ul');
+
     const build = (node, visited) => {
-      const li = document.createElement('li');
-      const a = document.createElement('a');
-      a.href = '#';
-      a.textContent = node.url;
-      a.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(node.url); });
-      li.appendChild(a);
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      const title = document.createElement('span');
+      title.textContent = node.url;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'tree-button';
+      button.textContent = 'view metrics';
+      button.addEventListener('click', (e)=>{ e.stopPropagation(); showNodeMetrics(node.url); });
+      summary.appendChild(title);
+      summary.appendChild(button);
+      details.appendChild(summary);
 
       if(node.children && node.children.length){
         if(visited.has(node.url)){
-          const note = document.createElement('span');
-          note.textContent = ' (cycle detected)';
+          const note = document.createElement('div');
+          note.textContent = 'cycle detected';
           note.style.color = 'crimson';
-          li.appendChild(note);
-          return li;
+          note.style.marginLeft = '1em';
+          details.appendChild(note);
+          return details;
         }
         const nextVisited = new Set(visited);
         nextVisited.add(node.url);
-        const sub = document.createElement('ul');
         for(const c of node.children){
           const childNode = seenMap.get(c) || {url:c, children:[]};
-          sub.appendChild(build(childNode, nextVisited));
+          details.appendChild(build(childNode, nextVisited));
         }
-        li.appendChild(sub);
       }
-      return li;
+      return details;
     };
 
     for(const r of roots){
-      ul.appendChild(build(r, new Set()));
+      rootEl.appendChild(build(r, new Set()));
     }
-    rootEl.appendChild(ul);
   }
 
   function showNodeMetrics(url){
@@ -208,43 +288,410 @@
     status.textContent = 'Crawling...';
     try{
       const {seen, roots} = await crawlSite(start, max);
-      // expose seen map for renderTree
       window.__kpi_seen = seen;
-      // convert roots' child keys to node objects for rendering
-      const rootNodes = roots.map(r=>r);
-      renderTree(rootNodes);
-      status.textContent = `Crawled ${seen.size} pages`;
-      // render table for all collected metrics
+      renderTree(roots);
+      const pageList = Array.from(seen.keys()).join(',');
+      document.getElementById('pagesInput').value = pageList;
+      status.textContent = `Crawled ${seen.size} pages and updated scan list.`;
       const metrics = Array.from(metricsCache.entries()).map(([k,v])=> v.error ? {url:k, error:v.error} : v);
-      renderTable(metrics.filter(m=>!m.error));
+      const good = metrics.filter(m=>!m.error);
+      renderKeyMetrics(good);
+      renderPageDetails(metrics);
+      renderWordCountChart(good);
+      renderReadabilityChart(good);
+      renderSentenceCountChart(good);
+      renderAvgWordLengthChart(good);
+      renderImageCountChart(good);
+      renderScriptCountChart(good);
+      renderMetaCountChart(good);
+      renderCommentCountChart(good);
+      renderDomDepthChart(good);
+      renderInlineStylesChart(good);
+      renderWordDiversityChart(good);
+      renderMissingAltChart(good);
+      renderExternalLinksChart(good);
+      renderDuplicateIDsChart(good);
+      renderH1CountChart(good);
+      renderH2CountChart(good);
+      renderTotalHeadingsChart(good);
+      renderLongestWordLengthChart(good);
     }catch(e){ status.textContent = 'Crawl failed: '+e.message }
   });
 
-  function renderTable(metricsList){
-    const out = document.getElementById('results');
-    if(metricsList.length===0){ out.innerHTML='No results'; return }
-    let html = '<table><thead><tr><th>Page</th><th>Words</th><th>Avg word len</th><th>Longest word</th><th>Sentences</th><th>Avg words/sent</th><th>Inline styles</th><th>Imgs (missing alt)</th><th>External links</th><th>Duplicate IDs</th><th>DOM depth</th></tr></thead><tbody>';
+  function renderKeyMetrics(metricsList){
+    const out = document.getElementById('keyMetrics');
+    if(metricsList.length===0){ out.innerHTML = ''; return }
+    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Average sentence length</th><th>Longest word</th><th>Sentences</th><th>Flesch-Kincaid Readability score</th><th>Word diversity</th></tr></thead><tbody>';
     for(const m of metricsList){
-      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgWordLen}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td><td>${m.avgSentenceWords}</td><td>${m.inlineStyleCount}</td><td>${m.imgsTotal} (${m.imgsMissingAlt})</td><td>${m.externalLinks}</td><td>${m.duplicateIDs.length}</td><td>${m.domMaxDepth}</td></tr>`;
+      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgSentenceWords}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td><td>${m.readabilityScore}</td><td>${m.wordDiversity}</td></tr>`;
     }
     html += '</tbody></table>';
+    out.innerHTML = html;
+  }
 
-    // weird highlights
-    const weird = [];
-    // page with most inline styles
-    const mostStyles = metricsList.slice().sort((a,b)=>b.inlineStyleCount-a.inlineStyleCount)[0];
-    weird.push(`<strong>Most inline styles:</strong> <a href="${mostStyles.url}">${mostStyles.url}</a> (${mostStyles.inlineStyleCount})`);
-    // page with most missing alts
-    const mostMissingAlt = metricsList.slice().sort((a,b)=>b.imgsMissingAlt-a.imgsMissingAlt)[0];
-    weird.push(`<strong>Most images missing alt:</strong> <a href="${mostMissingAlt.url}">${mostMissingAlt.url}</a> (${mostMissingAlt.imgsMissingAlt})`);
-    // deepest DOM
-    const deepest = metricsList.slice().sort((a,b)=>b.domMaxDepth-a.domMaxDepth)[0];
-    weird.push(`<strong>Deepest DOM:</strong> <a href="${deepest.url}">${deepest.url}</a> (depth ${deepest.domMaxDepth})`);
+  function renderPageDetails(metricsList){
+    const out = document.getElementById('pageDetails');
+    if(metricsList.length===0){ out.innerHTML = ''; return }
+    const parts = ['<h3>Page details</h3>'];
+    for(const m of metricsList){
+      if(m.error){
+        parts.push(`<details><summary>${escapeHtml(m.url)} — error</summary><div style="padding:8px 12px;color:#900">${escapeHtml(m.error)}</div></details>`);
+        continue;
+      }
+      const duplicateInfo = m.duplicateIDs.length ? `${m.duplicateIDs.length} (${escapeHtml(m.duplicateIDs.join(', '))})` : '0';
+      parts.push(`
+        <details>
+          <summary>${escapeHtml(m.url)}</summary>
+          <table>
+            <tbody>
+              <tr><th>Word count</th><td>${m.wordCount}</td></tr>
+              <tr><th>Avg word length</th><td>${m.avgWordLen}</td></tr>
+              <tr><th>Longest word</th><td>${escapeHtml(m.longestWord)}</td></tr>
+              <tr><th>Sentence count</th><td>${m.sentenceCount}</td></tr>
+              <tr><th>Average sentence length</th><td>${m.avgSentenceWords}</td></tr>
+              <tr><th>Readability score (FK)</th><td>${m.readabilityScore}</td></tr>
+              <tr><th>Word diversity ratio</th><td>${m.wordDiversity}</td></tr>
+              <tr><th>Inline styles</th><td>${m.inlineStyleCount}</td></tr>
+              <tr><th>Comment count</th><td>${m.comments}</td></tr>
+              <tr><th>Images</th><td>${m.imgsTotal}</td></tr>
+              <tr><th>Missing alt</th><td>${m.imgsMissingAlt}</td></tr>
+              <tr><th>Scripts</th><td>${m.scriptCount}</td></tr>
+              <tr><th>Meta tags</th><td>${m.metaCount}</td></tr>
+              <tr><th>External links</th><td>${m.externalLinks}</td></tr>
+              <tr><th>Duplicate IDs</th><td>${duplicateInfo}</td></tr>
+              <tr><th>DOM max depth</th><td>${m.domMaxDepth}</td></tr>
+              <tr><th>Headings</th><td>h1:${m.headings.h1} h2:${m.headings.h2} h3:${m.headings.h3} h4:${m.headings.h4} h5:${m.headings.h5} h6:${m.headings.h6}</td></tr>
+            </tbody>
+          </table>
+        </details>
+      `);
+    }
+    out.innerHTML = parts.join('');
+  }
 
-    out.innerHTML = html + '<h3>Weird findings</h3><ul>' + weird.map(w=>`<li>${w}</li>`).join('') + '</ul>';
+  function renderTable(metricsList){
+    renderKeyMetrics(metricsList);
+    renderPageDetails(metricsList);
+    renderWordCountChart(metricsList);
+    renderReadabilityChart(metricsList);
+  }
+
+  function renderWordCountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('wordCountChart');
+    if(!canvas) return;
+    // Destroy previous chart if exists
+    if(window.__wordCountChart) window.__wordCountChart.destroy();
+    
+    const labels = metricsList.map(m=>m.url.substring(0,20));
+    const data = metricsList.map(m=>m.wordCount);
+    const colors = metricsList.map((_, i) => `hsl(${(i * 360 / metricsList.length)}, 70%, 60%)`);
+    
+    const ctx = canvas.getContext('2d');
+    window.__wordCountChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2}]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {position: 'bottom', labels: {font: {size: 11}}}
+        }
+      }
+    });
+  }
+
+  function renderReadabilityChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('readabilityChart');
+    if(!canvas) return;
+    // Destroy previous chart if exists
+    if(window.__readabilityChart) window.__readabilityChart.destroy();
+    
+    const labels = metricsList.map(m=>m.url.substring(0,20));
+    const data = metricsList.map(m=>parseFloat(m.readabilityScore));
+    
+    const ctx = canvas.getContext('2d');
+    window.__readabilityChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'FK Grade Level',
+          data,
+          backgroundColor: 'rgba(75, 192, 192, 0.7)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {legend: {display: true, labels: {font: {size: 11}}}},
+        scales: {x: {beginAtZero: true, ticks: {font: {size: 10}}}, y: {ticks: {font: {size: 10}}}}
+      }
+    });
+  }
+
+  // Line chart for sentence count
+  function renderSentenceCountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('sentenceCountChart');
+    if(!canvas) return;
+    if(window.__sentenceCountChart) window.__sentenceCountChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.sentenceCount);
+    window.__sentenceCountChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {labels, datasets: [{label: 'Sentences', data, borderColor: 'rgba(255,99,132,1)', borderWidth: 2, fill: false}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderAvgWordLengthChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('avgWordLengthChart');
+    if(!canvas) return;
+    if(window.__avgWordLengthChart) window.__avgWordLengthChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>parseFloat(m.avgWordLen));
+    window.__avgWordLengthChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {labels, datasets: [{label: 'Avg word length', data, borderColor: 'rgba(54,162,235,1)', borderWidth: 2, fill: false}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}}
+    });
+  }
+
+  function renderImageCountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('imageCountChart');
+    if(!canvas) return;
+    if(window.__imageCountChart) window.__imageCountChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.imgsTotal);
+    window.__imageCountChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'Images', data, backgroundColor: 'rgba(255,159,64,0.7)', borderColor: 'rgba(255,159,64,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderScriptCountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('scriptCountChart');
+    if(!canvas) return;
+    if(window.__scriptCountChart) window.__scriptCountChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.scriptCount);
+    window.__scriptCountChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'Scripts', data, backgroundColor: 'rgba(153,102,255,0.7)', borderColor: 'rgba(153,102,255,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderMetaCountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('metaCountChart');
+    if(!canvas) return;
+    if(window.__metaCountChart) window.__metaCountChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.metaCount);
+    window.__metaCountChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {labels, datasets: [{label: 'Meta tags', data, borderColor: 'rgba(75,192,192,1)', borderWidth: 2, fill: false, tension: 0.3}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderCommentCountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('commentCountChart');
+    if(!canvas) return;
+    if(window.__commentCountChart) window.__commentCountChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.comments);
+    window.__commentCountChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'Comments', data, backgroundColor: 'rgba(201,203,207,0.7)', borderColor: 'rgba(201,203,207,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderDomDepthChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('domDepthChart');
+    if(!canvas) return;
+    if(window.__domDepthChart) window.__domDepthChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.domMaxDepth);
+    window.__domDepthChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {labels, datasets: [{label: 'DOM depth', data, borderColor: 'rgba(255,99,132,1)', borderWidth: 2, fill: false, tension: 0.3}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderInlineStylesChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('inlineStylesChart');
+    if(!canvas) return;
+    if(window.__inlineStylesChart) window.__inlineStylesChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.inlineStyleCount);
+    window.__inlineStylesChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'Inline styles', data, backgroundColor: 'rgba(54,162,235,0.7)', borderColor: 'rgba(54,162,235,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderWordDiversityChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('wordDiversityChart');
+    if(!canvas) return;
+    if(window.__wordDiversityChart) window.__wordDiversityChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>parseFloat(m.wordDiversity));
+    window.__wordDiversityChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {labels, datasets: [{label: 'Word diversity', data, borderColor: 'rgba(255,159,64,1)', borderWidth: 2, fill: false, tension: 0.3}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true, max: 1}}}
+    });
+  }
+
+  function renderMissingAltChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('missingAltChart');
+    if(!canvas) return;
+    if(window.__missingAltChart) window.__missingAltChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.imgsMissingAlt);
+    window.__missingAltChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'Missing alt', data, backgroundColor: 'rgba(255,99,132,0.7)', borderColor: 'rgba(255,99,132,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderExternalLinksChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('externalLinksChart');
+    if(!canvas) return;
+    if(window.__externalLinksChart) window.__externalLinksChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.externalLinks);
+    window.__externalLinksChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {labels, datasets: [{label: 'External links', data, borderColor: 'rgba(153,102,255,1)', borderWidth: 2, fill: false, tension: 0.3}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderDuplicateIDsChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('duplicateIDsChart');
+    if(!canvas) return;
+    if(window.__duplicateIDsChart) window.__duplicateIDsChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.duplicateIDs.length);
+    window.__duplicateIDsChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'Duplicate IDs', data, backgroundColor: 'rgba(75,192,192,0.7)', borderColor: 'rgba(75,192,192,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderH1CountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('h1CountChart');
+    if(!canvas) return;
+    if(window.__h1CountChart) window.__h1CountChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.headings.h1);
+    window.__h1CountChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'H1 tags', data, backgroundColor: 'rgba(255,159,64,0.7)', borderColor: 'rgba(255,159,64,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderH2CountChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('h2CountChart');
+    if(!canvas) return;
+    if(window.__h2CountChart) window.__h2CountChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.headings.h2);
+    window.__h2CountChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'H2 tags', data, backgroundColor: 'rgba(153,102,255,0.7)', borderColor: 'rgba(153,102,255,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderTotalHeadingsChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('totalHeadingsChart');
+    if(!canvas) return;
+    if(window.__totalHeadingsChart) window.__totalHeadingsChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>Object.values(m.headings).reduce((a,b)=>a+b, 0));
+    window.__totalHeadingsChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {labels, datasets: [{label: 'Total headings', data, borderColor: 'rgba(201,203,207,1)', borderWidth: 2, fill: false, tension: 0.3}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderLongestWordLengthChart(metricsList){
+    if(metricsList.length===0) return;
+    const canvas = document.getElementById('longestWordLengthChart');
+    if(!canvas) return;
+    if(window.__longestWordLengthChart) window.__longestWordLengthChart.destroy();
+    const labels = metricsList.map(m=>m.url.substring(0,15));
+    const data = metricsList.map(m=>m.longestWord.length);
+    window.__longestWordLengthChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {labels, datasets: [{label: 'Longest word length', data, backgroundColor: 'rgba(255,99,132,0.7)', borderColor: 'rgba(255,99,132,1)', borderWidth: 1}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {labels: {font: {size: 10}}}}, scales: {y: {beginAtZero: true}}}
+    });
+  }
+
+  function renderTable(metricsList){
+    renderKeyMetrics(metricsList);
+    renderPageDetails(metricsList);
+    renderWordCountChart(metricsList);
+    renderReadabilityChart(metricsList);
+    renderSentenceCountChart(metricsList);
+    renderAvgWordLengthChart(metricsList);
+    renderImageCountChart(metricsList);
+    renderScriptCountChart(metricsList);
+    renderMetaCountChart(metricsList);
+    renderCommentCountChart(metricsList);
+    renderDomDepthChart(metricsList);
+    renderInlineStylesChart(metricsList);
+    renderWordDiversityChart(metricsList);
+    renderMissingAltChart(metricsList);
+    renderExternalLinksChart(metricsList);
+    renderDuplicateIDsChart(metricsList);
+    renderH1CountChart(metricsList);
+    renderH2CountChart(metricsList);
+    renderTotalHeadingsChart(metricsList);
+    renderLongestWordLengthChart(metricsList);
   }
 
   function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+  // Video close button
+  document.getElementById('video-close').addEventListener('click', ()=>{
+    document.getElementById('video-panel').style.display = 'none';
+    document.body.style.maxWidth = '1000px';
+  });
 
   document.getElementById('run').addEventListener('click', async ()=>{
     const status = document.getElementById('status'); status.textContent='Scanning...';
@@ -261,13 +708,35 @@
     status.textContent='Done';
     // show summary
     document.getElementById('summary').innerHTML = `<p>Scanned ${results.length} pages.</p>`;
-    const good = results.filter(r=>!r.error);
-    renderTable(good);
+    const metrics = results;
+    const good = metrics.filter(r=>!r.error);
+    renderKeyMetrics(good);
+    renderPageDetails(metrics);
+    renderWordCountChart(good);
+    renderReadabilityChart(good);
+    renderSentenceCountChart(good);
+    renderAvgWordLengthChart(good);
+    renderImageCountChart(good);
+    renderScriptCountChart(good);
+    renderMetaCountChart(good);
+    renderCommentCountChart(good);
+    renderDomDepthChart(good);
+    renderInlineStylesChart(good);
+    renderWordDiversityChart(good);
+    renderMissingAltChart(good);
+    renderExternalLinksChart(good);
+    renderDuplicateIDsChart(good);
+    renderH1CountChart(good);
+    renderH2CountChart(good);
+    renderTotalHeadingsChart(good);
+    renderLongestWordLengthChart(good);
     // show raw errors
-    const errs = results.filter(r=>r.error);
+    const errs = metrics.filter(r=>r.error);
     if(errs.length){
       const eout = errs.map(e=>`<li>${e.url}: ${e.error}</li>`).join('');
-      document.getElementById('results').insertAdjacentHTML('beforeend', '<h3>Errors</h3><ul>'+eout+'</ul>');
+      document.getElementById('results').innerHTML = '<h3>Errors</h3><ul>'+eout+'</ul>';
+    } else {
+      document.getElementById('results').innerHTML = '';
     }
   });
   </script>

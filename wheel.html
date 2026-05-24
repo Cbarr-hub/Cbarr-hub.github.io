@@ -107,54 +107,148 @@
       max-width: 640px;
     }
 
-    .wheel-frame {
+    .slot-frame {
       position: relative;
-      width: min(100%, 520px);
+      width: min(100%, 980px);
+      height: 220px;
       margin: 0 auto 1.5rem;
-      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
     }
 
-    .wheel-frame::after {
+    .slot-frame::before {
       content: "";
       position: absolute;
       inset: 0;
-      border-radius: 50%;
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 70px rgba(0,255,255,0.08);
+      border-radius: 28px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), 0 0 80px rgba(0,255,255,0.08);
       pointer-events: none;
     }
 
-    .pointer {
+    .slot-window {
+      position: relative;
+      width: 100%;
+      height: 140px;
+      overflow: hidden;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(0,0,0,0.55), rgba(0,0,0,0.75));
+      border: 1px solid rgba(0,255,255,0.18);
+      box-shadow: inset 0 0 30px rgba(0,255,255,0.08);
+    }
+
+    .slot-track {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      transition: transform 10s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+    }
+
+    .slot-item {
+      min-width: 220px;
+      padding: 1rem 1.4rem;
+      margin: 0 0.5rem;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(0,255,255,0.12), rgba(255,255,255,0.04));
+      border: 1px solid rgba(0,255,255,0.18);
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      backdrop-filter: blur(6px);
+    }
+
+    .slot-highlight {
       position: absolute;
-      top: 0;
+      inset: 0;
       left: 50%;
       transform: translateX(-50%);
-      width: 0;
-      height: 0;
-      border-left: 20px solid transparent;
-      border-right: 20px solid transparent;
-      border-bottom: 36px solid var(--accent);
-      filter: drop-shadow(0 0 10px rgba(0,255,255,0.5));
-      z-index: 2;
+      width: 200px;
+      border-left: 2px solid var(--accent);
+      border-right: 2px solid var(--accent);
+      pointer-events: none;
+      box-shadow: 0 0 40px rgba(0,255,255,0.12);
     }
 
-    .pointer::after {
-      content: "";
-      position: absolute;
-      top: 14px;
-      left: -10px;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: var(--bg);
-      border: 2px solid rgba(255,255,255,0.8);
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      z-index: 20;
     }
 
-    .wheel {
-      width: 100%;
-      height: 100%;
-      transform: rotate(0deg);
-      transition: transform 5s cubic-bezier(0.22, 1, 0.36, 1);
-      transform-origin: center;
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      width: min(100%, 500px);
+      padding: 2rem;
+      background: rgba(10, 10, 22, 0.96);
+      border: 1px solid rgba(0, 255, 255, 0.24);
+      border-radius: 24px;
+      box-shadow: 0 0 80px rgba(0, 255, 255, 0.18);
+      text-align: center;
+      color: #fff;
+      animation: popIn 260ms ease-out;
+    }
+
+    .modal h2 {
+      margin: 0 0 1rem;
+      font-size: clamp(1.8rem, 2.4vw, 2.5rem);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .modal p {
+      margin: 0;
+      font-size: 1.4rem;
+      letter-spacing: 0.1em;
+    }
+
+    .modal .popup-name {
+      margin: 1.25rem 0 0;
+      font-size: 2rem;
+      letter-spacing: 0.12em;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .modal-close {
+      margin-top: 1.75rem;
+      padding: 0.85rem 1.3rem;
+      border: 1px solid rgba(0,255,255,0.35);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.35);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .modal-close:hover {
+      transform: translateY(-1px);
+      background: rgba(0,255,255,0.15);
+    }
+
+    @keyframes popIn {
+      from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
 
     .controls {
@@ -190,45 +284,6 @@
       min-width: 0;
     }
 
-    .manual-list {
-      display: grid;
-      gap: 0.75rem;
-      margin-bottom: 1rem;
-    }
-
-    .manual-list label {
-      letter-spacing: 0.08em;
-      color: #a7f4ff;
-    }
-
-    .manual-list textarea {
-      width: 100%;
-      resize: vertical;
-      min-height: 10rem;
-      font: inherit;
-      padding: 0.95rem 1rem;
-      border: 1px solid rgba(0,255,255,0.35);
-      border-radius: 12px;
-      background: rgba(0,0,0,0.4);
-      color: var(--text);
-    }
-
-    .manual-list button {
-      justify-self: start;
-      padding: 0.95rem 1rem;
-      border: 1px solid rgba(0,255,255,0.35);
-      border-radius: 12px;
-      background: rgba(0,0,0,0.4);
-      color: var(--text);
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease;
-    }
-
-    .manual-list button:hover {
-      transform: translateY(-1px);
-      background: rgba(0,255,255,0.15);
-    }
-
     .result-card {
       padding: 1rem;
       border: 1px solid var(--panel-border);
@@ -261,36 +316,24 @@
     .return a:hover {
       color: #ffffff;
     }
-
-    svg text {
-      font-family: "Lucida Console", "Courier New", monospace;
-      font-size: 18px;
-      fill: #fff;
-      text-shadow: 0 0 2px rgba(0,0,0,0.6);
-    }
   </style>
 </head>
 <body>
   <div class="page">
     <header class="glitch-header">
       <h1 class="glitch" data-text="NAME SPINNER">NAME SPINNER</h1>
-      <p class="sub">Spin the wheel to choose a random name from the list.</p>
+      <p class="sub">Spin the slot to choose a random name from the list.</p>
     </header>
 
-    <div class="wheel-frame">
-      <div class="pointer" aria-hidden="true"></div>
-      <svg id="wheel" class="wheel" viewBox="0 0 520 520" role="img" aria-label="Spinning name wheel"></svg>
+    <div class="slot-frame" aria-label="Horizontal slot name spinner">
+      <div class="slot-window">
+        <div id="slotTrack" class="slot-track" aria-live="polite"></div>
+        <div class="slot-highlight" aria-hidden="true"></div>
+      </div>
     </div>
 
     <div class="controls">
-      <input id="nameInput" type="text" placeholder="Add a name and press Enter" autocomplete="off" />
-      <button id="spin" type="button">Spin the wheel</button>
-    </div>
-
-    <div class="manual-list">
-      <label for="namesList">Name list (one per line):</label>
-      <textarea id="namesList" rows="6" placeholder="Type or paste names here..."></textarea>
-      <button id="loadNames" type="button">Load names onto wheel</button>
+      <button id="spin" type="button">Spin</button>
     </div>
 
     <div class="result-card">
@@ -298,8 +341,17 @@
       <strong id="result">Ready to spin</strong>
     </div>
 
-    <p class="note">Add names, then press spin. The wheel will select a random entry.</p>
+    <p class="note">Press spin to choose from the fixed name list.</p>
     <p class="return"><a href="index.html">&laquo; Back to home</a></p>
+  </div>
+
+  <div id="popupModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="popupTitle">
+    <div class="modal">
+      <h2 id="popupTitle">Game Selected</h2>
+      <p>The slot chose:</p>
+      <p class="popup-name" id="popupName">Ready</p>
+      <button class="modal-close" type="button" id="closePopup">Close</button>
+    </div>
   </div>
 
   <script>
@@ -313,140 +365,158 @@
       'Buckshot Roulette',
       'Peak'
     ];
-    const colors = ['#00ffff', '#ff39ff', '#39ff14', '#f5f525', '#ff6fb4', '#60e0ff', '#e89c00', '#8a4fff'];
-    const wheel = document.getElementById('wheel');
+    const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
+    const slotColorMap = {
+      blue: '#007bff',
+      purple: '#7a3fff',
+      pink: '#ff4fb3',
+      red: '#ff3b3b',
+      gold: '#ffbf38'
+    };
+    const overlayColorMap = {
+      blue: 'rgba(0,123,255,0.64)',
+      purple: 'rgba(122,63,255,0.64)',
+      pink: 'rgba(255,79,179,0.64)',
+      red: 'rgba(255,59,59,0.64)',
+      gold: 'rgba(255,191,56,0.64)'
+    };
+    const nameColorMap = {};
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
-    const nameInput = document.getElementById('nameInput');
-    const namesTextarea = document.getElementById('namesList');
-    const loadNamesButton = document.getElementById('loadNames');
+    const slotTrack = document.getElementById('slotTrack');
     let names = [...defaultNames];
-    let currentRotation = 0;
     let isSpinning = false;
+    const spinDuration = 10000;
 
-    function degToRad(deg) {
-      return (deg * Math.PI) / 180;
-    }
+    function buildSlot() {
+      slotTrack.innerHTML = '';
+      const repeatedNames = [...names, ...names, ...names];
+      // ensure each name gets a stable color assignment
+      // set blue probability to 4/5 and scale other probabilities to fill the remainder
+      names.forEach(n => {
+        if (!nameColorMap[n]) {
+          const r = Math.random();
+          const blueProb = 4/5; // 0.8
+          const orig = {
+            gold: 1/385,
+            red: 1/156,
+            pink: 1/31,
+            purple: 1/6
+          };
+          const sumOrig = orig.gold + orig.red + orig.pink + orig.purple;
+          const scale = (1 - blueProb) / sumOrig;
+          const goldProb = orig.gold * scale;
+          const redProb = orig.red * scale;
+          const pinkProb = orig.pink * scale;
+          const purpleProb = orig.purple * scale;
 
-    function buildWheel() {
-      const slice = 360 / names.length;
-      const radius = 230;
-      const ns = 'http://www.w3.org/2000/svg';
-      wheel.innerHTML = '';
-
-      names.forEach((name, index) => {
-        const startAngle = index * slice - 90;
-        const endAngle = startAngle + slice;
-        const x1 = Math.cos(degToRad(startAngle)) * radius;
-        const y1 = Math.sin(degToRad(startAngle)) * radius;
-        const x2 = Math.cos(degToRad(endAngle)) * radius;
-        const y2 = Math.sin(degToRad(endAngle)) * radius;
-        const path = document.createElementNS(ns, 'path');
-        path.setAttribute('d', `M0,0 L${x1},${y1} A${radius},${radius} 0 0,1 ${x2},${y2} Z`);
-        path.setAttribute('fill', colors[index % colors.length]);
-        path.setAttribute('stroke', '#000');
-        path.setAttribute('stroke-width', '2');
-        path.setAttribute('opacity', '0.92');
-
-        const textAngle = startAngle + slice / 2;
-        const textX = Math.cos(degToRad(textAngle)) * radius * 0.6;
-        const textY = Math.sin(degToRad(textAngle)) * radius * 0.6;
-        const text = document.createElementNS(ns, 'text');
-        text.setAttribute('x', textX);
-        text.setAttribute('y', textY);
-        text.setAttribute('text-anchor', 'middle');
-        text.setAttribute('dominant-baseline', 'middle');
-        text.setAttribute('transform', `rotate(${textAngle + 90} ${textX} ${textY})`);
-        text.textContent = name;
-
-        wheel.appendChild(path);
-        wheel.appendChild(text);
+          if (r < goldProb) {
+            nameColorMap[n] = 'gold';
+          } else if (r < goldProb + redProb) {
+            nameColorMap[n] = 'red';
+          } else if (r < goldProb + redProb + pinkProb) {
+            nameColorMap[n] = 'pink';
+          } else if (r < goldProb + redProb + pinkProb + purpleProb) {
+            nameColorMap[n] = 'purple';
+          } else {
+            nameColorMap[n] = 'blue';
+          }
+        }
       });
 
-      const center = document.createElementNS(ns, 'circle');
-      center.setAttribute('cx', '0');
-      center.setAttribute('cy', '0');
-      center.setAttribute('r', '40');
-      center.setAttribute('fill', '#030a11');
-      center.setAttribute('stroke', '#00ffff');
-      center.setAttribute('stroke-width', '4');
-      wheel.appendChild(center);
+      repeatedNames.forEach((name) => {
+        const item = document.createElement('div');
+        item.className = 'slot-item';
+        item.textContent = name;
+        const colorKey = nameColorMap[name];
+        const bg = slotColorMap[colorKey] || colorKey;
+        item.style.background = bg;
+        item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
+        slotTrack.appendChild(item);
+      });
+
+      const items = slotTrack.querySelectorAll('.slot-item');
+      if (items.length < 2) return;
+      const itemWidth = items[0].offsetWidth + parseFloat(getComputedStyle(items[0]).marginRight) * 2;
+      const containerWidth = slotTrack.parentElement.clientWidth;
+      const initialIndex = names.length;
+      const offset = containerWidth / 2 - itemWidth / 2 - initialIndex * itemWidth;
+
+      slotTrack.style.transition = 'none';
+      slotTrack.style.transform = `translateX(${offset}px)`;
+      slotTrack.dataset.itemWidth = String(itemWidth);
     }
 
-    function syncNamesTextarea() {
-      namesTextarea.value = names.join('\n');
-    }
-
-    function parseNamesFromTextarea() {
-      const raw = namesTextarea.value.trim();
-      const parsed = raw
-        .split(/\r?\n/)
-        .map(name => name.trim())
-        .filter(name => name.length > 0)
-        .map(name => name.toUpperCase());
-      return [...new Set(parsed)];
-    }
-
-    function addName(name) {
-      const normalized = name.trim().toUpperCase();
-      if (!normalized) return;
-      if (!names.includes(normalized)) {
-        names.push(normalized);
-        buildWheel();
-        syncNamesTextarea();
-        resultDisplay.textContent = `Added ${normalized}. Ready to spin.`;
-      } else {
-        resultDisplay.textContent = `${normalized} is already on the wheel.`;
-      }
-    }
-
-    function loadNamesFromTextarea() {
-      const parsed = parseNamesFromTextarea();
-      if (parsed.length === 0) {
-        resultDisplay.textContent = 'Enter at least one name in the list.';
-        return;
-      }
-      names = parsed;
-      buildWheel();
-      resultDisplay.textContent = 'Wheel updated with your list.';
-    }
-
-    function spinWheel() {
+    function spinSlot() {
       if (isSpinning) return;
       if (names.length === 0) {
-        resultDisplay.textContent = 'Please add at least one name.';
+        resultDisplay.textContent = 'No names available.';
         return;
       }
       isSpinning = true;
       spinButton.textContent = 'Spinning...';
       spinButton.disabled = true;
-      const slice = 360 / names.length;
-      const selectedIndex = Math.floor(Math.random() * names.length);
-      const offset = slice / 2;
-      const totalRotation = 360 * 5 - (selectedIndex * slice + offset) + (Math.random() * slice - slice / 2);
-      currentRotation = totalRotation;
-      wheel.style.transform = `rotate(${currentRotation}deg)`;
 
-      setTimeout(() => {
-        resultDisplay.textContent = names[selectedIndex];
-        spinButton.textContent = 'Spin the wheel';
+      const selectedIndex = Math.floor(Math.random() * names.length);
+      const itemWidth = parseFloat(slotTrack.dataset.itemWidth) || 240;
+      const containerWidth = slotTrack.parentElement.clientWidth;
+      const targetIndex = names.length + selectedIndex;
+      const targetOffset = containerWidth / 2 - itemWidth / 2 - targetIndex * itemWidth;
+
+      slotTrack.style.transition = `transform ${spinDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+      requestAnimationFrame(() => {
+        slotTrack.style.transform = `translateX(${targetOffset}px)`;
+      });
+
+      window.setTimeout(() => {
+        const selectedName = names[selectedIndex];
+        resultDisplay.textContent = selectedName;
+        const selectedColorKey = nameColorMap[selectedName];
+        showPopup(selectedName, selectedColorKey);
+        spinButton.textContent = 'Spin';
         spinButton.disabled = false;
         isSpinning = false;
-      }, 5200);
+        buildSlot();
+      }, spinDuration + 50);
     }
 
-    nameInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        addName(nameInput.value);
-        nameInput.value = '';
+    function showPopup(name, colorKey) {
+      const modal = document.getElementById('popupModal');
+      const popupName = document.getElementById('popupName');
+      const modalBox = modal.querySelector('.modal');
+      popupName.textContent = name;
+      const bg = slotColorMap[colorKey] || colorKey || 'rgba(10,10,22,0.96)';
+      modalBox.style.background = bg;
+      modalBox.style.color = (colorKey === 'gold') ? '#000' : '#fff';
+      popupName.style.color = (colorKey === 'gold') ? '#503000' : 'var(--accent)';
+      // set overlay to a semi-transparent color matching the slot
+      const overlayBg = overlayColorMap[colorKey] || 'rgba(0,0,0,0.72)';
+      modal.style.background = overlayBg;
+      modal.classList.add('show');
+    }
+
+    function hidePopup() {
+      const modal = document.getElementById('popupModal');
+      const modalBox = modal.querySelector('.modal');
+      const popupName = document.getElementById('popupName');
+      modal.classList.remove('show');
+      // clear inline styles so next popup uses fresh values
+      modal.style.background = '';
+      modalBox.style.background = '';
+      modalBox.style.color = '';
+      popupName.style.color = '';
+    }
+
+    document.getElementById('closePopup').addEventListener('click', hidePopup);
+    document.getElementById('popupModal').addEventListener('click', (event) => {
+      if (event.target === event.currentTarget) {
+        hidePopup();
       }
     });
 
-    loadNamesButton.addEventListener('click', loadNamesFromTextarea);
-    spinButton.addEventListener('click', () => spinWheel());
+    spinButton.addEventListener('click', spinSlot);
 
-    buildWheel();
-    syncNamesTextarea();
+    buildSlot();
   </script>
 </body>
 </html>

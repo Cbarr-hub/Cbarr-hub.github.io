@@ -1,29 +1,9 @@
-import { DEFAULT_BALANCE, getGamblingDashboardData } from './gamble-data.js?v=money-events-1';
-import { BIG_EVENT_AMOUNT, isMoneyEvent, normalizeGamblingEvent } from './gamble-stats-utils.js?v=money-events-1';
-
-function esc(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function numberValue(value) {
-  return Number(value ?? 0);
-}
+import { DEFAULT_BALANCE, getGamblingDashboardData } from './gamble-data.js?v=money-events-2';
+import { BIG_EVENT_AMOUNT, isMoneyEvent, normalizeGamblingEvent, sortRecentEvents } from './gamble-events.mjs?v=money-events-2';
+import { esc, formatSignedDollars, formatWholeDollars, numberValue, percent } from './gamble-utils.mjs?v=money-events-2';
 
 function formatDollars(value) {
-  return `$${Math.round(numberValue(value)).toLocaleString('en-US')}`;
-}
-
-function formatSignedDollars(value) {
-  const amount = Math.abs(Math.round(numberValue(value))).toLocaleString('en-US');
-  return `${numberValue(value) < 0 ? '-' : '+'}$${amount}`;
-}
-
-function percent(value, total) {
-  return total ? Math.round((value / total) * 100) : 0;
+  return formatWholeDollars(value);
 }
 
 function compactDollars(value) {
@@ -178,17 +158,18 @@ function buildKpis(players, events, eventStats) {
 
 export function buildDashboardModel({ users, balances, events }) {
   const normalizedEvents = (events ?? []).map(normalizeGamblingEvent);
-  const players = buildPlayerStats(users, balances, normalizedEvents)
+  const chronologicalEvents = [...normalizedEvents].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const players = buildPlayerStats(users, balances, chronologicalEvents)
     .sort((a, b) => b.balance - a.balance || b.net - a.net || a.username.localeCompare(b.username));
-  const gameStats = buildGameStats(normalizedEvents);
-  const eventStats = buildEventStats(normalizedEvents);
+  const gameStats = buildGameStats(chronologicalEvents);
+  const eventStats = buildEventStats(chronologicalEvents);
 
   return {
     players,
-    kpis: buildKpis(players, normalizedEvents, eventStats),
+    kpis: buildKpis(players, chronologicalEvents, eventStats),
     gameStats,
     eventStats,
-    recentEvents: [...normalizedEvents].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    recentEvents: sortRecentEvents(normalizedEvents)
   };
 }
 

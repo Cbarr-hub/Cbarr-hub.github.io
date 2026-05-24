@@ -1,5 +1,6 @@
-import { getRecentGamblingEvents } from './gamble-data.js?v=money-events-1';
-import { gameLabels, normalizeGamblingEvent } from './gamble-stats-utils.js?v=money-events-1';
+import { getRecentGamblingEvents } from './gamble-data.js?v=money-events-2';
+import { gameLabels, normalizeGamblingEvent, selectRecentEvents } from './gamble-events.mjs?v=money-events-2';
+import { esc, formatSignedDollars, formatWholeDollars } from './gamble-utils.mjs?v=money-events-2';
 
 const filterLabels = {
   all: 'All',
@@ -9,25 +10,8 @@ const filterLabels = {
   big: 'Big Events'
 };
 
-function esc(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function numberValue(value) {
-  return Number(value ?? 0);
-}
-
-function formatSignedDollars(value) {
-  const amount = Math.abs(Math.round(numberValue(value))).toLocaleString('en-US');
-  return `${numberValue(value) < 0 ? '-' : '+'}$${amount}`;
-}
-
 function formatDollars(value) {
-  return `$${Math.round(numberValue(value)).toLocaleString('en-US')}`;
+  return formatWholeDollars(value);
 }
 
 function formatTime(value) {
@@ -62,7 +46,7 @@ function eventTitle(event) {
   if (event.isReset) {
     return 'Bankroll reset';
   }
-  if (event.event_type === 'bonus_awarded') {
+  if (event.details?.play_result?.type === 'bonus_trigger') {
     return 'Crazy Mode awarded';
   }
   if (event.event_type === 'free_spin_settled') {
@@ -72,11 +56,12 @@ function eventTitle(event) {
 }
 
 function eventMeta(event) {
+  const playLabel = event.details?.play_result?.label;
   if (event.isReset) {
     return `${formatSignedDollars(event.net_change)} reset swing`;
   }
-  if (event.event_type === 'bonus_awarded') {
-    return `Bet ${formatDollars(event.bet_amount)} / free spins loaded`;
+  if (playLabel) {
+    return `${playLabel} / Bet ${formatDollars(event.bet_amount)} / payout ${formatDollars(event.payout_amount)}`;
   }
   return `Bet ${formatDollars(event.bet_amount)} / payout ${formatDollars(event.payout_amount)}`;
 }
@@ -88,7 +73,7 @@ function eventClass(event) {
   return event.moneyOutcome === 'win' ? 'win' : 'loss';
 }
 
-export async function renderRecentEvents({ listEl, statusEl, events = null, filter = 'all', limit = 14 }) {
+export async function renderRecentEvents({ listEl, statusEl, filter = 'all', limit = 14 }) {
   if (!listEl || !statusEl) {
     return;
   }
@@ -96,10 +81,8 @@ export async function renderRecentEvents({ listEl, statusEl, events = null, filt
   statusEl.textContent = 'Loading...';
 
   try {
-    const sourceEvents = events ?? await getRecentGamblingEvents(80);
-    const filtered = filterEvents(sourceEvents, filter)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .slice(0, limit);
+    const sourceEvents = await getRecentGamblingEvents(80);
+    const filtered = selectRecentEvents(filterEvents(sourceEvents, filter), limit);
 
     if (!filtered.length) {
       listEl.innerHTML = `<li class="activity-empty">No ${esc(filterLabels[filter] ?? filter)} events yet</li>`;

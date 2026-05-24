@@ -110,25 +110,22 @@
       position: fixed;
       bottom: 1rem;
       right: 1rem;
-      width: 320px;
-      height: 180px;
+      padding: 0.5rem 0.75rem;
       border: 1px solid rgba(245, 233, 200, 0.4);
       border-radius: 6px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-      background: #000;
+      background: rgba(0, 0, 0, 0.7);
       z-index: 1000;
     }
 
-    .audio-frame iframe {
-      width: 100%;
-      height: 100%;
-      border: 0;
-      border-radius: 6px;
+    .audio-frame audio {
+      display: block;
+      width: 300px;
     }
 
     @media (max-width: 600px) {
       .passage { margin: 2rem 1rem; padding: 1.5rem; font-size: 1rem; }
-      .audio-frame { width: 220px; height: 124px; }
+      .audio-frame audio { width: 220px; }
     }
   </style>
 </head>
@@ -175,11 +172,7 @@
   <section class="gallery" id="gallery"></section>
 
   <div class="audio-frame" aria-label="Background audio">
-    <iframe
-      src="https://www.youtube.com/embed/z96qe75LOF8?autoplay=1&loop=1&playlist=z96qe75LOF8&rel=0"
-      title="Faith background audio"
-      allow="autoplay; encrypted-media"
-      allowfullscreen></iframe>
+    <audio src="faith/faith.mp3" autoplay loop controls></audio>
   </div>
 
   <script>

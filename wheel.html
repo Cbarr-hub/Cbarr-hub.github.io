@@ -96,7 +96,6 @@
       red: 'rgba(255,59,59,0.64)',
       gold: 'rgba(255,191,56,0.64)'
     };
-    const nameColorMap = {};
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
@@ -126,6 +125,11 @@
       input.addEventListener('change', updateFilters);
     });
 
+    function getColorKey(name, index) {
+      const base = Array.from(name).reduce((hash, char) => hash + char.charCodeAt(0), 0);
+      return slotColors[(base + index) % slotColors.length];
+    }
+
     function buildSlot(names) {
       slotTrack.innerHTML = '';
       if (!names || names.length === 0) {
@@ -138,44 +142,12 @@
       const loopCount = 4;
       const repeatCount = loopCount + 2;
       const repeatedNames = Array.from({ length: repeatCount }, () => names).flat();
-      // ensure each name gets a stable color assignment
-      // set blue probability to 4/5 and scale other probabilities to fill the remainder
-      names.forEach(n => {
-        if (!nameColorMap[n.name]) {
-          const r = Math.random();
-          const blueProb = 4/5; // 0.8
-          const orig = {
-            gold: 1/385,
-            red: 1/156,
-            pink: 1/31,
-            purple: 1/6
-          };
-          const sumOrig = orig.gold + orig.red + orig.pink + orig.purple;
-          const scale = (1 - blueProb) / sumOrig;
-          const goldProb = orig.gold * scale;
-          const redProb = orig.red * scale;
-          const pinkProb = orig.pink * scale;
-          const purpleProb = orig.purple * scale;
 
-          if (r < goldProb) {
-            nameColorMap[n.name] = 'gold';
-          } else if (r < goldProb + redProb) {
-            nameColorMap[n.name] = 'red';
-          } else if (r < goldProb + redProb + pinkProb) {
-            nameColorMap[n.name] = 'pink';
-          } else if (r < goldProb + redProb + pinkProb + purpleProb) {
-            nameColorMap[n.name] = 'purple';
-          } else {
-            nameColorMap[n.name] = 'blue';
-          }
-        }
-      });
-
-      repeatedNames.forEach((game) => {
+      repeatedNames.forEach((game, index) => {
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = game.name;
-        const colorKey = nameColorMap[game.name];
+        const colorKey = getColorKey(game.name, index);
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
         item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
@@ -221,7 +193,7 @@
       window.setTimeout(() => {
         const selectedName = names[selectedIndex].name;
         resultDisplay.textContent = selectedName;
-        const selectedColorKey = nameColorMap[selectedName];
+        const selectedColorKey = getColorKey(selectedName, selectedIndex);
         showPopup(selectedName, selectedColorKey);
         spinButton.textContent = 'Spin';
         spinButton.disabled = false;
@@ -237,7 +209,12 @@
       const bg = slotColorMap[colorKey] || colorKey || 'rgba(10,10,22,0.96)';
       modalBox.style.background = bg;
       modalBox.style.color = (colorKey === 'gold') ? '#000' : '#fff';
-      popupName.style.color = (colorKey === 'gold') ? '#503000' : 'var(--accent)';
+      // Style the popup name with colored background
+      popupName.style.background = bg;
+      popupName.style.color = (colorKey === 'gold') ? '#000' : '#fff';
+      popupName.style.padding = '0.8rem 1.2rem';
+      popupName.style.borderRadius = '12px';
+      popupName.style.display = 'inline-block';
       // set overlay to a semi-transparent color matching the slot
       const overlayBg = overlayColorMap[colorKey] || 'rgba(0,0,0,0.72)';
       modal.style.background = overlayBg;
@@ -253,7 +230,11 @@
       modal.style.background = '';
       modalBox.style.background = '';
       modalBox.style.color = '';
+      popupName.style.background = '';
       popupName.style.color = '';
+      popupName.style.padding = '';
+      popupName.style.borderRadius = '';
+      popupName.style.display = '';
     }
 
     document.getElementById('closePopup').addEventListener('click', hidePopup);

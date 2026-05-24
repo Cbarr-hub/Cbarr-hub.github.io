@@ -145,7 +145,7 @@ body::before {
   margin: 0 0.5rem;
   border-radius: 18px;
   background: linear-gradient(135deg, rgba(0,255,255,0.12), rgba(255,255,255,0.04));
-  border: 1px solid rgba(0,255,255,0.18);
+  border: 2px solid rgba(255,255,255,0.3);
   color: #fff;
   font-size: 1.1rem;
   font-weight: 700;
@@ -155,7 +155,8 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  backdrop-filter: blur(6px);
+  backdrop-filter: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 .slot-highlight {

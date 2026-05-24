@@ -22,7 +22,7 @@
       color: #ffffff;      
       padding: 30px;
       border-radius: 8px;
-      max-width: 650px;
+      max-width: 750px;
       width: 100%;
       position: relative;
       text-align: center;
@@ -50,6 +50,7 @@
       display: flex;
       gap: 10px;
       justify-content: center;
+      align-items: center;
     }
     .input-container select {
       padding: 12px;
@@ -81,48 +82,90 @@
       cursor: not-allowed;
     }
 
-    /* Graph Visualizer Node/Path Layout Container */
+    /* Graph Map Visualizer Layout Container */
     .chart-container {
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      min-height: 240px;
+      min-height: 380px;
       background: #111115; 
-      padding: 20px;
+      padding: 10px;
       border-radius: 6px;
       margin: 20px 0;
-      border: 1px dashed #44444f;
+      border: 1px solid #33333d;
+      position: relative;
+    }
+
+    /* SVG Elements Styling */
+    svg {
+      width: 100%;
+      height: 380px;
+    }
+    .edge-line {
+      stroke: #2c3e50;
+      stroke-width: 2;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+    .edge-line.active {
+      stroke: #e74c3c;
+      stroke-dasharray: 4;
+      animation: dash 1s linear infinite;
+    }
+    .edge-line.finalized {
+      stroke: #2ecc71;
+      stroke-width: 4;
+    }
+    .map-node {
+      fill: #2c3e50;
+      stroke: #34495e;
+      stroke-width: 2;
+      transition: all 0.2s;
+    }
+    .map-node.visiting {
+      fill: #f39c12;
+      stroke: #e67e22;
+      r: 14;
+    }
+    .map-node.visited {
+      fill: #2ecc71;
+      stroke: #27ae60;
+    }
+    .node-text {
+      fill: #ffffff;
+      font-family: sans-serif;
+      font-size: 12px;
+      font-weight: bold;
+      pointer-events: none;
     }
     
-    /* Department Node List Display styling */
-    .node-map-display {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-      justify-content: center;
-      width: 100%;
+    /* Interactive Weight Labels */
+    .weight-group {
+      cursor: pointer;
     }
-    .dept-node {
-      padding: 10px 15px;
-      background: #2c3e50;
-      border: 2px solid #34495e;
-      border-radius: 20px;
-      font-size: 0.85rem;
+    .weight-group:hover rect {
+      fill: #2c3e50;
+      stroke: #007bc4;
+    }
+    .weight-bg {
+      fill: #111115;
+      stroke: #22222b;
+      stroke-width: 1;
+      rx: 3;
+      transition: all 0.2s;
+    }
+    .weight-text {
+      fill: #3498db;
+      font-family: monospace;
+      font-size: 11px;
       font-weight: bold;
-      color: #bdc3c7;
-      transition: all 0.15s ease;
+      pointer-events: none;
     }
-    .dept-node.active-scan {
-      background: #f39c12; /* Amber for audit review scoping */
-      border-color: #e67e22;
-      color: #fff;
-      transform: scale(1.05);
-    }
-    .dept-node.routed {
-      background: #2ecc71; /* Green for finalized billable milestones */
-      border-color: #27ae60;
-      color: #fff;
+
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -20;
+      }
     }
 
     /* Live Progress Tracker Status Text */
@@ -229,9 +272,10 @@ async function executeBmpFind() {
     if (u === -1) break;
     visited[u] = true;
 
-    // Relax neighbors: invert conditional to prioritize maximal accumulation edge values
+    // Relax neighbors: prioritize maximal accumulation edge values
     for (let v = 0; v < n; v++) {
-      if (u === v) continue;
+      // Explicit cycle safety constraint: skip v if it has already been visited
+      if (u === v || visited[v] || weights[u][v] === 0) continue;
       
       const candidate = dist[u] + weights[u][v];
       if (candidate > dist[v]) {
@@ -247,26 +291,32 @@ async function executeBmpFind() {
       <div class="modal-content">
         <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
         <h2>THE BILLABLE-HOUR MAXIMIZATION PROTOCOL</h2>
-        <p style="font-size: 0.9rem; color:#aaa;">Run an inverted-Dijkstra demonstration on a small, randomized network.</p>
+        <p style="font-size: 0.9rem; color:#aaa;">Configure the size of the corporate landscape. Click channel metrics to manually pad line items.</p>
 
         <div class="input-container">
-          <input type="text" id="nodeCountInput" placeholder="number of nodes (e.g. 6)" value="6">
-          <button id="startFindButton" class="action-btn" type="button">INITIATE BMP</button>
+          <label for="nodeCountSelect" style="font-size: 0.9rem; color:#bbb;">Silos Matrix Size: </label>
+          <select id="nodeCountSelect">
+            <option value="4">4 Departments</option>
+            <option value="6" selected>6 Departments</option>
+            <option value="8">8 Departments</option>
+            <option value="10">10 Departments</option>
+          </select>
+          <button id="generateNetworkBtn" class="action-btn" type="button" style="background-color: #34495e;">RE-GENERATE NETWORK</button>
+          <button id="startFindButton" class="action-btn" type="button">EXECUTE ROUTING</button>
         </div>
 
-        <div id="statusTicker" class="status-ticker">Awaiting network parameters...</div>
+        <div id="statusTicker" class="status-ticker">Select dimensions to formulate consulting matrix...</div>
 
         <div id="chartContainer" class="chart-container">
-          <p style="color: #888; align-self: center;">Create a small network and run inverted path selection.</p>
-        </div>
+          </div>
 
         <div id="statsDashboard" class="stats-dashboard" style="display: none;">
-          <h3 style="margin-top: 0; color: #2ecc71; font-size: 1.1rem;">⚡ PATHFINDING COMPLETE</h3>
+          <h3 style="margin-top: 0; color: #2ecc71; font-size: 1.1rem;">⚡ MAX FISCAL YIELD PATH DETERMINED</h3>
           <div class="stats-grid">
             <div><strong>Relaxation Operations:</strong> <span id="statRelax">0</span></div>
-            <div><strong>Distance Updates:</strong> <span id="statUpdates">0</span></div>
-            <div><strong>Nodes Visited:</strong> <span id="statVisited">0</span></div>
-            <div><strong>Total Time:</strong> <span id="statTime">0ms</span></div>
+            <div><strong>Silo Budget Updates:</strong> <span id="statUpdates">0</span></div>
+            <div><strong>Silos Exhausted:</strong> <span id="statVisited">0</span></div>
+            <div><strong>Total Extracted Value:</strong> $<span id="statTime">0</span>k</div>
           </div>
         </div>
       </div>
@@ -290,12 +340,22 @@ async function executeBmpFind() {
     const visualizerModal = document.getElementById('visualizerModal');
     
     const startFindButton = document.getElementById('startFindButton');
-    const nodeCountInput = document.getElementById('nodeCountInput');
+    const generateNetworkBtn = document.getElementById('generateNetworkBtn');
+    const nodeCountSelect = document.getElementById('nodeCountSelect');
     const chartContainer = document.getElementById('chartContainer');
     const statsDashboard = document.getElementById('statsDashboard');
     const statusTicker = document.getElementById('statusTicker');
 
     let activeRun = false;
+
+    // Corporate Map Runtime State Data
+    let departments = [];
+    let weights = [];
+
+    const corporateLexicon = [
+      "Brand Align", "Pre-Compl", "Legal Rev", "Post-Compl", 
+      "HR Strategy", "Tax Havens", "PR Cleanse", "Audit Scope", "Risk Assess"
+    ];
 
     // Code Modal Basic Triggers
     function toggleCodeModal(open) {
@@ -316,11 +376,11 @@ async function executeBmpFind() {
       
       if(open) {
         statsDashboard.style.display = 'none';
-        statusTicker.innerText = 'Awaiting network parameters...';
         statusTicker.style.color = '#3498db';
-        chartContainer.innerHTML = '<p style="color: #888; align-self: center;">Create a small network and run inverted path selection.</p>';
         startFindButton.disabled = false;
-        nodeCountInput.disabled = false;
+        nodeCountSelect.disabled = false;
+        generateNetworkBtn.disabled = false;
+        buildProceduralMatrix();
       }
     }
     openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
@@ -329,99 +389,203 @@ async function executeBmpFind() {
     // Async Helper sleep utility
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Render simple node bars showing current best distances
-    function renderNodes(distances, visited = []) {
-      chartContainer.innerHTML = '';
-      const maxVal = Math.max(...distances.map(v => (isFinite(v) ? v : 0)), 1);
-      distances.forEach((val, idx) => {
-        const node = document.createElement('div');
-        node.className = 'bar';
-        if (visited[idx]) node.classList.add('restructuring');
-        const display = isFinite(val) ? val.toFixed(1) : '-';
-        node.style.height = `${( (isFinite(val)? val : 0) / maxVal) * 100}%`;
-        node.innerText = `N${idx}: ${display}`;
-        chartContainer.appendChild(node);
-      });
-    }
-
-    // Inverted Dijkstra: maximize path values instead of minimizing
-    async function executeBmpFind() {
+    // Manual padding modifier handler
+    window.adjustWeight = function(u, v) {
       if (activeRun) return;
+      weights[u][v] = weights[u][v] >= 95 ? 5 : weights[u][v] + 5;
+      statusTicker.style.color = '#e67e22';
+      statusTicker.innerText = `Padded operational link ${departments[u].label} ➔ ${departments[v].label} to $${weights[u][v]}k!`;
+      generateMapLayout();
+    };
 
-      const n = parseInt(nodeCountInput.value, 10) || 6;
-      if (n < 2 || n > 50) { alert('Enter node count between 2 and 50'); return; }
+    // Formulate a dynamic topological corporate map with forward connections
+    function buildProceduralMatrix() {
+      const totalNodes = parseInt(nodeCountSelect.value, 10);
+      departments = [];
+      
+      // 1. Position Initial Node and Target Node at the borders
+      departments.push({ id: 0, label: "SOW Init", x: 50, y: 190 });
 
-      // Build a fully connected random-weight network (symmetric)
-      const weights = Array.from({length: n}, () => Array(n).fill(0));
-      for (let i=0;i<n;i++){
-        for(let j=i+1;j<n;j++){
-          const w = Math.floor(Math.random()*9)+1; // 1..9
-          weights[i][j] = weights[j][i] = w;
-        }
+      // Generate intermediate structural silos scattered procedurally
+      const midCount = totalNodes - 2;
+      let vocabulary = [...corporateLexicon].sort(() => 0.5 - Math.random());
+
+      for (let i = 0; i < midCount; i++) {
+        // Distribute X evenly across available canvas span
+        const segmentWidth = 540 / (midCount + 1);
+        const x = 50 + segmentWidth * (Math.floor(i / 2) + 1);
+        
+        // Stagger Y positions across alternative top/bottom lanes
+        const y = (i % 2 === 0) ? 90 : 290;
+        const label = vocabulary[i] || `Silo Block ${i}`;
+        departments.push({ id: i + 1, label: label, x: x, y: y });
       }
 
-      activeRun = true;
-      startFindButton.disabled = true;
-      nodeCountInput.disabled = true;
-      statsDashboard.style.display = 'none';
+      departments.push({ id: totalNodes - 1, label: "Prod Target", x: 650, y: 190 });
 
-      let relaxations = 0;
-      let updates = 0;
-      let visitedCount = 0;
-      const t0 = performance.now();
-
-      // Distances initialized to -Infinity except source 0
-      const dist = new Array(n).fill(-Infinity);
-      dist[0] = 0;
-      const visited = new Array(n).fill(false);
-
-      renderNodes(dist, visited);
-      await sleep(300);
-
-      for (let iter=0; iter<n; iter++) {
-        // pick unvisited node with largest dist
-        let u = -1; let best = -Infinity;
-        for (let i=0;i<n;i++) if(!visited[i] && dist[i] > best) { best = dist[i]; u = i; }
-        if (u === -1) break;
-        visited[u] = true;
-        visitedCount++;
-
-        statusTicker.style.color = '#f39c12';
-        statusTicker.innerText = `Selecting node N${u} with current yield ${dist[u]===-Infinity?'-':dist[u].toFixed(1)}`;
-        renderNodes(dist, visited);
-        await sleep(250);
-
-        // relax neighbors maximizing distance
-        for (let v=0; v<n; v++){
-          if (u===v) continue;
-          relaxations++;
-          const candidate = dist[u] + weights[u][v];
-          if (candidate > dist[v]) {
-            updates++;
-            dist[v] = candidate;
-            statusTicker.style.color = '#e74c3c';
-            statusTicker.innerText = `Updating N${v} via N${u} => ${candidate.toFixed(1)}`;
-            renderNodes(dist, visited);
-            await sleep(120);
+      // 2. Generate edge-weights matrix with directional probability matching selection scale
+      weights = Array.from({ length: totalNodes }, () => Array(totalNodes).fill(0));
+      
+      for (let u = 0; u < totalNodes; u++) {
+        for (let v = u + 1; v < totalNodes; v++) {
+          // Connect neighboring stages or add a random skip jump to foster alternate high-fee routes
+          if (v === u + 1 || (v === u + 2 && v < totalNodes) || (u === 0 && v < totalNodes - 1 && Math.random() > 0.4)) {
+            // Generate a random billable projection weight ($5k - $30k)
+            weights[u][v] = Math.floor(Math.random() * 26) + 5;
           }
         }
       }
 
-      const duration = (performance.now() - t0).toFixed(2);
+      statusTicker.innerText = `Generated standard matrix featuring ${totalNodes} locations. Click link cards to adjust weights.`;
+      generateMapLayout();
+    }
+
+    // Render the procedural network layout components inside the SVG
+    function generateMapLayout() {
+      let edgeElements = '';
+      let nodeElements = '';
+
+      // Trace routing structural lines
+      for (let u = 0; u < departments.length; u++) {
+        for (let v = 0; v < departments.length; v++) {
+          if (weights[u][v] > 0) {
+            const from = departments[u];
+            const to = departments[v];
+            const midX = (from.x + to.x) / 2;
+            const midY = (from.y + to.y) / 2;
+            
+            edgeElements += `
+              <line id="edge-${u}-${v}" class="edge-line" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" />
+              <g class="weight-group" onclick="adjustWeight(${u},${v})">
+                <rect class="weight-bg" x="${midX - 20}" y="${midY - 9}" width="40" height="18" />
+                <text class="weight-text" x="${midX}" y="${midY + 4}" text-anchor="middle">$${weights[u][v]}k</text>
+              </g>
+            `;
+          }
+        }
+      }
+
+      // Trace pipeline nodes
+      departments.forEach(dept => {
+        nodeElements += `
+          <g id="node-group-${dept.id}">
+            <circle id="node-${dept.id}" class="map-node" cx="${dept.x}" cy="${dept.y}" r="11" />
+            <text class="node-text" x="${dept.x}" y="${dept.y + 4}" text-anchor="middle">${dept.id}</text>
+            <text fill="#aaa" font-family="sans-serif" font-size="10" x="${dept.x}" y="${dept.y - 16}" text-anchor="middle">${dept.label}</text>
+            <text id="node-dist-${dept.id}" fill="#3498db" font-family="monospace" font-size="10" x="${dept.x}" y="${dept.y + 26}" text-anchor="middle">-$k</text>
+          </g>
+        `;
+      });
+
+      chartContainer.innerHTML = `<svg id="mapSvg">${edgeElements}${nodeElements}</svg>`;
+    }
+
+    // Inverted Dijkstra execution loop 
+    async function executeBmpFind() {
+      if (activeRun) return;
+
+      activeRun = true;
+      startFindButton.disabled = true;
+      nodeCountSelect.disabled = true;
+      generateNetworkBtn.disabled = true;
+      statsDashboard.style.display = 'none';
+      
+      generateMapLayout();
+
+      const n = departments.length;
+      let relaxations = 0;
+      let updates = 0;
+      let visitedCount = 0;
+
+      const dist = new Array(n).fill(-Infinity);
+      const parent = new Array(n).fill(-1);
+      dist[0] = 0;
+      const visited = new Array(n).fill(false);
+
+      document.getElementById(`node-dist-0`).textContent = "$0k";
+      await sleep(500);
+
+      for (let iter = 0; iter < n; iter++) {
+        let u = -1; 
+        let best = -Infinity;
+        for (let i = 0; i < n; i++) {
+          if (!visited[i] && dist[i] > best) { 
+            best = dist[i]; 
+            u = i; 
+          }
+        }
+        if (u === -1) break;
+
+        const activeNode = document.getElementById(`node-${u}`);
+        if (activeNode) activeNode.classList.add('visiting');
+
+        statusTicker.style.color = '#f39c12';
+        statusTicker.innerText = `Processing overhead via ${departments[u].label} (Current billable yield: $${dist[u]}k)`;
+        await sleep(800);
+
+        for (let v = 0; v < n; v++) {
+          if (weights[u][v] > 0 && !visited[v]) {
+            relaxations++;
+            const edgeLine = document.getElementById(`edge-${u}-${v}`);
+            if (edgeLine) edgeLine.classList.add('active');
+            
+            statusTicker.style.color = '#3498db';
+            statusTicker.innerText = `Auditing routing channel ${departments[u].label} ➔ ${departments[v].label}...`;
+            await sleep(400);
+
+            const candidate = dist[u] + weights[u][v];
+            if (candidate > dist[v]) {
+              updates++;
+              dist[v] = candidate;
+              parent[v] = u;
+              
+              const distText = document.getElementById(`node-dist-${v}`);
+              if (distText) {
+                distText.textContent = `$${candidate}k`;
+                distText.style.fill = '#e74c3c';
+              }
+              
+              statusTicker.style.color = '#e74c3c';
+              statusTicker.innerText = `Max weight inflated at ${departments[v].label} to $${candidate}k!`;
+              await sleep(600);
+            }
+            if (edgeLine) edgeLine.classList.remove('active');
+          }
+        }
+
+        if (activeNode) {
+          activeNode.classList.remove('visiting');
+          activeNode.classList.add('visited');
+        }
+        visited[u] = true;
+        visitedCount++;
+      }
+
+      // Trace the highest overhead path backward 
+      let curr = n - 1;
+      while (parent[curr] !== -1) {
+        const p = parent[curr];
+        const edgeLine = document.getElementById(`edge-${p}-${curr}`);
+        if (edgeLine) edgeLine.classList.add('finalized');
+        curr = p;
+      }
+
       document.getElementById('statRelax').innerText = relaxations;
       document.getElementById('statUpdates').innerText = updates;
       document.getElementById('statVisited').innerText = visitedCount;
-      document.getElementById('statTime').innerText = `${duration} ms`;
+      document.getElementById('statTime').innerText = dist[n - 1] !== -Infinity ? dist[n - 1] : 0;
       statsDashboard.style.display = 'block';
 
       statusTicker.style.color = '#2ecc71';
-      statusTicker.innerText = 'BMP run completed — max-yield tree constructed.';
+      statusTicker.innerText = 'BMP execution finalized. Invoices generated successfully.';
 
       activeRun = false;
       startFindButton.disabled = false;
-      nodeCountInput.disabled = false;
+      nodeCountSelect.disabled = false;
+      generateNetworkBtn.disabled = false;
     }
 
+    generateNetworkBtn.addEventListener('click', buildProceduralMatrix);
     startFindButton.addEventListener('click', executeBmpFind);
 
     // Global background click modal toggle dismissals

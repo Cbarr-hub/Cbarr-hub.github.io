@@ -240,7 +240,7 @@
 
     <div class="wheel-frame">
       <div class="pointer" aria-hidden="true"></div>
-      <svg id="wheel" class="wheel" viewBox="0 0 520 520" role="img" aria-label="Spinning name wheel"></svg>
+      <svg id="wheel" class="wheel" viewBox="-260 -260 520 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Spinning name wheel"></svg>
     </div>
 
     <div class="controls">
@@ -307,7 +307,12 @@
         text.setAttribute('y', textY);
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('dominant-baseline', 'middle');
-        text.setAttribute('transform', `rotate(${textAngle + 90} ${textX} ${textY})`);
+        let labelRotation = textAngle + 90;
+        const normalizedAngle = ((labelRotation % 360) + 360) % 360;
+        if (normalizedAngle > 90 && normalizedAngle < 270) {
+          labelRotation += 180;
+        }
+        text.setAttribute('transform', `rotate(${labelRotation} ${textX} ${textY})`);
         text.textContent = name;
 
         wheel.appendChild(path);

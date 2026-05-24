@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="algs.css" />
   <style>
     /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
-    .custom-modal {
+    .modal {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0, 0, 0, 0.85);
@@ -183,7 +183,7 @@
         
         <div class="visualizer-trigger-block">
           <div class="gif-block" style="margin: 0; width: 100%;">
-            <img src="../BMP.png" alt="Billable-Hour Maximization Protocol demonstration" class="demo-gif" />
+            <img src="BMP.png" alt="Billable-Hour Maximization Protocol demonstration" class="demo-gif" />
           </div>
           <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
             LAUNCH INTERACTIVE VISUALIZER POP-UP
@@ -206,4 +206,200 @@
       </div>
     </section>
 
-    <div id="codeModal" class="custom-modal"
+    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d; max-width:650px;">
+        <button id="closeCodeButton" class="modal-close" type="button">×</button>
+        <h2>BMP Example Code</h2>
+        <pre><code>// Inverted Dijkstra (conceptual demo) - finds max-yield paths between nodes.</code></pre>
+      </div>
+    </div>
+
+    <div id="visualizerModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
+        <h2>THE BILLABLE-HOUR MAXIMIZATION PROTOCOL</h2>
+        <p style="font-size: 0.9rem; color:#aaa;">Run an inverted-Dijkstra demonstration on a small, randomized network.</p>
+
+        <div class="input-container">
+          <input type="text" id="nodeCountInput" placeholder="number of nodes (e.g. 6)" value="6">
+          <button id="startFindButton" class="action-btn" type="button">INITIATE BMP</button>
+        </div>
+
+        <div id="statusTicker" class="status-ticker">Awaiting network parameters...</div>
+
+        <div id="chartContainer" class="chart-container">
+          <p style="color: #888; align-self: center;">Create a small network and run inverted path selection.</p>
+        </div>
+
+        <div id="statsDashboard" class="stats-dashboard" style="display: none;">
+          <h3 style="margin-top: 0; color: #2ecc71; font-size: 1.1rem;">⚡ PATHFINDING COMPLETE</h3>
+          <div class="stats-grid">
+            <div><strong>Relaxation Operations:</strong> <span id="statRelax">0</span></div>
+            <div><strong>Distance Updates:</strong> <span id="statUpdates">0</span></div>
+            <div><strong>Nodes Visited:</strong> <span id="statVisited">0</span></div>
+            <div><strong>Total Time:</strong> <span id="statTime">0ms</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      © 2026 GAMERTOWN SOLUTIONS / ARCHIVE
+    </div>
+  </footer>
+
+  <script>
+    // System Selectors
+    const showCodeButton = document.getElementById('showCodeButton');
+    const closeCodeButton = document.getElementById('closeCodeButton');
+    const codeModal = document.getElementById('codeModal');
+
+    const openVisualizerButton = document.getElementById('openVisualizerButton');
+    const closeVisualizerButton = document.getElementById('closeVisualizerButton');
+    const visualizerModal = document.getElementById('visualizerModal');
+    
+    const startFindButton = document.getElementById('startFindButton');
+    const nodeCountInput = document.getElementById('nodeCountInput');
+    const chartContainer = document.getElementById('chartContainer');
+    const statsDashboard = document.getElementById('statsDashboard');
+    const statusTicker = document.getElementById('statusTicker');
+
+    let activeRun = false;
+
+    // Code Modal Basic Triggers
+    function toggleCodeModal(open) {
+      codeModal.style.display = open ? 'flex' : 'none';
+      codeModal.setAttribute('aria-hidden', !open);
+    }
+    showCodeButton.addEventListener('click', () => toggleCodeModal(true));
+    closeCodeButton.addEventListener('click', () => toggleCodeModal(false));
+
+    // Interactive Visualizer Pop-up Control
+    function toggleVisualizerModal(open) {
+      if (activeRun && !open) {
+        if (!confirm("A BMP run is in progress. Stop the run?")) return;
+        activeRun = false; 
+      }
+      visualizerModal.style.display = open ? 'flex' : 'none';
+      visualizerModal.setAttribute('aria-hidden', !open);
+      
+      if(open) {
+        statsDashboard.style.display = 'none';
+        statusTicker.innerText = 'Awaiting network parameters...';
+        statusTicker.style.color = '#3498db';
+        chartContainer.innerHTML = '<p style="color: #888; align-self: center;">Create a small network and run inverted path selection.</p>';
+        startFindButton.disabled = false;
+        nodeCountInput.disabled = false;
+      }
+    }
+    openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
+    closeVisualizerButton.addEventListener('click', () => toggleVisualizerModal(false));
+
+    // Async Helper sleep utility
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Render simple node bars showing current best distances
+    function renderNodes(distances, visited = []) {
+      chartContainer.innerHTML = '';
+      const maxVal = Math.max(...distances.map(v => (isFinite(v) ? v : 0)), 1);
+      distances.forEach((val, idx) => {
+        const node = document.createElement('div');
+        node.className = 'bar';
+        if (visited[idx]) node.classList.add('restructuring');
+        const display = isFinite(val) ? val.toFixed(1) : '-';
+        node.style.height = `${( (isFinite(val)? val : 0) / maxVal) * 100}%`;
+        node.innerText = `N${idx}: ${display}`;
+        chartContainer.appendChild(node);
+      });
+    }
+
+    // Inverted Dijkstra: maximize path values instead of minimizing
+    async function executeBmpFind() {
+      if (activeRun) return;
+
+      const n = parseInt(nodeCountInput.value, 10) || 6;
+      if (n < 2 || n > 50) { alert('Enter node count between 2 and 50'); return; }
+
+      // Build a fully connected random-weight network (symmetric)
+      const weights = Array.from({length: n}, () => Array(n).fill(0));
+      for (let i=0;i<n;i++){
+        for(let j=i+1;j<n;j++){
+          const w = Math.floor(Math.random()*9)+1; // 1..9
+          weights[i][j] = weights[j][i] = w;
+        }
+      }
+
+      activeRun = true;
+      startFindButton.disabled = true;
+      nodeCountInput.disabled = true;
+      statsDashboard.style.display = 'none';
+
+      let relaxations = 0;
+      let updates = 0;
+      let visitedCount = 0;
+      const t0 = performance.now();
+
+      // Distances initialized to -Infinity except source 0
+      const dist = new Array(n).fill(-Infinity);
+      dist[0] = 0;
+      const visited = new Array(n).fill(false);
+
+      renderNodes(dist, visited);
+      await sleep(300);
+
+      for (let iter=0; iter<n; iter++) {
+        // pick unvisited node with largest dist
+        let u = -1; let best = -Infinity;
+        for (let i=0;i<n;i++) if(!visited[i] && dist[i] > best) { best = dist[i]; u = i; }
+        if (u === -1) break;
+        visited[u] = true;
+        visitedCount++;
+
+        statusTicker.style.color = '#f39c12';
+        statusTicker.innerText = `Selecting node N${u} with current yield ${dist[u]===-Infinity?'-':dist[u].toFixed(1)}`;
+        renderNodes(dist, visited);
+        await sleep(250);
+
+        // relax neighbors maximizing distance
+        for (let v=0; v<n; v++){
+          if (u===v) continue;
+          relaxations++;
+          const candidate = dist[u] + weights[u][v];
+          if (candidate > dist[v]) {
+            updates++;
+            dist[v] = candidate;
+            statusTicker.style.color = '#e74c3c';
+            statusTicker.innerText = `Updating N${v} via N${u} => ${candidate.toFixed(1)}`;
+            renderNodes(dist, visited);
+            await sleep(120);
+          }
+        }
+      }
+
+      const duration = (performance.now() - t0).toFixed(2);
+      document.getElementById('statRelax').innerText = relaxations;
+      document.getElementById('statUpdates').innerText = updates;
+      document.getElementById('statVisited').innerText = visitedCount;
+      document.getElementById('statTime').innerText = `${duration} ms`;
+      statsDashboard.style.display = 'block';
+
+      statusTicker.style.color = '#2ecc71';
+      statusTicker.innerText = 'BMP run completed — max-yield tree constructed.';
+
+      activeRun = false;
+      startFindButton.disabled = false;
+      nodeCountInput.disabled = false;
+    }
+
+    startFindButton.addEventListener('click', executeBmpFind);
+
+    // Global background click modal toggle dismissals
+    window.addEventListener('click', event => {
+      if (event.target === codeModal) toggleCodeModal(false);
+      if (event.target === visualizerModal) toggleVisualizerModal(false);
+    });
+  </script>
+</body>
+</html>

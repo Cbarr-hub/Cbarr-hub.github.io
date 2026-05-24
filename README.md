@@ -58,8 +58,6 @@
 - ~~1.f.5 Auth-gated section:~~
   - ~~Requires login to access `/final`~~ — [complete](https://cbarr-hub.github.io/final)  
 - 1.f.4 [KPI Dashboard](https://cbarr-hub.github.io/kpi.html) (**top priority**)
-- 1.f.5 Auth-gated section:
-  - Requires login to access `/final`
 - 1.f.6 About Us page:
   - Purpose: define mission and identity
   - Inspiration: BlackRock-style corporate framing  
@@ -72,9 +70,9 @@
   - Upcoming podcast schedule
   - User-run advertising submissions  
 - 1.f.9 Tablets information page  
-- 1.f.10 Ticketing System:
-  - 24/7 customer support
-  - Routed to “mara” / Philippines support layer  
+- ~~1.f.10 Ticketing System:~~
+  - ~~24/7 customer support~~
+  - ~~Routed to “mara” / Philippines support layer~~ — [complete](https://cbarr-hub.github.io/support.html)  
 - ~~1.f.11 Cyberbarn integration:~~
   - ~~Includes map component~~ [complete](https://cbarr-hub.github.io/map.html)
 - 1.f.12 Store page:
@@ -88,8 +86,8 @@
   - High-frequency popup system  
 - 1.f.14 Memorial page:
   - Dedicated to Josh, Brandon, etc.  
-- 1.f.15 Message board:
-  - Public posting system  
+- ~~1.f.15 Message board:~~
+  - ~~Public posting system~~ — [complete](https://cbarr-hub.github.io/forum.html)  
 - 1.f.16 Investor deck section  
 - 1.f.17 Nondeterminism system layer  
 

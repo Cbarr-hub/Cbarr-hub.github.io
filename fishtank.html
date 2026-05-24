@@ -358,8 +358,8 @@
         this.x += this.vx
         this.y += Math.sin(t * this.bobFreq + this.bobPhase) * this.bobAmp
 
-        if (this.vx > 0 && this.x + this.w > canvas.width)  this.vx *= -1
-        if (this.vx < 0 && this.x < 0)                       this.vx *= -1
+        if (this.vx > 0 && this.x + this.w > canvas.width)  { this.vx *= -1.0075 }
+        if (this.vx < 0 && this.x < 0)                       { this.vx *= -1.0075 }
 
         const minY = 20, maxY = canvas.height - 60 - this.h
         if (this.y < minY) this.y = minY
@@ -415,10 +415,31 @@
       }
 
       update() {
+        const angry = gameState === 'playing' && gameFrames >= 7200
+        this.color = angry ? '#ff3311' : '#cc44bb'
+        this.dark  = angry ? '#991100' : '#7711aa'
+        if (angry) {
+          const cx = this.x + this.bodyW / 2
+          const cy = this.y + this.bodyH / 2
+          const dx = (player.x + player.w / 2) - cx
+          const dy = (player.y + player.h / 2) - cy
+          const d  = Math.sqrt(dx * dx + dy * dy)
+          if (d > 0) { this.vx = (dx / d) * 1.8; this.vy = (dy / d) * 1.8 }
+        }
         this.x += this.vx
         this.y += this.vy
-        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
-        if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
+        if (!angry) {
+          if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
+          if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
+        }
+      }
+
+      hitsPlayer() {
+        const m = 6
+        return this.x + this.bodyW - m > player.x + m &&
+               this.x + m < player.x + player.w - m &&
+               this.y + this.bodyH - m > player.y + m &&
+               this.y + m < player.y + player.h - m
       }
 
       findNearest(fishes) {
@@ -530,9 +551,51 @@
       }
 
       draw(t, fishes) {
-        const { fish, dist } = this.findNearest(fishes)
-        this.drawArms(t, fish, dist)
-        this.drawBody(fish)
+        const angry = gameState === 'playing' && gameFrames >= 7200
+        if (angry) {
+          this.drawArms(t, player, 0)
+          this.drawBody(player)
+        } else {
+          const { fish, dist } = this.findNearest(fishes)
+          this.drawArms(t, fish, dist)
+          this.drawBody(fish)
+        }
+      }
+    }
+
+    // ── fish hook ────────────────────────────────────────────────────────
+    class Hook {
+      constructor() {
+        this.x     = 30 + Math.random() * (canvas.width - 60)
+        this.y     = -32
+        this.speed = 1.4
+        this.px    = 4
+      }
+      update() { this.y += this.speed }
+      offScreen() { return this.y > canvas.height + 60 }
+      hitsPlayer() {
+        const px = this.px
+        const hx = this.x - px, hy = this.y, hw = px * 3, hh = px * 4
+        const m = 3
+        return player.x + player.w - m > hx && player.x + m < hx + hw &&
+               player.y + player.h - m > hy && player.y + m < hy + hh
+      }
+      draw() {
+        const px = this.px
+        const x  = Math.floor(this.x), y = Math.floor(this.y)
+        // fishing line from canvas top to hook
+        ctx.fillStyle = '#bbbbbb'
+        ctx.fillRect(x - 1, 0, 2, y + px)
+        // hook shank (vertical bar)
+        ctx.fillStyle = '#cccccc'
+        ctx.fillRect(x - px,     y,          px, px * 3)
+        // bend (curves right at bottom)
+        ctx.fillRect(x - px,     y + px * 3, px * 3, px)
+        // point (barb going up)
+        ctx.fillRect(x + px,     y + px * 2, px, px)
+        // highlight
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(x - px,     y,          Math.ceil(px/2), px)
       }
     }
 
@@ -634,6 +697,7 @@
       document.getElementById('gameover').classList.add('go-hidden')
       gameState  = 'idle'
       gameFrames = 0
+      hooks.length = 0
       player.reset()
     }
 
@@ -681,6 +745,7 @@
     const fishes   = Array.from({ length: 18 }, () => new Fish())
     const octopus  = new Octopus()
     const player   = new Player()
+    const hooks    = []
 
     // ── background ────────────────────────────────────────────────────────
     function drawBg() {
@@ -759,7 +824,14 @@
       if (gameState === 'playing') {
         gameFrames++
         player.update()
-        if (player.hitsFish(fishes)) killPlayer()
+        if (player.hitsFish(fishes)) { killPlayer(); return }
+        if (octopus.hitsPlayer())    { killPlayer(); return }
+        if (gameFrames % 900 === 0)  hooks.push(new Hook())
+        for (let i = hooks.length - 1; i >= 0; i--) {
+          hooks[i].update()
+          if (hooks[i].hitsPlayer()) { killPlayer(); return }
+          if (hooks[i].offScreen())  hooks.splice(i, 1)
+        }
       }
       drawBg()
       drawSand()
@@ -768,6 +840,7 @@
       bubbles.forEach(b => { b.update(); b.draw() })
       octopus.update(); octopus.draw(t, fishes)
       fishes.forEach(f  => { f.update(t); f.draw() })
+      hooks.forEach(h => h.draw())
       if (gameState !== 'dead') player.draw()
       drawHUD()
       drawBorder()

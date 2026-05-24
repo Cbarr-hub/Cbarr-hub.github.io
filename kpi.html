@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>KPI Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body{font-family:system-ui,Segoe UI,Arial;padding:20px;max-width:calc(100% - 400px);margin:auto}
     h1{margin-bottom:6px}
@@ -46,6 +47,8 @@
 
   <div id="summary"></div>
   <div id="keyMetrics"></div>
+  <div id="wordCountChart" style="width:400px;height:300px;margin:20px 0"></div>
+  <div id="readabilityChart" style="width:600px;height:300px;margin:20px 0"></div>
   <div id="pageDetails"></div>
   <div id="results"></div>
 
@@ -97,6 +100,31 @@
 
     const headings = [1,2,3,4,5,6].reduce((acc,n)=>{acc['h'+n]=doc.querySelectorAll('h'+n).length;return acc},{})
 
+    // Readability: Flesch-Kincaid Grade Level
+    const syllables = (text) => {
+      const word = text.toLowerCase();
+      let count = 0;
+      let vowels = 'aeiouy';
+      let prevWasVowel = false;
+      for(const char of word){
+        const isVowel = vowels.includes(char);
+        if(isVowel && !prevWasVowel) count++;
+        prevWasVowel = isVowel;
+      }
+      if(word.endsWith('e')) count--;
+      if(word.endsWith('le') && word.length > 2) count++;
+      return Math.max(1, count);
+    };
+    let totalSyllables = 0;
+    for(const w of words) totalSyllables += syllables(w);
+    const avgSyllablesPerWord = words.length ? totalSyllables / words.length : 0;
+    const readabilityScore = sentences.length && words.length ? 
+      0.39 * (words.length / sentences.length) + 11.8 * avgSyllablesPerWord - 15.59 : 0;
+
+    // Word diversity ratio
+    const uniqueWords = new Set(words.map(w=>w.toLowerCase())).size;
+    const wordDiversity = words.length ? (uniqueWords / words.length).toFixed(3) : 0;
+
     return {
       url,
       wordCount: words.length,
@@ -104,6 +132,8 @@
       longestWord: longest,
       sentenceCount: sentences.length,
       avgSentenceWords: sentences.length? (words.length/sentences.length).toFixed(2):0,
+      readabilityScore: readabilityScore.toFixed(1),
+      wordDiversity,
       inlineStyleCount,
       comments,
       imgsTotal: imgs.length,
@@ -241,15 +271,17 @@
       const metrics = Array.from(metricsCache.entries()).map(([k,v])=> v.error ? {url:k, error:v.error} : v);
       renderKeyMetrics(metrics.filter(m=>!m.error));
       renderPageDetails(metrics);
+      renderWordCountChart(metrics.filter(m=>!m.error));
+      renderReadabilityChart(metrics.filter(m=>!m.error));
     }catch(e){ status.textContent = 'Crawl failed: '+e.message }
   });
 
   function renderKeyMetrics(metricsList){
     const out = document.getElementById('keyMetrics');
     if(metricsList.length===0){ out.innerHTML = ''; return }
-    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Avg words/sent</th><th>Longest word</th><th>Sentences</th></tr></thead><tbody>';
+    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Avg words/sent</th><th>Longest word</th><th>Sentences</th><th>Readability</th><th>Word diversity</th></tr></thead><tbody>';
     for(const m of metricsList){
-      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgSentenceWords}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td></tr>`;
+      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgSentenceWords}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td><td>${m.readabilityScore}</td><td>${m.wordDiversity}</td></tr>`;
     }
     html += '</tbody></table>';
     out.innerHTML = html;
@@ -275,6 +307,8 @@
               <tr><th>Longest word</th><td>${escapeHtml(m.longestWord)}</td></tr>
               <tr><th>Sentence count</th><td>${m.sentenceCount}</td></tr>
               <tr><th>Avg words/sentence</th><td>${m.avgSentenceWords}</td></tr>
+              <tr><th>Readability score (FK)</th><td>${m.readabilityScore}</td></tr>
+              <tr><th>Word diversity ratio</th><td>${m.wordDiversity}</td></tr>
               <tr><th>Inline styles</th><td>${m.inlineStyleCount}</td></tr>
               <tr><th>Comment count</th><td>${m.comments}</td></tr>
               <tr><th>Images</th><td>${m.imgsTotal}</td></tr>
@@ -296,6 +330,64 @@
   function renderTable(metricsList){
     renderKeyMetrics(metricsList);
     renderPageDetails(metricsList);
+    renderWordCountChart(metricsList);
+    renderReadabilityChart(metricsList);
+  }
+
+  function renderWordCountChart(metricsList){
+    const canvas = document.getElementById('wordCountChart');
+    const ctx = canvas.getContext('2d');
+    // Destroy previous chart if exists
+    if(window.__wordCountChart) window.__wordCountChart.destroy();
+    
+    const labels = metricsList.map(m=>m.url);
+    const data = metricsList.map(m=>m.wordCount);
+    const colors = metricsList.map((_, i) => `hsl(${(i * 360 / metricsList.length)}, 70%, 60%)`);
+    
+    window.__wordCountChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2}]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {legend: {position: 'bottom'}},
+        title: {display: true, text: 'Word Count Distribution'}
+      }
+    });
+  }
+
+  function renderReadabilityChart(metricsList){
+    const canvas = document.getElementById('readabilityChart');
+    const ctx = canvas.getContext('2d');
+    // Destroy previous chart if exists
+    if(window.__readabilityChart) window.__readabilityChart.destroy();
+    
+    const labels = metricsList.map(m=>m.url);
+    const data = metricsList.map(m=>parseFloat(m.readabilityScore));
+    
+    window.__readabilityChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Flesch-Kincaid Grade Level',
+          data,
+          backgroundColor: 'rgba(75, 192, 192, 0.7)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {legend: {display: true}},
+        scales: {x: {beginAtZero: true}}
+      }
+    });
   }
 
   function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }

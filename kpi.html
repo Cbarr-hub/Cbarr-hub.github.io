@@ -27,8 +27,20 @@
   <div id="summary"></div>
   <div id="results"></div>
 
+  <h2>Site Crawler</h2>
+  <div>
+    <label>Start path (relative):</label>
+    <input id="startPath" style="width:60%" value="index.html">
+    <label style="margin-left:8px">Max pages:</label>
+    <input id="maxPages" type="number" min="1" value="50" style="width:80px">
+    <button id="crawl">Crawl site</button>
+    <span id="crawlStatus"></span>
+  </div>
+  <div id="tree" style="margin-top:12px"></div>
+
   <script>
   // List of quirky metrics we'll compute for each page.
+  const metricsCache = new Map();
   function computeMetrics(text, doc, url) {
     const bodyText = (doc && doc.body) ? doc.body.textContent || '' : text.replace(/<[^>]+>/g,' ');
     const words = (bodyText.match(/\b[\w'-]+\b/g) || []).filter(Boolean);
@@ -91,6 +103,128 @@
     const doc = new DOMParser().parseFromString(text, 'text/html');
     return {text, doc, url};
   }
+
+  // --- CRAWLER: discover pages (same-origin) and build a tree ---
+  async function crawlSite(startPath, maxPages = 50){
+    const origin = location.origin;
+    const toAbsolute = p => new URL(p, location.href).href;
+    const normalize = (href, base) => {
+      try{
+        const baseAbs = new URL(base, location.href);
+        const u = new URL(href, baseAbs);
+        if(u.origin !== origin) return null;
+        let p = (u.pathname + u.search + u.hash) || '/';
+        if(p.startsWith('/')) p = p.slice(1);
+        if(!p) p = 'index.html';
+        return p;
+      }catch(e){ return null }
+    };
+
+    const seen = new Map(); // path -> node {url, children: [], parent: null}
+    function makeNode(path){ if(!seen.has(path)) seen.set(path, {url:path, children:[], parent:null}); return seen.get(path); }
+
+    const q = [];
+    makeNode(startPath);
+    q.push(startPath);
+
+    while(q.length && seen.size < maxPages){
+      const cur = q.shift();
+      const node = makeNode(cur);
+      try{
+        const {text, doc} = await fetchPage(cur);
+        // cache metrics
+        metricsCache.set(cur, computeMetrics(text, doc, cur));
+        const anchors = Array.from(doc.querySelectorAll('a[href]')).map(a=>a.getAttribute('href'));
+        for(const a of anchors){
+          const np = normalize(a, cur);
+          if(!np) continue;
+          if(!seen.has(np) && !q.includes(np)) q.push(np);
+          const child = makeNode(np);
+          if(child.parent === null && np !== startPath) child.parent = cur;
+          if(!node.children.includes(np)) node.children.push(np);
+        }
+      }catch(e){
+        metricsCache.set(cur, {error: e.message, url: cur});
+      }
+    }
+
+    const roots = Array.from(seen.values()).filter(n=>!n.parent);
+    return {seen, roots};
+  }
+
+  function renderTree(roots){
+    const rootEl = document.getElementById('tree');
+    if(!roots || roots.length===0){ rootEl.innerHTML = '<em>No pages discovered</em>'; return }
+    function renderNode(node){
+      const li = document.createElement('li');
+      const a = document.createElement('a'); a.href = '#'; a.textContent = node.url; a.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(node.url); });
+      li.appendChild(a);
+      if(node.children && node.children.length){
+        const ul = document.createElement('ul');
+        node.children.forEach(cu => {
+          const childNode = roots.__lookup__ ? roots.__lookup__(cu) : null; // placeholder
+          // we'll fetch from the seen map later via closure
+          const li2 = document.createElement('li');
+          const a2 = document.createElement('a'); a2.href='#'; a2.textContent = cu; a2.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(cu); });
+          li2.appendChild(a2);
+          ul.appendChild(li2);
+        });
+        li.appendChild(ul);
+      }
+      return li;
+    }
+
+    // Simple build using seen map stored on window by crawl action
+    const seenMap = window.__kpi_seen || new Map();
+    rootEl.innerHTML = '';
+    const ul = document.createElement('ul');
+    for(const r of roots){
+      function build(node){
+        const li = document.createElement('li');
+        const a = document.createElement('a'); a.href='#'; a.textContent = node.url; a.addEventListener('click', (e)=>{e.preventDefault(); showNodeMetrics(node.url)});
+        li.appendChild(a);
+        if(node.children && node.children.length){
+          const sub = document.createElement('ul');
+          for(const c of node.children){
+            const childNode = seenMap.get(c) || {url:c, children:[]};
+            sub.appendChild(build(childNode));
+          }
+          li.appendChild(sub);
+        }
+        return li;
+      }
+      ul.appendChild(build(r));
+    }
+    rootEl.appendChild(ul);
+  }
+
+  function showNodeMetrics(url){
+    const m = metricsCache.get(url);
+    const out = document.getElementById('results');
+    if(!m){ out.innerHTML = `<p>No metrics for ${url}</p>`; return }
+    if(m.error){ out.innerHTML = `<p>Error fetching ${url}: ${m.error}</p>`; return }
+    out.innerHTML = `<h3>Metrics: ${url}</h3><pre>${JSON.stringify(m, null, 2)}</pre>`;
+  }
+
+  // Crawl button handler
+  document.getElementById('crawl').addEventListener('click', async ()=>{
+    const status = document.getElementById('crawlStatus');
+    const start = document.getElementById('startPath').value.trim() || 'index.html';
+    const max = parseInt(document.getElementById('maxPages').value,10) || 50;
+    status.textContent = 'Crawling...';
+    try{
+      const {seen, roots} = await crawlSite(start, max);
+      // expose seen map for renderTree
+      window.__kpi_seen = seen;
+      // convert roots' child keys to node objects for rendering
+      const rootNodes = roots.map(r=>r);
+      renderTree(rootNodes);
+      status.textContent = `Crawled ${seen.size} pages`;
+      // render table for all collected metrics
+      const metrics = Array.from(metricsCache.entries()).map(([k,v])=> v.error ? {url:k, error:v.error} : v);
+      renderTable(metrics.filter(m=>!m.error));
+    }catch(e){ status.textContent = 'Crawl failed: '+e.message }
+  });
 
   function renderTable(metricsList){
     const out = document.getElementById('results');

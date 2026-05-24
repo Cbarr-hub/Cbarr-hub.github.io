@@ -240,15 +240,16 @@
     class Octopus {
       constructor() {
         this.px   = 5
+        // 8×8 square = circular silhouette; eyes: white(4) at cols2-3 and cols5-6, rows3-4
         this.body = [
-          [0,0,0,1,1,1,1,1,1,0,0,0],
-          [0,0,1,1,1,1,1,1,1,1,0,0],
-          [0,1,1,1,1,1,1,1,1,1,1,0],
-          [1,1,1,4,4,1,1,4,4,1,1,1],
-          [1,1,1,4,3,1,1,4,3,1,1,1],
-          [0,1,1,1,1,1,1,1,1,1,1,0],
-          [0,0,1,1,1,1,1,1,1,1,0,0],
-          [0,0,0,1,1,1,1,1,1,0,0,0],
+          [0,0,1,1,1,1,0,0],
+          [0,1,1,1,1,1,1,0],
+          [1,1,1,1,1,1,1,1],
+          [1,1,4,4,1,4,4,1],
+          [1,1,4,4,1,4,4,1],
+          [1,1,1,1,1,1,1,1],
+          [0,1,1,1,1,1,1,0],
+          [0,0,1,1,1,1,0,0],
         ]
         this.bodyW  = this.body[0].length * this.px
         this.bodyH  = this.body.length * this.px
@@ -268,41 +269,51 @@
         if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
       }
 
-      drawArms(t, fishes) {
-        const cx   = this.x + this.bodyW / 2
-        const base = this.y + this.bodyH - this.px
-        const nArms = 8, nSegs = 12, armLen = 64
-
-        // nearest fish within reach range
-        let nearestFish = null, nearestDist = Infinity
+      findNearest(fishes) {
+        const cx = this.x + this.bodyW / 2
+        const cy = this.y + this.bodyH / 2
+        let nearest = null, dist = Infinity
         fishes.forEach(f => {
-          const fx = f.x + f.w / 2, fy = f.y + f.h / 2
-          const d  = Math.sqrt((fx - cx) ** 2 + (fy - base) ** 2)
-          if (d < 220 && d < nearestDist) { nearestDist = d; nearestFish = f }
+          const d = Math.sqrt((f.x + f.w/2 - cx)**2 + (f.y + f.h/2 - cy)**2)
+          if (d < dist) { dist = d; nearest = f }
         })
+        return { fish: nearest, dist }
+      }
+
+      drawArms(t, nearestFish, nearestDist) {
+        const cx = this.x + this.bodyW / 2
+        const cy = this.y + this.bodyH / 2
+        const nArms = 8, nSegs = 10, armLen = 68
+        // arm roots sit on the body perimeter
+        const r = this.bodyW * 0.48
+
+        // arms fan across lower 144° arc: 18° to 162° from horizontal
+        const arcStart = Math.PI * 0.1
+        const arcSpan  = Math.PI * 0.8
 
         let reachArmIdx = -1, fishAngle = 0
-        if (nearestFish) {
+        if (nearestFish && nearestDist < 220) {
           const fx = nearestFish.x + nearestFish.w / 2
           const fy = nearestFish.y + nearestFish.h / 2
-          fishAngle = Math.atan2(fy - base, fx - cx)
+          fishAngle = Math.atan2(fy - cy, fx - cx)
           let minDiff = Infinity
           for (let i = 0; i < nArms; i++) {
-            const bAng = Math.PI / 2 + (i / (nArms - 1) - 0.5) * 0.85
-            const diff = Math.abs(fishAngle - bAng)
+            const ang = arcStart + arcSpan * (i / (nArms - 1))
+            let diff = Math.abs(fishAngle - ang)
+            if (diff > Math.PI) diff = 2 * Math.PI - diff
             if (diff < minDiff) { minDiff = diff; reachArmIdx = i }
           }
         }
 
         for (let i = 0; i < nArms; i++) {
-          const spread    = (i / (nArms - 1) - 0.5)
-          const baseAngle = Math.PI / 2 + spread * 0.85
+          const baseAngle = arcStart + arcSpan * (i / (nArms - 1))
           const armPhase  = (i / nArms) * Math.PI * 2 + this.phase
-          const isReach   = (i === reachArmIdx && nearestFish !== null)
+          const isReach   = (i === reachArmIdx && nearestFish !== null && nearestDist < 220)
           const reachFrac = isReach ? Math.max(0, 1 - nearestDist / 220) : 0
 
-          let x = cx + spread * this.bodyW * 0.55
-          let y = base
+          // root on body perimeter in direction of baseAngle
+          let x = cx + Math.cos(baseAngle) * r
+          let y = cy + Math.sin(baseAngle) * r
           const pts = [{x, y}]
 
           for (let s = 1; s <= nSegs; s++) {
@@ -314,11 +325,11 @@
             pts.push({x, y})
           }
 
-          // draw as discrete pixel blocks
+          // chunky pixel blocks snapped to 4px grid
           for (let s = 0; s < pts.length; s++) {
-            const thick = Math.max(2, Math.round((1 - s / (nSegs + 1)) * 5))
-            const bx = Math.round(pts[s].x) - Math.floor(thick / 2)
-            const by = Math.round(pts[s].y) - Math.floor(thick / 2)
+            const thick = Math.max(3, Math.round((1 - s / (nSegs + 1)) * 8))
+            const bx = Math.round(pts[s].x / 4) * 4 - Math.floor(thick / 2)
+            const by = Math.round(pts[s].y / 4) * 4 - Math.floor(thick / 2)
             ctx.fillStyle = this.dark
             ctx.fillRect(bx - 1, by - 1, thick + 2, thick + 2)
             ctx.fillStyle = this.color
@@ -327,24 +338,51 @@
         }
       }
 
-      drawBody() {
+      drawBody(nearestFish) {
         const ox = Math.floor(this.x)
         const oy = Math.floor(this.y)
+
+        // unit vector toward nearest fish
+        let ex = 0, ey = 0
+        if (nearestFish) {
+          const dx = (nearestFish.x + nearestFish.w / 2) - (ox + this.bodyW / 2)
+          const dy = (nearestFish.y + nearestFish.h / 2) - (oy + this.bodyH / 2)
+          const len = Math.sqrt(dx * dx + dy * dy)
+          if (len > 0) { ex = dx / len; ey = dy / len }
+        }
+
+        // draw body sprite (no v===3 in new sprite — whites only)
         for (let row = 0; row < this.body.length; row++) {
           for (let col = 0; col < this.body[row].length; col++) {
             const v = this.body[row][col]
             if (v === 0) continue
-            ctx.fillStyle = v === 1 ? this.color
-                          : v === 4 ? '#ffffff'
-                          : '#111111'
+            ctx.fillStyle = v === 1 ? this.color : '#ffffff'
             ctx.fillRect(ox + col * this.px, oy + row * this.px, this.px, this.px)
           }
         }
+
+        // pupils: each eye white is 2×2 cells at px=5 → 10×10px
+        // left  white center: cols 2-3, rows 3-4 → canvas (15, 20) from ox,oy
+        // right white center: cols 5-6, rows 3-4 → canvas (30, 20) from ox,oy
+        // offset ±px/2 so pupil reaches edge of white in any direction
+        const eyeOff = this.px / 2  // 2.5
+        ctx.fillStyle = '#111111'
+        ctx.fillRect(
+          Math.round(ox + 12.5 + ex * eyeOff),
+          Math.round(oy + 17.5 + ey * eyeOff),
+          this.px, this.px
+        )
+        ctx.fillRect(
+          Math.round(ox + 27.5 + ex * eyeOff),
+          Math.round(oy + 17.5 + ey * eyeOff),
+          this.px, this.px
+        )
       }
 
       draw(t, fishes) {
-        this.drawArms(t, fishes)
-        this.drawBody()
+        const { fish, dist } = this.findNearest(fishes)
+        this.drawArms(t, fish, dist)
+        this.drawBody(fish)
       }
     }
 
@@ -361,6 +399,13 @@
 
     function drawSand() {
       const sandY = canvas.height - 44
+      // deeper back layer
+      ctx.fillStyle = '#c8a030'
+      ctx.fillRect(0, sandY - 20, canvas.width, 24)
+      ctx.fillStyle = '#a07818'
+      ctx.fillRect(0, sandY - 12, canvas.width, 3)
+      ctx.fillRect(0, sandY - 4, canvas.width, 3)
+      // main front layer
       ctx.fillStyle = '#ddb840'
       ctx.fillRect(0, sandY, canvas.width, 44)
       ctx.fillStyle = '#bb9020'

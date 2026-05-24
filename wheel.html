@@ -373,7 +373,9 @@
 
     <div class="slot-frame" aria-label="Horizontal slot name spinner">
       <div class="slot-window">
-        <div id="slotTrack" class="slot-track" aria-live="polite"></div>
+        <div id="slotTrack" class="slot-track" aria-live="polite">
+          <div class="no-names">Choose filters, then press Spin.</div>
+        </div>
         <div class="slot-highlight" aria-hidden="true"></div>
       </div>
     </div>
@@ -474,25 +476,23 @@
     function updateFilters() {
       selectedPlayers = Array.from(document.querySelectorAll('.filter-group:nth-of-type(1) input:checked')).map(input => input.value);
       selectedTimes = Array.from(document.querySelectorAll('.filter-group:nth-of-type(2) input:checked')).map(input => input.value);
-      buildSlot();
+      const hasResults = getFilteredGames().length > 0;
+      spinButton.disabled = !hasResults;
     }
 
     filterInputs.forEach(input => {
       input.addEventListener('change', updateFilters);
     });
 
-    function buildSlot() {
-      const names = getFilteredGames();
+    function buildSlot(names) {
       slotTrack.innerHTML = '';
-      if (names.length === 0) {
+      if (!names || names.length === 0) {
         const messageEl = document.createElement('div');
         messageEl.className = 'no-names';
-        messageEl.textContent = 'No games match the selected filters.';
+        messageEl.textContent = 'Choose filters, then press Spin.';
         slotTrack.appendChild(messageEl);
-        spinButton.disabled = true;
         return;
       }
-      spinButton.disabled = false;
       const loopCount = 4;
       const repeatCount = loopCount + 2;
       const repeatedNames = Array.from({ length: repeatCount }, () => names).flat();
@@ -623,7 +623,7 @@
 
     spinButton.addEventListener('click', spinSlot);
 
-    buildSlot();
+    updateFilters();
   </script>
 </body>
 </html>

@@ -53,8 +53,8 @@
 - 1.f.2 Advanced Algorithms module  
 - 1.f.3 Organizational Chart (bar graph / pie chart hybrid optional)  
 - 1.f.4 KPI Dashboard (**top priority**)  
-- 1.f.5 Auth-gated section:
-  - Requires login to access `/final`  
+- ~~1.f.5 Auth-gated section:~~
+  - ~~Requires login to access `/final`~~ — [complete](https://cbarr-hub.github.io/final)  
 - 1.f.6 About Us page:
   - Purpose: define mission and identity
   - Inspiration: BlackRock-style corporate framing  
@@ -70,8 +70,8 @@
 - 1.f.10 Ticketing System:
   - 24/7 customer support
   - Routed to “mara” / Philippines support layer  
-- 1.f.11 Cyberbarn integration:
-  - Includes map component  
+- ~~1.f.11 Cyberbarn integration:~~
+  - ~~Includes map component~~ [complete](https://cbarr-hub.github.io/map.html)
 - 1.f.12 Store page:
   - T-shirt drops scheduled for 2030
   - Dynamic delay system:

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faith</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      font-family: Georgia, "Times New Roman", serif;
+      color: #f5e9c8;
+      background:
+        linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),
+        url("faith/Mosaic_from_Daphni_Monastery_in_Greece.jpg") center / cover no-repeat fixed;
+    }
+
+    .passage {
+      position: relative;
+      z-index: 2;
+      max-width: 760px;
+      margin: 4rem auto 2rem;
+      padding: 2rem 2.5rem;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(245, 233, 200, 0.2);
+      border-radius: 4px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+      line-height: 1.85;
+      font-size: 1.05rem;
+      text-align: justify;
+    }
+
+    .passage p {
+      margin: 0 0 1.25rem;
+    }
+
+    .passage p:last-child {
+      margin-bottom: 0;
+    }
+
+    .passage .ref {
+      display: block;
+      margin-top: 1.5rem;
+      font-size: 0.85rem;
+      font-style: italic;
+      text-align: right;
+      opacity: 0.7;
+      letter-spacing: 0.05em;
+    }
+
+    .rtl {
+      display: inline;
+      unicode-bidi: isolate;
+      direction: rtl;
+      font-family: "Segoe UI", "Times New Roman", serif;
+      font-size: 1.15em;
+      letter-spacing: 0.02em;
+    }
+
+    .gallery {
+      position: relative;
+      width: 100%;
+      min-height: calc(100vh - 200px);
+      padding-bottom: 8rem;
+    }
+
+    .gallery figure {
+      position: absolute;
+      margin: 0;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(245, 233, 200, 0.25);
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      transition: transform 0.4s ease, filter 0.6s ease, z-index 0s;
+    }
+
+    .gallery figure:hover {
+      z-index: 100;
+      transform: scale(1.05) rotate(0deg) !important;
+    }
+
+    .gallery img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .gallery figcaption {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8rem;
+      text-align: center;
+      letter-spacing: 0.05em;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .gallery figure:hover figcaption {
+      opacity: 1;
+    }
+
+    .audio-frame {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      width: 320px;
+      height: 180px;
+      border: 1px solid rgba(245, 233, 200, 0.4);
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      background: #000;
+      z-index: 1000;
+    }
+
+    .audio-frame iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 600px) {
+      .passage { margin: 2rem 1rem; padding: 1.5rem; font-size: 1rem; }
+      .audio-frame { width: 220px; height: 124px; }
+    }
+  </style>
+</head>
+<body>
+  <section class="passage">
+    <p>
+      For the Master, that he may instruct and teach all the Children of Light concerning the generations of all the sons of men, regarding all the kinds of their spirits with their signs, regarding their deeds in their generations, and regarding the visitation of their afflictions together with their times of peace.
+      From the God of knowledge comes all that is and shall be.
+      Before they existed He established their entire design.
+      And when they come into being at their appointed time, they will fulfill their work according to His glorious design, without altering anything.
+    </p>
+
+    <p>
+      He created man to govern the world, and appointed for him two spirits in which to walk until the time of His visitation: the spirits of truth and of falsehood.
+      From a spring of light come the generations of truth, and from a fountain of darkness come the generations of falsehood.
+      <span class="rtl" lang="he" dir="rtl">לְמַשְׂכִּיל לְהָבִין וּלְלַמֵּד אֶת כָּל בְּנֵי אוֹר בְּתוֹלְדוֹת כָּל בְּנֵי אִישׁ.</span>
+      In the hand of the Prince of Light is dominion over all the sons of righteousness; they walk in the ways of light.
+      In the hand of the Angel of Darkness is total dominion over the sons of injustice; they walk in the ways of darkness.
+      And because of the Angel of Darkness all the sons of righteousness go astray, and all their sin and their iniquities and their guilt and the transgressions of their deeds come from his dominion, according to the mysteries of God, until His appointed end.
+    </p>
+
+    <p>
+      I thank You, O Lord, for You have placed my soul in the bundle of the living, and have hedged me about against all the snares of the pit.
+      Violent men have sought my life because I have clung to Your covenant.
+      They are an assembly of vanity, a congregation of Belial; they do not know that from You comes my standing, and that by Your loving-kindness You save my soul.
+      For from You are my steps.
+      <span class="rtl" lang="ar" dir="rtl">اللَّهُ نُورُ السَّمَاوَاتِ وَالْأَرْضِ، مَثَلُ نُورِهِ كَمِشْكَاةٍ فِيهَا مِصْبَاحٌ.</span>
+      You have purified me from great iniquity, that I may take my stand with the host of the holy ones, and enter into communion with the congregation of the sons of heaven.
+      You have allotted to man an everlasting destiny among the spirits of knowledge, that he may praise Your name together in joy and recount Your wonders before all Your works.
+    </p>
+
+    <p>
+      The first attack of the Sons of Light shall be against the lot of the Sons of Darkness, against the army of Belial: against the band of Edom and of Moab and of the sons of Ammon, and the multitude of the sons of the east and Philistia.
+      The Sons of Levi, of Judah, and of Benjamin, exiles in the wilderness, shall battle against them.
+      <span class="rtl" lang="he" dir="rtl">אוֹדְךָ אֲדֹנָי כִּי הֲבִינוֹתָנִי בַּאֲמִתֶּךָ וּבְרָזֵי פִלְאֲךָ הוֹדַעְתָּנִי.</span>
+      War shall be waged against all their troops when the exiles of the Sons of Light return from the Wilderness of the Peoples to camp in the wilderness of Jerusalem.
+      And after the battle they shall return there from the battle, and the Kittim of Egypt shall fall, and there shall be no deliverer to save them.
+      The dominion of the Kittim shall come to an end, that wickedness be laid low and have no remnant, and that there be no escape for any of the sons of darkness.
+    </p>
+
+    <span class="ref">— from the Community Rule (1QS), the Hodayot (1QH), and the War Scroll (1QM)</span>
+  </section>
+
+  <section class="gallery" id="gallery"></section>
+
+  <div class="audio-frame" aria-label="Background audio">
+    <iframe
+      src="https://www.youtube.com/embed/z96qe75LOF8?autoplay=1&loop=1&playlist=z96qe75LOF8&rel=0"
+      title="Faith background audio"
+      allow="autoplay; encrypted-media"
+      allowfullscreen></iframe>
+  </div>
+
+  <script>
+    ;(() => {
+      const images = [
+        { src: 'faith/Mosaic_from_Daphni_Monastery_in_Greece.jpg', caption: 'Mosaic — Daphni Monastery, Greece' },
+        { src: 'faith/Christ-Monastery-of-Saint-Catherine-at-Mount-Sinai-6th-century.jpg', caption: "Christ — Saint Catherine's Monastery, Mount Sinai (6th c.)" },
+        { src: 'faith/Isfahan_Lotfollah_mosque_ceiling_symmetric.jpg', caption: 'Sheikh Lotfollah Mosque Ceiling — Isfahan' },
+        { src: 'faith/Shakyamuni_Buddha_-_Google_Art_Project.jpg', caption: 'Shakyamuni Buddha' },
+        { src: 'faith/1_2_571bd8e7-ea6c-4345-a2f8-d4fa3f65ba27_600x.webp', caption: '' },
+        { src: 'faith/69ffc45de22c7f285f223bc65a3ce1ae.jpg', caption: '' },
+        { src: 'faith/Screenshot-2024-11-22-at-4.55.06-PM.png', caption: '' }
+      ]
+
+      const rand = (min, max) => Math.random() * (max - min) + min
+      const pick = arr => arr[Math.floor(Math.random() * arr.length)]
+
+      const effects = [
+        () => `hue-rotate(${Math.floor(rand(0, 360))}deg) saturate(${rand(1.2, 2.5).toFixed(2)})`,
+        () => `grayscale(1) contrast(${rand(1.1, 1.8).toFixed(2)})`,
+        () => `sepia(1) saturate(${rand(1.5, 3).toFixed(2)}) hue-rotate(${Math.floor(rand(-40, 40))}deg)`,
+        () => `invert(1) hue-rotate(${Math.floor(rand(0, 360))}deg)`,
+        () => `blur(${rand(1, 3).toFixed(1)}px) brightness(${rand(1.1, 1.5).toFixed(2)})`,
+        () => `contrast(${rand(1.5, 2.5).toFixed(2)}) brightness(${rand(0.8, 1.3).toFixed(2)})`,
+        () => `saturate(0) brightness(${rand(0.7, 1.2).toFixed(2)}) contrast(${rand(1.3, 2).toFixed(2)})`,
+        () => `hue-rotate(${Math.floor(rand(0, 360))}deg) invert(${rand(0.2, 0.6).toFixed(2)})`,
+        () => `drop-shadow(0 0 ${Math.floor(rand(8, 24))}px ${pick(['#f5e9c8', '#7ad7ff', '#ff7ad0', '#a0ffb0'])}) saturate(${rand(1.2, 2).toFixed(2)})`,
+        () => `sepia(${rand(0.6, 1).toFixed(2)}) contrast(${rand(1.2, 1.8).toFixed(2)})`
+      ]
+
+      const blendModes = ['normal', 'normal', 'normal', 'multiply', 'screen', 'overlay', 'difference', 'color-dodge', 'hard-light']
+
+      const gallery = document.getElementById('gallery')
+
+      const layout = () => {
+        gallery.innerHTML = ''
+        const rect = gallery.getBoundingClientRect()
+        const galleryW = rect.width
+        const galleryH = Math.max(rect.height, window.innerHeight - 200)
+
+        images.forEach((item, i) => {
+          const fig = document.createElement('figure')
+          const img = document.createElement('img')
+          const cap = document.createElement('figcaption')
+
+          img.src = item.src
+          img.alt = item.caption
+          cap.textContent = item.caption
+
+          const w = Math.floor(rand(180, 360))
+          const h = Math.floor(w * rand(0.7, 1.3))
+          const left = Math.floor(rand(0, Math.max(0, galleryW - w)))
+          const top = Math.floor(rand(0, Math.max(0, galleryH - h)))
+          const rot = rand(-15, 15).toFixed(2)
+          const z = Math.floor(rand(1, 50))
+
+          fig.style.width = w + 'px'
+          fig.style.height = h + 'px'
+          fig.style.left = left + 'px'
+          fig.style.top = top + 'px'
+          fig.style.transform = `rotate(${rot}deg)`
+          fig.style.zIndex = z
+
+          img.style.filter = pick(effects)()
+          img.style.mixBlendMode = pick(blendModes)
+
+          fig.appendChild(img)
+          fig.appendChild(cap)
+          gallery.appendChild(fig)
+        })
+      }
+
+      layout()
+      window.addEventListener('resize', layout)
+    })()
+  </script>
+</body>
+</html>

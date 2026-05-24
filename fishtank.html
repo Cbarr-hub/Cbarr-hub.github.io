@@ -358,8 +358,8 @@
         this.x += this.vx
         this.y += Math.sin(t * this.bobFreq + this.bobPhase) * this.bobAmp
 
-        if (this.vx > 0 && this.x + this.w > canvas.width)  { this.vx *= -1.0075 }
-        if (this.vx < 0 && this.x < 0)                       { this.vx *= -1.0075 }
+        if (this.vx > 0 && this.x + this.w > canvas.width)  { this.vx *= -1.015 }
+        if (this.vx < 0 && this.x < 0)                       { this.vx *= -1.015 }
 
         const minY = 20, maxY = canvas.height - 60 - this.h
         if (this.y < minY) this.y = minY
@@ -569,10 +569,13 @@
         this.x     = 30 + Math.random() * (canvas.width - 60)
         this.y     = -32
         this.speed = 1.4
-        this.px    = 4
+        this.px    = 7
       }
-      update() { this.y += this.speed }
-      offScreen() { return this.y > canvas.height + 60 }
+      update() {
+        this.y += this.speed
+        if (this.y > canvas.height + 20) this.speed = -Math.abs(this.speed)
+      }
+      offScreen() { return this.speed < 0 && this.y < -80 }
       hitsPlayer() {
         const px = this.px
         const hx = this.x - px, hy = this.y, hw = px * 3, hh = px * 4
@@ -675,7 +678,7 @@
       return s.toFixed(1) + 's'
     }
 
-    function killPlayer() {
+    async function killPlayer() {
       gameState = 'dead'
       document.getElementById('go-time').textContent = 'Survived: ' + fmtTime(gameFrames)
       document.getElementById('gameover').classList.remove('go-hidden')
@@ -683,7 +686,7 @@
       if (loggedIn) {
         document.getElementById('go-entry').style.display = 'none'
         const secs = Math.round(gameFrames / 60)
-        if (typeof window.saveScore === 'function') window.saveScore(loggedIn, secs)
+        if (typeof window.saveScore === 'function') await window.saveScore(loggedIn, secs)
       } else {
         document.getElementById('go-entry').style.display = 'flex'
         document.getElementById('go-submit').textContent = 'SUBMIT'

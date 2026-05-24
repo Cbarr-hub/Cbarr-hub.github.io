@@ -2325,7 +2325,7 @@
         reelEl.appendChild(stripEl);
         slotReelsEl.appendChild(reelEl);
 
-        const duration = 3250 + column * 720;
+        const duration = 2100 + column * 430;
         stripEl.style.transitionDuration = `${duration}ms`;
         window.requestAnimationFrame(() => {
           const distance = slotStepSize(stripEl) * leadCount;
@@ -2465,7 +2465,7 @@
         }
 
         finishSlotSpin(grid, result, wasFreeSpin, spinBet);
-      }, 6500);
+      }, 4100);
 
       let grid = generateSlotGrid({ nearMiss: true });
       let result = evaluateSlotGrid(grid);

@@ -142,7 +142,7 @@ FILE: index.html
         sessionStorage.setItem('gt_user', username)
         window.location.href = 'final.html'
       } else {
-        alert('access denied')
+        alert('access denied\n\n' + (error?.message ?? 'no rows returned'))
       }
     }
   </script>

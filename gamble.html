@@ -78,18 +78,6 @@
       padding: 2rem 0 3rem;
     }
 
-    @keyframes tableEnter {
-      from {
-        opacity: 0;
-        transform: translateY(18px) scale(0.985);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-      }
-    }
-
     @keyframes panelIn {
       from {
         opacity: 0;
@@ -185,61 +173,6 @@
       }
     }
 
-    @keyframes winGlow {
-      0%, 100% {
-        box-shadow:
-          inset 0 0 0 5px var(--rail-light),
-          0 30px 80px var(--shadow);
-      }
-
-      45% {
-        box-shadow:
-          inset 0 0 0 5px var(--rail-light),
-          0 0 0 6px rgba(242, 193, 78, 0.34),
-          0 34px 100px rgba(242, 193, 78, 0.36);
-      }
-    }
-
-    @keyframes lossShake {
-      0%, 100% {
-        transform: translateX(0);
-        box-shadow:
-          inset 0 0 0 5px var(--rail-light),
-          0 30px 80px var(--shadow);
-      }
-
-      20% {
-        transform: translateX(-7px);
-      }
-
-      40% {
-        transform: translateX(6px);
-        box-shadow:
-          inset 0 0 0 5px var(--rail-light),
-          0 0 0 5px rgba(192, 57, 43, 0.32),
-          0 34px 90px rgba(192, 57, 43, 0.28);
-      }
-
-      65% {
-        transform: translateX(-3px);
-      }
-    }
-
-    @keyframes pushGlow {
-      0%, 100% {
-        box-shadow:
-          inset 0 0 0 5px var(--rail-light),
-          0 30px 80px var(--shadow);
-      }
-
-      50% {
-        box-shadow:
-          inset 0 0 0 5px var(--rail-light),
-          0 0 0 5px rgba(96, 165, 250, 0.28),
-          0 34px 90px rgba(96, 165, 250, 0.2);
-      }
-    }
-
     @keyframes sparkleBurst {
       0% {
         opacity: 0;
@@ -263,6 +196,47 @@
 
       35% {
         transform: translateY(5px);
+      }
+    }
+
+    @keyframes handLossPulse {
+      0%, 100% {
+        filter: saturate(0.65);
+        opacity: 0.68;
+        box-shadow: none;
+      }
+
+      45% {
+        filter: saturate(0.8);
+        opacity: 0.86;
+        box-shadow: 0 0 0 4px rgba(192, 57, 43, 0.28);
+      }
+    }
+
+    @keyframes cardSink {
+      0%, 100% {
+        transform: rotate(var(--tilt, 0deg)) translateY(0) scale(1);
+      }
+
+      50% {
+        transform: rotate(var(--tilt, 0deg)) translateY(10px) scale(0.96);
+      }
+    }
+
+    @keyframes rouletteResultPop {
+      0% {
+        transform: translateY(8px) scale(0.9);
+        opacity: 0;
+      }
+
+      60% {
+        transform: translateY(-3px) scale(1.06);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
       }
     }
 
@@ -309,7 +283,7 @@
     .tabs {
       position: relative;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 0.5rem;
       width: min(420px, 100%);
       padding: 0.35rem;
@@ -350,7 +324,6 @@
       box-shadow:
         inset 0 0 0 5px var(--rail-light),
         0 30px 80px var(--shadow);
-      animation: tableEnter 650ms ease both;
     }
 
     .table::before {
@@ -360,18 +333,6 @@
       border: 1px solid rgba(242, 193, 78, 0.22);
       border-radius: 8px;
       pointer-events: none;
-    }
-
-    .table.win-effect {
-      animation: winGlow 900ms ease both;
-    }
-
-    .table.loss-effect {
-      animation: lossShake 560ms ease both;
-    }
-
-    .table.push-effect {
-      animation: pushGlow 680ms ease both;
     }
 
     .effect-layer {
@@ -444,10 +405,16 @@
     .deck-card {
       display: grid;
       place-items: center;
+      gap: 0.14rem;
+      padding: 0.55rem;
       color: rgba(255, 255, 255, 0.9);
-      font-size: 0.75rem;
+      font-size: clamp(0.42rem, 0.9vw, 0.6rem);
       font-weight: 900;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.04em;
+      line-height: 1.08;
+      text-align: center;
+      text-transform: uppercase;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.34);
     }
 
     .scorebar {
@@ -535,6 +502,7 @@
     .hand.outcome-loss {
       filter: saturate(0.65);
       opacity: 0.68;
+      animation: handLossPulse 620ms ease both;
     }
 
     .hand-row {
@@ -585,6 +553,7 @@
     .card.loser {
       opacity: 0.7;
       filter: saturate(0.7);
+      animation: cardSink 520ms ease both;
     }
 
     .card.red {
@@ -596,6 +565,41 @@
       background:
         repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 8px, transparent 8px 16px),
         #1d4ed8;
+    }
+
+    .card-mark {
+      position: absolute;
+      right: 0.72rem;
+      top: 0.72rem;
+      color: rgba(23, 23, 23, 0.28);
+      font-size: clamp(0.48rem, 1vw, 0.66rem);
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .card.red .card-mark {
+      color: rgba(192, 57, 43, 0.32);
+    }
+
+    .card-back-brand {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: grid;
+      gap: 0.18rem;
+      width: calc(100% - 1.35rem);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: clamp(0.62rem, 1.6vw, 0.92rem);
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      line-height: 1.08;
+      text-align: center;
+      text-transform: uppercase;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.34);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
     }
 
     .corner {
@@ -699,6 +703,258 @@
     .total-badge.loser {
       border-color: rgba(192, 57, 43, 0.6);
       background: rgba(192, 57, 43, 0.85);
+    }
+
+    .roulette-layout {
+      display: grid;
+      gap: clamp(1rem, 3vw, 2rem);
+      padding: 0.5rem 0;
+    }
+
+    .roulette-stage {
+      display: grid;
+      place-items: center;
+      min-height: 410px;
+    }
+
+    .roulette-wheel-wrap {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: min(100%, 390px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, transparent 57%, rgba(0, 0, 0, 0.35) 58% 61%, transparent 62%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.08));
+      box-shadow:
+        inset 0 0 0 12px var(--rail),
+        inset 0 0 0 19px var(--rail-light),
+        0 28px 58px rgba(0, 0, 0, 0.35);
+    }
+
+    .roulette-wheel {
+      position: absolute;
+      inset: 38px;
+      --number-radius: min(30vw, 118px);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, var(--rail) 0 19%, transparent 20%),
+        conic-gradient(
+          #0f766e 0deg 9.73deg,
+          #c0392b 9.73deg 19.46deg,
+          #111827 19.46deg 29.19deg,
+          #c0392b 29.19deg 38.92deg,
+          #111827 38.92deg 48.65deg,
+          #c0392b 48.65deg 58.38deg,
+          #111827 58.38deg 68.11deg,
+          #c0392b 68.11deg 77.84deg,
+          #111827 77.84deg 87.57deg,
+          #c0392b 87.57deg 97.3deg,
+          #111827 97.3deg 107.03deg,
+          #c0392b 107.03deg 116.76deg,
+          #111827 116.76deg 126.49deg,
+          #c0392b 126.49deg 136.22deg,
+          #111827 136.22deg 145.95deg,
+          #c0392b 145.95deg 155.68deg,
+          #111827 155.68deg 165.41deg,
+          #c0392b 165.41deg 175.14deg,
+          #111827 175.14deg 184.87deg,
+          #c0392b 184.87deg 194.6deg,
+          #111827 194.6deg 204.33deg,
+          #c0392b 204.33deg 214.06deg,
+          #111827 214.06deg 223.79deg,
+          #c0392b 223.79deg 233.52deg,
+          #111827 233.52deg 243.25deg,
+          #c0392b 243.25deg 252.98deg,
+          #111827 252.98deg 262.71deg,
+          #c0392b 262.71deg 272.44deg,
+          #111827 272.44deg 282.17deg,
+          #c0392b 282.17deg 291.9deg,
+          #111827 291.9deg 301.63deg,
+          #c0392b 301.63deg 311.36deg,
+          #111827 311.36deg 321.09deg,
+          #c0392b 321.09deg 330.82deg,
+          #111827 330.82deg 340.55deg,
+          #c0392b 340.55deg 350.28deg,
+          #111827 350.28deg 360deg
+        );
+      transition: transform 4.4s cubic-bezier(0.12, 0.7, 0.08, 1);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
+    }
+
+    .roulette-number {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 900;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+      transform:
+        translate(-50%, -50%)
+        rotate(var(--angle))
+        translateY(calc(-1 * var(--number-radius)))
+        rotate(calc(-1 * var(--angle)));
+      z-index: 1;
+    }
+
+    .roulette-wheel::after {
+      content: "";
+      position: absolute;
+      inset: 32%;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.35), transparent 32%),
+        var(--rail);
+      box-shadow: 0 0 0 7px var(--rail-light), 0 12px 28px rgba(0, 0, 0, 0.28);
+    }
+
+    .roulette-ball-track {
+      position: absolute;
+      inset: 24px;
+      border-radius: 50%;
+      transition: transform 4.4s cubic-bezier(0.09, 0.78, 0.05, 1);
+    }
+
+    .roulette-ball {
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      width: 18px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 30%, #fff, #e5e7eb 48%, #9ca3af);
+      box-shadow: 0 5px 12px rgba(0, 0, 0, 0.42);
+      transform: translateX(-50%);
+    }
+
+    .roulette-pointer {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-left: 13px solid transparent;
+      border-right: 13px solid transparent;
+      border-top: 28px solid var(--gold);
+      filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.35));
+      transform: translateX(-50%);
+      z-index: 2;
+    }
+
+    .roulette-result {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: 96px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.62);
+      border: 2px solid rgba(255, 255, 255, 0.22);
+      font-size: 2.2rem;
+      font-weight: 900;
+      z-index: 1;
+    }
+
+    .roulette-result.red {
+      background: var(--red);
+    }
+
+    .roulette-result.black {
+      background: #111827;
+    }
+
+    .roulette-result.green {
+      background: #0f766e;
+    }
+
+    .roulette-result.pop {
+      animation: rouletteResultPop 420ms ease both;
+    }
+
+    .roulette-controls {
+      display: grid;
+      gap: 1rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.24);
+    }
+
+    .roulette-picks {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+    }
+
+    .roulette-pick,
+    .roulette-number-pick {
+      min-height: 58px;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .roulette-pick[data-roulette-value="red"] {
+      background: var(--red);
+    }
+
+    .roulette-pick[data-roulette-value="black"] {
+      background: #111827;
+    }
+
+    .roulette-pick.active,
+    .roulette-number-pick.active {
+      box-shadow: 0 0 0 4px rgba(242, 193, 78, 0.42), 0 12px 25px rgba(0, 0, 0, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .roulette-board {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 0.65rem;
+      align-items: stretch;
+    }
+
+    .roulette-zero {
+      background: #0f766e;
+    }
+
+    .roulette-number-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(34px, 1fr));
+      gap: 0.35rem;
+    }
+
+    .roulette-number-pick {
+      min-height: 42px;
+      padding: 0.2rem;
+      font-size: 0.86rem;
+      font-weight: 900;
+    }
+
+    .roulette-number-pick.red {
+      background: var(--red);
+    }
+
+    .roulette-number-pick.black {
+      background: #111827;
+    }
+
+    .roulette-number-pick.green {
+      background: #0f766e;
+    }
+
+    .roulette-note {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
     }
 
     .controls {
@@ -880,6 +1136,10 @@
       .controls {
         order: -1;
       }
+
+      .roulette-number-grid {
+        grid-template-columns: repeat(6, minmax(34px, 1fr));
+      }
     }
 
     @media (max-width: 620px) {
@@ -941,6 +1201,7 @@
       <div class="tabs" role="tablist" aria-label="Game selection">
         <button class="tab active" id="high-card-tab" type="button" data-game="high-card" aria-selected="true">High Card</button>
         <button class="tab" id="blackjack-tab" type="button" data-game="blackjack" aria-selected="false">Blackjack</button>
+        <button class="tab" id="roulette-tab" type="button" data-game="roulette" aria-selected="false">Roulette</button>
       </div>
     </div>
 
@@ -949,7 +1210,7 @@
 
       <div class="play-area">
         <div class="deck-shoe" id="deck-shoe" aria-hidden="true">
-          <div class="deck-card">GS</div>
+          <div class="deck-card"><span>GamerTown Solutions &reg;</span><span>solutions that solve</span></div>
         </div>
 
         <div class="scorebar" aria-live="polite">
@@ -973,6 +1234,7 @@
               <h2>Your Card</h2>
               <div class="card" id="player-card" style="--tilt: -3deg;">
                 <div class="corner top"><span>A</span><span>S</span></div>
+                <div class="card-mark">GTS&reg;</div>
                 <div class="rank">?</div>
                 <div class="suit">S</div>
                 <div class="corner bottom"><span>A</span><span>S</span></div>
@@ -983,6 +1245,7 @@
               <h2>House Card</h2>
               <div class="card" id="house-card" style="--tilt: 3deg;">
                 <div class="corner top"><span>K</span><span>H</span></div>
+                <div class="card-mark">GTS&reg;</div>
                 <div class="rank">?</div>
                 <div class="suit">H</div>
                 <div class="corner bottom"><span>K</span><span>H</span></div>
@@ -1000,6 +1263,34 @@
           <div class="hand" id="player-zone">
             <h2>You <span class="total-badge" id="player-total">--</span></h2>
             <div class="hand-row" id="blackjack-hand"></div>
+          </div>
+        </section>
+
+        <section class="game-panel" id="roulette-panel" aria-label="Roulette">
+          <div class="roulette-layout">
+            <div class="roulette-stage">
+              <div class="roulette-wheel-wrap">
+                <div class="roulette-pointer" aria-hidden="true"></div>
+                <div class="roulette-wheel" id="roulette-wheel" aria-hidden="true"></div>
+                <div class="roulette-ball-track" id="roulette-ball-track" aria-hidden="true">
+                  <div class="roulette-ball"></div>
+                </div>
+                <div class="roulette-result" id="roulette-result">--</div>
+              </div>
+            </div>
+
+            <div class="roulette-controls">
+              <h2>Place Bet</h2>
+              <div class="roulette-picks" aria-label="Roulette bet color">
+                <button class="roulette-pick active" type="button" data-roulette-type="color" data-roulette-value="red">Red</button>
+                <button class="roulette-pick" type="button" data-roulette-type="color" data-roulette-value="black">Black</button>
+              </div>
+              <div class="roulette-board" aria-label="Roulette number betting board">
+                <button class="roulette-number-pick roulette-zero green" type="button" data-roulette-type="number" data-roulette-value="0">0</button>
+                <div class="roulette-number-grid" id="roulette-number-board"></div>
+              </div>
+              <p class="roulette-note">Red and black pay 1:1. Any single number pays 35:1.</p>
+            </div>
           </div>
         </section>
 
@@ -1079,7 +1370,12 @@
       playerHand: [],
       hideDealerHole: false,
       renderedBet: 10,
-      blackjackRound: 0
+      blackjackRound: 0,
+      rouletteActive: false,
+      rouletteBetType: "color",
+      rouletteChoice: "red",
+      rouletteWheelRotation: 0,
+      rouletteBallRotation: 0
     };
 
     const creditsEl = document.getElementById("credits");
@@ -1099,7 +1395,6 @@
     const maxBetButton = document.getElementById("max-bet");
     const resetButton = document.getElementById("reset");
     const deckShoeEl = document.getElementById("deck-shoe");
-    const tableEl = document.querySelector(".table");
     const effectLayerEl = document.getElementById("effect-layer");
     const playerCardEl = document.getElementById("player-card");
     const houseCardEl = document.getElementById("house-card");
@@ -1109,6 +1404,10 @@
     const playerZoneEl = document.getElementById("player-zone");
     const dealerTotalEl = document.getElementById("dealer-total");
     const playerTotalEl = document.getElementById("player-total");
+    const rouletteWheelEl = document.getElementById("roulette-wheel");
+    const rouletteBallTrackEl = document.getElementById("roulette-ball-track");
+    const rouletteResultEl = document.getElementById("roulette-result");
+    const rouletteNumberBoardEl = document.getElementById("roulette-number-board");
     const messageEl = document.querySelector(".message");
     const betBoxEl = document.querySelector(".bet");
     const creditsStatEl = creditsEl.closest(".stat");
@@ -1117,13 +1416,41 @@
     const tabs = Array.from(document.querySelectorAll(".tab"));
     const panels = {
       "high-card": document.getElementById("high-card-panel"),
-      blackjack: document.getElementById("blackjack-panel")
+      blackjack: document.getElementById("blackjack-panel"),
+      roulette: document.getElementById("roulette-panel")
     };
     const chipButtons = Array.from(document.querySelectorAll("[data-chip]"));
+    let roulettePickButtons = Array.from(document.querySelectorAll("[data-roulette-type]"));
     const blackjackCards = {
       dealer: [],
       player: []
     };
+    const rouletteNumbers = [
+      0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
+      5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
+    ];
+    const redNumbers = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+    const gameMeta = {
+      "high-card": {
+        title: "High Card",
+        copy: "Higher card wins. Ties return your bet.",
+        action: "Deal Cards"
+      },
+      blackjack: {
+        title: "Blackjack",
+        copy: "Get closer to 21 than the dealer without going over.",
+        activeCopy: "Dealer stands on 17. Natural blackjack pays 3:2.",
+        action: "Deal Blackjack"
+      },
+      roulette: {
+        title: "Roulette",
+        copy: "Pick a color or exact number and spin for virtual-credit payouts.",
+        activeCopy: "Pick a color or exact number, then spin the wheel.",
+        action: "Spin Wheel"
+      }
+    };
+    const cardMarkMarkup = `<div class="card-mark">GTS&reg;</div>`;
+    const cardBackBrandMarkup = `<div class="card-back-brand"><span>GamerTown Solutions &reg;</span><span>solutions that solve</span></div>`;
 
     function replayAnimation(element, className) {
       element.classList.remove(className);
@@ -1146,11 +1473,11 @@
     }
 
     function resetEffects() {
-      tableEl.classList.remove("win-effect", "loss-effect", "push-effect");
       messageEl.classList.remove("impact");
       dealerZoneEl.classList.remove("outcome-win", "outcome-loss");
       playerZoneEl.classList.remove("outcome-win", "outcome-loss");
       effectLayerEl.innerHTML = "";
+      rouletteResultEl.classList.remove("pop");
       document.querySelectorAll(".card.winner, .card.loser").forEach((cardEl) => {
         cardEl.classList.remove("winner", "loser");
       });
@@ -1178,10 +1505,6 @@
     }
 
     function playOutcomeEffect(result, winner = null) {
-      const effectClass = `${result}-effect`;
-      replayAnimation(tableEl, effectClass);
-      clearAnimationClass(tableEl, effectClass, result === "loss" ? 620 : 950);
-
       if (result === "win") {
         createSparkles();
       } else if (result === "loss") {
@@ -1194,20 +1517,54 @@
         dealerZoneEl.classList.add("outcome-loss");
         playerTotalEl.classList.add("winner");
         dealerTotalEl.classList.add("loser");
+        blackjackCards.dealer.forEach(({ cardEl }) => cardEl.classList.add("loser"));
       } else if (winner === "dealer") {
         dealerZoneEl.classList.add("outcome-win");
         playerZoneEl.classList.add("outcome-loss");
         dealerTotalEl.classList.add("winner");
         playerTotalEl.classList.add("loser");
+        blackjackCards.player.forEach(({ cardEl }) => cardEl.classList.add("loser"));
       }
 
       if (result === "push") {
-        clearAnimationClass(tableEl, "push-effect", 720);
+        createSparkles();
       }
     }
 
     function maxBet() {
       return Math.floor(state.credits / 5) * 5;
+    }
+
+    function rouletteColor(number) {
+      if (number === 0) {
+        return "green";
+      }
+      return redNumbers.has(number) ? "red" : "black";
+    }
+
+    function initializeRouletteUi() {
+      const segment = 360 / rouletteNumbers.length;
+      rouletteWheelEl.innerHTML = "";
+      rouletteNumbers.forEach((number, index) => {
+        const label = document.createElement("span");
+        label.className = "roulette-number";
+        label.textContent = number;
+        label.style.setProperty("--angle", `${index * segment + segment / 2}deg`);
+        rouletteWheelEl.appendChild(label);
+      });
+
+      rouletteNumberBoardEl.innerHTML = "";
+      for (let number = 1; number <= 36; number += 1) {
+        const button = document.createElement("button");
+        button.className = `roulette-number-pick ${rouletteColor(number)}`;
+        button.type = "button";
+        button.dataset.rouletteType = "number";
+        button.dataset.rouletteValue = String(number);
+        button.textContent = number;
+        rouletteNumberBoardEl.appendChild(button);
+      }
+
+      roulettePickButtons = Array.from(document.querySelectorAll("[data-roulette-type]"));
     }
 
     function dealFromDeck(cardEl, delay = 0) {
@@ -1244,13 +1601,14 @@
       cardEl.style.setProperty("--tilt", `${Math.floor(Math.random() * 7) - 3}deg`);
 
       if (hidden) {
-        cardEl.innerHTML = `<div class="rank">?</div><div class="suit">GS</div>`;
+        cardEl.innerHTML = cardBackBrandMarkup;
         return cardEl;
       }
 
       cardEl.classList.toggle("red", card.suit.color === "red");
       cardEl.innerHTML = `
         <div class="corner top"><span>${card.rank.label}</span><span>${card.suit.label}</span></div>
+        ${cardMarkMarkup}
         <div class="rank">${card.rank.label}</div>
         <div class="suit">${card.suit.label}</div>
         <div class="corner bottom"><span>${card.rank.label}</span><span>${card.suit.label}</span></div>
@@ -1399,14 +1757,15 @@
       tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.game === state.game));
       tabs.forEach((tab) => {
         tab.setAttribute("aria-selected", String(tab.dataset.game === state.game));
-        tab.disabled = state.blackjackActive && tab.dataset.game !== state.game;
+        tab.disabled = (state.blackjackActive || state.rouletteActive) && tab.dataset.game !== state.game;
       });
       Object.entries(panels).forEach(([game, panel]) => {
         panel.classList.toggle("active", game === state.game);
       });
+      deckShoeEl.hidden = state.game === "roulette";
 
       const outOfCredits = state.credits < 5;
-      const lockedBet = state.blackjackActive;
+      const lockedBet = state.blackjackActive || state.rouletteActive;
       dealButton.hidden = state.game === "blackjack" && state.blackjackActive;
       hitButton.hidden = state.game !== "blackjack" || !state.blackjackActive;
       standButton.hidden = state.game !== "blackjack" || !state.blackjackActive;
@@ -1420,14 +1779,16 @@
       chipButtons.forEach((button) => {
         button.disabled = outOfCredits || lockedBet || state.bet >= maxBet();
       });
+      roulettePickButtons.forEach((button) => {
+        const isActive = button.dataset.rouletteType === state.rouletteBetType &&
+          button.dataset.rouletteValue === String(state.rouletteChoice);
+        button.classList.toggle("active", isActive);
+        button.disabled = state.rouletteActive;
+      });
 
-      if (state.game === "high-card") {
-        dealButton.textContent = "Deal Cards";
-        gameCopyEl.textContent = "Higher card wins. Ties return your bet.";
-      } else {
-        dealButton.textContent = "Deal Blackjack";
-        gameCopyEl.textContent = "Dealer stands on 17. Natural blackjack pays 3:2.";
-      }
+      const meta = gameMeta[state.game];
+      dealButton.textContent = meta.action;
+      gameCopyEl.textContent = meta.activeCopy || meta.copy;
 
       if (outOfCredits) {
         showResult("Stack empty", "Reset your virtual credits to play another round.");
@@ -1435,7 +1796,7 @@
     }
 
     function canChangeBet() {
-      return state.credits >= 5 && !state.blackjackActive;
+      return state.credits >= 5 && !state.blackjackActive && !state.rouletteActive;
     }
 
     function setBet(value) {
@@ -1618,21 +1979,81 @@
       render();
     }
 
+    function rouletteBetLabel() {
+      return state.rouletteBetType === "number"
+        ? `number ${state.rouletteChoice}`
+        : state.rouletteChoice;
+    }
+
+    function selectRouletteBet(type, value) {
+      if (state.rouletteActive) {
+        return;
+      }
+
+      state.rouletteBetType = type;
+      state.rouletteChoice = type === "number" ? Number(value) : value;
+      showResult("Roulette", `Betting on ${rouletteBetLabel()}.`);
+      render();
+    }
+
+    function spinRoulette() {
+      if (state.rouletteActive) {
+        return;
+      }
+
+      resetEffects();
+      state.rouletteActive = true;
+      rouletteResultEl.textContent = "--";
+      rouletteResultEl.className = "roulette-result";
+      showResult("Wheel spinning", `Your ${state.bet} credit bet is on ${rouletteBetLabel()}.`);
+
+      const pocketIndex = Math.floor(Math.random() * rouletteNumbers.length);
+      const number = rouletteNumbers[pocketIndex];
+      const color = rouletteColor(number);
+      const segment = 360 / rouletteNumbers.length;
+      const targetAngle = pocketIndex * segment + segment / 2;
+      const wheelSpins = 1440 + Math.floor(Math.random() * 360);
+      const ballSpins = 2160 + Math.floor(Math.random() * 420);
+
+      state.rouletteWheelRotation += wheelSpins + targetAngle;
+      state.rouletteBallRotation -= ballSpins + targetAngle;
+      rouletteWheelEl.style.transform = `rotate(${state.rouletteWheelRotation}deg)`;
+      rouletteBallTrackEl.style.transform = `rotate(${state.rouletteBallRotation}deg)`;
+      render();
+
+      window.setTimeout(() => {
+        const won = state.rouletteBetType === "number"
+          ? number === state.rouletteChoice
+          : color === state.rouletteChoice;
+        const payout = state.rouletteBetType === "number" ? state.bet * 35 : state.bet;
+
+        state.rouletteActive = false;
+        rouletteResultEl.textContent = number;
+        rouletteResultEl.className = `roulette-result ${color}`;
+        replayAnimation(rouletteResultEl, "pop");
+
+        if (won) {
+          settleWin(payout, `${color.toUpperCase()} ${number}`, `Roulette pays ${formatCredits(payout)} credits.`);
+        } else {
+          settleLoss(`${color.toUpperCase()} ${number}`, `You lost ${state.bet} credits on ${rouletteBetLabel()}.`);
+        }
+
+        render();
+      }, 4550);
+    }
+
     function switchGame(game) {
-      if (state.blackjackActive) {
+      if (state.blackjackActive || state.rouletteActive) {
         return;
       }
 
       state.game = game;
       resetEffects();
-      showResult(
-        game === "high-card" ? "High Card" : "Blackjack",
-        game === "high-card"
-          ? "Higher card wins. Ties return your bet."
-          : "Get closer to 21 than the dealer without going over."
-      );
+      showResult(gameMeta[game].title, gameMeta[game].copy);
       render();
     }
+
+    initializeRouletteUi();
 
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => switchGame(tab.dataset.game));
@@ -1645,14 +2066,20 @@
       button.addEventListener("click", () => changeBet(Number(button.dataset.chip)));
     });
 
+    roulettePickButtons.forEach((button) => {
+      button.addEventListener("click", () => selectRouletteBet(button.dataset.rouletteType, button.dataset.rouletteValue));
+    });
+
     minBetButton.addEventListener("click", () => setBet(5));
     maxBetButton.addEventListener("click", () => setBet(maxBet()));
 
     dealButton.addEventListener("click", () => {
       if (state.game === "high-card") {
         dealHighCard();
-      } else {
+      } else if (state.game === "blackjack") {
         startBlackjack();
+      } else {
+        spinRoulette();
       }
     });
 
@@ -1666,12 +2093,17 @@
       state.wins = 0;
       state.losses = 0;
       state.blackjackActive = false;
+      state.rouletteActive = false;
+      state.rouletteBetType = "color";
+      state.rouletteChoice = "red";
       state.dealerHand = [];
       state.playerHand = [];
       state.hideDealerHole = false;
       state.blackjackRound += 1;
       clearBlackjackTable();
       resetEffects();
+      rouletteResultEl.textContent = "--";
+      rouletteResultEl.className = "roulette-result";
       playerCardEl.classList.remove("winner");
       houseCardEl.classList.remove("winner");
       showResult("Place a bet", "Choose High Card or Blackjack to begin.");

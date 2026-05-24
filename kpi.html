@@ -155,45 +155,39 @@
   function renderTree(roots){
     const rootEl = document.getElementById('tree');
     if(!roots || roots.length===0){ rootEl.innerHTML = '<em>No pages discovered</em>'; return }
-    function renderNode(node){
-      const li = document.createElement('li');
-      const a = document.createElement('a'); a.href = '#'; a.textContent = node.url; a.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(node.url); });
-      li.appendChild(a);
-      if(node.children && node.children.length){
-        const ul = document.createElement('ul');
-        node.children.forEach(cu => {
-          const childNode = roots.__lookup__ ? roots.__lookup__(cu) : null; // placeholder
-          // we'll fetch from the seen map later via closure
-          const li2 = document.createElement('li');
-          const a2 = document.createElement('a'); a2.href='#'; a2.textContent = cu; a2.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(cu); });
-          li2.appendChild(a2);
-          ul.appendChild(li2);
-        });
-        li.appendChild(ul);
-      }
-      return li;
-    }
-
-    // Simple build using seen map stored on window by crawl action
     const seenMap = window.__kpi_seen || new Map();
     rootEl.innerHTML = '';
     const ul = document.createElement('ul');
-    for(const r of roots){
-      function build(node){
-        const li = document.createElement('li');
-        const a = document.createElement('a'); a.href='#'; a.textContent = node.url; a.addEventListener('click', (e)=>{e.preventDefault(); showNodeMetrics(node.url)});
-        li.appendChild(a);
-        if(node.children && node.children.length){
-          const sub = document.createElement('ul');
-          for(const c of node.children){
-            const childNode = seenMap.get(c) || {url:c, children:[]};
-            sub.appendChild(build(childNode));
-          }
-          li.appendChild(sub);
+    const build = (node, visited) => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#';
+      a.textContent = node.url;
+      a.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(node.url); });
+      li.appendChild(a);
+
+      if(node.children && node.children.length){
+        if(visited.has(node.url)){
+          const note = document.createElement('span');
+          note.textContent = ' (cycle detected)';
+          note.style.color = 'crimson';
+          li.appendChild(note);
+          return li;
         }
-        return li;
+        const nextVisited = new Set(visited);
+        nextVisited.add(node.url);
+        const sub = document.createElement('ul');
+        for(const c of node.children){
+          const childNode = seenMap.get(c) || {url:c, children:[]};
+          sub.appendChild(build(childNode, nextVisited));
+        }
+        li.appendChild(sub);
       }
-      ul.appendChild(build(r));
+      return li;
+    };
+
+    for(const r of roots){
+      ul.appendChild(build(r, new Set()));
     }
     rootEl.appendChild(ul);
   }

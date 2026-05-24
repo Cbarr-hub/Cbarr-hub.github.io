@@ -10,6 +10,10 @@
     table{border-collapse:collapse;width:100%;margin-top:12px}
     th,td{border:1px solid #ddd;padding:8px;text-align:left}
     th{background:#f4f4f4}
+    details{margin-left:16px;margin-top:6px}
+    summary{cursor:pointer;font-weight:600;display:flex;align-items:center;gap:0.5em}
+    .tree-button{font-size:0.85em;padding:2px 6px;border:1px solid #999;border-radius:4px;background:#f4f4f4;cursor:pointer}
+    .tree-button:hover{background:#e8e8e8}
     .ok{color:green}.warn{color:darkorange}.bad{color:crimson}
     pre{white-space:pre-wrap;background:#f9f9f9;padding:10px;border:1px solid #eee}
   </style>
@@ -17,15 +21,6 @@
 <body>
   <h1>KPI Dashboard — Quirky HTML Metrics</h1>
   <p>Scans the site pages and reports unusual/interesting HTML statistics.</p>
-
-  <div>
-    <label>Pages to scan (comma-separated):</label>
-    <input id="pagesInput" style="width:100%" value="index.html,index2.html,design_phil.html,gamble.html,map.html,tablets.html">
-  </div>
-  <p><button id="run">Run scan</button> <span id="status"></span></p>
-
-  <div id="summary"></div>
-  <div id="results"></div>
 
   <h2>Site Crawler</h2>
   <div>
@@ -37,6 +32,15 @@
     <span id="crawlStatus"></span>
   </div>
   <div id="tree" style="margin-top:12px"></div>
+
+  <div>
+    <label>Pages to scan (comma-separated):</label>
+    <input id="pagesInput" style="width:100%" value="index.html,index2.html,design_phil.html,gamble.html,map.html,tablets.html">
+  </div>
+  <p><button id="run">Run scan</button> <span id="status"></span></p>
+
+  <div id="summary"></div>
+  <div id="results"></div>
 
   <script>
   // List of quirky metrics we'll compute for each page.
@@ -157,39 +161,43 @@
     if(!roots || roots.length===0){ rootEl.innerHTML = '<em>No pages discovered</em>'; return }
     const seenMap = window.__kpi_seen || new Map();
     rootEl.innerHTML = '';
-    const ul = document.createElement('ul');
+
     const build = (node, visited) => {
-      const li = document.createElement('li');
-      const a = document.createElement('a');
-      a.href = '#';
-      a.textContent = node.url;
-      a.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(node.url); });
-      li.appendChild(a);
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      const title = document.createElement('span');
+      title.textContent = node.url;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'tree-button';
+      button.textContent = 'view metrics';
+      button.addEventListener('click', (e)=>{ e.stopPropagation(); showNodeMetrics(node.url); });
+      summary.appendChild(title);
+      summary.appendChild(button);
+      details.appendChild(summary);
 
       if(node.children && node.children.length){
         if(visited.has(node.url)){
-          const note = document.createElement('span');
-          note.textContent = ' (cycle detected)';
+          const note = document.createElement('div');
+          note.textContent = 'cycle detected';
           note.style.color = 'crimson';
-          li.appendChild(note);
-          return li;
+          note.style.marginLeft = '1em';
+          details.appendChild(note);
+          return details;
         }
         const nextVisited = new Set(visited);
         nextVisited.add(node.url);
-        const sub = document.createElement('ul');
         for(const c of node.children){
           const childNode = seenMap.get(c) || {url:c, children:[]};
-          sub.appendChild(build(childNode, nextVisited));
+          details.appendChild(build(childNode, nextVisited));
         }
-        li.appendChild(sub);
       }
-      return li;
+      return details;
     };
 
     for(const r of roots){
-      ul.appendChild(build(r, new Set()));
+      rootEl.appendChild(build(r, new Set()));
     }
-    rootEl.appendChild(ul);
   }
 
   function showNodeMetrics(url){
@@ -208,13 +216,11 @@
     status.textContent = 'Crawling...';
     try{
       const {seen, roots} = await crawlSite(start, max);
-      // expose seen map for renderTree
       window.__kpi_seen = seen;
-      // convert roots' child keys to node objects for rendering
-      const rootNodes = roots.map(r=>r);
-      renderTree(rootNodes);
-      status.textContent = `Crawled ${seen.size} pages`;
-      // render table for all collected metrics
+      renderTree(roots);
+      const pageList = Array.from(seen.keys()).join(',');
+      document.getElementById('pagesInput').value = pageList;
+      status.textContent = `Crawled ${seen.size} pages and updated scan list.`;
       const metrics = Array.from(metricsCache.entries()).map(([k,v])=> v.error ? {url:k, error:v.error} : v);
       renderTable(metrics.filter(m=>!m.error));
     }catch(e){ status.textContent = 'Crawl failed: '+e.message }

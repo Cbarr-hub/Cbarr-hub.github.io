@@ -35,11 +35,13 @@
 
   <div>
     <label>Pages to scan (comma-separated):</label>
-    <input id="pagesInput" style="width:100%" value="index.html,index2.html,design_phil.html,gamble.html,map.html,tablets.html">
+    <input id="pagesInput" style="width:100%" value="">
   </div>
   <p><button id="run">Run scan</button> <span id="status"></span></p>
 
   <div id="summary"></div>
+  <div id="keyMetrics"></div>
+  <div id="pageDetails"></div>
   <div id="results"></div>
 
   <script>
@@ -222,32 +224,63 @@
       document.getElementById('pagesInput').value = pageList;
       status.textContent = `Crawled ${seen.size} pages and updated scan list.`;
       const metrics = Array.from(metricsCache.entries()).map(([k,v])=> v.error ? {url:k, error:v.error} : v);
-      renderTable(metrics.filter(m=>!m.error));
+      renderKeyMetrics(metrics.filter(m=>!m.error));
+      renderPageDetails(metrics);
     }catch(e){ status.textContent = 'Crawl failed: '+e.message }
   });
 
-  function renderTable(metricsList){
-    const out = document.getElementById('results');
-    if(metricsList.length===0){ out.innerHTML='No results'; return }
-    let html = '<table><thead><tr><th>Page</th><th>Words</th><th>Avg word len</th><th>Longest word</th><th>Sentences</th><th>Avg words/sent</th><th>Inline styles</th><th>Imgs (missing alt)</th><th>External links</th><th>Duplicate IDs</th><th>DOM depth</th></tr></thead><tbody>';
+  function renderKeyMetrics(metricsList){
+    const out = document.getElementById('keyMetrics');
+    if(metricsList.length===0){ out.innerHTML = ''; return }
+    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Avg words/sent</th><th>Inline styles</th><th>Missing alt</th><th>External links</th><th>DOM depth</th></tr></thead><tbody>';
     for(const m of metricsList){
-      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgWordLen}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td><td>${m.avgSentenceWords}</td><td>${m.inlineStyleCount}</td><td>${m.imgsTotal} (${m.imgsMissingAlt})</td><td>${m.externalLinks}</td><td>${m.duplicateIDs.length}</td><td>${m.domMaxDepth}</td></tr>`;
+      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgSentenceWords}</td><td>${m.inlineStyleCount}</td><td>${m.imgsMissingAlt}</td><td>${m.externalLinks}</td><td>${m.domMaxDepth}</td></tr>`;
     }
     html += '</tbody></table>';
+    out.innerHTML = html;
+  }
 
-    // weird highlights
-    const weird = [];
-    // page with most inline styles
-    const mostStyles = metricsList.slice().sort((a,b)=>b.inlineStyleCount-a.inlineStyleCount)[0];
-    weird.push(`<strong>Most inline styles:</strong> <a href="${mostStyles.url}">${mostStyles.url}</a> (${mostStyles.inlineStyleCount})`);
-    // page with most missing alts
-    const mostMissingAlt = metricsList.slice().sort((a,b)=>b.imgsMissingAlt-a.imgsMissingAlt)[0];
-    weird.push(`<strong>Most images missing alt:</strong> <a href="${mostMissingAlt.url}">${mostMissingAlt.url}</a> (${mostMissingAlt.imgsMissingAlt})`);
-    // deepest DOM
-    const deepest = metricsList.slice().sort((a,b)=>b.domMaxDepth-a.domMaxDepth)[0];
-    weird.push(`<strong>Deepest DOM:</strong> <a href="${deepest.url}">${deepest.url}</a> (depth ${deepest.domMaxDepth})`);
+  function renderPageDetails(metricsList){
+    const out = document.getElementById('pageDetails');
+    if(metricsList.length===0){ out.innerHTML = ''; return }
+    const parts = ['<h3>Page details</h3>'];
+    for(const m of metricsList){
+      if(m.error){
+        parts.push(`<details><summary>${escapeHtml(m.url)} — error</summary><div style="padding:8px 12px;color:#900">${escapeHtml(m.error)}</div></details>`);
+        continue;
+      }
+      const duplicateInfo = m.duplicateIDs.length ? `${m.duplicateIDs.length} (${escapeHtml(m.duplicateIDs.join(', '))})` : '0';
+      parts.push(`
+        <details>
+          <summary>${escapeHtml(m.url)}</summary>
+          <table>
+            <tbody>
+              <tr><th>Word count</th><td>${m.wordCount}</td></tr>
+              <tr><th>Avg word length</th><td>${m.avgWordLen}</td></tr>
+              <tr><th>Longest word</th><td>${escapeHtml(m.longestWord)}</td></tr>
+              <tr><th>Sentence count</th><td>${m.sentenceCount}</td></tr>
+              <tr><th>Avg words/sentence</th><td>${m.avgSentenceWords}</td></tr>
+              <tr><th>Inline styles</th><td>${m.inlineStyleCount}</td></tr>
+              <tr><th>Comment count</th><td>${m.comments}</td></tr>
+              <tr><th>Images</th><td>${m.imgsTotal}</td></tr>
+              <tr><th>Missing alt</th><td>${m.imgsMissingAlt}</td></tr>
+              <tr><th>Scripts</th><td>${m.scriptCount}</td></tr>
+              <tr><th>Meta tags</th><td>${m.metaCount}</td></tr>
+              <tr><th>External links</th><td>${m.externalLinks}</td></tr>
+              <tr><th>Duplicate IDs</th><td>${duplicateInfo}</td></tr>
+              <tr><th>DOM max depth</th><td>${m.domMaxDepth}</td></tr>
+              <tr><th>Headings</th><td>h1:${m.headings.h1} h2:${m.headings.h2} h3:${m.headings.h3} h4:${m.headings.h4} h5:${m.headings.h5} h6:${m.headings.h6}</td></tr>
+            </tbody>
+          </table>
+        </details>
+      `);
+    }
+    out.innerHTML = parts.join('');
+  }
 
-    out.innerHTML = html + '<h3>Weird findings</h3><ul>' + weird.map(w=>`<li>${w}</li>`).join('') + '</ul>';
+  function renderTable(metricsList){
+    renderKeyMetrics(metricsList);
+    renderPageDetails(metricsList);
   }
 
   function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
@@ -267,13 +300,17 @@
     status.textContent='Done';
     // show summary
     document.getElementById('summary').innerHTML = `<p>Scanned ${results.length} pages.</p>`;
-    const good = results.filter(r=>!r.error);
-    renderTable(good);
+    const metrics = results;
+    const good = metrics.filter(r=>!r.error);
+    renderKeyMetrics(good);
+    renderPageDetails(metrics);
     // show raw errors
-    const errs = results.filter(r=>r.error);
+    const errs = metrics.filter(r=>r.error);
     if(errs.length){
       const eout = errs.map(e=>`<li>${e.url}: ${e.error}</li>`).join('');
-      document.getElementById('results').insertAdjacentHTML('beforeend', '<h3>Errors</h3><ul>'+eout+'</ul>');
+      document.getElementById('results').innerHTML = '<h3>Errors</h3><ul>'+eout+'</ul>';
+    } else {
+      document.getElementById('results').innerHTML = '';
     }
   });
   </script>

@@ -201,7 +201,11 @@ const gameMeta = {
   }
 };
 const cardMarkMarkup = `<div class="card-mark">GTS&reg;</div>`;
-const cardBackBrandMarkup = `<div class="card-back-brand"><span>GamerTown Solutions &reg;</span><span>solutions that solve</span></div>`;
+const cardBackBrandMarkup = `
+  <span class="card-back-logo" aria-hidden="true">
+    <img src="./gamertown_globe_logo_transparent.png" alt="" />
+  </span>
+`;
 
 function replayAnimation(element, className) {
   element.classList.remove(className);

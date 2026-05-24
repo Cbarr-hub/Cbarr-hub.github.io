@@ -44,51 +44,57 @@
     window.addEventListener('resize', () => { resize(); initSeaweed() })
 
     // ── pixel art sprites (facing RIGHT: head=right, tail=left) ──────────
-    // 0=transparent 1=body 2=accent/fin 3=eye(dark) 4=eye shine(white)
+    // 0=transparent 1=body 2=dark belly 3=eye pupil(black) 4=eye white
     const SPRITES = {
-      A: [  // classic fish, 10x6
-        [0,2,0,1,1,1,1,1,0,0],
-        [0,2,1,1,1,1,1,1,2,0],
-        [2,0,1,1,1,1,1,4,3,0],
-        [2,0,1,1,1,1,1,1,1,0],
-        [0,2,1,1,1,1,1,1,2,0],
-        [0,2,0,1,1,1,1,1,0,0],
+      A: [  // reference fish, 10x8
+        [0,1,1,0,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,0,0,0],
+        [1,1,1,1,1,1,1,1,0,0],
+        [0,0,1,1,1,1,1,4,4,0],
+        [0,0,1,1,1,1,1,4,3,0],
+        [1,1,1,1,1,1,1,1,0,0],
+        [1,1,1,1,1,1,1,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0],
       ],
-      B: [  // chubby fish, 8x6
-        [0,2,1,1,1,1,0,0],
-        [2,0,1,1,1,4,3,0],
-        [2,0,1,1,1,1,1,0],
-        [2,0,1,1,1,1,1,0],
-        [2,0,1,1,1,1,0,0],
-        [0,2,1,1,1,1,0,0],
+      B: [  // small, 8x6
+        [0,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,0,0],
+        [0,0,1,1,4,4,0,0],
+        [0,0,1,1,4,3,0,0],
+        [1,1,1,1,1,1,0,0],
+        [0,1,0,0,0,0,0,0],
       ],
-      C: [  // long fish, 14x6
-        [0,0,2,0,1,1,1,1,1,1,1,0,0,0],
-        [0,2,0,1,1,1,1,1,1,1,1,1,2,0],
-        [2,0,0,1,1,1,1,1,1,1,4,3,1,0],
-        [2,0,0,1,1,1,1,1,1,1,1,1,1,0],
-        [0,2,0,1,1,1,1,1,1,1,1,1,2,0],
-        [0,0,2,0,1,1,1,1,1,1,1,0,0,0],
+      C: [  // wide, 12x8
+        [0,1,1,0,0,0,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1,0,0,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0],
+        [0,0,1,1,1,1,1,1,4,4,0,0],
+        [0,0,1,1,1,1,1,1,4,3,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0],
+        [1,1,1,1,1,1,1,1,0,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0,0,0],
       ],
-      D: [  // tiny block fish, 6x4
-        [0,2,1,1,1,0],
-        [2,0,1,4,3,0],
-        [2,0,1,1,1,0],
-        [0,2,1,1,1,0],
+      D: [  // long, 13x6
+        [0,1,1,0,0,0,0,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0,0],
+        [0,0,1,1,1,1,1,1,1,4,4,0,0],
+        [0,0,1,1,1,1,1,1,1,4,3,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0,0,0,0],
       ],
     }
 
     const PALETTES = [
-      ['#ff7700','#cc4400'],  // orange
-      ['#ffcc00','#cc8800'],  // gold
-      ['#ff4488','#aa1155'],  // pink
-      ['#00bbff','#0066cc'],  // blue
-      ['#44ee88','#118844'],  // green
-      ['#bb44ff','#7711cc'],  // purple
-      ['#00ffcc','#009977'],  // teal
-      ['#ffffff','#aaaaaa'],  // silver
-      ['#ff6688','#cc2244'],  // red
-      ['#88ffff','#33aaaa'],  // cyan
+      ['#ff9900','#dd6600'],  // orange  (reference)
+      ['#ffcc00','#dd9900'],  // yellow
+      ['#ff5522','#cc2200'],  // red-orange
+      ['#ff44aa','#cc1177'],  // pink
+      ['#aa44ff','#7711cc'],  // purple
+      ['#44bbff','#1188cc'],  // blue
+      ['#44dd66','#119933'],  // green
+      ['#00ccaa','#009977'],  // teal
+      ['#ffffff','#bbbbbb'],  // white
+      ['#ffdd44','#ccaa00'],  // gold
     ]
 
     // ── seaweed ──────────────────────────────────────────────────────────
@@ -113,7 +119,7 @@
       seaweeds.forEach(sw => {
         const segH = sw.height / sw.segments
         ctx.lineWidth = 4
-        ctx.strokeStyle = `hsl(${sw.hue},60%,28%)`
+        ctx.strokeStyle = `hsl(${sw.hue},55%,22%)`
         ctx.beginPath()
         let x = sw.x, y = canvas.height - 40
         ctx.moveTo(x, y)
@@ -147,7 +153,7 @@
       draw() {
         ctx.save()
         ctx.globalAlpha = this.alpha
-        ctx.fillStyle = '#5599bb'
+        ctx.fillStyle = '#88ccee'
         const s = Math.round(this.r) * 2
         ctx.fillRect(Math.round(this.x), Math.round(this.y), s, s)
         ctx.restore()
@@ -201,7 +207,7 @@
             ctx.fillStyle = v === 1 ? this.palette[0]
                           : v === 2 ? this.palette[1]
                           : v === 3 ? '#111111'
-                          : '#ffffff'  // shine
+                          : '#ffffff'
             ctx.fillRect(ox + col * px, oy + row * px, px, px)
           }
         }
@@ -214,18 +220,18 @@
 
     // ── background ────────────────────────────────────────────────────────
     function drawBg() {
-      ctx.fillStyle = '#001133'
+      ctx.fillStyle = '#55aadd'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
     }
 
     function drawSand() {
-      const sandY = canvas.height - 40
-      ctx.fillStyle = '#a08040'
-      ctx.fillRect(0, sandY, canvas.width, 40)
-      ctx.fillStyle = '#887030'
-      ctx.fillRect(0, sandY + 8, canvas.width, 2)
-      ctx.fillRect(0, sandY + 18, canvas.width, 2)
-      ctx.fillRect(0, sandY + 28, canvas.width, 2)
+      const sandY = canvas.height - 44
+      ctx.fillStyle = '#ddb840'
+      ctx.fillRect(0, sandY, canvas.width, 44)
+      ctx.fillStyle = '#bb9020'
+      ctx.fillRect(0, sandY + 10, canvas.width, 3)
+      ctx.fillRect(0, sandY + 22, canvas.width, 3)
+      ctx.fillRect(0, sandY + 34, canvas.width, 3)
     }
 
     // ── click to scare fish ───────────────────────────────────────────────

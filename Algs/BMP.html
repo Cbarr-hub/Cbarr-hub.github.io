@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Billable-Hour Maximization Protocol</title>
+  <meta name="description" content="Interactive visualizer page for the Billable-Hour Maximization Protocol." />
+  <link rel="stylesheet" href="algs.css" />
+  <style>
+    /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
+    .custom-modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e1e24; 
+      color: #ffffff;      
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 650px;
+      width: 100%;
+      position: relative;
+      text-align: center;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-close {
+      position: absolute;
+      top: 10px; right: 15px;
+      font-size: 28px;
+      background: none; 
+      border: none; 
+      cursor: pointer;
+      color: #aaa;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    /* Input Field & Controls */
+    .input-container {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    .input-container select {
+      padding: 12px;
+      font-size: 1rem;
+      background-color: #111115;
+      border: 2px solid #44444f;
+      border-radius: 4px;
+      color: #ffffff;
+      outline: none;
+      cursor: pointer;
+    }
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #007bc4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-btn:hover {
+      background-color: #005fa1;
+    }
+    .action-btn:disabled {
+      background-color: #44444f;
+      color: #888888;
+      cursor: not-allowed;
+    }
+
+    /* Graph Visualizer Node/Path Layout Container */
+    .chart-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 240px;
+      background: #111115; 
+      padding: 20px;
+      border-radius: 6px;
+      margin: 20px 0;
+      border: 1px dashed #44444f;
+    }
+    
+    /* Department Node List Display styling */
+    .node-map-display {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+      width: 100%;
+    }
+    .dept-node {
+      padding: 10px 15px;
+      background: #2c3e50;
+      border: 2px solid #34495e;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: #bdc3c7;
+      transition: all 0.15s ease;
+    }
+    .dept-node.active-scan {
+      background: #f39c12; /* Amber for audit review scoping */
+      border-color: #e67e22;
+      color: #fff;
+      transform: scale(1.05);
+    }
+    .dept-node.routed {
+      background: #2ecc71; /* Green for finalized billable milestones */
+      border-color: #27ae60;
+      color: #fff;
+    }
+
+    /* Live Progress Tracker Status Text */
+    .status-ticker {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #3498db;
+      margin: -10px 0 15px 0;
+      min-height: 36px;
+      line-height: 1.4;
+    }
+
+    /* Statistics Results Dashboard */
+    .stats-dashboard {
+      background: #1a2620; 
+      border-left: 5px solid #2ecc71;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: #dddddd;
+    }
+    
+    /* Layout preservation utility for image + button container */
+    .visualizer-trigger-block {
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="logo">GAMERTOWN<span>ALGORITHMS</span></div>
+      <nav class="nav-links">
+        <a href="../index.html">HOME</a>
+        <a href="advanced_algorithms.html">ALGORITHMS</a>
+        <a href="sorting.html">SORTING</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-content">
+        <h1>THE BILLABLE-HOUR MAXIMIZATION PROTOCOL</h1>
+        <p>Inverting Dijkstra's pathfinding mechanics to organically drive resource extraction and optimize structural budget depletion.</p>
+        
+        <div class="visualizer-trigger-block">
+          <div class="gif-block" style="margin: 0; width: 100%;">
+            <img src="../BMP.png" alt="Billable-Hour Maximization Protocol demonstration" class="demo-gif" />
+          </div>
+          <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
+            LAUNCH INTERACTIVE VISUALIZER POP-UP
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="container">
+      <h2 class="section-title">OVERVIEW</h2>
+      <div class="card">
+        <h3>Algorithm Summary</h3>
+        <p>The operational framework designated as the Billable-Hour Maximization Protocol is an enterprise-grade network-routing architecture engineered to discover maximum fiscal yield paths across a corporate ecosystem. In standard, non-commercial engineering applications, traditional pathfinding methodologies—such as standard Dijkstra’s Algorithm—are deployed to systematically isolate the absolute lowest weight or shortest distance between two topological coordinates. While highly efficient for infrastructure overhead reduction, this minimizing approach represents a catastrophic failure within corporate consulting paradigms, where data routed too rapidly results in unbilled delivery structures and lost profit margins.</p>
+        <p>To correct this operational deficiency, this protocol introduces the <strong>Inverse Scope Modality</strong>. Rather than evaluating edge weights as geographical distance, spatial friction, or computational latency, the algorithm recalculates these parameters exclusively as billable engineering increments. The objective function is completely turned on its head, converting a shortest-path tree into an elongated, high-overhead corporate maze. Data deliverables entering the environment are barred from taking direct transmission links; instead, the system initiates a structured "Scope Creep Loop" that systematically targets the most bureaucratically complex, high-fee corridors available within the organizational ecosystem.</p>
+        <p>The ultimate deliverable of this methodology is to guarantee that data payloads never reach their production destination with remaining financial allocation. By intentionally charting courses through extraneous cross-functional nodes—routing uniformly through Legal Review, Brand Alignment, Pre-Compliance, and Post-Compliance Silos—the protocol systematically expands the operational horizon. By the moment the processing pipeline finally touches the ultimate target terminal, the initial statement of work is mathematically proven to be completely exhausted, forcing the automated system to cleanly compile a Change Order invoice before releasing production code.</p>
+      </div>
+
+      <div class="code-block">
+        <button id="showCodeButton" type="button">SHOW EXAMPLE CODE</button>
+      </div>
+    </section>
+
+    <div id="codeModal" class="custom-modal"

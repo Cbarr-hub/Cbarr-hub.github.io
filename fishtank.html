@@ -9,7 +9,8 @@
     body { overflow: hidden; }
     #tank {
       display: block;
-      width: 100%;
+      position: fixed;
+      left: 0;
       cursor: crosshair;
     }
     .go-hidden { display: none !important; }
@@ -87,12 +88,11 @@
     const canvas = document.getElementById('tank')
     const ctx    = canvas.getContext('2d')
 
-    function resize() {
-      canvas.width  = window.innerWidth
-      canvas.height = window.innerHeight - canvas.getBoundingClientRect().top
-    }
-    resize()
-    window.addEventListener('resize', () => { resize(); initSeaweed(); initScenery() })
+    const navH = document.querySelector('header').offsetHeight
+    canvas.style.top = navH + 'px'
+    canvas.width  = window.innerWidth
+    canvas.height = window.innerHeight - navH
+    window.addEventListener('resize', () => { initSeaweed(); initScenery() })
 
     // ── pixel art sprites (facing RIGHT: head=right, tail=left) ──────────
     // 0=transparent 1=body 2=stripe(dark) 3=eye pupil(black) 4=eye white
@@ -358,8 +358,8 @@
         this.x += this.vx
         this.y += Math.sin(t * this.bobFreq + this.bobPhase) * this.bobAmp
 
-        if (this.vx > 0 && this.x + this.w > canvas.width)  this.vx *= -1
-        if (this.vx < 0 && this.x < 0)                       this.vx *= -1
+        if (this.vx > 0 && this.x + this.w > canvas.width)  { this.vx *= -1.005 }
+        if (this.vx < 0 && this.x < 0)                       { this.vx *= -1.005 }
 
         const minY = 20, maxY = canvas.height - 60 - this.h
         if (this.y < minY) this.y = minY
@@ -417,7 +417,7 @@
       update() {
         this.x += this.vx
         this.y += this.vy
-        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
+        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1.005
         if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
       }
 

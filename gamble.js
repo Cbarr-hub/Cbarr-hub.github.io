@@ -18,7 +18,7 @@ import {
   settleSlotMath as settleSlotRulesMath,
   weightedSlotSymbol as weightedSlotRulesSymbol,
   winTierTitle
-} from './slot-rules.mjs?v=slot-rtp-2';
+} from './slot-rules.mjs?v=slot-line-fix-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);

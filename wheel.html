@@ -254,7 +254,16 @@
       return slotColors[Math.floor(Math.random() * slotColors.length)];
     }
 
-    function buildSlot(names) {
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+
+    // buildSlot now accepts optional resultColor and selectedIndex so
+    // we can ensure the landing tile shows the chosen rarity
+    function buildSlot(names, resultColor = null, selectedIndex = 0) {
       slotTrack.innerHTML = '';
       if (!names || names.length === 0) {
         const messageEl = document.createElement('div');
@@ -267,12 +276,44 @@
       const repeatCount = loopCount + 2;
       const repeatedNames = Array.from({ length: repeatCount }, () => names).flat();
 
+      // Determine how many tiles of each rarity we should have (deterministic rounding)
+      const tileCount = repeatedNames.length;
+      const entries = Object.entries(cs2Odds);
+      const totalOdds = entries.reduce((s, [, v]) => s + v, 0);
+      const rawCounts = entries.map(([color, odds]) => ({
+        color,
+        raw: (odds / totalOdds) * tileCount,
+        count: Math.floor((odds / totalOdds) * tileCount)
+      }));
+      let assigned = rawCounts.reduce((s, r) => s + r.count, 0);
+      // distribute remaining slots by highest fractional remainder
+      const remainders = rawCounts.map(r => ({ color: r.color, frac: r.raw - r.count }));
+      remainders.sort((a, b) => b.frac - a.frac);
+      let rem = tileCount - assigned;
+      for (let i = 0; i < rem; i++) {
+        const c = remainders[i % remainders.length].color;
+        const rc = rawCounts.find(r => r.color === c);
+        rc.count += 1;
+      }
+
+      // Build color list and shuffle for visual distribution
+      const colorKeysPerTile = [];
+      rawCounts.forEach(r => {
+        for (let i = 0; i < r.count; i++) colorKeysPerTile.push(r.color);
+      });
+      shuffleArray(colorKeysPerTile);
+
+      // Compute landing index within repeatedNames and force that tile to the resultColor
+      const targetIndex = names.length + selectedIndex + loopCount * names.length;
+      if (resultColor && targetIndex >= 0 && targetIndex < colorKeysPerTile.length) {
+        colorKeysPerTile[targetIndex] = resultColor;
+      }
+
       repeatedNames.forEach((game, index) => {
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = game.name;
-        // Assign tile colors according to CS2 odds so rare colors appear less often
-        const colorKey = getRandomColorByOdds();
+        const colorKey = colorKeysPerTile[index] || slotColors[Math.floor(Math.random() * slotColors.length)];
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
         item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
@@ -307,21 +348,12 @@
       const selectedIndex = Math.floor(Math.random() * names.length);
       const selectedName = names[selectedIndex].name;
 
-      buildSlot(names);
+      buildSlot(names, resultColor, selectedIndex);
       const itemWidth = parseFloat(slotTrack.dataset.itemWidth) || 240;
       const containerWidth = slotTrack.parentElement.clientWidth;
       const loopCount = 4;
       const targetIndex = names.length + selectedIndex + loopCount * names.length;
       const targetOffset = containerWidth / 2 - itemWidth / 2 - targetIndex * itemWidth;
-
-      // Force the landing tile to display the chosen rarity color so visuals match odds
-      const items = slotTrack.querySelectorAll('.slot-item');
-      const landingIndex = targetIndex;
-      if (items[landingIndex]) {
-        const landingBg = slotColorMap[resultColor] || resultColor;
-        items[landingIndex].style.background = landingBg;
-        items[landingIndex].style.color = (resultColor === 'gold') ? '#000' : '#fff';
-      }
 
       slotTrack.style.transition = `transform ${spinDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
       requestAnimationFrame(() => {

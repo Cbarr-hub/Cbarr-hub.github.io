@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gambling Section | Gamertown Solutions</title>
   <meta name="description" content="Fictional-dollar gambling games including High Card, Blackjack, Roulette, and Slots." />
-  <link rel="stylesheet" href="gamble.css?v=slot-rtp-1">
+  <link rel="stylesheet" href="gamble.css?v=auto-split-rtp-1">
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
 </head>
@@ -197,12 +197,17 @@
                 </div>
                 <div class="slot-badge">
                   <span>Target RTP</span>
-                  <strong id="slot-rtp">95%</strong>
+                  <strong id="slot-rtp">87%</strong>
                 </div>
                 <div class="slot-badge slot-retrigger-badge">
                   <span>Crazy Lock</span>
                   <strong id="slot-retrigger">Ready</strong>
                 </div>
+              </div>
+
+              <div class="crazy-rules-tablet" aria-label="Crazy Mode rules">
+                <strong>Crazy Mode</strong>
+                <span>3+ scatters start free spins. Wilds lock in place, line wins can raise the multiplier, and more scatters can retrigger the bonus.</span>
               </div>
             </div>
           </div>
@@ -240,10 +245,20 @@
           <button class="mini-action" id="max-bet" type="button">Max</button>
         </div>
 
+        <label class="auto-reroll" id="auto-reroll-control" hidden>
+          <span>
+            <strong>Auto</strong>
+            <em>Repeat spins</em>
+          </span>
+          <input id="auto-reroll-toggle" type="checkbox" />
+          <i aria-hidden="true"></i>
+        </label>
+
         <div class="action-row">
           <button class="primary" id="deal" type="button">Deal</button>
           <button class="secondary" id="hit" type="button" hidden>Hit</button>
           <button class="secondary" id="stand" type="button" hidden>Stand</button>
+          <button class="secondary" id="split" type="button" hidden>Split</button>
         </div>
 
         <button class="reset" id="reset" type="button">Reset Bankroll</button>
@@ -307,6 +322,6 @@
     </section>
   </main>
 
-  <script type="module" src="./gamble.js?v=recent-net-1"></script>
+  <script type="module" src="./gamble.js?v=auto-split-rtp-1"></script>
 </body>
 </html>

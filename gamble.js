@@ -4,10 +4,10 @@ import {
   getPlayerBalance,
   insertGamblingEvent,
   savePlayerBalance as persistPlayerBalance
-} from './gamble-data.js?v=dashboard-clean-1';
-import { renderRecentEvents } from './gamble-activity.js?v=recent-net-1';
-import { renderGamblingDashboard } from './gamble-dashboard.js?v=dashboard-clean-1';
-import { renderLeaderboard } from './gamble-leaderboard.js?v=dashboard-clean-1';
+} from './gamble-data.js?v=money-events-1';
+import { renderRecentEvents } from './gamble-activity.js?v=money-events-1';
+import { renderGamblingDashboard } from './gamble-dashboard.js?v=money-events-1';
+import { renderLeaderboard } from './gamble-leaderboard.js?v=money-events-1';
 import {
   SLOT_PAYLINES as slotRulesPaylines,
   SLOT_RTP_TARGET,
@@ -19,7 +19,7 @@ import {
   settleSlotMath as settleSlotRulesMath,
   weightedSlotSymbol as weightedSlotRulesSymbol,
   winTierTitle
-} from './slot-rules.mjs?v=slot-crazy-1';
+} from './slot-rules.mjs?v=slot-rtp-87-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
@@ -60,6 +60,11 @@ const state = {
   playerHand: [],
   hideDealerHole: false,
   blackjackResolving: false,
+  blackjackHands: [],
+  blackjackHandStates: [],
+  blackjackSplitActive: false,
+  blackjackActiveHandIndex: 0,
+  blackjackSplitRound: 0,
   renderedBet: 5,
   blackjackRound: 0,
   rouletteActive: false,
@@ -75,7 +80,9 @@ const state = {
   slotRound: 0,
   slotBonusTotal: 0,
   slotRetriggerText: "",
-  slotCrazyWilds: []
+  slotCrazyWilds: [],
+  autoReroll: false,
+  autoRerollTimer: null
 };
 
 const creditsEl = document.getElementById("credits");
@@ -88,6 +95,9 @@ const copyEl = document.getElementById("result-copy");
 const dealButton = document.getElementById("deal");
 const hitButton = document.getElementById("hit");
 const standButton = document.getElementById("stand");
+const splitButton = document.getElementById("split");
+const autoRerollControlEl = document.getElementById("auto-reroll-control");
+const autoRerollToggleEl = document.getElementById("auto-reroll-toggle");
 const lowerBetButton = document.getElementById("lower-bet");
 const raiseBetButton = document.getElementById("raise-bet");
 const minBetButton = document.getElementById("min-bet");
@@ -1030,6 +1040,7 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   });
   savePlayerBalance(slotEvent);
   render();
+  scheduleAutoReroll();
 }
 
 function spinSlots() {
@@ -1163,6 +1174,109 @@ function handTotal(hand) {
 
 function isBlackjack(hand) {
   return hand.length === 2 && handTotal(hand) === 21;
+}
+
+function resetBlackjackSplitState() {
+  state.blackjackHands = [];
+  state.blackjackHandStates = [];
+  state.blackjackSplitActive = false;
+  state.blackjackActiveHandIndex = 0;
+  state.blackjackSplitRound = 0;
+}
+
+function activeBlackjackHand() {
+  return state.blackjackSplitActive
+    ? state.blackjackHands[state.blackjackActiveHandIndex]
+    : state.playerHand;
+}
+
+function activeBlackjackHandState() {
+  return state.blackjackSplitActive
+    ? state.blackjackHandStates[state.blackjackActiveHandIndex]
+    : null;
+}
+
+function splitHandCardsEl(index = state.blackjackActiveHandIndex) {
+  return playerHandEl.querySelector(`[data-split-cards="${index}"]`);
+}
+
+function updateSplitHandShells() {
+  if (!state.blackjackSplitActive) {
+    playerHandEl.classList.remove("split-layout");
+    return;
+  }
+
+  playerHandEl.classList.add("split-layout");
+  Array.from(playerHandEl.querySelectorAll(".split-hand")).forEach((handEl) => {
+    const index = Number(handEl.dataset.splitHand);
+    const hand = state.blackjackHands[index] || [];
+    const handState = state.blackjackHandStates[index] || {};
+    const totalEl = handEl.querySelector("[data-split-total]");
+    const statusEl = handEl.querySelector("[data-split-status]");
+    handEl.classList.toggle("active", index === state.blackjackActiveHandIndex && state.blackjackActive);
+    handEl.classList.toggle("settled", Boolean(handState.settled));
+    if (totalEl) {
+      totalEl.textContent = hand.length ? handTotal(hand) : "--";
+    }
+    if (statusEl) {
+      statusEl.textContent = handState.resultTitle || (index === state.blackjackActiveHandIndex && state.blackjackActive ? "Playing" : "Queued");
+    }
+  });
+}
+
+function renderSplitHandShells() {
+  playerHandEl.innerHTML = "";
+  playerHandEl.classList.add("split-layout");
+  state.blackjackHands.forEach((hand, index) => {
+    const handEl = document.createElement("div");
+    handEl.className = "split-hand";
+    handEl.dataset.splitHand = String(index);
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "split-hand-title";
+    titleEl.innerHTML = `<span>Hand ${index + 1}: <b data-split-total>${handTotal(hand)}</b></span><span data-split-status>${index === state.blackjackActiveHandIndex ? "Playing" : "Queued"}</span>`;
+    handEl.appendChild(titleEl);
+
+    const cardsEl = document.createElement("div");
+    cardsEl.className = "split-hand-cards";
+    cardsEl.dataset.splitCards = String(index);
+    handEl.appendChild(cardsEl);
+    playerHandEl.appendChild(handEl);
+  });
+  updateSplitHandShells();
+}
+
+function appendCardToSplitHand(index, card, delay = 0) {
+  const cardsEl = splitHandCardsEl(index);
+  if (!cardsEl) {
+    return null;
+  }
+
+  const cardEl = createCard(card);
+  cardsEl.appendChild(cardEl);
+  blackjackCards.player.push({ card, cardEl, hidden: false, splitHandIndex: index });
+  requestAnimationFrame(() => dealFromDeck(cardEl, delay));
+  updateBlackjackTotals();
+  return cardEl;
+}
+
+function canSplitBlackjack() {
+  if (!state.blackjackActive || state.blackjackSplitActive || state.blackjackResolving) {
+    return false;
+  }
+  if (state.playerHand.length !== 2 || state.credits < state.bet * 2) {
+    return false;
+  }
+  return state.playerHand[0].rank.label === state.playerHand[1].rank.label;
+}
+
+function splitEventDetails(index, extra = {}) {
+  return {
+    split_hand_index: index + 1,
+    split_total_hands: state.blackjackHands.length || 1,
+    split_round: state.blackjackSplitRound,
+    ...extra
+  };
 }
 
 function clampBet() {
@@ -1333,13 +1447,13 @@ function savePlayerBalance(event = null) {
   }, 250);
 }
 
-function totalStateClass(hand, hidden = false) {
+function totalStateClass(hand, hidden = false, naturalBlackjack = true) {
   if (!hand.length) {
     return "";
   }
 
   const total = handTotal(hand);
-  if (!hidden && isBlackjack(hand)) {
+  if (naturalBlackjack && !hidden && isBlackjack(hand)) {
     return "blackjack";
   }
   if (total > 21) {
@@ -1351,7 +1465,7 @@ function totalStateClass(hand, hidden = false) {
   return "safe";
 }
 
-function updateTotalBadge(badgeEl, hand, hidden = false) {
+function updateTotalBadge(badgeEl, hand, hidden = false, naturalBlackjack = true) {
   const visibleHand = hidden ? hand.slice(0, 1) : hand;
   const total = visibleHand.length ? handTotal(visibleHand) : "--";
   const isWinner = badgeEl.classList.contains("winner");
@@ -1359,7 +1473,7 @@ function updateTotalBadge(badgeEl, hand, hidden = false) {
   badgeEl.textContent = total;
   badgeEl.className = "total-badge";
 
-  const stateClass = totalStateClass(visibleHand, hidden);
+  const stateClass = totalStateClass(visibleHand, hidden, naturalBlackjack);
   if (stateClass) {
     badgeEl.classList.add(stateClass);
   }
@@ -1373,12 +1487,18 @@ function updateTotalBadge(badgeEl, hand, hidden = false) {
 
 function updateBlackjackTotals() {
   updateTotalBadge(dealerTotalEl, state.dealerHand, state.hideDealerHole);
-  updateTotalBadge(playerTotalEl, state.playerHand, false);
+  updateTotalBadge(playerTotalEl, activeBlackjackHand() || state.playerHand, false, !state.blackjackSplitActive);
+  updateSplitHandShells();
 }
 
 function appendBlackjackCard(hand, card, options = {}) {
   const cardEl = createCard(card, options.hidden);
-  const target = hand === "dealer" ? dealerHandEl : playerHandEl;
+  const target = hand === "dealer"
+    ? dealerHandEl
+    : (state.blackjackSplitActive ? splitHandCardsEl() : playerHandEl);
+  if (!target) {
+    return null;
+  }
   target.appendChild(cardEl);
   blackjackCards[hand].push({ card, cardEl, hidden: Boolean(options.hidden) });
   requestAnimationFrame(() => dealFromDeck(cardEl, options.delay || 0));
@@ -1403,6 +1523,7 @@ function revealDealerHoleCard() {
 function clearBlackjackTable() {
   dealerHandEl.innerHTML = "";
   playerHandEl.innerHTML = "";
+  playerHandEl.classList.remove("split-layout");
   blackjackCards.dealer = [];
   blackjackCards.player = [];
   dealerTotalEl.textContent = "--";
@@ -1433,17 +1554,23 @@ function render() {
   const slotBonusLocked = state.slotActive || state.slotFreeSpins > 0;
   const lockedBet = state.blackjackActive || state.blackjackResolving || state.rouletteActive || slotBonusLocked;
   const canUseFreeSpin = state.game === "slots" && state.slotFreeSpins > 0;
+  const autoGame = state.game === "roulette" || state.game === "slots";
   dealButton.hidden = state.game === "blackjack" && state.blackjackActive;
   hitButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
   standButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
+  splitButton.hidden = state.game !== "blackjack" || !canSplitBlackjack();
   dealButton.disabled = balanceLoading || (outOfCredits && !canUseFreeSpin) || state.blackjackResolving || state.rouletteActive || state.slotActive;
   hitButton.disabled = balanceLoading || outOfCredits || !state.blackjackActive || state.blackjackResolving;
   standButton.disabled = balanceLoading || outOfCredits || !state.blackjackActive || state.blackjackResolving;
+  splitButton.disabled = balanceLoading || !canSplitBlackjack();
   lowerBetButton.disabled = balanceLoading || state.bet <= 5 || outOfCredits || lockedBet;
   raiseBetButton.disabled = balanceLoading || state.bet >= maxBet() || outOfCredits || lockedBet;
   minBetButton.disabled = balanceLoading || outOfCredits || lockedBet || state.bet <= 5;
   maxBetButton.disabled = balanceLoading || outOfCredits || lockedBet || state.bet >= maxBet();
   resetButton.disabled = balanceLoading || lockedBet;
+  autoRerollControlEl.hidden = !autoGame;
+  autoRerollToggleEl.checked = state.autoReroll && autoGame;
+  autoRerollToggleEl.disabled = balanceLoading || !autoGame;
   chipButtons.forEach((button) => {
     button.disabled = balanceLoading || outOfCredits || lockedBet || state.bet >= maxBet();
   });
@@ -1465,6 +1592,72 @@ function render() {
 
 function canChangeBet() {
   return !state.balanceLoading && state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
+}
+
+function clearAutoRerollTimer() {
+  window.clearTimeout(state.autoRerollTimer);
+  state.autoRerollTimer = null;
+}
+
+function supportsAutoReroll(game = state.game) {
+  return game === "roulette" || game === "slots";
+}
+
+function setAutoReroll(enabled) {
+  state.autoReroll = Boolean(enabled && supportsAutoReroll());
+  clearAutoRerollTimer();
+  if (state.autoReroll) {
+    showResult("Auto on", `${gameMeta[state.game].title} will repeat after each spin.`);
+    scheduleAutoReroll(250);
+  } else {
+    showResult("Auto off", "Current spin will finish normally.");
+  }
+  render();
+}
+
+function stopAutoReroll(copy = "Auto stopped.") {
+  if (!state.autoReroll && !state.autoRerollTimer) {
+    return;
+  }
+  state.autoReroll = false;
+  clearAutoRerollTimer();
+  showResult("Auto off", copy);
+  render();
+}
+
+function canAutoRerollNow() {
+  if (!state.autoReroll || state.balanceLoading || !supportsAutoReroll()) {
+    return false;
+  }
+  if (state.game === "roulette") {
+    return !state.rouletteActive && !state.blackjackActive && !state.slotActive && state.credits >= state.bet;
+  }
+  return !state.slotActive && !state.rouletteActive && !state.blackjackActive && (state.slotFreeSpins > 0 || state.credits >= state.bet);
+}
+
+function scheduleAutoReroll(delay = 850) {
+  clearAutoRerollTimer();
+  if (!state.autoReroll || !supportsAutoReroll()) {
+    return;
+  }
+
+  state.autoRerollTimer = window.setTimeout(() => {
+    state.autoRerollTimer = null;
+    if ((state.game === "roulette" && state.rouletteActive) || (state.game === "slots" && state.slotActive)) {
+      scheduleAutoReroll(500);
+      return;
+    }
+    if (!canAutoRerollNow()) {
+      stopAutoReroll("Bankroll or game state stopped repeat play.");
+      return;
+    }
+
+    if (state.game === "roulette") {
+      spinRoulette();
+    } else {
+      spinSlots();
+    }
+  }, delay);
 }
 
 function changeBet(amount) {
@@ -1538,7 +1731,8 @@ function settleWin(amount, title, copy, options = {}) {
 
 function settleLoss(title, copy, options = {}) {
   const balanceBefore = state.credits;
-  state.credits -= state.bet;
+  const betAmount = options.betAmount ?? state.bet;
+  state.credits -= betAmount;
   state.streak = 0;
   state.losses += 1;
   showResult(title, copy);
@@ -1546,7 +1740,7 @@ function settleLoss(title, copy, options = {}) {
   playOutcomeEffect("loss", state.game === "blackjack" ? "dealer" : null);
   savePlayerBalance(buildEvent({
     outcome: "loss",
-    betAmount: options.betAmount ?? state.bet,
+    betAmount,
     payoutAmount: 0,
     balanceBefore,
     balanceAfter: state.credits,
@@ -1562,6 +1756,127 @@ function recordPush(details = {}) {
     balanceAfter: state.credits,
     details
   }));
+}
+
+function recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, balanceAfter, details = {}) {
+  const handState = state.blackjackHandStates[index];
+  if (handState) {
+    handState.settled = true;
+    handState.resultTitle = outcome === "win" ? "Won" : outcome === "loss" ? "Lost" : "Push";
+  }
+
+  savePlayerBalance(buildEvent({
+    game: "blackjack",
+    outcome,
+    betAmount: state.bet,
+    payoutAmount,
+    balanceBefore,
+    balanceAfter,
+    details: splitEventDetails(index, details)
+  }));
+}
+
+function settleSplitHand(index, outcome, title, details = {}) {
+  const hand = state.blackjackHands[index];
+  const balanceBefore = state.credits;
+  let payoutAmount = 0;
+
+  if (outcome === "win") {
+    payoutAmount = state.bet;
+    state.credits += payoutAmount;
+    state.streak += 1;
+    state.wins += 1;
+  } else if (outcome === "loss") {
+    state.credits -= state.bet;
+    state.streak = 0;
+    state.losses += 1;
+  } else {
+    state.streak = 0;
+  }
+
+  recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, state.credits, {
+    player_total: handTotal(hand),
+    dealer_total: handTotal(state.dealerHand),
+    hand_cards: hand.map(cardCode),
+    dealer_cards: state.dealerHand.map(cardCode),
+    split_result: title,
+    ...details
+  });
+}
+
+function settleSplitBust(index) {
+  settleSplitHand(index, "loss", "Bust", {
+    player_bust: true
+  });
+  showResult(`Hand ${index + 1} busts`, `Hand ${index + 1} lost ${formatDollars(state.bet)}.`);
+  pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+}
+
+function advanceSplitHandOrResolve() {
+  const nextIndex = state.blackjackHandStates.findIndex((handState, index) =>
+    index > state.blackjackActiveHandIndex && !handState.settled && !handState.stood
+  );
+
+  if (nextIndex !== -1) {
+    state.blackjackActiveHandIndex = nextIndex;
+    state.playerHand = state.blackjackHands[nextIndex];
+    showResult(`Hand ${nextIndex + 1}`, "Hit or stand for this split hand.");
+    updateBlackjackTotals();
+    render();
+    return;
+  }
+
+  resolveSplitDealerAndHands();
+}
+
+function resolveSplitDealerAndHands() {
+  state.blackjackActive = false;
+  state.blackjackResolving = true;
+  revealDealerHoleCard();
+  let delay = 220;
+  const allHandsSettled = state.blackjackHandStates.every((handState) => handState.settled);
+
+  while (!allHandsSettled && handTotal(state.dealerHand) < 17) {
+    const card = drawCard();
+    state.dealerHand.push(card);
+    appendBlackjackCard("dealer", card, { delay });
+    delay += 120;
+  }
+
+  const dealerTotal = handTotal(state.dealerHand);
+  const dealerBust = dealerTotal > 21;
+  const summaries = [];
+
+  state.blackjackHands.forEach((hand, index) => {
+    const handState = state.blackjackHandStates[index];
+    if (handState.settled) {
+      summaries.push(`Hand ${index + 1} ${handState.resultTitle.toLowerCase()}`);
+      return;
+    }
+
+    const playerTotal = handTotal(hand);
+    if (dealerBust || playerTotal > dealerTotal) {
+      settleSplitHand(index, "win", dealerBust ? "Dealer busts" : "You win", {
+        dealer_bust: dealerBust
+      });
+      summaries.push(`Hand ${index + 1} won`);
+    } else if (playerTotal < dealerTotal) {
+      settleSplitHand(index, "loss", "Dealer wins");
+      summaries.push(`Hand ${index + 1} lost`);
+    } else {
+      settleSplitHand(index, "push", "Push");
+      summaries.push(`Hand ${index + 1} pushed`);
+    }
+  });
+
+  state.blackjackResolving = false;
+  state.blackjackSplitActive = false;
+  state.playerHand = state.blackjackHands[0] || [];
+  showResult("Split settled", summaries.join(". ") + ".");
+  pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+  playOutcomeEffect(summaries.some((summary) => summary.includes("won")) ? "win" : summaries.some((summary) => summary.includes("lost")) ? "loss" : "push");
+  updateBlackjackTotals();
+  render();
 }
 
 function dealHighCard() {
@@ -1605,6 +1920,7 @@ function dealHighCard() {
 function startBlackjack() {
   resetEffects();
   clearBlackjackTable();
+  resetBlackjackSplitState();
   state.blackjackRound += 1;
   const round = state.blackjackRound;
   state.blackjackActive = true;
@@ -1664,12 +1980,68 @@ function startBlackjack() {
   render();
 }
 
+function splitBlackjack() {
+  if (!canSplitBlackjack()) {
+    return;
+  }
+
+  resetEffects();
+  state.blackjackSplitActive = true;
+  state.blackjackSplitRound += 1;
+  state.blackjackActiveHandIndex = 0;
+  state.blackjackHands = [
+    [state.playerHand[0]],
+    [state.playerHand[1]]
+  ];
+  state.blackjackHandStates = [
+    { settled: false, stood: false, resultTitle: "" },
+    { settled: false, stood: false, resultTitle: "" }
+  ];
+  state.playerHand = state.blackjackHands[0];
+  blackjackCards.player = [];
+  renderSplitHandShells();
+
+  appendCardToSplitHand(0, state.blackjackHands[0][0], 0);
+  appendCardToSplitHand(1, state.blackjackHands[1][0], 90);
+
+  const firstDraw = drawCard();
+  const secondDraw = drawCard();
+  state.blackjackHands[0].push(firstDraw);
+  state.blackjackHands[1].push(secondDraw);
+  appendCardToSplitHand(0, firstDraw, 220);
+  appendCardToSplitHand(1, secondDraw, 340);
+
+  const splitAces = state.blackjackHands[0][0].rank.label === "A";
+  showResult("Split", splitAces ? "Split aces receive one card each." : "Playing hand 1 of 2.");
+
+  if (splitAces) {
+    state.blackjackHandStates.forEach((handState) => {
+      handState.stood = true;
+    });
+    state.blackjackActive = false;
+    state.blackjackResolving = true;
+    window.setTimeout(resolveSplitDealerAndHands, 760);
+  }
+
+  render();
+}
+
 function hitBlackjack() {
+  const hand = activeBlackjackHand();
   const card = drawCard();
-  state.playerHand.push(card);
+  hand.push(card);
+  if (state.blackjackSplitActive) {
+    state.playerHand = hand;
+  }
   appendBlackjackCard("player", card);
 
-  if (handTotal(state.playerHand) > 21) {
+  if (handTotal(hand) > 21) {
+    if (state.blackjackSplitActive) {
+      settleSplitBust(state.blackjackActiveHandIndex);
+      advanceSplitHandOrResolve();
+      return;
+    }
+
     state.blackjackActive = false;
     state.blackjackResolving = true;
     const round = state.blackjackRound;
@@ -1699,6 +2071,16 @@ function hitBlackjack() {
 }
 
 function standBlackjack() {
+  if (state.blackjackSplitActive) {
+    const handState = activeBlackjackHandState();
+    if (handState) {
+      handState.stood = true;
+      handState.resultTitle = "Stood";
+    }
+    advanceSplitHandOrResolve();
+    return;
+  }
+
   revealDealerHoleCard();
   let delay = 220;
 
@@ -1825,6 +2207,7 @@ function spinRoulette() {
     }
 
     render();
+    scheduleAutoReroll();
   }, 4550);
 }
 
@@ -1833,6 +2216,10 @@ function switchGame(game) {
     return;
   }
 
+  if (!supportsAutoReroll(game)) {
+    state.autoReroll = false;
+    clearAutoRerollTimer();
+  }
   state.game = game;
   resetEffects();
   showResult(gameMeta[game].title);
@@ -1888,6 +2275,8 @@ dealButton.addEventListener("click", () => {
 
 hitButton.addEventListener("click", hitBlackjack);
 standButton.addEventListener("click", standBlackjack);
+splitButton.addEventListener("click", splitBlackjack);
+autoRerollToggleEl.addEventListener("change", () => setAutoReroll(autoRerollToggleEl.checked));
 
 resetButton.addEventListener("click", () => {
   const balanceBefore = state.credits;
@@ -1896,8 +2285,11 @@ resetButton.addEventListener("click", () => {
   state.streak = 0;
   state.wins = 0;
   state.losses = 0;
+  state.autoReroll = false;
+  clearAutoRerollTimer();
   state.blackjackActive = false;
   state.blackjackResolving = false;
+  resetBlackjackSplitState();
   state.rouletteActive = false;
   state.rouletteBetType = "color";
   state.rouletteChoice = "red";

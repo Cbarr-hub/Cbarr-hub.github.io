@@ -1,14 +1,5 @@
-import { DEFAULT_BALANCE, getGamblingDashboardData } from './gamble-data.js?v=dashboard-clean-1';
-
-const BIG_EVENT_AMOUNT = 1000;
-
-const gameLabels = {
-  high_card: 'High Card',
-  blackjack: 'Blackjack',
-  roulette: 'Roulette',
-  slots: 'Slots',
-  system: 'System'
-};
+import { DEFAULT_BALANCE, getGamblingDashboardData } from './gamble-data.js?v=money-events-1';
+import { BIG_EVENT_AMOUNT, isMoneyEvent, normalizeGamblingEvent } from './gamble-stats-utils.js?v=money-events-1';
 
 function esc(value) {
   return String(value ?? '')
@@ -46,34 +37,6 @@ function playerName(row) {
   return row?.username ?? 'None yet';
 }
 
-function isPlayableEvent(event) {
-  return event.outcome === 'win' || event.outcome === 'loss';
-}
-
-function isResetEvent(event) {
-  return event.event_type === 'bankroll_reset' || event.outcome === 'reset';
-}
-
-function isBigEvent(event) {
-  return isResetEvent(event) ||
-    (event.outcome === 'win' && numberValue(event.payout_amount) >= BIG_EVENT_AMOUNT) ||
-    (event.outcome === 'loss' && Math.abs(numberValue(event.net_change)) >= BIG_EVENT_AMOUNT);
-}
-
-function normalizeEvent(event) {
-  return {
-    ...event,
-    bet_amount: numberValue(event.bet_amount),
-    payout_amount: numberValue(event.payout_amount),
-    net_change: numberValue(event.net_change),
-    balance_before: numberValue(event.balance_before),
-    balance_after: numberValue(event.balance_after),
-    gameLabel: gameLabels[event.game] ?? event.game,
-    isBig: isBigEvent(event),
-    isReset: isResetEvent(event)
-  };
-}
-
 function buildPlayerStats(users, balances, events) {
   const balancesByName = new Map((balances ?? []).map((row) => [row.Name, numberValue(row.Dollers ?? DEFAULT_BALANCE)]));
   const statsByName = new Map();
@@ -106,22 +69,22 @@ function buildPlayerStats(users, balances, events) {
       continue;
     }
 
-    if (isPlayableEvent(event)) {
+    if (event.isMoneyEvent) {
       stats.games += 1;
       stats.wagered += event.bet_amount;
       stats.net += event.net_change;
     }
 
-    if (event.outcome === 'win') {
+    if (event.moneyOutcome === 'win') {
       stats.wins += 1;
       stats.biggestWin = Math.max(stats.biggestWin, event.payout_amount, event.net_change);
       stats.currentWinStreak += 1;
       stats.bestWinStreak = Math.max(stats.bestWinStreak, stats.currentWinStreak);
-    } else if (event.outcome === 'loss') {
+    } else if (event.moneyOutcome === 'loss') {
       stats.losses += 1;
       stats.biggestLoss = Math.min(stats.biggestLoss, event.net_change);
       stats.currentWinStreak = 0;
-    } else if (isResetEvent(event)) {
+    } else if (event.isReset) {
       stats.resets += 1;
     }
   }
@@ -136,7 +99,7 @@ function buildGameStats(events) {
   const statsByGame = new Map();
 
   for (const event of events) {
-    if (!isPlayableEvent(event)) {
+    if (!event.isMoneyEvent) {
       continue;
     }
 
@@ -153,7 +116,7 @@ function buildGameStats(events) {
     stats.events += 1;
     stats.net += event.net_change;
     stats.wagered += event.bet_amount;
-    if (event.outcome === 'win') {
+    if (event.moneyOutcome === 'win') {
       stats.wins += 1;
     } else {
       stats.losses += 1;
@@ -171,11 +134,11 @@ function buildGameStats(events) {
 }
 
 function buildEventStats(events) {
-  const playableEvents = events.filter(isPlayableEvent);
-  const wins = playableEvents.filter((event) => event.outcome === 'win').length;
-  const losses = playableEvents.filter((event) => event.outcome === 'loss').length;
-  const resets = events.filter(isResetEvent).length;
-  const bigEvents = events.filter(isBigEvent).length;
+  const playableEvents = events.filter(isMoneyEvent);
+  const wins = playableEvents.filter((event) => event.moneyOutcome === 'win').length;
+  const losses = playableEvents.filter((event) => event.moneyOutcome === 'loss').length;
+  const resets = events.filter((event) => event.isReset).length;
+  const bigEvents = events.filter((event) => event.isBig).length;
 
   return {
     total: events.length,
@@ -189,11 +152,11 @@ function buildEventStats(events) {
 }
 
 function buildKpis(players, events, eventStats) {
-  const playableEvents = events.filter(isPlayableEvent);
+  const playableEvents = events.filter(isMoneyEvent);
   const totalNet = playableEvents.reduce((sum, event) => sum + event.net_change, 0);
   const totalWagered = playableEvents.reduce((sum, event) => sum + event.bet_amount, 0);
   const biggestWin = playableEvents.reduce((best, event) =>
-    event.outcome === 'win' && event.payout_amount > numberValue(best?.payout_amount) ? event : best, null);
+    event.moneyOutcome === 'win' && event.payout_amount > numberValue(best?.payout_amount) ? event : best, null);
   const bestGambler = players.reduce((top, row) => row.net > numberValue(top?.net ?? -Infinity) ? row : top, null);
   const worstGambler = players.reduce((bottom, row) => row.net < numberValue(bottom?.net ?? Infinity) ? row : bottom, null);
   const bestStreak = players.reduce((top, row) => row.bestWinStreak > numberValue(top?.bestWinStreak ?? -1) ? row : top, null);
@@ -214,7 +177,7 @@ function buildKpis(players, events, eventStats) {
 }
 
 export function buildDashboardModel({ users, balances, events }) {
-  const normalizedEvents = (events ?? []).map(normalizeEvent);
+  const normalizedEvents = (events ?? []).map(normalizeGamblingEvent);
   const players = buildPlayerStats(users, balances, normalizedEvents)
     .sort((a, b) => b.balance - a.balance || b.net - a.net || a.username.localeCompare(b.username));
   const gameStats = buildGameStats(normalizedEvents);

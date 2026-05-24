@@ -129,6 +129,24 @@
       }
     }
 
+    @keyframes cardFlip {
+      0% {
+        transform: rotateY(0deg) rotate(var(--tilt, 0deg));
+      }
+
+      48% {
+        transform: rotateY(90deg) rotate(var(--tilt, 0deg));
+      }
+
+      52% {
+        transform: rotateY(90deg) rotate(var(--tilt, 0deg));
+      }
+
+      100% {
+        transform: rotateY(0deg) rotate(var(--tilt, 0deg));
+      }
+    }
+
     @keyframes chipPop {
       0% {
         transform: translateY(0) scale(1);
@@ -164,6 +182,87 @@
 
       50% {
         transform: translateY(-4px);
+      }
+    }
+
+    @keyframes winGlow {
+      0%, 100% {
+        box-shadow:
+          inset 0 0 0 5px var(--rail-light),
+          0 30px 80px var(--shadow);
+      }
+
+      45% {
+        box-shadow:
+          inset 0 0 0 5px var(--rail-light),
+          0 0 0 6px rgba(242, 193, 78, 0.34),
+          0 34px 100px rgba(242, 193, 78, 0.36);
+      }
+    }
+
+    @keyframes lossShake {
+      0%, 100% {
+        transform: translateX(0);
+        box-shadow:
+          inset 0 0 0 5px var(--rail-light),
+          0 30px 80px var(--shadow);
+      }
+
+      20% {
+        transform: translateX(-7px);
+      }
+
+      40% {
+        transform: translateX(6px);
+        box-shadow:
+          inset 0 0 0 5px var(--rail-light),
+          0 0 0 5px rgba(192, 57, 43, 0.32),
+          0 34px 90px rgba(192, 57, 43, 0.28);
+      }
+
+      65% {
+        transform: translateX(-3px);
+      }
+    }
+
+    @keyframes pushGlow {
+      0%, 100% {
+        box-shadow:
+          inset 0 0 0 5px var(--rail-light),
+          0 30px 80px var(--shadow);
+      }
+
+      50% {
+        box-shadow:
+          inset 0 0 0 5px var(--rail-light),
+          0 0 0 5px rgba(96, 165, 250, 0.28),
+          0 34px 90px rgba(96, 165, 250, 0.2);
+      }
+    }
+
+    @keyframes sparkleBurst {
+      0% {
+        opacity: 0;
+        transform: translateY(8px) scale(0.7);
+      }
+
+      20% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateY(-70px) scale(1.18);
+      }
+    }
+
+    @keyframes lossImpact {
+      0%, 100% {
+        transform: translateY(0);
+      }
+
+      35% {
+        transform: translateY(5px);
       }
     }
 
@@ -261,6 +360,37 @@
       border: 1px solid rgba(242, 193, 78, 0.22);
       border-radius: 8px;
       pointer-events: none;
+    }
+
+    .table.win-effect {
+      animation: winGlow 900ms ease both;
+    }
+
+    .table.loss-effect {
+      animation: lossShake 560ms ease both;
+    }
+
+    .table.push-effect {
+      animation: pushGlow 680ms ease both;
+    }
+
+    .effect-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .sparkle {
+      position: absolute;
+      width: 8px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 18px rgba(242, 193, 78, 0.9);
+      opacity: 0;
+      animation: sparkleBurst 850ms ease-out forwards;
     }
 
     .play-area {
@@ -386,6 +516,25 @@
       gap: 0.75rem;
       justify-items: center;
       min-width: 0;
+      transition: filter 180ms ease, opacity 180ms ease, transform 180ms ease;
+    }
+
+    .hand h2 {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      width: 100%;
+    }
+
+    .hand.outcome-win {
+      filter: drop-shadow(0 0 18px rgba(242, 193, 78, 0.55));
+      transform: translateY(-4px);
+    }
+
+    .hand.outcome-loss {
+      filter: saturate(0.65);
+      opacity: 0.68;
     }
 
     .hand-row {
@@ -418,6 +567,11 @@
       animation: cardDeal 430ms cubic-bezier(0.22, 0.8, 0.28, 1) both;
     }
 
+    .card.revealing {
+      animation: cardFlip 540ms ease both;
+      transform-style: preserve-3d;
+    }
+
     .hand-row .card {
       width: clamp(86px, 13vw, 124px);
     }
@@ -426,6 +580,11 @@
       box-shadow: 0 0 0 4px var(--gold), 0 22px 42px rgba(0, 0, 0, 0.36);
       transform: rotate(var(--tilt, 0deg)) translateY(-8px);
       animation: cardWin 680ms ease both;
+    }
+
+    .card.loser {
+      opacity: 0.7;
+      filter: saturate(0.7);
     }
 
     .card.red {
@@ -484,6 +643,11 @@
       animation: messageFlash 650ms ease;
     }
 
+    .message.impact {
+      animation: lossImpact 320ms ease;
+      border-color: rgba(192, 57, 43, 0.55);
+    }
+
     .message strong {
       display: block;
       margin-bottom: 0.25rem;
@@ -495,6 +659,46 @@
     .controls p {
       color: var(--muted);
       line-height: 1.5;
+    }
+
+    .total-badge {
+      display: inline-grid;
+      place-items: center;
+      min-width: 58px;
+      min-height: 42px;
+      padding: 0.35rem 0.65rem;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.38);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      font-size: clamp(1.25rem, 3vw, 1.8rem);
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .total-badge.safe {
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .total-badge.hot {
+      color: #111;
+      border-color: transparent;
+      background: var(--gold);
+    }
+
+    .total-badge.blackjack,
+    .total-badge.winner {
+      color: #111;
+      border-color: transparent;
+      background: linear-gradient(180deg, #ffe59b, var(--gold));
+      box-shadow: 0 0 24px rgba(242, 193, 78, 0.45);
+    }
+
+    .total-badge.bust,
+    .total-badge.loser {
+      border-color: rgba(192, 57, 43, 0.6);
+      background: rgba(192, 57, 43, 0.85);
     }
 
     .controls {
@@ -741,6 +945,8 @@
     </div>
 
     <section class="table" aria-label="Virtual-credit gambling section">
+      <div class="effect-layer" id="effect-layer" aria-hidden="true"></div>
+
       <div class="play-area">
         <div class="deck-shoe" id="deck-shoe" aria-hidden="true">
           <div class="deck-card">GS</div>
@@ -786,13 +992,13 @@
         </section>
 
         <section class="game-panel" id="blackjack-panel" aria-label="Blackjack">
-          <div class="hand">
-            <h2>Dealer <span id="dealer-total"></span></h2>
+          <div class="hand" id="dealer-zone">
+            <h2>Dealer <span class="total-badge" id="dealer-total">--</span></h2>
             <div class="hand-row" id="dealer-hand"></div>
           </div>
 
-          <div class="hand">
-            <h2>You <span id="player-total"></span></h2>
+          <div class="hand" id="player-zone">
+            <h2>You <span class="total-badge" id="player-total">--</span></h2>
             <div class="hand-row" id="blackjack-hand"></div>
           </div>
         </section>
@@ -872,7 +1078,8 @@
       dealerHand: [],
       playerHand: [],
       hideDealerHole: false,
-      renderedBet: 10
+      renderedBet: 10,
+      blackjackRound: 0
     };
 
     const creditsEl = document.getElementById("credits");
@@ -892,10 +1099,14 @@
     const maxBetButton = document.getElementById("max-bet");
     const resetButton = document.getElementById("reset");
     const deckShoeEl = document.getElementById("deck-shoe");
+    const tableEl = document.querySelector(".table");
+    const effectLayerEl = document.getElementById("effect-layer");
     const playerCardEl = document.getElementById("player-card");
     const houseCardEl = document.getElementById("house-card");
     const dealerHandEl = document.getElementById("dealer-hand");
     const playerHandEl = document.getElementById("blackjack-hand");
+    const dealerZoneEl = document.getElementById("dealer-zone");
+    const playerZoneEl = document.getElementById("player-zone");
     const dealerTotalEl = document.getElementById("dealer-total");
     const playerTotalEl = document.getElementById("player-total");
     const messageEl = document.querySelector(".message");
@@ -909,11 +1120,19 @@
       blackjack: document.getElementById("blackjack-panel")
     };
     const chipButtons = Array.from(document.querySelectorAll("[data-chip]"));
+    const blackjackCards = {
+      dealer: [],
+      player: []
+    };
 
     function replayAnimation(element, className) {
       element.classList.remove(className);
       void element.offsetWidth;
       element.classList.add(className);
+    }
+
+    function clearAnimationClass(element, className, delay = 900) {
+      window.setTimeout(() => element.classList.remove(className), delay);
     }
 
     function showResult(title, copy) {
@@ -924,6 +1143,67 @@
 
     function pulseStats(...stats) {
       stats.forEach((stat) => replayAnimation(stat, "pulse"));
+    }
+
+    function resetEffects() {
+      tableEl.classList.remove("win-effect", "loss-effect", "push-effect");
+      messageEl.classList.remove("impact");
+      dealerZoneEl.classList.remove("outcome-win", "outcome-loss");
+      playerZoneEl.classList.remove("outcome-win", "outcome-loss");
+      effectLayerEl.innerHTML = "";
+      document.querySelectorAll(".card.winner, .card.loser").forEach((cardEl) => {
+        cardEl.classList.remove("winner", "loser");
+      });
+      dealerTotalEl.classList.remove("winner", "loser");
+      playerTotalEl.classList.remove("winner", "loser");
+    }
+
+    function createSparkles() {
+      effectLayerEl.innerHTML = "";
+      const positions = [
+        [18, 72], [28, 36], [38, 64], [48, 28], [58, 70], [70, 42], [80, 62], [88, 32]
+      ];
+
+      positions.forEach(([left, top], index) => {
+        const sparkle = document.createElement("span");
+        sparkle.className = "sparkle";
+        sparkle.style.left = `${left}%`;
+        sparkle.style.top = `${top}%`;
+        sparkle.style.animationDelay = `${index * 55}ms`;
+        effectLayerEl.appendChild(sparkle);
+      });
+      window.setTimeout(() => {
+        effectLayerEl.innerHTML = "";
+      }, 1050);
+    }
+
+    function playOutcomeEffect(result, winner = null) {
+      const effectClass = `${result}-effect`;
+      replayAnimation(tableEl, effectClass);
+      clearAnimationClass(tableEl, effectClass, result === "loss" ? 620 : 950);
+
+      if (result === "win") {
+        createSparkles();
+      } else if (result === "loss") {
+        replayAnimation(messageEl, "impact");
+        clearAnimationClass(messageEl, "impact", 360);
+      }
+
+      if (winner === "player") {
+        playerZoneEl.classList.add("outcome-win");
+        dealerZoneEl.classList.add("outcome-loss");
+        playerTotalEl.classList.add("winner");
+        dealerTotalEl.classList.add("loser");
+      } else if (winner === "dealer") {
+        dealerZoneEl.classList.add("outcome-win");
+        playerZoneEl.classList.add("outcome-loss");
+        dealerTotalEl.classList.add("winner");
+        playerTotalEl.classList.add("loser");
+      }
+
+      if (result === "push") {
+        clearAnimationClass(tableEl, "push-effect", 720);
+      }
     }
 
     function maxBet() {
@@ -978,6 +1258,20 @@
       return cardEl;
     }
 
+    function revealCard(cardEl, card) {
+      const tilt = cardEl.style.getPropertyValue("--tilt");
+      cardEl.classList.remove("back");
+      replayAnimation(cardEl, "revealing");
+      window.setTimeout(() => {
+        const freshCard = createCard(card);
+        cardEl.replaceChildren(...freshCard.childNodes);
+        cardEl.className = freshCard.className;
+        cardEl.style.setProperty("--tilt", tilt || freshCard.style.getPropertyValue("--tilt"));
+        replayAnimation(cardEl, "revealing");
+        clearAnimationClass(cardEl, "revealing", 560);
+      }, 260);
+    }
+
     function renderCard(cardEl, card, delay = 0) {
       cardEl.replaceChildren(...createCard(card).childNodes);
       cardEl.className = "card";
@@ -1017,24 +1311,82 @@
       return Number.isInteger(value) ? value : value.toFixed(1);
     }
 
-    function renderBlackjackHands() {
+    function totalStateClass(hand, hidden = false) {
+      if (!hand.length) {
+        return "";
+      }
+
+      const total = handTotal(hand);
+      if (!hidden && isBlackjack(hand)) {
+        return "blackjack";
+      }
+      if (total > 21) {
+        return "bust";
+      }
+      if (total >= 18) {
+        return "hot";
+      }
+      return "safe";
+    }
+
+    function updateTotalBadge(badgeEl, hand, hidden = false) {
+      const visibleHand = hidden ? hand.slice(0, 1) : hand;
+      const total = visibleHand.length ? handTotal(visibleHand) : "--";
+      const isWinner = badgeEl.classList.contains("winner");
+      const isLoser = badgeEl.classList.contains("loser");
+      badgeEl.textContent = total;
+      badgeEl.className = "total-badge";
+
+      const stateClass = totalStateClass(visibleHand, hidden);
+      if (stateClass) {
+        badgeEl.classList.add(stateClass);
+      }
+      if (isWinner) {
+        badgeEl.classList.add("winner");
+      }
+      if (isLoser) {
+        badgeEl.classList.add("loser");
+      }
+    }
+
+    function updateBlackjackTotals() {
+      updateTotalBadge(dealerTotalEl, state.dealerHand, state.hideDealerHole);
+      updateTotalBadge(playerTotalEl, state.playerHand, false);
+    }
+
+    function appendBlackjackCard(hand, card, options = {}) {
+      const cardEl = createCard(card, options.hidden);
+      const target = hand === "dealer" ? dealerHandEl : playerHandEl;
+      target.appendChild(cardEl);
+      blackjackCards[hand].push({ card, cardEl, hidden: Boolean(options.hidden) });
+      requestAnimationFrame(() => dealFromDeck(cardEl, options.delay || 0));
+      updateBlackjackTotals();
+      return cardEl;
+    }
+
+    function revealDealerHoleCard() {
+      const hole = blackjackCards.dealer[1];
+      if (!hole || !hole.hidden) {
+        state.hideDealerHole = false;
+        updateBlackjackTotals();
+        return;
+      }
+
+      state.hideDealerHole = false;
+      hole.hidden = false;
+      revealCard(hole.cardEl, hole.card);
+      updateBlackjackTotals();
+    }
+
+    function clearBlackjackTable() {
       dealerHandEl.innerHTML = "";
       playerHandEl.innerHTML = "";
-
-      state.dealerHand.forEach((card, index) => {
-        const cardEl = createCard(card, state.hideDealerHole && index === 1);
-        dealerHandEl.appendChild(cardEl);
-        requestAnimationFrame(() => dealFromDeck(cardEl, index * 90));
-      });
-      state.playerHand.forEach((card, index) => {
-        const cardEl = createCard(card);
-        playerHandEl.appendChild(cardEl);
-        requestAnimationFrame(() => dealFromDeck(cardEl, index * 90 + 45));
-      });
-
-      const visibleDealerHand = state.hideDealerHole ? state.dealerHand.slice(0, 1) : state.dealerHand;
-      dealerTotalEl.textContent = visibleDealerHand.length ? `(${handTotal(visibleDealerHand)})` : "";
-      playerTotalEl.textContent = state.playerHand.length ? `(${handTotal(state.playerHand)})` : "";
+      blackjackCards.dealer = [];
+      blackjackCards.player = [];
+      dealerTotalEl.textContent = "--";
+      playerTotalEl.textContent = "--";
+      dealerTotalEl.className = "total-badge";
+      playerTotalEl.className = "total-badge";
     }
 
     function render() {
@@ -1043,7 +1395,6 @@
       winsEl.textContent = state.wins;
       lossesEl.textContent = state.losses;
       clampBet();
-      renderBlackjackHands();
 
       tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.game === state.game));
       tabs.forEach((tab) => {
@@ -1143,6 +1494,7 @@
       state.wins += 1;
       showResult(title, copy);
       pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+      playOutcomeEffect("win", state.game === "blackjack" ? "player" : null);
     }
 
     function settleLoss(title, copy) {
@@ -1151,9 +1503,11 @@
       state.losses += 1;
       showResult(title, copy);
       pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+      playOutcomeEffect("loss", state.game === "blackjack" ? "dealer" : null);
     }
 
     function dealHighCard() {
+      resetEffects();
       const playerCard = drawCard();
       const houseCard = drawCard();
 
@@ -1170,29 +1524,44 @@
         state.streak = 0;
         showResult("Push", "Same rank. Your bet comes back.");
         pulseStats(streakStatEl);
+        playOutcomeEffect("push");
       }
 
       render();
     }
 
     function startBlackjack() {
+      resetEffects();
+      clearBlackjackTable();
+      state.blackjackRound += 1;
+      const round = state.blackjackRound;
       state.blackjackActive = true;
       state.hideDealerHole = true;
       state.dealerHand = [drawCard(), drawCard()];
       state.playerHand = [drawCard(), drawCard()];
       showResult("Blackjack dealt", "Hit to draw or stand to hold.");
 
+      appendBlackjackCard("player", state.playerHand[0], { delay: 0 });
+      appendBlackjackCard("dealer", state.dealerHand[0], { delay: 120 });
+      appendBlackjackCard("player", state.playerHand[1], { delay: 240 });
+      appendBlackjackCard("dealer", state.dealerHand[1], { delay: 360, hidden: true });
+
       const playerNatural = isBlackjack(state.playerHand);
       const dealerNatural = isBlackjack(state.dealerHand);
 
       if (playerNatural || dealerNatural) {
-        state.hideDealerHole = false;
         state.blackjackActive = false;
+        window.setTimeout(() => {
+          if (round === state.blackjackRound) {
+            revealDealerHoleCard();
+          }
+        }, 780);
 
         if (playerNatural && dealerNatural) {
           state.streak = 0;
           showResult("Push", "Both hands have blackjack. Your bet comes back.");
           pulseStats(streakStatEl);
+          playOutcomeEffect("push");
         } else if (playerNatural) {
           const payout = state.bet * 1.5;
           settleWin(payout, "Blackjack", `Natural blackjack pays ${formatCredits(payout)} credits.`);
@@ -1205,11 +1574,13 @@
     }
 
     function hitBlackjack() {
-      state.playerHand.push(drawCard());
+      const card = drawCard();
+      state.playerHand.push(card);
+      appendBlackjackCard("player", card);
 
       if (handTotal(state.playerHand) > 21) {
-        state.hideDealerHole = false;
         state.blackjackActive = false;
+        revealDealerHoleCard();
         settleLoss("Bust", `You went over 21 and lost ${state.bet} credits.`);
       }
 
@@ -1217,10 +1588,14 @@
     }
 
     function standBlackjack() {
-      state.hideDealerHole = false;
+      revealDealerHoleCard();
+      let delay = 220;
 
       while (handTotal(state.dealerHand) < 17) {
-        state.dealerHand.push(drawCard());
+        const card = drawCard();
+        state.dealerHand.push(card);
+        appendBlackjackCard("dealer", card, { delay });
+        delay += 120;
       }
 
       const playerTotal = handTotal(state.playerHand);
@@ -1237,6 +1612,7 @@
         state.streak = 0;
         showResult("Push", `${playerTotal} ties ${dealerTotal}. Your bet comes back.`);
         pulseStats(streakStatEl);
+        playOutcomeEffect("push");
       }
 
       render();
@@ -1248,6 +1624,7 @@
       }
 
       state.game = game;
+      resetEffects();
       showResult(
         game === "high-card" ? "High Card" : "Blackjack",
         game === "high-card"
@@ -1292,6 +1669,9 @@
       state.dealerHand = [];
       state.playerHand = [];
       state.hideDealerHole = false;
+      state.blackjackRound += 1;
+      clearBlackjackTable();
+      resetEffects();
       playerCardEl.classList.remove("winner");
       houseCardEl.classList.remove("winner");
       showResult("Place a bet", "Choose High Card or Blackjack to begin.");

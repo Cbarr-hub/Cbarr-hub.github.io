@@ -460,7 +460,8 @@
       const selectedIndex = Math.floor(Math.random() * names.length);
       const itemWidth = parseFloat(slotTrack.dataset.itemWidth) || 240;
       const containerWidth = slotTrack.parentElement.clientWidth;
-      const targetIndex = names.length + selectedIndex;
+      const loopCount = 4;
+      const targetIndex = names.length + selectedIndex + loopCount * names.length;
       const targetOffset = containerWidth / 2 - itemWidth / 2 - targetIndex * itemWidth;
 
       slotTrack.style.transition = `transform ${spinDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`;

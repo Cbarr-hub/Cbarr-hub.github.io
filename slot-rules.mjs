@@ -1,4 +1,4 @@
-export const SLOT_RTP_TARGET = 0.95;
+export const SLOT_RTP_TARGET = 0.87;
 
 export const SLOT_SYMBOLS = [
   { id: "cherry", label: "Cherries", icon: "🍒", tier: "common", weight: 18 },
@@ -30,16 +30,16 @@ export const SLOT_PAYLINES = [
 ];
 
 export const SLOT_PAYOUTS = {
-  common: { 3: 0.564, 4: 1.481, 5: 3.349 },
-  mid: { 3: 0.987, 4: 2.996, 5: 7.755 },
-  premium: { 3: 1.939, 4: 6.345, 5: 21.15 },
-  jackpot: { 3: 3.878, 4: 17.625, 5: 77.55 },
-  royal: { 3: 7.05, 4: 35.25, 5: 229.125 },
-  wild: { 3: 2.468, 4: 8.46, 5: 31.725 }
+  common: { 3: 0.15792, 4: 0.41468, 5: 0.93772 },
+  mid: { 3: 0.27636, 4: 0.83888, 5: 2.1714 },
+  premium: { 3: 0.54292, 4: 1.7766, 5: 5.922 },
+  jackpot: { 3: 1.08584, 4: 4.935, 5: 21.714 },
+  royal: { 3: 1.974, 4: 9.87, 5: 64.155 },
+  wild: { 3: 0.69104, 4: 2.3688, 5: 8.883 }
 };
 
 export const SLOT_SCATTER_RULES = {
-  pays: { 2: 0.423, 3: 5.288, 4: 28.2, 5: 141, 6: 282, 7: 423, 8: 634.5, 9: 916.5, 10: 1339.5, 11: 1833, 12: 2467.5, 13: 3172.5, 14: 4053.75, 15: 5287.5 },
+  pays: { 2: 0.11844, 3: 1.48064, 4: 7.896, 5: 39.48, 6: 78.96, 7: 118.44, 8: 177.66, 9: 256.62, 10: 375.06, 11: 513.24, 12: 690.9, 13: 888.3, 14: 1135.05, 15: 1480.5 },
   awards: {
     3: { freeSpins: 6, multiplier: 2, retriggerSpins: 3, multiplierStep: 1 },
     4: { freeSpins: 10, multiplier: 3, retriggerSpins: 5, multiplierStep: 2 },

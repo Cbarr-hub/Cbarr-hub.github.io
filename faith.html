@@ -29,6 +29,15 @@
       line-height: 1.85;
       font-size: 1.05rem;
       text-align: justify;
+      transition: filter 15s linear, opacity 1s ease;
+    }
+
+    .passage.blurring {
+      filter: blur(18px);
+    }
+
+    .passage.fading {
+      opacity: 0;
     }
 
     .passage p {
@@ -249,6 +258,26 @@
 
       layout()
       window.addEventListener('resize', layout)
+      window.__rerollImages = layout
+    })()
+  </script>
+
+  <script>
+    ;(() => {
+      const passage = document.querySelector('.passage')
+      if (!passage) return
+
+      requestAnimationFrame(() => {
+        passage.classList.add('blurring')
+      })
+
+      setTimeout(() => {
+        passage.remove()
+        if (typeof window.__rerollImages === 'function') {
+          window.__rerollImages()
+          setInterval(window.__rerollImages, 5000)
+        }
+      }, 15000)
     })()
   </script>
 </body>

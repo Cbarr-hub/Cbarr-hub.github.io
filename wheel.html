@@ -190,45 +190,6 @@
       min-width: 0;
     }
 
-    .manual-list {
-      display: grid;
-      gap: 0.75rem;
-      margin-bottom: 1rem;
-    }
-
-    .manual-list label {
-      letter-spacing: 0.08em;
-      color: #a7f4ff;
-    }
-
-    .manual-list textarea {
-      width: 100%;
-      resize: vertical;
-      min-height: 10rem;
-      font: inherit;
-      padding: 0.95rem 1rem;
-      border: 1px solid rgba(0,255,255,0.35);
-      border-radius: 12px;
-      background: rgba(0,0,0,0.4);
-      color: var(--text);
-    }
-
-    .manual-list button {
-      justify-self: start;
-      padding: 0.95rem 1rem;
-      border: 1px solid rgba(0,255,255,0.35);
-      border-radius: 12px;
-      background: rgba(0,0,0,0.4);
-      color: var(--text);
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease;
-    }
-
-    .manual-list button:hover {
-      transform: translateY(-1px);
-      background: rgba(0,255,255,0.15);
-    }
-
     .result-card {
       padding: 1rem;
       border: 1px solid var(--panel-border);
@@ -279,18 +240,11 @@
 
     <div class="wheel-frame">
       <div class="pointer" aria-hidden="true"></div>
-      <svg id="wheel" class="wheel" viewBox="0 0 520 520" role="img" aria-label="Spinning name wheel"></svg>
+      <svg id="wheel" class="wheel" viewBox="-260 -260 520 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Spinning name wheel"></svg>
     </div>
 
     <div class="controls">
-      <input id="nameInput" type="text" placeholder="Add a name and press Enter" autocomplete="off" />
       <button id="spin" type="button">Spin the wheel</button>
-    </div>
-
-    <div class="manual-list">
-      <label for="namesList">Name list (one per line):</label>
-      <textarea id="namesList" rows="6" placeholder="Type or paste names here..."></textarea>
-      <button id="loadNames" type="button">Load names onto wheel</button>
     </div>
 
     <div class="result-card">
@@ -298,7 +252,7 @@
       <strong id="result">Ready to spin</strong>
     </div>
 
-    <p class="note">Add names, then press spin. The wheel will select a random entry.</p>
+    <p class="note">Press spin to choose from the fixed name list.</p>
     <p class="return"><a href="index.html">&laquo; Back to home</a></p>
   </div>
 
@@ -317,9 +271,6 @@
     const wheel = document.getElementById('wheel');
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
-    const nameInput = document.getElementById('nameInput');
-    const namesTextarea = document.getElementById('namesList');
-    const loadNamesButton = document.getElementById('loadNames');
     let names = [...defaultNames];
     let currentRotation = 0;
     let isSpinning = false;
@@ -356,7 +307,12 @@
         text.setAttribute('y', textY);
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('dominant-baseline', 'middle');
-        text.setAttribute('transform', `rotate(${textAngle + 90} ${textX} ${textY})`);
+        let labelRotation = textAngle + 90;
+        const normalizedAngle = ((labelRotation % 360) + 360) % 360;
+        if (normalizedAngle > 90 && normalizedAngle < 270) {
+          labelRotation += 180;
+        }
+        text.setAttribute('transform', `rotate(${labelRotation} ${textX} ${textY})`);
         text.textContent = name;
 
         wheel.appendChild(path);
@@ -371,44 +327,6 @@
       center.setAttribute('stroke', '#00ffff');
       center.setAttribute('stroke-width', '4');
       wheel.appendChild(center);
-    }
-
-    function syncNamesTextarea() {
-      namesTextarea.value = names.join('\n');
-    }
-
-    function parseNamesFromTextarea() {
-      const raw = namesTextarea.value.trim();
-      const parsed = raw
-        .split(/\r?\n/)
-        .map(name => name.trim())
-        .filter(name => name.length > 0)
-        .map(name => name.toUpperCase());
-      return [...new Set(parsed)];
-    }
-
-    function addName(name) {
-      const normalized = name.trim().toUpperCase();
-      if (!normalized) return;
-      if (!names.includes(normalized)) {
-        names.push(normalized);
-        buildWheel();
-        syncNamesTextarea();
-        resultDisplay.textContent = `Added ${normalized}. Ready to spin.`;
-      } else {
-        resultDisplay.textContent = `${normalized} is already on the wheel.`;
-      }
-    }
-
-    function loadNamesFromTextarea() {
-      const parsed = parseNamesFromTextarea();
-      if (parsed.length === 0) {
-        resultDisplay.textContent = 'Enter at least one name in the list.';
-        return;
-      }
-      names = parsed;
-      buildWheel();
-      resultDisplay.textContent = 'Wheel updated with your list.';
     }
 
     function spinWheel() {
@@ -435,18 +353,9 @@
       }, 5200);
     }
 
-    nameInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        addName(nameInput.value);
-        nameInput.value = '';
-      }
-    });
-
-    loadNamesButton.addEventListener('click', loadNamesFromTextarea);
     spinButton.addEventListener('click', () => spinWheel());
 
     buildWheel();
-    syncNamesTextarea();
   </script>
 </body>
 </html>

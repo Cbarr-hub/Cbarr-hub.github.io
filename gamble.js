@@ -83,7 +83,6 @@ const winsEl = document.getElementById("wins");
 const lossesEl = document.getElementById("losses");
 const titleEl = document.getElementById("result-title");
 const copyEl = document.getElementById("result-copy");
-const gameCopyEl = document.getElementById("game-copy");
 const dealButton = document.getElementById("deal");
 const hitButton = document.getElementById("hit");
 const standButton = document.getElementById("stand");
@@ -186,25 +185,18 @@ const slotPayouts = {
 const gameMeta = {
   "high-card": {
     title: "High Card",
-    copy: "Higher card wins. Ties return your bet.",
     action: "Deal Cards"
   },
   blackjack: {
     title: "Blackjack",
-    copy: "Get closer to 21 than the dealer without going over.",
-    activeCopy: "Dealer stands on 17. Natural blackjack pays 3:2.",
     action: "Deal Blackjack"
   },
   roulette: {
     title: "Roulette",
-    copy: "Pick a color or exact number and spin for fictional-dollar payouts.",
-    activeCopy: "Pick a color or exact number, then spin the wheel.",
     action: "Spin Wheel"
   },
   slots: {
     title: "Slots",
-    copy: "Five reels, ten lines, scatter bonuses, and tuned 95% RTP.",
-    activeCopy: "Match from either edge or land 3 scatters for free spins.",
     action: "Spin Reels"
   }
 };
@@ -221,9 +213,10 @@ function clearAnimationClass(element, className, delay = 900) {
   window.setTimeout(() => element.classList.remove(className), delay);
 }
 
-function showResult(title, copy) {
+function showResult(title, copy = "") {
   titleEl.textContent = title;
   copyEl.textContent = copy;
+  copyEl.hidden = !copy;
   replayAnimation(messageEl, "flash");
 }
 
@@ -1266,11 +1259,10 @@ function render() {
 
   const meta = gameMeta[state.game];
   dealButton.textContent = meta.action;
-  gameCopyEl.textContent = meta.activeCopy || meta.copy;
   updateSlotMeta();
 
   if (!balanceLoading && outOfCredits && !canUseFreeSpin) {
-    showResult("Bankroll empty", "Reset your fictional dollars to play another round.");
+    showResult("Bankroll empty", "Reset your bankroll to play another round.");
   }
 }
 
@@ -1646,7 +1638,7 @@ function switchGame(game) {
 
   state.game = game;
   resetEffects();
-  showResult(gameMeta[game].title, gameMeta[game].copy);
+  showResult(gameMeta[game].title);
   render();
 }
 
@@ -1737,7 +1729,7 @@ resetButton.addEventListener("click", () => {
     amount: 0
   });
   updateSlotMeta();
-  showResult("Place a bet", "Choose High Card, Blackjack, Roulette, or Slots to begin.");
+  showResult("Place a bet");
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   savePlayerBalance(buildEvent({
     game: "system",

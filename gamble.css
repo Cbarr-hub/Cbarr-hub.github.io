@@ -321,23 +321,11 @@ main {
   line-height: 1;
 }
 
-.section-head p {
-  max-width: 620px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
 .game-selector {
   display: grid;
   gap: 0.7rem;
   margin-bottom: 1rem;
   animation: panelIn 520ms ease both;
-}
-
-.game-copy {
-  min-height: 1.4em;
-  color: var(--muted);
-  line-height: 1.4;
 }
 
 .tabs {
@@ -424,8 +412,7 @@ main {
   opacity: 0.52;
 }
 
-.tab-title,
-.tab-copy {
+.tab-title {
   position: relative;
   z-index: 1;
 }
@@ -434,13 +421,6 @@ main {
   font-size: 1rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.tab-copy {
-  color: rgba(255, 255, 255, 0.74);
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1.25;
 }
 
 .tab.active {
@@ -1728,13 +1708,6 @@ button:disabled {
 
 .chip:nth-child(4) {
   animation-delay: 260ms;
-}
-
-.fine-print {
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.62);
 }
 
 .gamble-stats {

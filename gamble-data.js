@@ -1,4 +1,5 @@
 import { supabase } from './supabase-client.js';
+import { normalizeGamblingEvent } from './gamble-stats-utils.js?v=money-events-1';
 
 export const DEFAULT_BALANCE = 5000;
 
@@ -62,8 +63,7 @@ export async function getLeaderboardRows() {
       .select('Name,Dollers'),
     supabase
       .from('gambling_events')
-      .select('username,outcome,net_change,payout_amount')
-      .in('outcome', ['win', 'loss'])
+      .select('username,outcome,event_type,bet_amount,net_change,payout_amount')
   ]);
 
   if (usersError) {
@@ -81,22 +81,29 @@ export async function getLeaderboardRows() {
   const balancesByName = new Map((balances ?? []).map((row) => [row.Name, Number(row.Dollers ?? DEFAULT_BALANCE)]));
   const statsByName = new Map();
 
-  for (const event of events ?? []) {
+  for (const rawEvent of events ?? []) {
+    const event = normalizeGamblingEvent(rawEvent);
+    if (!event.isMoneyEvent) {
+      continue;
+    }
+
     const stats = statsByName.get(event.username) ?? {
       wins: 0,
       losses: 0,
+      games: 0,
       net: 0,
       biggestWin: 0,
       currentWinStreak: 0,
       bestWinStreak: 0
     };
 
-    if (event.outcome === 'win') {
+    stats.games += 1;
+    if (event.moneyOutcome === 'win') {
       stats.wins += 1;
       stats.biggestWin = Math.max(stats.biggestWin, Number(event.payout_amount ?? 0));
       stats.currentWinStreak += 1;
       stats.bestWinStreak = Math.max(stats.bestWinStreak, stats.currentWinStreak);
-    } else if (event.outcome === 'loss') {
+    } else if (event.moneyOutcome === 'loss') {
       stats.losses += 1;
       stats.currentWinStreak = 0;
     }
@@ -111,6 +118,7 @@ export async function getLeaderboardRows() {
       const stats = statsByName.get(user.Username) ?? {
         wins: 0,
         losses: 0,
+        games: 0,
         net: 0,
         biggestWin: 0,
         currentWinStreak: 0,

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forum — Gamertown Solutions</title>
+  <link rel="stylesheet" href="site.css" />
+  <style>
+    /* ── layout ── */
+    .forum-container { max-width: 820px; margin: 0 auto; padding: 2.5rem 1rem 5rem; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── thread list ── */
+    .thread-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 3rem; }
+
+    .thread-row {
+      background: rgba(18, 24, 35, 0.92);
+      border: 2px solid rgba(123, 184, 95, 0.2);
+      padding: 1.2rem 1.5rem;
+      cursor: pointer;
+      transition: border-color 0.18s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .thread-row:hover { border-color: var(--accent-soft); }
+
+    .thread-row-left { min-width: 0; }
+    .thread-row-title {
+      font-size: 1.05rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .thread-row-meta { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.25rem; }
+    .thread-row-right {
+      flex-shrink: 0;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-align: right;
+    }
+    .comment-count { color: var(--accent-soft); font-weight: 700; }
+
+    /* ── new thread form ── */
+    .form-panel {
+      background: rgba(18, 24, 35, 0.92);
+      border: 2px solid rgba(123, 184, 95, 0.25);
+      border-top: 4px solid var(--border);
+      padding: 1.6rem;
+    }
+    .form-panel h3 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-soft);
+      margin-bottom: 1.2rem;
+    }
+    .form-panel input,
+    .form-panel textarea {
+      width: 100%;
+      background: #1a1a1a;
+      border: 2px solid #3a3a3a;
+      color: var(--text);
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.75rem;
+      outline: none;
+      font: inherit;
+      resize: vertical;
+    }
+    .form-panel input:focus,
+    .form-panel textarea:focus { border-color: var(--accent-soft); }
+    .form-panel textarea { min-height: 110px; }
+
+    .btn-submit {
+      background: var(--accent-soft);
+      color: var(--bg);
+      border: 2px solid var(--accent-soft);
+      padding: 0.8rem 1.8rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font: inherit;
+      font-weight: 700;
+      transition: all 0.2s;
+    }
+    .btn-submit:hover { background: transparent; color: var(--accent-soft); }
+    .btn-submit:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── thread detail ── */
+    .back-btn {
+      background: none;
+      border: 2px dashed var(--border);
+      color: var(--link);
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.85rem;
+      margin-bottom: 1.8rem;
+      transition: background 0.2s;
+    }
+    .back-btn:hover { background: rgba(0,255,255,0.06); }
+
+    .thread-detail {
+      background: rgba(18, 24, 35, 0.92);
+      border: 2px solid rgba(123, 184, 95, 0.25);
+      border-top: 4px solid var(--border);
+      padding: 1.8rem;
+      margin-bottom: 2rem;
+    }
+    .thread-detail h2 {
+      font-size: 1.4rem;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .thread-detail .meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 1.2rem;
+    }
+    .thread-detail .body {
+      color: #cbd5e1;
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+
+    .comments-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .comment-list { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 2rem; }
+
+    .comment {
+      background: rgba(18, 24, 35, 0.7);
+      border: 1px solid rgba(123, 184, 95, 0.15);
+      border-left: 3px solid var(--accent-soft);
+      padding: 1rem 1.2rem;
+    }
+    .comment-author { font-size: 0.8rem; color: var(--accent-soft); margin-bottom: 0.4rem; }
+    .comment-body { color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; white-space: pre-wrap; }
+    .comment-date { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.4rem; }
+
+    .empty-state {
+      color: var(--text-muted);
+      padding: 2rem 1rem;
+      text-align: center;
+      border: 2px dashed rgba(123,184,95,0.15);
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 1.5rem;
+    }
+    .page-header .section-title { margin-bottom: 0; }
+    .thread-count { font-size: 0.82rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+  <div class="bg-noise"></div>
+
+  <header>
+    <div class="container nav">
+      <div class="logo">Gamertown<span>.Solutions</span></div>
+      <nav class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="index2.html">Index 2</a>
+        <a href="tablets.html">The Tablets</a>
+        <a href="wheel.html">Name Spinner</a>
+        <a href="map.html">Cyber Barn</a>
+        <a href="kpi.html">KPI</a>
+        <a href="forum.html" style="color:var(--accent-soft)">Forum</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="forum-container">
+
+      <!-- ── LIST VIEW ── -->
+      <div id="view-list" class="view active">
+        <div class="page-header">
+          <h2 class="section-title">Forum</h2>
+          <span class="thread-count" id="thread-count"></span>
+        </div>
+
+        <div class="thread-list" id="thread-list">
+          <div class="empty-state">loading...</div>
+        </div>
+
+        <div class="form-panel">
+          <h3>New Thread</h3>
+          <input  id="new-author" type="text"  placeholder="Your name"  maxlength="60" />
+          <input  id="new-title"  type="text"  placeholder="Title"       maxlength="120" />
+          <textarea id="new-body" placeholder="What's on your mind..."></textarea>
+          <button class="btn-submit" id="new-thread-btn">Post Thread</button>
+        </div>
+      </div>
+
+      <!-- ── THREAD VIEW ── -->
+      <div id="view-thread" class="view">
+        <button class="back-btn" id="back-btn">&#8592; Back to threads</button>
+
+        <div class="thread-detail" id="thread-detail"></div>
+
+        <div class="comments-title" id="comments-label">Comments</div>
+        <div class="comment-list" id="comment-list">
+          <div class="empty-state">loading comments...</div>
+        </div>
+
+        <div class="form-panel">
+          <h3>Leave a Comment</h3>
+          <input  id="c-author" type="text"  placeholder="Your name" maxlength="60" />
+          <textarea id="c-body"  placeholder="Your comment..."></textarea>
+          <button class="btn-submit" id="comment-btn">Post Comment</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">© 2026 Gamertown Solutions. All rights reserved.</div>
+  </footer>
+
+  <script type="module">
+    import { supabase } from './supabase-client.js'
+
+    const viewList   = document.getElementById('view-list')
+    const viewThread = document.getElementById('view-thread')
+    let activeThreadId = null
+
+    // ── helpers ──────────────────────────────────────────────
+    function esc(str) {
+      return String(str ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    }
+    function fmtDate(iso) {
+      return new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+    }
+    function showView(name) {
+      viewList.classList.toggle('active',   name === 'list')
+      viewThread.classList.toggle('active', name === 'thread')
+      window.scrollTo(0, 0)
+    }
+
+    // ── thread list ──────────────────────────────────────────
+    async function loadThreads() {
+      const { data, error } = await supabase
+        .from('threads')
+        .select('*, comments(count)')
+        .order('created_at', { ascending: false })
+
+      const list  = document.getElementById('thread-list')
+      const count = document.getElementById('thread-count')
+
+      if (error) { list.innerHTML = `<div class="empty-state">error: ${esc(error.message)}</div>`; return }
+      if (!data.length) { list.innerHTML = '<div class="empty-state">no threads yet — start one below</div>'; count.textContent = ''; return }
+
+      count.textContent = data.length + ' thread' + (data.length !== 1 ? 's' : '')
+      list.innerHTML = data.map(t => {
+        const n = t.comments?.[0]?.count ?? 0
+        return `
+          <div class="thread-row" data-id="${t.id}">
+            <div class="thread-row-left">
+              <div class="thread-row-title">${esc(t.title)}</div>
+              <div class="thread-row-meta">by ${esc(t.author)} &mdash; ${fmtDate(t.created_at)}</div>
+            </div>
+            <div class="thread-row-right">
+              <span class="comment-count">${n}</span><br>comment${n !== 1 ? 's' : ''}
+            </div>
+          </div>`
+      }).join('')
+
+      list.querySelectorAll('.thread-row').forEach(el =>
+        el.addEventListener('click', () => openThread(+el.dataset.id))
+      )
+    }
+
+    // ── new thread ───────────────────────────────────────────
+    document.getElementById('new-thread-btn').addEventListener('click', async () => {
+      const author = document.getElementById('new-author').value.trim()
+      const title  = document.getElementById('new-title').value.trim()
+      const body   = document.getElementById('new-body').value.trim()
+      if (!author || !title || !body) { alert('please fill in all fields'); return }
+
+      const btn = document.getElementById('new-thread-btn')
+      btn.disabled = true; btn.textContent = 'Posting...'
+
+      const { error } = await supabase.from('threads').insert({ author, title, body })
+      if (error) { alert('error: ' + error.message) }
+      else {
+        document.getElementById('new-author').value = ''
+        document.getElementById('new-title').value  = ''
+        document.getElementById('new-body').value   = ''
+        await loadThreads()
+      }
+      btn.disabled = false; btn.textContent = 'Post Thread'
+    })
+
+    // ── thread detail ────────────────────────────────────────
+    async function openThread(id) {
+      activeThreadId = id
+      showView('thread')
+
+      document.getElementById('thread-detail').innerHTML  = 'loading...'
+      document.getElementById('comment-list').innerHTML   = '<div class="empty-state">loading comments...</div>'
+
+      const [{ data: t, error: te }, { data: comments, error: ce }] = await Promise.all([
+        supabase.from('threads').select('*').eq('id', id).single(),
+        supabase.from('comments').select('*').eq('thread_id', id).order('created_at', { ascending: true })
+      ])
+
+      if (te) { document.getElementById('thread-detail').textContent = 'error loading thread'; return }
+
+      document.getElementById('thread-detail').innerHTML = `
+        <h2>${esc(t.title)}</h2>
+        <div class="meta">by ${esc(t.author)} &mdash; ${fmtDate(t.created_at)}</div>
+        <div class="body">${esc(t.body)}</div>
+      `
+
+      renderComments(comments ?? [], ce)
+    }
+
+    function renderComments(comments, error) {
+      const list  = document.getElementById('comment-list')
+      const label = document.getElementById('comments-label')
+
+      if (error) { list.innerHTML = `<div class="empty-state">error: ${esc(error.message)}</div>`; return }
+      if (!comments.length) { list.innerHTML = '<div class="empty-state">no comments yet</div>'; label.textContent = 'Comments'; return }
+
+      label.textContent = comments.length + ' Comment' + (comments.length !== 1 ? 's' : '')
+      list.innerHTML = comments.map(c => `
+        <div class="comment">
+          <div class="comment-author">${esc(c.author)}</div>
+          <div class="comment-body">${esc(c.body)}</div>
+          <div class="comment-date">${fmtDate(c.created_at)}</div>
+        </div>
+      `).join('')
+    }
+
+    // ── new comment ──────────────────────────────────────────
+    document.getElementById('comment-btn').addEventListener('click', async () => {
+      const author = document.getElementById('c-author').value.trim()
+      const body   = document.getElementById('c-body').value.trim()
+      if (!author || !body) { alert('please fill in all fields'); return }
+
+      const btn = document.getElementById('comment-btn')
+      btn.disabled = true; btn.textContent = 'Posting...'
+
+      const { error } = await supabase.from('comments').insert({ thread_id: activeThreadId, author, body })
+      if (error) { alert('error: ' + error.message) }
+      else {
+        document.getElementById('c-author').value = ''
+        document.getElementById('c-body').value   = ''
+        const { data } = await supabase.from('comments').select('*').eq('thread_id', activeThreadId).order('created_at', { ascending: true })
+        renderComments(data ?? [], null)
+      }
+      btn.disabled = false; btn.textContent = 'Post Comment'
+    })
+
+    // ── back button ──────────────────────────────────────────
+    document.getElementById('back-btn').addEventListener('click', async () => {
+      showView('list')
+      await loadThreads()
+    })
+
+    loadThreads()
+  </script>
+
+</body>
+</html>

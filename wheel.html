@@ -419,14 +419,23 @@
 
   <script>
     const allGames = [
-      { name: 'Lethal Company', players: ['4','5','6+'], time: '<60' },
-      { name: 'Lockdown protocol', players: ['2','3','4'], time: '<30' },
-      { name: 'RV there yet', players: ['2','3','4','5'], time: 'no limit' },
-      { name: 'Goofy Gorillas', players: ['2','3'], time: '<30' },
-      { name: 'Super battle golf', players: ['2','3','4'], time: '<60' },
-      { name: 'CS2 Office', players: ['4','5','6+'], time: 'no limit' },
-      { name: 'Buckshot Roulette', players: ['3','4','5'], time: '<60' },
-      { name: 'Peak', players: ['4','5','6+'], time: '<60' }
+      { name: 'Lethal Company', players: ['2'], time: '<60' },
+      { name: 'Lockdown protocol', players: ['2'], time: '<30' },
+      { name: 'RV there yet', players: ['2'], time: 'no limit' },
+      { name: 'Goofy Gorillas', players: ['4','5','6+'], time: '<30' },
+      { name: 'Super battle golf', players: ['2'], time: '<60' },
+      { name: 'CSGO', players: ['2','3','4','5'], time: ['<60','no limit'] },
+      { name: 'Buckshot Roulette', players: ['2'], time: '<60' },
+      { name: 'Peak', players: ['2'], time: '<60' },
+      { name: 'Gamble with your friends', players: ['3','4','5','6+'], time: 'no limit' },
+      { name: 'Rocket League', players: ['2','3','4','6+'], time: ['<30','<60','no limit'] },
+      { name: 'Halo', players: ['2','3','4','5','6+'], time: ['<60','no limit'] },
+      { name: 'Risk of Rain', players: ['2','3','4'], time: ['<60','no limit'] },
+      { name: 'Just another night shift', players: ['4'], time: ['<30','<60','no limit'] },
+      { name: 'League of legends', players: ['2','3','4','5','6+'], time: ['<30','<60','no limit'] },
+      { name: 'Age of Empires', players: ['4','5','6+'], time: ['no limit'] },
+      { name: 'Last train out of wormtown', players: ['5','6+'], time: ['<60','no limit'] },
+      {name: 'Oh Deer', players: ['4'], time: ['<30','<60','no limit'] },
     ];
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
@@ -456,7 +465,8 @@
     function getFilteredGames() {
       return allGames.filter(game => {
         const playerMatch = game.players.some(player => selectedPlayers.includes(player));
-        const timeMatch = selectedTimes.includes(game.time);
+        const timeValues = Array.isArray(game.time) ? game.time : [game.time];
+        const timeMatch = timeValues.some(time => selectedTimes.includes(time));
         return playerMatch && timeMatch;
       });
     }
@@ -483,7 +493,9 @@
         return;
       }
       spinButton.disabled = false;
-      const repeatedNames = [...names, ...names, ...names];
+      const loopCount = 4;
+      const repeatCount = loopCount + 2;
+      const repeatedNames = Array.from({ length: repeatCount }, () => names).flat();
       // ensure each name gets a stable color assignment
       // set blue probability to 4/5 and scale other probabilities to fill the remainder
       names.forEach(n => {

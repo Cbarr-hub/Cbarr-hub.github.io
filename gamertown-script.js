@@ -84,9 +84,11 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 window.addEventListener('scroll', () => {
     const navbar = document.querySelector('.navbar');
     if (window.scrollY > 50) {
-        navbar.style.boxShadow = '0 8px 15px rgba(66, 245, 39, 0.3)';
+        navbar.style.boxShadow = 'none';
+        navbar.style.borderBottomWidth = '4px';
     } else {
-        navbar.style.boxShadow = '0 4px 6px rgba(66, 245, 39, 0.1)';
+        navbar.style.boxShadow = 'none';
+        navbar.style.borderBottomWidth = '4px';
     }
 });
 

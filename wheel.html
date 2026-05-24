@@ -286,18 +286,12 @@
       <button id="spin" type="button">Spin the wheel</button>
     </div>
 
-    <div class="manual-list">
-      <label for="namesList">Name list (one per line):</label>
-      <textarea id="namesList" rows="6" placeholder="Type or paste names here..."></textarea>
-      <button id="loadNames" type="button">Load names onto wheel</button>
-    </div>
-
     <div class="result-card">
       <p>Selected name:</p>
       <strong id="result">Ready to spin</strong>
     </div>
 
-    <p class="note">Add names, then press spin. The wheel will select a random entry.</p>
+    <p class="note">Press spin to choose from the fixed name list.</p>
     <p class="return"><a href="index.html">&laquo; Back to home</a></p>
   </div>
 
@@ -316,8 +310,6 @@
     const wheel = document.getElementById('wheel');
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
-    const namesTextarea = document.getElementById('namesList');
-    const loadNamesButton = document.getElementById('loadNames');
     let names = [...defaultNames];
     let currentRotation = 0;
     let isSpinning = false;
@@ -371,33 +363,6 @@
       wheel.appendChild(center);
     }
 
-    function syncNamesTextarea() {
-      namesTextarea.value = names.join('\n');
-    }
-
-    function parseNamesFromTextarea() {
-      const raw = namesTextarea.value.trim();
-      const parsed = raw
-        .split(/\r?\n/)
-        .map(name => name.trim())
-        .filter(name => name.length > 0)
-        .map(name => name.toUpperCase());
-      return [...new Set(parsed)];
-    }
-
-
-
-    function loadNamesFromTextarea() {
-      const parsed = parseNamesFromTextarea();
-      if (parsed.length === 0) {
-        resultDisplay.textContent = 'Enter at least one name in the list.';
-        return;
-      }
-      names = parsed;
-      buildWheel();
-      resultDisplay.textContent = 'Wheel updated with your list.';
-    }
-
     function spinWheel() {
       if (isSpinning) return;
       if (names.length === 0) {
@@ -422,11 +387,9 @@
       }, 5200);
     }
 
-    loadNamesButton.addEventListener('click', loadNamesFromTextarea);
     spinButton.addEventListener('click', () => spinWheel());
 
     buildWheel();
-    syncNamesTextarea();
   </script>
 </body>
 </html>

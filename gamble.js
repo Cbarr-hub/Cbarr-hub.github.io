@@ -4,9 +4,9 @@ import {
   getPlayerBalance,
   insertGamblingEvent,
   savePlayerBalance as persistPlayerBalance
-} from './gamble-data.js';
-import { renderRecentEvents } from './gamble-activity.js';
-import { renderLeaderboard } from './gamble-leaderboard.js';
+} from './gamble-data.js?v=events-1';
+import { renderRecentEvents } from './gamble-activity.js?v=events-1';
+import { renderLeaderboard } from './gamble-leaderboard.js?v=events-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);

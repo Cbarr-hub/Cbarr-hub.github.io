@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gamertown Solutions :: Index</title>
+  <link rel="stylesheet" href="pwkgp-site.css" />
+</head>
+<body>
+  <div class="topbar">GAMERTOWN SOLUTIONS // OPERATIONS INDEX</div>
+  <main class="page-shell">
+    <aside class="left-rail">
+      <header class="brand-block">
+        <h1>G A M E R T O W N<br>S O L U T I O N S</h1>
+        <p>//systems contractor / signal office//</p>
+      </header>
+      <img class="xerox" src="pwkgp-xerox-panel.png" alt="Degraded monochrome technical collage" />
+      <blockquote>“The route is not hidden. It is merely indexed incorrectly.”<br><span>— internal note, unsigned</span></blockquote>
+      <nav class="footlinks">
+        <a href="#">contact</a><span>|</span><a href="#">about</a><span>|</span><a href="#">terms</a><span>|</span><a href="#">systems</a><span>|</span><a href="#" id="openSignIn">sign in</a>
+      </nav>
+    </aside>
+
+    <section class="index-core">
+      <h2>.: INDEX :.</h2>
+      <hr />
+      <section class="portal-list">
+        <h3>//PORTALS</h3>
+        <div class="row"><a href="#">field-office</a><span>Deployment / Reports / Dispatch</span></div>
+        <div class="row"><a href="#">solutions</a><span>Logistics / Infrastructure / Repair</span></div>
+        <div class="row"><a href="#">signal-room</a><span>Monitoring / Transmission / Fault Trees</span></div>
+        <div class="row"><a href="#">contracts</a><span>Statements / Scopes / Service Records</span></div>
+        <div class="row"><a href="#">archive</a><span>Manuals / Legacy Data / Site Notes</span></div>
+        <div class="row"><a href="#">operators</a><span>Crews / Credentials / Access Control</span></div>
+        <div class="row"><a href="#">maps</a><span>Routes / Zones / Coverage Models</span></div>
+        <div class="row"><a href="#">tools</a><span>Calculators / Forms / Diagnostic Aids</span></div>
+        <div class="row"><a href="#">media</a><span>Images / Diagrams / Evidence Packets</span></div>
+        <div class="row"><a href="#">external</a><span>Vendors / Clients / Dead Links</span></div>
+      </section>
+      <hr />
+      <section>
+        <h3>//RECENT UPDATES</h3>
+        <ul class="updates">
+          <li><b>&gt; 05.24.26</b> Index rebuilt: PALE GREEN ACCESS</li>
+          <li><b>&gt; 05.18.26</b> New packet: FIELD ROUTING TABLE</li>
+          <li><b>&gt; 05.03.26</b> Archive addendum: SERVICE NODE 17</li>
+          <li><b>&gt; 04.29.26</b> Signal audit: DORMANT CHANNELS</li>
+          <li><b>&gt; 04.11.26</b> System update: DISPATCH GLYPH v2.1</li>
+        </ul>
+      </section>
+      <hr />
+      <section class="notice">
+        <h3>//NOTICE</h3>
+        <p>This domain operates as a practical index for obscure procedures, field records, and operational fragments. Casual users may proceed, but should not expect the structure to explain itself.</p>
+        <a href="#" class="enter">ENTER ACCORDINGLY.</a>
+      </section>
+    </section>
+
+    <aside class="right-rail">
+      <img class="round-sigil" src="pwkgp-circular-sigil.png" alt="Circular pale green sigil" />
+      <p class="quote">“A system is just a ritual that learned to invoice.”<br><span>— Gamertown memo</span></p>
+      <section class="access">
+        <h3>//SIGIL OF ACCESS</h3>
+        <img src="pwkgp-access-sigil.png" alt="Linear access sigil" />
+      </section>
+      <section class="terminal-note">
+        <h3>//OPEN CHANNELS</h3>
+        <p>Service / Dispatch / Archive / Maps / Invoices / Diagnostics / Credentials / Intake</p>
+      </section>
+      <p class="clock">✶ 18:27:42 UTC+0</p>
+      <a href="#" id="openSignInSide" class="enter" style="display:inline-block;margin-top:18px;">AUTHENTICATE.</a>
+    </aside>
+  </main>
+
+<div id="invasive-ad">
+  <div style="font-size:10px; letter-spacing:3px; color:#ff0000;"><b>SPONSORED BY ABSURDITY</b></div>
+  <div class="ad-message"></div>
+  <button class="ad-close" type="button">X</button>
+</div>
+
+<!-- Auth Modal -->
+<div id="auth-overlay" class="auth-overlay hidden">
+  <div class="auth-modal">
+    <button class="auth-close" id="authClose">X</button>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">Sign In</button>
+      <button class="auth-tab" data-tab="register">Register</button>
+    </div>
+
+    <form id="loginForm" class="auth-form">
+      <div class="form-group">
+        <label for="loginUsername">USERNAME</label>
+        <input type="text" id="loginUsername" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">PASSWORD</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="cta-btn primary-btn">SIGN IN</button>
+      <p id="loginStatus" class="auth-status"></p>
+    </form>
+
+    <form id="registerForm" class="auth-form hidden">
+      <div class="form-group">
+        <label for="regUsername">USERNAME</label>
+        <input type="text" id="regUsername" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="regPassword">PASSWORD</label>
+        <input type="password" id="regPassword" required minlength="8" autocomplete="new-password">
+      </div>
+      <button type="submit" class="cta-btn primary-btn">CREATE ACCOUNT</button>
+      <p id="registerStatus" class="auth-status"></p>
+    </form>
+  </div>
+</div>
+
+<script>
+  ;(() => {
+    const ads = [
+      { title: 'BUY 300% MORE GLITCHES', body: 'FREE USB FLUX HAT INCLUDED. internet explorer recommended.' },
+      { title: 'YOUR COMPUTER WANTS THIS', body: 'MYSTERY SPAM PACK shipped at midnight via carrier pigeon.' },
+      { title: 'INSTALL THE SECRET BROWSER', body: '1997-style browsing with infinite popups and no refunds.' },
+      { title: 'THE FISHTANK HAS ANSWERS', body: 'but only if you read the bubbles in reverse.' }
+    ];
+    const adRoot = document.getElementById('invasive-ad');
+    const msg = adRoot.querySelector('.ad-message');
+    const close = adRoot.querySelector('.ad-close');
+    let index = 0;
+    const render = () => {
+      const ad = ads[index];
+      msg.innerHTML = `<strong>${ad.title}</strong><br>${ad.body}`;
+    };
+    render();
+    const timer = setInterval(() => {
+      index = (index + 1) % ads.length;
+      render();
+    }, 4200);
+    close.addEventListener('click', () => {
+      adRoot.style.display = 'none';
+      clearInterval(timer);
+    });
+  })();
+</script>
+
+<script src="site.js"></script>
+
+<script type="module">
+  import { supabase } from './supabase-client.js';
+  import { setSession, getSession, requireAuth, updateNavbar } from './auth.js';
+  import { ensureBalance } from './gamble-data.js';
+
+  const authOverlay = document.getElementById('auth-overlay');
+  const authClose = document.getElementById('authClose');
+  const openSignIn = document.getElementById('openSignIn');
+  const openSignInSide = document.getElementById('openSignInSide');
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
+  const loginStatus = document.getElementById('loginStatus');
+  const registerStatus = document.getElementById('registerStatus');
+  const authTabs = document.querySelectorAll('.auth-tab');
+
+  function showModal() {
+    authOverlay.classList.remove('hidden');
+  }
+
+  function hideModal() {
+    authOverlay.classList.add('hidden');
+  }
+
+  function setStatus(form, message, isError = false) {
+    const status = form === loginForm ? loginStatus : registerStatus;
+    status.textContent = message;
+    status.className = 'auth-status' + (isError ? ' error' : ' success');
+  }
+
+  function switchTab(tabName) {
+    authTabs.forEach(tab => tab.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+    loginForm.classList.toggle('hidden', tabName !== 'login');
+    registerForm.classList.toggle('hidden', tabName !== 'register');
+  }
+
+  authTabs.forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+
+  [openSignIn, openSignInSide].forEach(link => {
+    if (link) {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        showModal();
+      });
+    }
+  });
+
+  authClose.addEventListener('click', hideModal);
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+
+    setStatus(loginForm, 'Signing in...');
+
+    try {
+      const { data, error } = await supabase
+        .from('Users')
+        .select('Username')
+        .eq('Username', username)
+        .eq('Password', password)
+        .single();
+
+      if (error || !data) {
+        setStatus(loginForm, 'Invalid username or password', true);
+      } else {
+        await ensureBalance(username);
+        setStatus(loginForm, 'Signed in successfully');
+        setSession(username);
+        setTimeout(() => location.reload(), 500);
+      }
+    } catch (err) {
+      setStatus(loginForm, 'Error: ' + (err.message || 'Unknown error'), true);
+    }
+  });
+
+  registerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('regUsername').value;
+    const password = document.getElementById('regPassword').value;
+
+    setStatus(registerForm, 'Creating account...');
+
+    try {
+      const { error } = await supabase
+        .from('Users')
+        .insert([{ Username: username, Password: password }]);
+
+      if (error) {
+        setStatus(registerForm, 'Error: ' + (error.message || 'Username may already exist'), true);
+      } else {
+        await ensureBalance(username);
+        setStatus(registerForm, 'Account created! Signing in...');
+        setSession(username);
+        setTimeout(() => location.reload(), 500);
+      }
+    } catch (err) {
+      setStatus(registerForm, 'Error: ' + (err.message || 'Unknown error'), true);
+    }
+  });
+
+  if (!getSession()) {
+    showModal();
+  }
+</script>
+
+</body>
+</html>

@@ -141,7 +141,7 @@
       display: flex;
       align-items: center;
       height: 100%;
-      transition: transform 4s cubic-bezier(0.22, 1, 0.36, 1);
+      transition: transform 10s cubic-bezier(0.22, 1, 0.36, 1);
       will-change: transform;
     }
 
@@ -386,22 +386,40 @@
     const slotTrack = document.getElementById('slotTrack');
     let names = [...defaultNames];
     let isSpinning = false;
-    const spinDuration = 4200;
+    const spinDuration = 10000;
 
     function buildSlot() {
       slotTrack.innerHTML = '';
       const repeatedNames = [...names, ...names, ...names];
       // ensure each name gets a stable color assignment
-      // gold is rare: ~1 in 400 names
+      // set blue probability to 4/5 and scale other probabilities to fill the remainder
       names.forEach(n => {
         if (!nameColorMap[n]) {
-          const isGold = (Math.random() < 1/385);
-          if (isGold) {
+          const r = Math.random();
+          const blueProb = 4/5; // 0.8
+          const orig = {
+            gold: 1/385,
+            red: 1/156,
+            pink: 1/31,
+            purple: 1/6
+          };
+          const sumOrig = orig.gold + orig.red + orig.pink + orig.purple;
+          const scale = (1 - blueProb) / sumOrig;
+          const goldProb = orig.gold * scale;
+          const redProb = orig.red * scale;
+          const pinkProb = orig.pink * scale;
+          const purpleProb = orig.purple * scale;
+
+          if (r < goldProb) {
             nameColorMap[n] = 'gold';
+          } else if (r < goldProb + redProb) {
+            nameColorMap[n] = 'red';
+          } else if (r < goldProb + redProb + pinkProb) {
+            nameColorMap[n] = 'pink';
+          } else if (r < goldProb + redProb + pinkProb + purpleProb) {
+            nameColorMap[n] = 'purple';
           } else {
-            // pick from the common colors only
-            const commons = ['blue','purple','pink','red'];
-            nameColorMap[n] = commons[Math.floor(Math.random() * commons.length)];
+            nameColorMap[n] = 'blue';
           }
         }
       });

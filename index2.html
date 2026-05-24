@@ -121,12 +121,28 @@ FILE: index.html
     <button class="ad-close" type="button" aria-label="Close advertisement">×</button>
   </div>
 
-  <script>
-    function secretDotClick(e) {
+  <script type="module">
+    import { supabase } from './supabase-client.js'
+
+    window.secretDotClick = async function(e) {
       e.preventDefault()
-      const pw = prompt('enter password')
-      if (pw === 'tree') {
+      const username = prompt('username')
+      if (!username) return
+      const password = prompt('password')
+      if (!password) return
+
+      const { data, error } = await supabase
+        .from('Users')
+        .select('Username')
+        .eq('Username', username)
+        .eq('Password', password)
+        .single()
+
+      if (data && !error) {
+        sessionStorage.setItem('gt_user', username)
         window.location.href = 'final.html'
+      } else {
+        alert('access denied')
       }
     }
   </script>

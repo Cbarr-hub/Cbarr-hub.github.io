@@ -63,36 +63,8 @@
     </div>
   </div>
 
-<<<<<<< HEAD
-  <script>
-    const allGames = [
-      { name: 'Lethal Company', players: ['2'], time: '<60' },
-      { name: 'Lockdown protocol', players: ['2'], time: '<30' },
-      { name: 'RV there yet', players: ['2'], time: 'no limit' },
-      { name: 'Goofy Gorillas', players: ['4','5','6+'], time: '<30' },
-      { name: 'Super battle golf', players: ['2'], time: '<60' },
-      { name: 'CSGO', players: ['2','3','4','5'], time: ['<60','no limit'] },
-      { name: 'Buckshot Roulette', players: ['4'], time: '<60' },
-      { name: 'Peak', players: ['2'], time: '<60' },
-      { name: 'Gamble with your friends', players: ['3','4','5','6+'], time: 'no limit' },
-      { name: 'Rocket League', players: ['2','3','4','6+'], time: ['<30','<60','no limit'] },
-      { name: 'Halo', players: ['2','3','4','5','6+'], time: ['<60','no limit'] },
-      { name: 'Risk of Rain', players: ['2','3','4'], time: ['<60','no limit'] },
-      { name: 'Just another night shift', players: ['4'], time: ['<30','<60','no limit'] },
-      { name: 'League of legends', players: ['2','3','4','5','6+'], time: ['<30','<60','no limit'] },
-      { name: 'Age of Empires', players: ['4','5','6+'], time: ['no limit'] },
-      { name: 'Last train out of wormtown', players: ['5','6+'], time: ['<60','no limit'] },
-      {name: 'Oh Deer', players: ['4'], time: ['<30','<60','no limit'] },
-    ];
-=======
   <script type="module">
-    import { supabase } from './supabase-client.js';
-    import { requireAuth, updateNavbar, getSession } from './auth.js';
-
-    requireAuth();
-    updateNavbar(getSession());
-
->>>>>>> c63a35b71aca15f8e6bd06ca993f4e5d68997834
+    let supabase;
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
       blue: '#007bff',
@@ -120,11 +92,48 @@
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
     const filterInputs = document.querySelectorAll('.filters input');
-    let allGames = [];
+    let allGames = [
+      { id: 1, name: 'Lethal Company', maxplayers: 2, timeMinutes: 45 },
+      { id: 2, name: 'Lockdown Protocol', maxplayers: 2, timeMinutes: 20 },
+      { id: 3, name: 'RV There Yet', maxplayers: 2, timeMinutes: null },
+      { id: 4, name: 'Goofy Gorillas', maxplayers: 6, timeMinutes: 25 },
+      { id: 5, name: 'Super Battle Golf', maxplayers: 2, timeMinutes: 50 },
+      { id: 6, name: 'CSGO', maxplayers: 5, timeMinutes: 40 },
+      { id: 7, name: 'Buckshot Roulette', maxplayers: 4, timeMinutes: 55 },
+      { id: 8, name: 'Peak', maxplayers: 2, timeMinutes: 45 },
+      { id: 9, name: 'Gamble With Your Friends', maxplayers: 6, timeMinutes: null },
+      { id: 10, name: 'Rocket League', maxplayers: 6, timeMinutes: 35 },
+      { id: 11, name: 'Halo', maxplayers: 6, timeMinutes: 55 },
+      { id: 12, name: 'Risk of Rain', maxplayers: 4, timeMinutes: 90 },
+      { id: 13, name: 'Just Another Night Shift', maxplayers: 4, timeMinutes: 70 },
+      { id: 14, name: 'League of Legends', maxplayers: 6, timeMinutes: 80 },
+      { id: 15, name: 'Age of Empires', maxplayers: 6, timeMinutes: null },
+      { id: 16, name: 'Last Train Out of Wormtown', maxplayers: 6, timeMinutes: 55 },
+      { id: 17, name: 'Oh Deer', maxplayers: 4, timeMinutes: 65 }
+    ];
     let selectedPlayers = ['2','3','4','5','6+'];
     let selectedTimes = ['<30','<60','no limit'];
     let isSpinning = false;
     const spinDuration = 6000;
+
+    async function initPage() {
+      try {
+        const authModule = await import('./auth.js');
+        authModule.requireAuth();
+        authModule.updateNavbar(authModule.getSession());
+      } catch (error) {
+        console.warn('Auth import failed:', error);
+      }
+
+      try {
+        const supabaseModule = await import('./supabase-client.js');
+        supabase = supabaseModule.supabase;
+      } catch (error) {
+        console.warn('Supabase import failed:', error);
+      }
+
+      await loadGames();
+    }
 
     function setSlotMessage(message) {
       slotTrack.innerHTML = '';
@@ -154,25 +163,29 @@
       resultDisplay.textContent = 'Loading games...';
       setSlotMessage('Loading games...');
 
-      const { data, error } = await supabase
-        .from('games')
-        .select('id,name,maxplayers,time_minutes')
-        .order('name', { ascending: true });
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('games')
+          .select('id,name,maxplayers,time_minutes')
+          .order('name', { ascending: true });
 
-      if (error) {
-        console.error('Unable to load games', error);
-        resultDisplay.textContent = 'Could not load games.';
-        setSlotMessage('Could not load games.');
-        return;
+        if (error) {
+          console.error('Unable to load games', error);
+          resultDisplay.textContent = 'Could not load games from database.';
+          setSlotMessage('Using built-in game list.');
+        } else {
+          const loadedGames = (data || [])
+            .map(normalizeGame)
+            .filter(game => game.name);
+          if (loadedGames.length > 0) {
+            allGames = loadedGames;
+          }
+        }
       }
 
-      allGames = (data || [])
-        .map(normalizeGame)
-        .filter(game => game.name);
-
-      if (allGames.length === 0) {
-        resultDisplay.textContent = 'No games in the database.';
-        setSlotMessage('No games in the database.');
+      if (!allGames.length) {
+        resultDisplay.textContent = 'No games available.';
+        setSlotMessage('No games available.');
         return;
       }
 
@@ -414,7 +427,7 @@
 
     spinButton.addEventListener('click', spinSlot);
 
-    loadGames();
+    initPage();
   </script>
 </body>
 </html>

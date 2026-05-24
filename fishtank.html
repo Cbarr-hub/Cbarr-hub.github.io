@@ -12,6 +12,41 @@
       width: 100%;
       cursor: crosshair;
     }
+    .go-hidden { display: none !important; }
+    #gameover {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.82);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      font-family: 'Courier New', monospace;
+    }
+    .go-panel {
+      background: #0b140b;
+      border: 3px solid #42F527;
+      padding: 1.8rem 2.2rem;
+      max-width: 420px; width: 92%;
+      text-align: center; color: #eee;
+    }
+    .go-title { color: #42F527; font-size: 2rem; font-weight: bold; letter-spacing: .2em; margin-bottom: .4rem; }
+    .go-time  { font-size: 1.3rem; color: #ffdd22; margin-bottom: 1.2rem; }
+    #go-entry { display: flex; gap: .5rem; margin-bottom: 1.2rem; }
+    #go-entry input {
+      flex: 1; background: #1a2a1a; border: 2px solid #42F527;
+      color: #eee; padding: .4rem .6rem;
+      font-family: inherit; font-size: 1rem; outline: none;
+    }
+    #go-entry button, #go-reset {
+      background: #42F527; color: #0a120a; border: none;
+      padding: .4rem .9rem; font-family: inherit;
+      font-size: .9rem; font-weight: bold; cursor: pointer; letter-spacing: .05em;
+    }
+    #go-entry button:hover, #go-reset:hover { background: #66ff44; }
+    .go-lb-title { color: #42F527; font-weight: bold; margin-bottom: .4rem; letter-spacing: .1em; }
+    #go-table { width: 100%; border-collapse: collapse; margin-bottom: 1.1rem; font-size: .88rem; }
+    #go-table th { color: #42F527; border-bottom: 1px solid #42F527; padding: .2rem .4rem; text-align: left; }
+    #go-table td { padding: .2rem .4rem; color: #ccc; }
+    #go-table tr:nth-child(even) td { background: #1a2a1a; }
+    #go-reset { padding: .5rem 2rem; font-size: .95rem; }
   </style>
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
@@ -32,6 +67,20 @@
   </header>
 
   <canvas id="tank"></canvas>
+
+  <div id="gameover" class="go-hidden">
+    <div class="go-panel">
+      <div class="go-title">GAME OVER</div>
+      <div id="go-time" class="go-time"></div>
+      <div id="go-entry">
+        <input id="go-name" type="text" placeholder="Your name" maxlength="16" autocomplete="off" />
+        <button id="go-submit">SUBMIT</button>
+      </div>
+      <div class="go-lb-title">TOP SCORES</div>
+      <table id="go-table"><tr><th>#</th><th>NAME</th><th>TIME</th></tr></table>
+      <button id="go-reset">PLAY AGAIN</button>
+    </div>
+  </div>
 
   <script>
   (() => {
@@ -188,8 +237,8 @@
         const pal   = palettes[i % palettes.length]
         const type  = types[i % types.length]
         const phase = ((i * 2.399) % 1) * Math.PI * 2
-        const size  = 1.8 + ((i * 0.618) % 1.2)
-        const px    = Math.max(5, Math.round(6 * size))
+        const size  = 0.9 + ((i * 0.618) % 0.6)
+        const px    = Math.max(4, Math.round(5 * size))
         const item  = {
           x: 55 + Math.round((canvas.width - 110) * (i + 0.5) / n),
           y: sandY, type,
@@ -200,20 +249,20 @@
         }
 
         if (type === 'branch') {
-          buildCoralBranch(item.rects, 0, 0, -Math.PI / 2, 80 * size, 3, px, pal[0], pal[1])
+          buildCoralBranch(item.rects, 0, 0, -Math.PI / 2, 40 * size, 3, px, pal[0], pal[1])
         } else if (type === 'fan') {
           const nc = 5 + (i % 3)
           for (let c = 0; c < nc; c++) {
             const frac = nc > 1 ? c / (nc - 1) : 0.5
-            const h = Math.round((40 + Math.sin(frac * Math.PI) * 70) * size)
+            const h = Math.round((20 + Math.sin(frac * Math.PI) * 35) * size)
             const cx = Math.round((c - (nc - 1) / 2) * px * 2.2)
             for (let j = 0; j * px < h; j++)
               item.rects.push({ x: cx - (px >> 1), y: -(j + 1) * px, w: px, h: px,
                                 c: j % 2 === 0 ? pal[0] : pal[1] })
           }
         } else if (type === 'rock') {
-          const rw = Math.round((50 + (phase / Math.PI) * 30) * size)
-          const rh = Math.round((20 + (phase / Math.PI) * 15) * size)
+          const rw = Math.round((25 + (phase / Math.PI) * 15) * size)
+          const rh = Math.round((10 + (phase / Math.PI) * 7)  * size)
           for (let row = 0; row * px < rh; row++) {
             const w = Math.round(rw * (1 - (row / (rh / px)) * 0.5))
             item.rects.push({ x: -(w >> 1), y: -(row + 1) * px, w, h: px,
@@ -247,7 +296,7 @@
           for (let seg = 0; seg < 6; seg++) {
             const p = seg / 6
             tx += Math.sin(t * 0.022 + tentPhase + p * 2.5) * p * 3.5
-            ty -= (65 * item.size) / 6
+            ty -= (33 * item.size) / 6
             const sz = Math.max(2, px - Math.floor(seg * 0.55))
             ctx.fillStyle = seg % 2 === 0 ? item.color : item.dark
             ctx.fillRect(Math.round(tx) - (sz >> 1), Math.round(ty) - (sz >> 1), sz, sz)
@@ -487,10 +536,151 @@
       }
     }
 
+    // ── player (submarine) ────────────────────────────────────────────────
+    const P_SPR = [
+      [0,0,0,0,0,1,1,0,0,0],
+      [0,1,1,1,1,1,1,1,1,0],
+      [1,1,1,2,2,1,1,1,1,1],
+      [1,1,1,2,2,1,1,1,1,1],
+      [0,1,1,1,1,1,1,1,1,0],
+    ]  // 0=transparent 1=yellow hull 2=blue porthole
+
+    class Player {
+      constructor() {
+        this.px   = 5
+        this.cols = P_SPR[0].length
+        this.rows = P_SPR.length
+        this.w    = this.cols * this.px
+        this.h    = this.rows * this.px
+        this.reset()
+      }
+      reset() {
+        this.x    = canvas.width  / 2 - this.w / 2
+        this.y    = canvas.height / 2 - this.h / 2
+        this.vx   = 0
+        this.vy   = 0
+        this.flip = false
+      }
+      setDir(dx, dy) {
+        const spd = 3
+        this.vx = dx * spd
+        this.vy = dy * spd
+        if (dx < 0) this.flip = true
+        if (dx > 0) this.flip = false
+      }
+      update() {
+        this.x += this.vx
+        this.y += this.vy
+        const bw = 20
+        const maxX = canvas.width  - bw - this.w
+        const maxY = canvas.height - bw - this.h
+        if (this.x < bw) this.x = maxX
+        if (this.x > maxX) this.x = bw
+        if (this.y < bw) this.y = maxY
+        if (this.y > maxY) this.y = bw
+      }
+      draw() {
+        const ox = Math.floor(this.x), oy = Math.floor(this.y)
+        for (let row = 0; row < this.rows; row++) {
+          for (let col = 0; col < this.cols; col++) {
+            const src = this.flip ? (this.cols - 1 - col) : col
+            const v = P_SPR[row][src]
+            if (!v) continue
+            ctx.fillStyle = v === 1 ? '#ffdd22' : '#2288ff'
+            ctx.fillRect(ox + col * this.px, oy + row * this.px, this.px, this.px)
+          }
+        }
+      }
+      hitsFish(fishes) {
+        const m = 4
+        const ax1 = this.x + m, ay1 = this.y + m
+        const ax2 = this.x + this.w - m, ay2 = this.y + this.h - m
+        return fishes.some(f =>
+          ax2 > f.x + m && ax1 < f.x + f.w - m &&
+          ay2 > f.y + m && ay1 < f.y + f.h - m
+        )
+      }
+    }
+
+    // ── game state ────────────────────────────────────────────────────────
+    let gameState  = 'idle'   // 'idle' | 'playing' | 'dead'
+    let gameFrames = 0
+
+    function fmtTime(frames) {
+      const s = frames / 60
+      if (s >= 60) return `${Math.floor(s/60)}m ${Math.floor(s%60)}s`
+      return s.toFixed(1) + 's'
+    }
+
+    function killPlayer() {
+      gameState = 'dead'
+      document.getElementById('go-time').textContent = 'Survived: ' + fmtTime(gameFrames)
+      document.getElementById('gameover').classList.remove('go-hidden')
+      const loggedIn = typeof window.getLoggedInUser === 'function' && window.getLoggedInUser()
+      if (loggedIn) {
+        document.getElementById('go-entry').style.display = 'none'
+        const secs = Math.round(gameFrames / 60)
+        if (typeof window.saveScore === 'function') window.saveScore(loggedIn, secs)
+      } else {
+        document.getElementById('go-entry').style.display = 'flex'
+        document.getElementById('go-submit').textContent = 'SUBMIT'
+        document.getElementById('go-name').value = ''
+        document.getElementById('go-name').focus()
+      }
+      if (typeof window.loadLeaderboard === 'function') window.loadLeaderboard()
+    }
+
+    function resetGame() {
+      document.getElementById('gameover').classList.add('go-hidden')
+      gameState  = 'idle'
+      gameFrames = 0
+      player.reset()
+    }
+
+    document.getElementById('go-reset').addEventListener('click', resetGame)
+
+    document.getElementById('go-submit').addEventListener('click', async () => {
+      const name = document.getElementById('go-name').value.trim()
+      if (!name) return
+      document.getElementById('go-submit').textContent = '...'
+      if (typeof window.saveScore === 'function')
+        await window.saveScore(name, Math.round(gameFrames / 60))
+      document.getElementById('go-entry').style.display = 'none'
+      if (typeof window.loadLeaderboard === 'function') window.loadLeaderboard()
+    })
+
+    window.addEventListener('keydown', e => {
+      const dirs = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] }
+      if (!dirs[e.key]) return
+      e.preventDefault()
+      if (gameState === 'dead') return
+      if (gameState === 'idle') gameState = 'playing'
+      const [dx, dy] = dirs[e.key]
+      player.setDir(dx, dy)
+    })
+
+    function drawHUD() {
+      ctx.save()
+      ctx.textAlign = 'left'
+      ctx.font = 'bold 18px "Courier New", monospace'
+      if (gameState === 'idle') {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'
+        ctx.fillRect(canvas.width/2 - 182, canvas.height/2 + 28, 364, 38)
+        ctx.fillStyle = '#42F527'
+        ctx.textAlign = 'center'
+        ctx.fillText('PRESS ARROW KEY TO START', canvas.width/2, canvas.height/2 + 53)
+      } else if (gameState === 'playing') {
+        ctx.fillStyle = '#ffdd22'
+        ctx.fillText(fmtTime(gameFrames), 30, 54)
+      }
+      ctx.restore()
+    }
+
     // ── init objects ──────────────────────────────────────────────────────
     const bubbles  = Array.from({ length: 35 }, () => new Bubble())
     const fishes   = Array.from({ length: 18 }, () => new Fish())
     const octopus  = new Octopus()
+    const player   = new Player()
 
     // ── background ────────────────────────────────────────────────────────
     function drawBg() {
@@ -566,6 +756,11 @@
     let t = 0
     function loop() {
       t++
+      if (gameState === 'playing') {
+        gameFrames++
+        player.update()
+        if (player.hitsFish(fishes)) killPlayer()
+      }
       drawBg()
       drawSand()
       drawSeaweed(t)
@@ -573,11 +768,46 @@
       bubbles.forEach(b => { b.update(); b.draw() })
       octopus.update(); octopus.draw(t, fishes)
       fishes.forEach(f  => { f.update(t); f.draw() })
+      if (gameState !== 'dead') player.draw()
+      drawHUD()
       drawBorder()
       requestAnimationFrame(loop)
     }
     loop()
   })()
+  </script>
+
+  <script type="module">
+    import { supabase } from './supabase-client.js'
+    import { getSession } from './auth.js'
+
+    window.getLoggedInUser = function() { return getSession() }
+
+    window.saveScore = async function(name, seconds) {
+      const { error } = await supabase
+        .from('leaderboard')
+        .insert([{ name, seconds }])
+      if (error) console.error('saveScore:', error)
+    }
+
+    window.loadLeaderboard = async function() {
+      const tbl = document.getElementById('go-table')
+      tbl.innerHTML = '<tr><th>#</th><th>NAME</th><th>TIME</th></tr>'
+      const { data, error } = await supabase
+        .from('leaderboard')
+        .select('name, seconds')
+        .order('seconds', { ascending: false })
+        .limit(10)
+      if (error || !data) {
+        tbl.innerHTML += '<tr><td colspan="3" style="color:#f66">Could not load scores</td></tr>'
+        return
+      }
+      data.forEach((row, i) => {
+        const s = row.seconds
+        const time = s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`
+        tbl.innerHTML += `<tr><td>${i+1}</td><td>${row.name}</td><td>${time}</td></tr>`
+      })
+    }
   </script>
 
 </body>

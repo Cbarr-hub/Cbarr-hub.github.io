@@ -43,10 +43,46 @@
       <div class="modal-content">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>Random Sort Example Code</h2>
-        <pre><code>// Paste your Random Sort example code here
-function randomSort(items) {
-  // add your example implementation
+        <pre><code>// A simple random sort implementation (bogosort-style)
+function isSorted(items) {
+  for (let i = 1; i < items.length; i += 1) {
+    if (items[i - 1] > items[i]) {
+      return false;
+    }
+  }
+  return true;
 }
+
+function shuffle(items) {
+  const result = items.slice();
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function randomSort(items, maxAttempts = 100000) {
+  let attempt = 0;
+  let current = items.slice();
+
+  while (!isSorted(current) && attempt < maxAttempts) {
+    current = shuffle(current);
+    attempt += 1;
+  }
+
+  if (!isSorted(current)) {
+    throw new Error(`randomSort failed to sort within ${maxAttempts} attempts`);
+  }
+
+  return current;
+}
+
+// Example usage:
+const unsorted = [5, 2, 9, 1, 4];
+const sorted = randomSort(unsorted);
+console.log('Unsorted:', unsorted);
+console.log('Sorted:', sorted);
 </code></pre>
       </div>
     </div>

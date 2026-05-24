@@ -50,6 +50,21 @@ function isResetEvent(event) {
   return event.event_type === 'bankroll_reset' || event.outcome === 'reset';
 }
 
+function moneyOutcome(event) {
+  if (isResetEvent(event)) {
+    return 'reset';
+  }
+
+  const net = numberValue(event.net_change);
+  if (net > 0) {
+    return 'win';
+  }
+  if (net < 0) {
+    return 'loss';
+  }
+  return event.outcome;
+}
+
 function isBigEvent(event) {
   return isResetEvent(event) ||
     (event.outcome === 'win' && numberValue(event.payout_amount) >= 1000) ||
@@ -62,6 +77,7 @@ function normalizeEvent(event) {
     bet_amount: numberValue(event.bet_amount),
     payout_amount: numberValue(event.payout_amount),
     net_change: numberValue(event.net_change),
+    moneyOutcome: moneyOutcome(event),
     isBig: event.isBig ?? isBigEvent(event),
     isReset: event.isReset ?? isResetEvent(event)
   };
@@ -71,10 +87,10 @@ function filterEvents(events, filter) {
   const normalized = events.map(normalizeEvent);
 
   if (filter === 'wins') {
-    return normalized.filter((event) => event.outcome === 'win');
+    return normalized.filter((event) => event.moneyOutcome === 'win');
   }
   if (filter === 'losses') {
-    return normalized.filter((event) => event.outcome === 'loss');
+    return normalized.filter((event) => event.moneyOutcome === 'loss');
   }
   if (filter === 'resets') {
     return normalized.filter((event) => event.isReset);
@@ -83,14 +99,14 @@ function filterEvents(events, filter) {
     return normalized.filter((event) => event.isBig);
   }
 
-  return normalized.filter((event) => event.outcome === 'win' || event.outcome === 'loss' || event.isReset);
+  return normalized.filter((event) => event.moneyOutcome === 'win' || event.moneyOutcome === 'loss' || event.isReset);
 }
 
 function eventTitle(event) {
   if (event.isReset) {
     return 'Bankroll reset';
   }
-  return `${gameLabels[event.game] ?? event.game} ${event.outcome}`;
+  return `${gameLabels[event.game] ?? event.game} ${event.moneyOutcome}`;
 }
 
 function eventMeta(event) {
@@ -104,7 +120,7 @@ function eventClass(event) {
   if (event.isReset) {
     return 'reset';
   }
-  return event.outcome === 'win' ? 'win' : 'loss';
+  return event.moneyOutcome === 'win' ? 'win' : 'loss';
 }
 
 export async function renderRecentEvents({ listEl, statusEl, events = null, filter = 'all', limit = 14 }) {

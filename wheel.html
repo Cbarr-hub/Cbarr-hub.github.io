@@ -392,9 +392,17 @@
       slotTrack.innerHTML = '';
       const repeatedNames = [...names, ...names, ...names];
       // ensure each name gets a stable color assignment
+      // gold is rare: ~1 in 400 names
       names.forEach(n => {
         if (!nameColorMap[n]) {
-          nameColorMap[n] = slotColors[Math.floor(Math.random() * slotColors.length)];
+          const isGold = (Math.random() < 1/385);
+          if (isGold) {
+            nameColorMap[n] = 'gold';
+          } else {
+            // pick from the common colors only
+            const commons = ['blue','purple','pink','red'];
+            nameColorMap[n] = commons[Math.floor(Math.random() * commons.length)];
+          }
         }
       });
 

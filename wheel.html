@@ -367,11 +367,18 @@
     ];
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
-      blue: 'linear-gradient(135deg,#00b4ff,#0066ff)',
-      purple: 'linear-gradient(135deg,#8a4fff,#5a00ff)',
-      pink: 'linear-gradient(135deg,#ff6fb4,#ff39ff)',
-      red: 'linear-gradient(135deg,#ff5a5a,#ff1e1e)',
-      gold: 'linear-gradient(135deg,#ffd166,#ffb000)'
+      blue: '#007bff',
+      purple: '#7a3fff',
+      pink: '#ff4fb3',
+      red: '#ff3b3b',
+      gold: '#ffbf38'
+    };
+    const overlayColorMap = {
+      blue: 'rgba(0,123,255,0.64)',
+      purple: 'rgba(122,63,255,0.64)',
+      pink: 'rgba(255,79,179,0.64)',
+      red: 'rgba(255,59,59,0.64)',
+      gold: 'rgba(255,191,56,0.64)'
     };
     const nameColorMap = {};
     const spinButton = document.getElementById('spin');
@@ -456,12 +463,22 @@
       modalBox.style.background = bg;
       modalBox.style.color = (colorKey === 'gold') ? '#000' : '#fff';
       popupName.style.color = (colorKey === 'gold') ? '#503000' : 'var(--accent)';
+      // set overlay to a semi-transparent color matching the slot
+      const overlayBg = overlayColorMap[colorKey] || 'rgba(0,0,0,0.72)';
+      modal.style.background = overlayBg;
       modal.classList.add('show');
     }
 
     function hidePopup() {
       const modal = document.getElementById('popupModal');
+      const modalBox = modal.querySelector('.modal');
+      const popupName = document.getElementById('popupName');
       modal.classList.remove('show');
+      // clear inline styles so next popup uses fresh values
+      modal.style.background = '';
+      modalBox.style.background = '';
+      modalBox.style.color = '';
+      popupName.style.color = '';
     }
 
     document.getElementById('closePopup').addEventListener('click', hidePopup);

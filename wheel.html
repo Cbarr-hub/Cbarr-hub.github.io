@@ -209,7 +209,12 @@
       const bg = slotColorMap[colorKey] || colorKey || 'rgba(10,10,22,0.96)';
       modalBox.style.background = bg;
       modalBox.style.color = (colorKey === 'gold') ? '#000' : '#fff';
-      popupName.style.color = (colorKey === 'gold') ? '#503000' : 'var(--accent)';
+      // Style the popup name with colored background
+      popupName.style.background = bg;
+      popupName.style.color = (colorKey === 'gold') ? '#000' : '#fff';
+      popupName.style.padding = '0.8rem 1.2rem';
+      popupName.style.borderRadius = '12px';
+      popupName.style.display = 'inline-block';
       // set overlay to a semi-transparent color matching the slot
       const overlayBg = overlayColorMap[colorKey] || 'rgba(0,0,0,0.72)';
       modal.style.background = overlayBg;
@@ -225,7 +230,11 @@
       modal.style.background = '';
       modalBox.style.background = '';
       modalBox.style.color = '';
+      popupName.style.background = '';
       popupName.style.color = '';
+      popupName.style.padding = '';
+      popupName.style.borderRadius = '';
+      popupName.style.display = '';
     }
 
     document.getElementById('closePopup').addEventListener('click', hidePopup);

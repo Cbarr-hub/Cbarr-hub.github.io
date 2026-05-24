@@ -268,16 +268,38 @@
         if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
       }
 
-      drawArms(t) {
+      drawArms(t, fishes) {
         const cx   = this.x + this.bodyW / 2
         const base = this.y + this.bodyH - this.px
-        const nArms = 8, nSegs = 10, armLen = 62
+        const nArms = 8, nSegs = 12, armLen = 64
 
-        ctx.lineCap = 'round'
+        // nearest fish within reach range
+        let nearestFish = null, nearestDist = Infinity
+        fishes.forEach(f => {
+          const fx = f.x + f.w / 2, fy = f.y + f.h / 2
+          const d  = Math.sqrt((fx - cx) ** 2 + (fy - base) ** 2)
+          if (d < 220 && d < nearestDist) { nearestDist = d; nearestFish = f }
+        })
+
+        let reachArmIdx = -1, fishAngle = 0
+        if (nearestFish) {
+          const fx = nearestFish.x + nearestFish.w / 2
+          const fy = nearestFish.y + nearestFish.h / 2
+          fishAngle = Math.atan2(fy - base, fx - cx)
+          let minDiff = Infinity
+          for (let i = 0; i < nArms; i++) {
+            const bAng = Math.PI / 2 + (i / (nArms - 1) - 0.5) * 0.85
+            const diff = Math.abs(fishAngle - bAng)
+            if (diff < minDiff) { minDiff = diff; reachArmIdx = i }
+          }
+        }
+
         for (let i = 0; i < nArms; i++) {
-          const spread   = (i / (nArms - 1) - 0.5)
+          const spread    = (i / (nArms - 1) - 0.5)
           const baseAngle = Math.PI / 2 + spread * 0.85
           const armPhase  = (i / nArms) * Math.PI * 2 + this.phase
+          const isReach   = (i === reachArmIdx && nearestFish !== null)
+          const reachFrac = isReach ? Math.max(0, 1 - nearestDist / 220) : 0
 
           let x = cx + spread * this.bodyW * 0.55
           let y = base
@@ -285,28 +307,22 @@
 
           for (let s = 1; s <= nSegs; s++) {
             const p    = s / nSegs
-            // travelling wave: moves from base to tip
-            const wave = Math.sin(3.5 * p - t * 0.055 + armPhase) * p * 18
-            const ang  = baseAngle + wave * 0.11
+            const wave = Math.sin(3.5 * p - t * 0.018 + armPhase) * p * 18 * (1 - reachFrac)
+            const ang  = baseAngle + (fishAngle - baseAngle) * reachFrac * p + wave * 0.11
             x += Math.cos(ang) * (armLen / nSegs)
             y += Math.sin(ang) * (armLen / nSegs)
             pts.push({x, y})
           }
 
-          for (let s = 0; s < pts.length - 1; s++) {
-            const thick = Math.max(1, (1 - s / nSegs) * 5)
-            ctx.lineWidth = thick + 2
-            ctx.strokeStyle = this.dark
-            ctx.beginPath()
-            ctx.moveTo(pts[s].x, pts[s].y)
-            ctx.lineTo(pts[s+1].x, pts[s+1].y)
-            ctx.stroke()
-            ctx.lineWidth = thick
-            ctx.strokeStyle = this.color
-            ctx.beginPath()
-            ctx.moveTo(pts[s].x, pts[s].y)
-            ctx.lineTo(pts[s+1].x, pts[s+1].y)
-            ctx.stroke()
+          // draw as discrete pixel blocks
+          for (let s = 0; s < pts.length; s++) {
+            const thick = Math.max(2, Math.round((1 - s / (nSegs + 1)) * 5))
+            const bx = Math.round(pts[s].x) - Math.floor(thick / 2)
+            const by = Math.round(pts[s].y) - Math.floor(thick / 2)
+            ctx.fillStyle = this.dark
+            ctx.fillRect(bx - 1, by - 1, thick + 2, thick + 2)
+            ctx.fillStyle = this.color
+            ctx.fillRect(bx, by, thick, thick)
           }
         }
       }
@@ -326,8 +342,8 @@
         }
       }
 
-      draw(t) {
-        this.drawArms(t)
+      draw(t, fishes) {
+        this.drawArms(t, fishes)
         this.drawBody()
       }
     }
@@ -353,6 +369,38 @@
       ctx.fillRect(0, sandY + 34, canvas.width, 3)
     }
 
+    // ── border ────────────────────────────────────────────────────────────
+    function drawBorder() {
+      const bw = 18, bs = 9
+      const frame = '#1a2a3a'
+      const coral = '#ff6644'
+      const teal  = '#33ccaa'
+
+      for (let x = 0; x < canvas.width; x += bs) {
+        const idx = Math.floor(x / bs)
+        ctx.fillStyle = (idx % 7 === 3) ? coral : (idx % 7 === 6) ? teal : frame
+        ctx.fillRect(x, 0, bs, bw)
+        ctx.fillRect(x, canvas.height - bw, bs, bw)
+      }
+      for (let y = bw; y < canvas.height - bw; y += bs) {
+        const idx = Math.floor(y / bs)
+        ctx.fillStyle = (idx % 7 === 3) ? coral : (idx % 7 === 6) ? teal : frame
+        ctx.fillRect(0, y, bw, bs)
+        ctx.fillRect(canvas.width - bw, y, bw, bs)
+      }
+      ctx.fillStyle = coral
+      ctx.fillRect(0, 0, bw, bw)
+      ctx.fillRect(canvas.width - bw, 0, bw, bw)
+      ctx.fillRect(0, canvas.height - bw, bw, bw)
+      ctx.fillRect(canvas.width - bw, canvas.height - bw, bw, bw)
+      // inner glass highlight line
+      ctx.fillStyle = '#2a4a5a'
+      ctx.fillRect(bw, bw, canvas.width - bw * 2, 2)
+      ctx.fillRect(bw, canvas.height - bw - 2, canvas.width - bw * 2, 2)
+      ctx.fillRect(bw, bw + 2, 2, canvas.height - bw * 2 - 4)
+      ctx.fillRect(canvas.width - bw - 2, bw + 2, 2, canvas.height - bw * 2 - 4)
+    }
+
     // ── click to scare fish ───────────────────────────────────────────────
     canvas.addEventListener('click', e => {
       const rect = canvas.getBoundingClientRect()
@@ -376,8 +424,9 @@
       drawSand()
       drawSeaweed(t)
       bubbles.forEach(b => { b.update(); b.draw() })
-      octopus.update(); octopus.draw(t)
+      octopus.update(); octopus.draw(t, fishes)
       fishes.forEach(f  => { f.update(t); f.draw() })
+      drawBorder()
       requestAnimationFrame(loop)
     }
     loop()

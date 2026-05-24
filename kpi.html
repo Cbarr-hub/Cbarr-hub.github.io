@@ -52,7 +52,7 @@
   <div id="video-panel">
     <button id="video-close" type="button">×</button>
     <div id="video-container">
-      <iframe src="https://www.youtube.com/embed/-DX_9sF4i00?autoplay=1" allowfullscreen></iframe>
+      <iframe src="https://www.youtube.com/embed/-DX_9sF4i00?autoplay=1" allowfullscreen allow="autoplay"></iframe>
     </div>
   </div>
 
@@ -82,9 +82,12 @@
       try{const u=new URL(a.href, location.href); return u.hostname !== location.hostname}catch(e){return false}
     });
 
-    // longest word
+    // longest word (excluding HTML-like words)
     let longest = '';
-    for(const w of words) if(w.length>longest.length) longest=w;
+    for(const w of words){
+      if(/[<>\/\&]/.test(w)) continue; // skip HTML-like words
+      if(w.length>longest.length) longest=w;
+    }
 
     // compute DOM max depth
     function maxDepth(node){
@@ -244,9 +247,9 @@
   function renderKeyMetrics(metricsList){
     const out = document.getElementById('keyMetrics');
     if(metricsList.length===0){ out.innerHTML = ''; return }
-    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Avg words/sent</th><th>Inline styles</th><th>Missing alt</th><th>External links</th><th>DOM depth</th></tr></thead><tbody>';
+    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Avg words/sent</th><th>Longest word</th><th>Sentences</th></tr></thead><tbody>';
     for(const m of metricsList){
-      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgSentenceWords}</td><td>${m.inlineStyleCount}</td><td>${m.imgsMissingAlt}</td><td>${m.externalLinks}</td><td>${m.domMaxDepth}</td></tr>`;
+      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgSentenceWords}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td></tr>`;
     }
     html += '</tbody></table>';
     out.innerHTML = html;

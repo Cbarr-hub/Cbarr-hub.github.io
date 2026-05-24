@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gamertown Solutions :: Index</title>
   <link rel="stylesheet" href="pwkgp-site.css" />
+  <style>
+    .h-bar { color:#fff; font-size:.72rem; font-weight:bold; letter-spacing:.05em; padding:5px 28px 5px 8px; }
+    .h-verified { opacity:.7; font-weight:normal; }
+    .h-cta { display:block; background:#c8006a; color:#fff; text-align:center; padding:7px; font-size:.78rem; font-weight:bold; letter-spacing:.06em; text-decoration:none; border-radius:2px; }
+    .h-cta:hover { filter:brightness(1.2); }
+    .h-msgrow { font-size:.78rem; padding:3px 0; border-bottom:1px solid #2a0015; }
+    .h-x { position:absolute; top:4px; right:5px; background:rgba(0,0,0,.5); border:1px solid #660033; color:#ff6688; font-size:.7rem; width:18px; height:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; border-radius:2px; z-index:1; }
+    .h-x:hover { background:#440011; color:#fff; }
+  </style>
 </head>
 <body>
   <div class="topbar">GAMERTOWN SOLUTIONS // OPERATIONS INDEX</div>
@@ -26,10 +35,10 @@
       <hr />
       <section class="portal-list">
         <h3>//PORTALS</h3>
-        <div class="row"><a href="forum.html">field-office</a><span>Deployment / Reports / Dispatch</span></div>
+        <div class="row"><a href="forum.html">forum</a><span>Deployment / Reports / Dispatch</span></div>
         <div class="row"><a href="design_phil.html">solutions</a><span>Logistics / Infrastructure / Repair</span></div>
-        <div class="row"><a href="kpi.html">signal-room</a><span>Monitoring / Transmission / Fault Trees</span></div>
-        <div class="row"><a href="support.html">contracts</a><span>Statements / Scopes / Service Records</span></div>
+        <div class="row"><a href="kpi.html">KPI</a><span>Monitoring / Transmission / Fault Trees</span></div>
+        <div class="row"><a href="support.html">support</a><span>Statements / Scopes / Service Records</span></div>
         <div class="row"><a href="index2.html">archive</a><span>Manuals / Legacy Data / Site Notes</span></div>
         <div class="row"><a href="signin.html">operators</a><span>Crews / Credentials / Access Control</span></div>
         <div class="row"><a href="map.html">maps</a><span>Routes / Zones / Coverage Models</span></div>
@@ -40,12 +49,13 @@
       <hr />
       <section class="portal-list">
         <h3>//DIRECT ACCESS</h3>
-        <div class="row"><a href="gamble.html">gamble results</a><span>Odds / Records / Balance</span></div>
+        <div class="row"><a href="gamble.html">casino</a><span>Odds / Records / Balance</span></div>
         <div class="row"><a href="wheel.html">the wheel</a><span>Spin / Outcome / Log</span></div>
         <div class="row"><a href="tablets.html">tablets</a><span>Inscriptions / Damp Records</span></div>
         <div class="row"><a href="faith.html">faith node</a><span>Belief / Signal / Doctrine</span></div>
         <div class="row"><a href="fishtank.html">fishtank</a><span>Tank Observations / Bubble Analysis</span></div>
         <div class="row"><a href="random_sort.html">random sort</a><span>Algorithm / Chaos / Sequence</span></div>
+        <div class="row"><a href="team.html">meet the team</a><span>Personnel / Registry / Identification</span></div>
       </section>
       <hr />
       <section>
@@ -62,13 +72,12 @@
       <section class="notice">
         <h3>//NOTICE</h3>
         <p>This domain operates as a practical index for obscure procedures, field records, and operational fragments. Casual users may proceed, but should not expect the structure to explain itself.</p>
-        <a href="#" class="enter">ENTER ACCORDINGLY.</a>
       </section>
     </section>
 
     <aside class="right-rail">
       <img class="round-sigil" src="pwkgp-circular-sigil.png" alt="Circular pale green sigil" />
-      <p class="quote">“A system is just a ritual that learned to invoice.”<br><span>— Gamertown memo</span></p>
+      <p class="quote">“Start late, finish early”<br><span>— Gamertown memo</span></p>
       <section class="access">
         <h3>//SIGIL OF ACCESS</h3>
         <img src="pwkgp-access-sigil.png" alt="Linear access sigil" />
@@ -79,6 +88,10 @@
       </section>
       <p class="clock">✶ 18:27:42 UTC+0</p>
       <a href="#" id="openSignInSide" class="enter" style="display:inline-block;margin-top:18px;">AUTHENTICATE.</a>
+      <section class="terminal-note" style="margin-top:18px;">
+        <h3>//SYSTEM MODE</h3>
+        <button id="nd-toggle" style="margin-top:6px;background:#1a1a00;border:2px solid #aaaa00;color:#aaaa00;cursor:pointer;font-family:inherit;font-size:.78rem;letter-spacing:.12em;padding:.4rem .8rem;box-shadow:0 0 6px #aaaa0066;">NONDETERMINISM: OFF</button>
+      </section>
     </aside>
   </main>
 
@@ -149,11 +162,248 @@
     close.addEventListener('click', () => {
       adRoot.style.display = 'none';
       clearInterval(timer);
+      for (let i = 0; i < 15; i++) spawnHydraAd();
     });
   })();
+
+  // ── hydra ad system ──────────────────────────────────────────────────────
+  let _hz = 3000;
+
+  const _names = ['Ashley','Brianna','Kayla','Destiny','Madison','Tiffany','Amber','Brittany','Savannah','Cheyenne','Crystal','Sierra','Jade','Roxanne','Monique'];
+  const _cities = ['your area','2.1 mi','4 mi away','nearby','less than 5 mi'];
+  const _viewers = () => (800 + Math.floor(Math.random()*4200)).toLocaleString();
+  const _camNames = ['xoxoAngel','SexySteph99','BaddieBri','PrincessAsh','LilDevil__x','KaylaLive__','SiennaBabe','NotYourGF'];
+  const _sites = [
+    {name:'FlirtFox',   color:'#c8006a', bg:'#1a0010'},
+    {name:'CamStream',  color:'#ff2200', bg:'#120000'},
+    {name:'MeetNow',    color:'#dd00bb', bg:'#15000f'},
+    {name:'LocalHots',  color:'#ff6600', bg:'#130800'},
+    {name:'SpicyMatch', color:'#ff0055', bg:'#12000a'},
+    {name:'WildFlirt',  color:'#aa00ff', bg:'#0d0015'},
+  ];
+  const _pick = arr => arr[Math.floor(Math.random()*arr.length)];
+  const _age  = () => 19 + Math.floor(Math.random()*14);
+  const _msgs = () => 1 + Math.floor(Math.random()*8);
+  const _thumbBg = () => {
+    const cols = ['#3a0020','#200033','#2a0000','#001a2a','#1a1400'];
+    return _pick(cols);
+  };
+
+  const _templates = [
+    () => {
+      const s = _pick(_sites), n = _pick(_names), a = _age(), loc = _pick(_cities);
+      return `
+        <div class="h-bar" style="background:${s.color}">💋 ${s.name} <span class="h-verified">✔ verified</span></div>
+        <div style="display:flex;gap:8px;padding:10px 10px 6px">
+          <div style="width:54px;height:54px;border-radius:50%;background:${_thumbBg()};border:2px solid ${s.color};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px">🙍‍♀️</div>
+          <div>
+            <div style="font-weight:bold;font-size:.95rem">${n}, ${a} <span style="color:#4dff4d;font-size:.7rem">● online</span></div>
+            <div style="font-size:.75rem;color:#bbb;margin-top:2px">📍 ${loc}</div>
+            <div style="font-size:.78rem;margin-top:4px;color:#eee;font-style:italic">"hey are you on here? 😏"</div>
+          </div>
+        </div>
+        <div style="padding:0 10px 10px"><a class="h-cta" style="background:${s.color}" href="#">VIEW PROFILE →</a></div>`;
+    },
+    () => {
+      const s = _pick(_sites), cam = _pick(_camNames), v = _viewers();
+      return `
+        <div class="h-bar" style="background:#c00010">🔴 LIVE NOW — ${s.name}</div>
+        <div style="position:relative;height:80px;background:${_thumbBg()};overflow:hidden;display:flex;align-items:center;justify-content:center">
+          <div style="font-size:28px">🎥</div>
+          <div style="position:absolute;top:5px;left:6px;background:#c00010;color:#fff;font-size:.6rem;padding:1px 5px;border-radius:2px;font-weight:bold">● LIVE</div>
+          <div style="position:absolute;bottom:5px;right:6px;background:rgba(0,0,0,.7);color:#fff;font-size:.65rem;padding:1px 5px">👁 ${v}</div>
+        </div>
+        <div style="padding:8px 10px 4px;font-weight:bold;font-size:.88rem">${cam} is performing NOW</div>
+        <div style="padding:0 10px 10px"><a class="h-cta" style="background:#cc0010" href="#">JOIN FREE — WATCH LIVE →</a></div>`;
+    },
+    () => {
+      const s = _pick(_sites), n1 = _pick(_names), n2 = _pick(_names), a1 = _age(), a2 = _age(), m = _msgs();
+      return `
+        <div class="h-bar" style="background:${s.color}">💌 ${s.name} — New Messages</div>
+        <div style="padding:8px 10px 4px;font-size:.8rem;color:#aaa">YOU HAVE <span style="color:#ff4488;font-weight:bold;font-size:1rem">${m}</span> UNREAD MESSAGES</div>
+        <div style="padding:4px 10px">
+          <div class="h-msgrow">🌸 <b>${n1}</b>, ${a1} — <span style="color:#ccc;font-style:italic">"are you free later?"</span></div>
+          <div class="h-msgrow">💋 <b>${n2}</b>, ${a2} — <span style="color:#ccc;font-style:italic">"I saw your profile..."</span></div>
+          ${m > 2 ? `<div style="font-size:.72rem;color:#888;padding:2px 0">+ ${m-2} more waiting</div>` : ''}
+        </div>
+        <div style="padding:4px 10px 10px"><a class="h-cta" style="background:${s.color}" href="#">READ MESSAGES NOW →</a></div>`;
+    },
+    () => {
+      const s = _pick(_sites), n = _pick(_names), a = _age();
+      return `
+        <div class="h-bar" style="background:${s.color}">👁 ${s.name} — Profile Alert</div>
+        <div style="padding:10px 10px 6px;display:flex;align-items:center;gap:10px">
+          <div style="font-size:28px">👀</div>
+          <div>
+            <div style="font-size:.85rem"><b>${n} (${a})</b> viewed your profile</div>
+            <div style="font-size:.72rem;color:#bbb;margin-top:2px">3 minutes ago · ${_pick(_cities)}</div>
+          </div>
+        </div>
+        <div style="padding:0 10px 4px;font-size:.78rem;color:#ccc;font-style:italic">"She's waiting for you to make the first move"</div>
+        <div style="padding:4px 10px 10px"><a class="h-cta" style="background:${s.color}" href="#">SEE WHO VIEWED YOU →</a></div>`;
+    },
+    () => {
+      const s = _pick(_sites), cam = _pick(_camNames);
+      return `
+        <div class="h-bar" style="background:#7700cc">⚡ ${s.name} ALERT</div>
+        <div style="padding:10px;font-size:.9rem;text-align:center">
+          <div style="font-size:.72rem;color:#aaa;letter-spacing:.08em;margin-bottom:4px">SPECIAL OFFER — LIMITED TIME</div>
+          <div style="font-weight:bold;color:#ff88ff;font-size:1rem">FREE Premium Access</div>
+          <div style="font-size:.78rem;color:#ccc;margin:6px 0">${cam} has unlocked your free trial.<br>Expires in <span style="color:#ff4444" id="h-ctdn">04:59</span></div>
+        </div>
+        <div style="padding:0 10px 10px"><a class="h-cta" style="background:#7700cc" href="#">CLAIM FREE ACCESS →</a></div>`;
+    },
+    () => {
+      const s = _pick(_sites), n = _pick(_names), a = _age(), loc = _pick(_cities);
+      return `
+        <div class="h-bar" style="background:${s.color}">💬 ${s.name} — New Chat</div>
+        <div style="padding:10px 10px 6px;display:flex;gap:8px;align-items:flex-start">
+          <div style="font-size:24px;flex-shrink:0">🙍‍♀️</div>
+          <div>
+            <div style="font-size:.8rem;color:#aaa">${n}, ${a} · ${loc}</div>
+            <div style="background:#2a0020;border:1px solid ${s.color};border-radius:0 8px 8px 8px;padding:6px 9px;font-size:.82rem;margin-top:4px;color:#eee">"omg you look familiar 👀 are you single??"</div>
+          </div>
+        </div>
+        <div style="padding:4px 10px 10px"><a class="h-cta" style="background:${s.color}" href="#">REPLY NOW →</a></div>`;
+    },
+    () => {
+      const n = _pick(_names), a = _age(), s = _pick(_sites);
+      return `
+        <div class="h-bar" style="background:#b8000e">🏆 CONGRATULATIONS</div>
+        <div style="padding:10px;text-align:center">
+          <div style="font-size:1.6rem">🎉</div>
+          <div style="font-size:.82rem;color:#ffdd44;font-weight:bold;margin:4px 0">YOU'VE BEEN SELECTED</div>
+          <div style="font-size:.76rem;color:#ccc">${n} (${a}, ${_pick(_cities)}) chose you from <b style="color:#fff">847 profiles</b> for a free connection.</div>
+        </div>
+        <div style="padding:0 10px 10px"><a class="h-cta" style="background:#b8000e" href="#">ACCEPT INVITATION →</a></div>`;
+    },
+  ];
+
+  function spawnHydraAd() {
+    const el = document.createElement('div');
+    const w = 260, h = 220;
+    const maxX = Math.max(10, window.innerWidth  - w - 10);
+    const maxY = Math.max(10, window.innerHeight - h - 10);
+    el.style.cssText = `
+      position:fixed;
+      left:${10 + Math.random()*maxX}px;
+      top:${10  + Math.random()*maxY}px;
+      width:${w}px;
+      z-index:${++_hz};
+      background:#0d0008;
+      border:1px solid #660033;
+      box-shadow:0 4px 24px #ff006644;
+      font-family:Arial,Helvetica,sans-serif;
+      color:#eee;
+      font-size:.82rem;
+      border-radius:3px;
+      overflow:hidden;
+      user-select:none;
+    `;
+    const tmpl = _templates[Math.floor(Math.random()*_templates.length)];
+    el.innerHTML = `<button class="h-x" title="close">✕</button>${tmpl()}`;
+
+    const xBtn = el.querySelector('.h-x');
+    xBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      el.remove();
+      spawnHydraAd();
+      spawnHydraAd();
+    });
+
+    // fake countdown if present
+    const cd = el.querySelector('#h-ctdn');
+    if (cd) {
+      let secs = 299;
+      const iv = setInterval(() => {
+        if (!document.contains(el)) { clearInterval(iv); return; }
+        secs--;
+        if (secs <= 0) { clearInterval(iv); return; }
+        cd.textContent = `${String(Math.floor(secs/60)).padStart(2,'0')}:${String(secs%60).padStart(2,'0')}`;
+      }, 1000);
+    }
+
+    document.body.appendChild(el);
+  }
 </script>
 
 <script src="site.js"></script>
+
+<script>
+;(() => {
+  const KEY   = 'gt_nondeterminism'
+  const pages = [
+    'forum.html','design_phil.html','kpi.html','support.html',
+    'index2.html','signin.html','map.html','Algs/advanced_algorithms.html',
+    'video.html','gamble.html','wheel.html','tablets.html',
+    'faith.html','fishtank.html','random_sort.html','index.html',
+  ]
+  const orientations = [
+    '','',
+    'rotate(180deg)','scaleX(-1)','scaleY(-1)',
+    'rotate(180deg) scaleX(-1)','rotate(90deg)','rotate(270deg)',
+  ]
+
+  let interceptor = null
+
+  function applyOrientation() {
+    const t = orientations[Math.floor(Math.random() * orientations.length)]
+    const s = document.documentElement.style
+    s.transform = t
+    s.transformOrigin = '50vw 50vh'
+    s.overflow = 'hidden'
+    s.width = '100vw'
+    s.height = '100vh'
+  }
+
+  function clearOrientation() {
+    const s = document.documentElement.style
+    s.transform = s.transformOrigin = s.overflow = s.width = s.height = ''
+  }
+
+  function enable() {
+    localStorage.setItem(KEY, '1')
+    applyOrientation()
+    interceptor = e => {
+      const a = e.target.closest('a')
+      if (!a || a.id === 'openSignIn' || a.id === 'openSignInSide') return
+      const href = a.getAttribute('href')
+      if (!href || href === '#') return
+      e.preventDefault(); e.stopPropagation()
+      location.href = pages[Math.floor(Math.random() * pages.length)]
+    }
+    document.addEventListener('click', interceptor, true)
+    updateBtn(true)
+  }
+
+  function disable() {
+    localStorage.removeItem(KEY)
+    clearOrientation()
+    if (interceptor) { document.removeEventListener('click', interceptor, true); interceptor = null }
+    updateBtn(false)
+  }
+
+  function updateBtn(on) {
+    const btn = document.getElementById('nd-toggle')
+    if (!btn) return
+    btn.textContent = 'NONDETERMINISM: ' + (on ? 'ON' : 'OFF')
+    btn.style.borderColor   = on ? '#ff0'              : '#aaaa00'
+    btn.style.color         = on ? '#ff0'              : '#aaaa00'
+    btn.style.background    = on ? '#332200'           : '#1a1a00'
+    btn.style.boxShadow     = on ? '0 0 12px #ff08'   : '0 0 6px #aaaa0066'
+  }
+
+  if (localStorage.getItem(KEY) === '1') enable()
+
+  document.addEventListener('DOMContentLoaded', () => {
+    updateBtn(localStorage.getItem(KEY) === '1')
+    const btn = document.getElementById('nd-toggle')
+    if (btn) btn.addEventListener('click', () => {
+      localStorage.getItem(KEY) === '1' ? disable() : enable()
+    })
+  })
+})()
+</script>
 
 <script type="module">
   import { supabase } from './supabase-client.js';

@@ -96,7 +96,14 @@
       red: 'rgba(255,59,59,0.64)',
       gold: 'rgba(255,191,56,0.64)'
     };
-    const gameColorMap = {}; // Map game names to their assigned colors
+    // CS2 Case odds (Mil-Spec/Blue, Restricted/Purple, Classified/Pink, Covert/Red, Knife/Gold)
+    const cs2Odds = {
+      blue: 0.796,    // ~79.6% (Mil-Spec)
+      purple: 0.1598, // ~16% (Restricted)
+      pink: 0.032,    // ~3.2% (Classified)
+      red: 0.010,     // ~1% (Covert)
+      gold: 0.0062    // ~0.62% (Knife/Special)
+    };
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
@@ -126,12 +133,22 @@
       input.addEventListener('change', updateFilters);
     });
 
-    function getColorKey(gameName) {
-      // Assign a random color to each game once, ensuring equal odds for each color
-      if (!gameColorMap[gameName]) {
-        gameColorMap[gameName] = slotColors[Math.floor(Math.random() * slotColors.length)];
+    function getRandomColorByOdds() {
+      // Pick a color based on CS2 case odds
+      const roll = Math.random();
+      let cumulative = 0;
+      for (const [color, odds] of Object.entries(cs2Odds)) {
+        cumulative += odds;
+        if (roll <= cumulative) {
+          return color;
+        }
       }
-      return gameColorMap[gameName];
+      return 'gold'; // Fallback (should rarely happen)
+    }
+
+    function getRandomColor() {
+      // For the spinning tiles, pick a random color with equal distribution
+      return slotColors[Math.floor(Math.random() * slotColors.length)];
     }
 
     function buildSlot(names) {
@@ -151,7 +168,7 @@
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = game.name;
-        const colorKey = getColorKey(game.name);
+        const colorKey = getRandomColor(); // Each tile gets a random color as it spins
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
         item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
@@ -181,8 +198,12 @@
       spinButton.textContent = 'Spinning...';
       spinButton.disabled = true;
 
-      buildSlot(names);
+      // Determine the result BEFORE animating: pick color by CS2 odds and name with equal odds
+      const resultColor = getRandomColorByOdds();
       const selectedIndex = Math.floor(Math.random() * names.length);
+      const selectedName = names[selectedIndex].name;
+
+      buildSlot(names);
       const itemWidth = parseFloat(slotTrack.dataset.itemWidth) || 240;
       const containerWidth = slotTrack.parentElement.clientWidth;
       const loopCount = 4;
@@ -195,10 +216,8 @@
       });
 
       window.setTimeout(() => {
-        const selectedName = names[selectedIndex].name;
         resultDisplay.textContent = selectedName;
-        const selectedColorKey = getColorKey(selectedName);
-        showPopup(selectedName, selectedColorKey);
+        showPopup(selectedName, resultColor);
         spinButton.textContent = 'Spin';
         spinButton.disabled = false;
         isSpinning = false;

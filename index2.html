@@ -16,6 +16,13 @@ FILE: index.html
   <title>GAMERTOWN.SOLUTIONS :: WELCOME :: DO NOT PANIC</title>
 
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    #secret-dot {
+      color: inherit;
+      text-decoration: none;
+      cursor: default;
+    }
+  </style>
 </head>
 <body>
 
@@ -26,13 +33,13 @@ FILE: index.html
   </marquee>
 
   <header class="glitch-header">
-    <h1 class="glitch" data-text="GAMERTOWN.SOLUTIONS">GAMERTOWN.SOLUTIONS</h1>
+    <h1 class="glitch" data-text="GAMERTOWN.SOLUTIONS">GAMERTOWN<a href="#" id="secret-dot" onclick="secretDotClick(event)">.</a>SOLUTIONS</h1>
     <p class="sub">an experimental web strange attractor from the pre-cloud era.</p>
   </header>
 
   <div class="video-banner">
     <iframe
-      src="https://www.youtube.com/embed/PIjnHUp9XVE?autoplay=1&mute=1&loop=1&playlist=PIjnHUp9XVE"
+      src="https://www.youtube.com/embed/PIjnHUp9XVE?autoplay=1&loop=1&playlist=PIjnHUp9XVE"
       title="YouTube video banner"
       frameborder="0"
       allow="autoplay; encrypted-media; picture-in-picture"
@@ -50,6 +57,7 @@ FILE: index.html
     <a href="#about">[ ABOUT ]</a>
     <a href="#contact">[ CONTACT ]</a>
     <a href="#void">[ THE VOID ]</a>
+    <a href="video.html">[ SICK CLIPS ]</a>
     <a href="tablets.html">[ THE TABLETS ]</a>
     <a href="map.html" style="font-size: 1.3em;">[ FIND THE CYBER BARN ]</a>
   </nav>
@@ -110,6 +118,16 @@ FILE: index.html
     </div>
     <button class="ad-close" type="button" aria-label="Close advertisement">×</button>
   </div>
+
+  <script>
+    function secretDotClick(e) {
+      e.preventDefault()
+      const pw = prompt('enter password')
+      if (pw === 'tree') {
+        window.location.href = 'final.html'
+      }
+    }
+  </script>
 
   <script>
     ;(() => {

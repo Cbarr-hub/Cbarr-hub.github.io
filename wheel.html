@@ -26,12 +26,8 @@
 
     <div class="filters">
       <div class="filter-group">
-        <span>Max Players</span>
-        <label for="players-2"><input id="players-2" type="checkbox" value="2" checked> 2</label>
-        <label for="players-3"><input id="players-3" type="checkbox" value="3" checked> 3</label>
-        <label for="players-4"><input id="players-4" type="checkbox" value="4" checked> 4</label>
-        <label for="players-5"><input id="players-5" type="checkbox" value="5" checked> 5</label>
-        <label for="players-6plus"><input id="players-6plus" type="checkbox" value="6+" checked> 6+</label>
+        <label for="player-count"><span>Players</span></label>
+        <input id="player-count" type="number" min="1" placeholder="Enter player count" />
       </div>
       <div class="filter-group">
         <span>Time</span>
@@ -125,6 +121,7 @@
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
+    const playerCountInput = document.getElementById('player-count');
     const filterInputs = document.querySelectorAll('.filters input');
     const userWheel = document.getElementById('userWheel');
     const userWheelResult = document.getElementById('userWheelResult');
@@ -136,13 +133,13 @@
     const clearUsers = document.getElementById('clearUsers');
     const spinUserWheel = document.getElementById('spinUserWheel');
     let allGames = [
-      { id: 1, name: 'Lethal Company', maxplayers: 2, timeMinutes: 45 },
-      { id: 2, name: 'Lockdown Protocol', maxplayers: 2, timeMinutes: 20 },
+      { id: 1, name: 'Lethal Company', minplayers: 4, maxplayers: 6, timeMinutes: 45 },
+      { id: 2, name: 'Lockdown Protocol', players: 2, timeMinutes: 20 },
       { id: 3, name: 'RV There Yet', maxplayers: 2, timeMinutes: null },
-      { id: 4, name: 'Goofy Gorillas', maxplayers: 6, timeMinutes: 25 },
-      { id: 5, name: 'Super Battle Golf', maxplayers: 2, timeMinutes: 50 },
+      { id: 4, name: 'Goofy Gorillas', minplayers: 4, timeMinutes: 25 },
+      { id: 5, name: 'Super Battle Golf', players: 2, timeMinutes: 50 },
       { id: 6, name: 'CSGO', maxplayers: 5, timeMinutes: 40 },
-      { id: 7, name: 'Buckshot Roulette', maxplayers: 4, timeMinutes: 55 },
+      { id: 7, name: 'Buckshot Roulette', players: 4, timeMinutes: 55 },
       { id: 8, name: 'Peak', maxplayers: 2, timeMinutes: 45 },
       { id: 9, name: 'Gamble With Your Friends', maxplayers: 6, timeMinutes: null },
       { id: 10, name: 'Rocket League', maxplayers: 6, timeMinutes: 35 },
@@ -154,8 +151,8 @@
       { id: 16, name: 'Last Train Out of Wormtown', maxplayers: 6, timeMinutes: 55 },
       { id: 17, name: 'Oh Deer', maxplayers: 4, timeMinutes: 65 }
     ];
-    let selectedPlayers = ['2','3','4','5','6+'];
-    let selectedTimes = ['<30','<60','no limit'];
+    let selectedPlayerCount = null;
+    let selectedTimes = [];
     let isSpinning = false;
     const spinDuration = 6000;
     const userWheelState = {
@@ -200,11 +197,15 @@
     }
 
     function normalizeGame(row) {
+      const players = Number(row.players);
+      const minplayers = Number(row.minplayers);
       const maxplayers = Number(row.maxplayers);
       const timeMinutes = Number(row.time_minutes);
       return {
         id: row.id,
         name: row.name,
+        players: Number.isFinite(players) ? players : null,
+        minplayers: Number.isFinite(minplayers) ? minplayers : null,
         maxplayers: Number.isFinite(maxplayers) ? maxplayers : null,
         timeMinutes: row.time_minutes === null || row.time_minutes === undefined || row.time_minutes === ''
           ? null
@@ -220,7 +221,7 @@
       if (supabase) {
         const { data, error } = await supabase
           .from('games')
-          .select('id,name,maxplayers,time_minutes')
+          .select('id,name,players,minplayers,maxplayers,time_minutes')
           .order('name', { ascending: true });
 
         if (error) {
@@ -247,18 +248,28 @@
       updateFilters();
     }
 
-    function matchesMaxPlayers(game) {
-      if (!Number.isFinite(game.maxplayers)) {
+    function matchesPlayerCount(game) {
+      if (!Number.isInteger(selectedPlayerCount) || selectedPlayerCount <= 0) {
         return false;
       }
 
-      return selectedPlayers.some(player => {
-        if (player === '6+') {
-          return game.maxplayers >= 6;
-        }
+      if (Number.isFinite(game.players)) {
+        return selectedPlayerCount === game.players;
+      }
 
-        return game.maxplayers === Number(player);
-      });
+      if (Number.isFinite(game.minplayers) && Number.isFinite(game.maxplayers)) {
+        return selectedPlayerCount >= game.minplayers && selectedPlayerCount <= game.maxplayers;
+      }
+
+      if (Number.isFinite(game.maxplayers)) {
+        return selectedPlayerCount <= game.maxplayers;
+      }
+
+      if (Number.isFinite(game.minplayers)) {
+        return selectedPlayerCount >= game.minplayers;
+      }
+
+      return false;
     }
 
     function matchesTime(game) {
@@ -282,25 +293,43 @@
     }
 
     function getFilteredGames() {
-      return allGames.filter(game => matchesMaxPlayers(game) && matchesTime(game));
+      return allGames.filter(game => matchesPlayerCount(game) && matchesTime(game));
     }
 
     function updateFilters() {
-      selectedPlayers = Array.from(document.querySelectorAll('.filter-group:nth-of-type(1) input:checked')).map(input => input.value);
+      const rawValue = playerCountInput.value.trim();
+      selectedPlayerCount = rawValue === '' ? null : Number(rawValue);
       selectedTimes = Array.from(document.querySelectorAll('.filter-group:nth-of-type(2) input:checked')).map(input => input.value);
+
+      if (!Number.isInteger(selectedPlayerCount) || selectedPlayerCount <= 0) {
+        spinButton.disabled = true;
+        setSlotMessage('Enter a valid player count.');
+        resultDisplay.textContent = 'No games available.';
+        return;
+      }
+
+      if (!selectedTimes.length) {
+        spinButton.disabled = true;
+        setSlotMessage('Select at least one time filter.');
+        resultDisplay.textContent = 'No games available.';
+        return;
+      }
+
       const hasResults = getFilteredGames().length > 0;
       spinButton.disabled = isSpinning || !hasResults;
       if (!isSpinning && allGames.length > 0 && !hasResults) {
         setSlotMessage('No games match those filters.');
         resultDisplay.textContent = 'No games available.';
-      } else if (!isSpinning && allGames.length > 0) {
-        setSlotMessage('Choose filters, then press Spin.');
+      } else if (!isSpinning && allGames.length > 0 && hasResults) {
+        const filteredCount = getFilteredGames().length;
+        setSlotMessage(`${filteredCount} game(s) available. Press Spin.`);
         resultDisplay.textContent = 'Ready to spin';
       }
     }
 
     filterInputs.forEach(input => {
       input.addEventListener('change', updateFilters);
+      input.addEventListener('input', updateFilters);
     });
 
     function getRandomColorByOdds() {

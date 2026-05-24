@@ -1,4 +1,4 @@
-import { getLeaderboardRows } from './gamble-data.js';
+import { getLeaderboardRows } from './gamble-data.js?v=events-1';
 
 function esc(value) {
   return String(value ?? '')

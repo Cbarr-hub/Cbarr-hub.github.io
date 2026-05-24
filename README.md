@@ -27,6 +27,7 @@
 - 1.c.5 hate  
 - 1.c.6 shame  
 - 1.c.7 integrity  
+- 1.c.8 faith  
 
 ---
 

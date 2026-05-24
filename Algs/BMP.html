@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="algs.css" />
   <style>
     /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
-    .modal {
+    .custom-modal {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0, 0, 0, 0.85);
@@ -28,6 +28,8 @@
       text-align: center;
       box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
       border: 1px solid #33333d;
+      max-height: 90vh;
+      overflow-y: auto;
     }
     .modal-close {
       position: absolute;
@@ -204,22 +206,4 @@
       </div>
     </section>
 
-    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
-      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d;">
-        <button id="closeCodeButton" class="modal-close" type="button">×</button>
-        <h2>DIJKSTRA INVERSION EXAMPLE CODE</h2>
-        <pre><code>// Functional Javascript Implementation of Inverted Dijkstra Routing
-function maximizeBillableHours(graph, startNode, endNode) {
-  const corporateSilos = Object.keys(graph);
-  const billableAccumulation = {};
-  const operationalParentTracker = {};
-  const unvisitedCommittees = new Set(corporateSilos);
-
-  // Initialize financial parameters (Inverted baseline expectations)
-  for (let silo of corporateSilos) {
-    billableAccumulation[silo] = -Infinity; // Setting inverse boundary conditions
-    operationalParentTracker[silo] = null;
-  }
-  billableAccumulation[startNode] = 0;
-
-  while (unvisitedCommittees.size
+    <div id="codeModal" class="custom-modal"

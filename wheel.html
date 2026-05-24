@@ -96,6 +96,7 @@
       red: 'rgba(255,59,59,0.64)',
       gold: 'rgba(255,191,56,0.64)'
     };
+    const gameColorMap = {}; // Map game names to their assigned colors
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
@@ -125,9 +126,12 @@
       input.addEventListener('change', updateFilters);
     });
 
-    function getColorKey(name, index) {
-      const base = Array.from(name).reduce((hash, char) => hash + char.charCodeAt(0), 0);
-      return slotColors[(base + index) % slotColors.length];
+    function getColorKey(gameName) {
+      // Assign a random color to each game once, ensuring equal odds for each color
+      if (!gameColorMap[gameName]) {
+        gameColorMap[gameName] = slotColors[Math.floor(Math.random() * slotColors.length)];
+      }
+      return gameColorMap[gameName];
     }
 
     function buildSlot(names) {
@@ -147,7 +151,7 @@
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = game.name;
-        const colorKey = getColorKey(game.name, index);
+        const colorKey = getColorKey(game.name);
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
         item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
@@ -193,7 +197,7 @@
       window.setTimeout(() => {
         const selectedName = names[selectedIndex].name;
         resultDisplay.textContent = selectedName;
-        const selectedColorKey = getColorKey(selectedName, selectedIndex);
+        const selectedColorKey = getColorKey(selectedName);
         showPopup(selectedName, selectedColorKey);
         spinButton.textContent = 'Spin';
         spinButton.disabled = false;

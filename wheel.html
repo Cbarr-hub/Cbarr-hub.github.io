@@ -251,6 +251,52 @@
       }
     }
 
+    .filters {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-bottom: 1rem;
+    }
+
+    .filter-group {
+      display: grid;
+      gap: 0.6rem;
+      padding: 1rem;
+      border: 1px solid rgba(0,255,255,0.18);
+      border-radius: 16px;
+      background: rgba(0,0,0,0.35);
+    }
+
+    .filter-group span {
+      font-size: 0.9rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #a7f4ff;
+    }
+
+    .filter-group label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.95rem;
+      color: #edf2ff;
+      cursor: pointer;
+    }
+
+    .filter-group input {
+      width: 1rem;
+      height: 1rem;
+      accent-color: var(--accent);
+    }
+
+    .no-names {
+      color: #fff;
+      font-size: 1rem;
+      text-align: center;
+      width: 100%;
+      padding: 1rem 0;
+    }
+
     .controls {
       display: grid;
       gap: 0.75rem;
@@ -332,6 +378,23 @@
       </div>
     </div>
 
+    <div class="filters">
+      <div class="filter-group">
+        <span>Players</span>
+        <label><input type="checkbox" value="2" checked> 2</label>
+        <label><input type="checkbox" value="3" checked> 3</label>
+        <label><input type="checkbox" value="4" checked> 4</label>
+        <label><input type="checkbox" value="5" checked> 5</label>
+        <label><input type="checkbox" value="6+" checked> 6+</label>
+      </div>
+      <div class="filter-group">
+        <span>Time</span>
+        <label><input type="checkbox" value="&lt;30" checked> &lt;30 minutes</label>
+        <label><input type="checkbox" value="&lt;60" checked> &lt;1 hour</label>
+        <label><input type="checkbox" value="no limit" checked> No limit</label>
+      </div>
+    </div>
+
     <div class="controls">
       <button id="spin" type="button">Spin</button>
     </div>
@@ -341,7 +404,7 @@
       <strong id="result">Ready to spin</strong>
     </div>
 
-    <p class="note">Press spin to choose from the fixed name list.</p>
+    <p class="note">Use the filters to narrow the game list, then press spin.</p>
     <p class="return"><a href="index.html">&laquo; Back to home</a></p>
   </div>
 
@@ -355,15 +418,15 @@
   </div>
 
   <script>
-    const defaultNames = [
-      'Lethal Company',
-      'Lockdown protocol',
-      'RV there yet',
-      'Goofy Gorillas',
-      'Super battle golf',
-      'CS2 Office',
-      'Buckshot Roulette',
-      'Peak'
+    const allGames = [
+      { name: 'Lethal Company', players: ['4','5','6+'], time: '<60' },
+      { name: 'Lockdown protocol', players: ['2','3','4'], time: '<30' },
+      { name: 'RV there yet', players: ['2','3','4','5'], time: 'no limit' },
+      { name: 'Goofy Gorillas', players: ['2','3'], time: '<30' },
+      { name: 'Super battle golf', players: ['2','3','4'], time: '<60' },
+      { name: 'CS2 Office', players: ['4','5','6+'], time: 'no limit' },
+      { name: 'Buckshot Roulette', players: ['3','4','5'], time: '<60' },
+      { name: 'Peak', players: ['4','5','6+'], time: '<60' }
     ];
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
@@ -384,17 +447,47 @@
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
-    let names = [...defaultNames];
+    const filterInputs = document.querySelectorAll('.filters input');
+    let selectedPlayers = ['2','3','4','5','6+'];
+    let selectedTimes = ['<30','<60','no limit'];
     let isSpinning = false;
     const spinDuration = 6000;
 
+    function getFilteredGames() {
+      return allGames.filter(game => {
+        const playerMatch = game.players.some(player => selectedPlayers.includes(player));
+        const timeMatch = selectedTimes.includes(game.time);
+        return playerMatch && timeMatch;
+      });
+    }
+
+    function updateFilters() {
+      selectedPlayers = Array.from(document.querySelectorAll('.filter-group:nth-of-type(1) input:checked')).map(input => input.value);
+      selectedTimes = Array.from(document.querySelectorAll('.filter-group:nth-of-type(2) input:checked')).map(input => input.value);
+      buildSlot();
+    }
+
+    filterInputs.forEach(input => {
+      input.addEventListener('change', updateFilters);
+    });
+
     function buildSlot() {
+      const names = getFilteredGames();
       slotTrack.innerHTML = '';
+      if (names.length === 0) {
+        const messageEl = document.createElement('div');
+        messageEl.className = 'no-names';
+        messageEl.textContent = 'No games match the selected filters.';
+        slotTrack.appendChild(messageEl);
+        spinButton.disabled = true;
+        return;
+      }
+      spinButton.disabled = false;
       const repeatedNames = [...names, ...names, ...names];
       // ensure each name gets a stable color assignment
       // set blue probability to 4/5 and scale other probabilities to fill the remainder
       names.forEach(n => {
-        if (!nameColorMap[n]) {
+        if (!nameColorMap[n.name]) {
           const r = Math.random();
           const blueProb = 4/5; // 0.8
           const orig = {
@@ -411,24 +504,24 @@
           const purpleProb = orig.purple * scale;
 
           if (r < goldProb) {
-            nameColorMap[n] = 'gold';
+            nameColorMap[n.name] = 'gold';
           } else if (r < goldProb + redProb) {
-            nameColorMap[n] = 'red';
+            nameColorMap[n.name] = 'red';
           } else if (r < goldProb + redProb + pinkProb) {
-            nameColorMap[n] = 'pink';
+            nameColorMap[n.name] = 'pink';
           } else if (r < goldProb + redProb + pinkProb + purpleProb) {
-            nameColorMap[n] = 'purple';
+            nameColorMap[n.name] = 'purple';
           } else {
-            nameColorMap[n] = 'blue';
+            nameColorMap[n.name] = 'blue';
           }
         }
       });
 
-      repeatedNames.forEach((name) => {
+      repeatedNames.forEach((game) => {
         const item = document.createElement('div');
         item.className = 'slot-item';
-        item.textContent = name;
-        const colorKey = nameColorMap[name];
+        item.textContent = game.name;
+        const colorKey = nameColorMap[game.name];
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
         item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
@@ -449,8 +542,9 @@
 
     function spinSlot() {
       if (isSpinning) return;
+      const names = getFilteredGames();
       if (names.length === 0) {
-        resultDisplay.textContent = 'No names available.';
+        resultDisplay.textContent = 'No games available.';
         return;
       }
       isSpinning = true;
@@ -470,7 +564,7 @@
       });
 
       window.setTimeout(() => {
-        const selectedName = names[selectedIndex];
+        const selectedName = names[selectedIndex].name;
         resultDisplay.textContent = selectedName;
         const selectedColorKey = nameColorMap[selectedName];
         showPopup(selectedName, selectedColorKey);

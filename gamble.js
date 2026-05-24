@@ -4,9 +4,10 @@ import {
   getPlayerBalance,
   insertGamblingEvent,
   savePlayerBalance as persistPlayerBalance
-} from './gamble-data.js?v=events-1';
-import { renderRecentEvents } from './gamble-activity.js?v=events-1';
-import { renderLeaderboard } from './gamble-leaderboard.js?v=events-1';
+} from './gamble-data.js?v=stats-1';
+import { renderRecentEvents } from './gamble-activity.js?v=stats-1';
+import { renderGamblingDashboard } from './gamble-dashboard.js?v=stats-1';
+import { renderLeaderboard } from './gamble-leaderboard.js?v=stats-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
@@ -109,6 +110,11 @@ const leaderboardListEl = document.getElementById("leaderboard-list");
 const leaderboardStatusEl = document.getElementById("leaderboard-status");
 const activityListEl = document.getElementById("activity-list");
 const activityStatusEl = document.getElementById("activity-status");
+const dashboardStatusEl = document.getElementById("dashboard-status");
+const dashboardKpiEl = document.getElementById("dashboard-kpis");
+const netChartEl = document.getElementById("net-chart");
+const streakChartEl = document.getElementById("streak-chart");
+const gameChartEl = document.getElementById("game-chart");
 const slotLineEls = Array.from(document.querySelectorAll(".slot-line"));
 const messageEl = document.querySelector(".message");
 const betBoxEl = document.querySelector(".bet");
@@ -1011,8 +1017,19 @@ async function refreshRecentEvents() {
   });
 }
 
+async function refreshDashboard() {
+  await renderGamblingDashboard({
+    statusEl: dashboardStatusEl,
+    kpiEl: dashboardKpiEl,
+    netChartEl,
+    streakChartEl,
+    gameChartEl
+  });
+}
+
 async function refreshStatsSection() {
   await Promise.all([
+    refreshDashboard(),
     refreshLeaderboard(),
     refreshRecentEvents()
   ]);

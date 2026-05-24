@@ -104,16 +104,18 @@ export function generateSlotGrid(options = {}) {
   return grid;
 }
 
-export function evaluateSlotLine(grid, payline) {
+function evaluateSlotLineRun(grid, payline, direction = "left") {
   const lineSymbols = payline.rows.map((row, column) => grid[row][column]);
-  const target = lineSymbols.find((symbolId) => symbolId !== "wild" && symbolId !== "scatter") || "wild";
+  const columns = direction === "right" ? [4, 3, 2, 1, 0] : [0, 1, 2, 3, 4];
+  const orderedSymbols = columns.map((column) => lineSymbols[column]);
+  const target = orderedSymbols.find((symbolId) => symbolId !== "wild" && symbolId !== "scatter") || "wild";
 
   if (target === "scatter") {
     return null;
   }
 
   let count = 0;
-  for (const symbolId of lineSymbols) {
+  for (const symbolId of orderedSymbols) {
     if (symbolId === target || symbolId === "wild") {
       count += 1;
     } else {
@@ -134,18 +136,51 @@ export function evaluateSlotLine(grid, payline) {
   }
 
   return {
-    id: payline.id,
-    name: payline.name,
+    id: direction === "right" ? `${payline.id}-right` : payline.id,
+    paylineId: payline.id,
+    name: direction === "right" ? `${payline.name} R` : payline.name,
+    direction,
     symbol: target,
-    symbols: lineSymbols.slice(0, count),
+    symbols: orderedSymbols.slice(0, count),
     count,
     multiplier,
-    cells: payline.rows.slice(0, count).map((row, column) => ({ row, column }))
+    cells: columns.slice(0, count).map((column) => ({ row: payline.rows[column], column }))
   };
 }
 
+export function evaluateSlotLine(grid, payline) {
+  const leftWin = evaluateSlotLineRun(grid, payline, "left");
+  const rightWin = evaluateSlotLineRun(grid, payline, "right");
+
+  if (!leftWin) {
+    return rightWin;
+  }
+  if (!rightWin) {
+    return leftWin;
+  }
+
+  return leftWin.multiplier >= rightWin.multiplier ? leftWin : rightWin;
+}
+
+function evaluateSlotLineWins(grid, payline) {
+  const leftWin = evaluateSlotLineRun(grid, payline, "left");
+  const rightWin = evaluateSlotLineRun(grid, payline, "right");
+
+  if (!leftWin) {
+    return rightWin ? [rightWin] : [];
+  }
+  if (!rightWin) {
+    return [leftWin];
+  }
+  if (leftWin.count === 5 && rightWin.count === 5 && leftWin.symbol === rightWin.symbol) {
+    return [leftWin];
+  }
+
+  return [leftWin, rightWin];
+}
+
 export function evaluateSlotGrid(grid) {
-  const lineWins = SLOT_PAYLINES.map((payline) => evaluateSlotLine(grid, payline)).filter(Boolean);
+  const lineWins = SLOT_PAYLINES.flatMap((payline) => evaluateSlotLineWins(grid, payline));
   const scatterCells = [];
   grid.forEach((rowValues, row) => {
     rowValues.forEach((symbolId, column) => {

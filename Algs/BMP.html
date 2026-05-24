@@ -210,7 +210,36 @@
       <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d; max-width:650px;">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>BMP Example Code</h2>
-        <pre><code>// Inverted Dijkstra (conceptual demo) - finds max-yield paths between nodes.</code></pre>
+        <pre><code>// Inverted Dijkstra's Engine: Maximizes path value thresholds across networks
+async function executeBmpFind() {
+  const dist = new Array(n).fill(-Infinity);
+  dist[0] = 0; // Baseline source initialization
+  const visited = new Array(n).fill(false);
+
+  for (let iter = 0; iter < n; iter++) {
+    // Isolate unvisited node possessing maximum current distance payload
+    let u = -1; 
+    let best = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (!visited[i] && dist[i] > best) { 
+        best = dist[i]; 
+        u = i; 
+      }
+    }
+    if (u === -1) break;
+    visited[u] = true;
+
+    // Relax neighbors: invert conditional to prioritize maximal accumulation edge values
+    for (let v = 0; v < n; v++) {
+      if (u === v) continue;
+      
+      const candidate = dist[u] + weights[u][v];
+      if (candidate > dist[v]) {
+        dist[v] = candidate; // Structural budget update locked in
+      }
+    }
+  }
+}</code></pre>
       </div>
     </div>
 

@@ -9,6 +9,12 @@ if (menuToggle) {
       nav.style.display = current === 'flex' ? 'none' : 'flex';
     });
   });
+
+  navLists.forEach(nav => {
+    nav.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => { nav.style.display = 'none'; });
+    });
+  });
 }
 
 const contactForm = document.getElementById('contactForm');

@@ -9,9 +9,45 @@
     body { overflow: hidden; }
     #tank {
       display: block;
-      width: 100%;
+      position: fixed;
+      left: 0;
       cursor: crosshair;
     }
+    .go-hidden { display: none !important; }
+    #gameover {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.82);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      font-family: 'Courier New', monospace;
+    }
+    .go-panel {
+      background: #0b140b;
+      border: 3px solid #42F527;
+      padding: 1.8rem 2.2rem;
+      max-width: 420px; width: 92%;
+      text-align: center; color: #eee;
+    }
+    .go-title { color: #42F527; font-size: 2rem; font-weight: bold; letter-spacing: .2em; margin-bottom: .4rem; }
+    .go-time  { font-size: 1.3rem; color: #ffdd22; margin-bottom: 1.2rem; }
+    #go-entry { display: flex; gap: .5rem; margin-bottom: 1.2rem; }
+    #go-entry input {
+      flex: 1; background: #1a2a1a; border: 2px solid #42F527;
+      color: #eee; padding: .4rem .6rem;
+      font-family: inherit; font-size: 1rem; outline: none;
+    }
+    #go-entry button, #go-reset {
+      background: #42F527; color: #0a120a; border: none;
+      padding: .4rem .9rem; font-family: inherit;
+      font-size: .9rem; font-weight: bold; cursor: pointer; letter-spacing: .05em;
+    }
+    #go-entry button:hover, #go-reset:hover { background: #66ff44; }
+    .go-lb-title { color: #42F527; font-weight: bold; margin-bottom: .4rem; letter-spacing: .1em; }
+    #go-table { width: 100%; border-collapse: collapse; margin-bottom: 1.1rem; font-size: .88rem; }
+    #go-table th { color: #42F527; border-bottom: 1px solid #42F527; padding: .2rem .4rem; text-align: left; }
+    #go-table td { padding: .2rem .4rem; color: #ccc; }
+    #go-table tr:nth-child(even) td { background: #1a2a1a; }
+    #go-reset { padding: .5rem 2rem; font-size: .95rem; }
   </style>
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
@@ -33,17 +69,30 @@
 
   <canvas id="tank"></canvas>
 
+  <div id="gameover" class="go-hidden">
+    <div class="go-panel">
+      <div class="go-title">GAME OVER</div>
+      <div id="go-time" class="go-time"></div>
+      <div id="go-entry">
+        <input id="go-name" type="text" placeholder="Your name" maxlength="16" autocomplete="off" />
+        <button id="go-submit">SUBMIT</button>
+      </div>
+      <div class="go-lb-title">TOP SCORES</div>
+      <table id="go-table"><tr><th>#</th><th>NAME</th><th>TIME</th></tr></table>
+      <button id="go-reset">PLAY AGAIN</button>
+    </div>
+  </div>
+
   <script>
   (() => {
     const canvas = document.getElementById('tank')
     const ctx    = canvas.getContext('2d')
 
-    function resize() {
-      canvas.width  = window.innerWidth
-      canvas.height = window.innerHeight - canvas.getBoundingClientRect().top
-    }
-    resize()
-    window.addEventListener('resize', () => { resize(); initSeaweed() })
+    const navH = document.querySelector('header').offsetHeight
+    canvas.style.top = navH + 'px'
+    canvas.width  = window.innerWidth
+    canvas.height = window.innerHeight - navH
+    window.addEventListener('resize', () => { initSeaweed(); initScenery() })
 
     // ── pixel art sprites (facing RIGHT: head=right, tail=left) ──────────
     // 0=transparent 1=body 2=stripe(dark) 3=eye pupil(black) 4=eye white
@@ -155,6 +204,109 @@
       })
     }
 
+    // ── scenery (coral, anemones, rocks) ─────────────────────────────────
+    function buildCoralBranch(rects, x, y, angle, len, depth, px, c1, c2) {
+      if (depth < 1 || len < px) return
+      const steps = Math.ceil(len / px)
+      for (let i = 0; i <= steps; i++) {
+        const f = i / steps
+        const bx = Math.round(x + Math.cos(angle) * len * f)
+        const by = Math.round(y + Math.sin(angle) * len * f)
+        const sz = Math.max(px, Math.round(px * (1.2 - f * 0.3)))
+        rects.push({ x: bx - (sz >> 1), y: by - (sz >> 1), w: sz, h: sz, c: f < 0.5 ? c2 : c1 })
+      }
+      const ex = x + Math.cos(angle) * len
+      const ey = y + Math.sin(angle) * len
+      const sp = 0.38 + depth * 0.04
+      buildCoralBranch(rects, ex, ey, angle - sp, len * 0.62, depth - 1, px, c1, c2)
+      buildCoralBranch(rects, ex, ey, angle + sp, len * 0.62, depth - 1, px, c1, c2)
+    }
+
+    let scenery = []
+    function initScenery() {
+      scenery = []
+      const sandY = canvas.height - 44
+      const palettes = [
+        ['#ff4455','#cc1133'], ['#ff8822','#cc5500'], ['#ff44cc','#cc1199'],
+        ['#9955ff','#6622cc'], ['#44ccaa','#118877'], ['#ffcc22','#cc9900'],
+      ]
+      const types = ['branch','fan','anemone','rock','branch','anemone','fan','branch','rock','anemone']
+      const n = 7 + Math.floor(canvas.width / 160)
+
+      for (let i = 0; i < n; i++) {
+        const pal   = palettes[i % palettes.length]
+        const type  = types[i % types.length]
+        const phase = ((i * 2.399) % 1) * Math.PI * 2
+        const size  = 0.9 + ((i * 0.618) % 0.6)
+        const px    = Math.max(4, Math.round(5 * size))
+        const item  = {
+          x: 55 + Math.round((canvas.width - 110) * (i + 0.5) / n),
+          y: sandY, type,
+          color: pal[0], dark: pal[1],
+          phase, size, px,
+          rects: [],
+          nTent: 5 + (i % 3),
+        }
+
+        if (type === 'branch') {
+          buildCoralBranch(item.rects, 0, 0, -Math.PI / 2, 40 * size, 3, px, pal[0], pal[1])
+        } else if (type === 'fan') {
+          const nc = 5 + (i % 3)
+          for (let c = 0; c < nc; c++) {
+            const frac = nc > 1 ? c / (nc - 1) : 0.5
+            const h = Math.round((20 + Math.sin(frac * Math.PI) * 35) * size)
+            const cx = Math.round((c - (nc - 1) / 2) * px * 2.2)
+            for (let j = 0; j * px < h; j++)
+              item.rects.push({ x: cx - (px >> 1), y: -(j + 1) * px, w: px, h: px,
+                                c: j % 2 === 0 ? pal[0] : pal[1] })
+          }
+        } else if (type === 'rock') {
+          const rw = Math.round((25 + (phase / Math.PI) * 15) * size)
+          const rh = Math.round((10 + (phase / Math.PI) * 7)  * size)
+          for (let row = 0; row * px < rh; row++) {
+            const w = Math.round(rw * (1 - (row / (rh / px)) * 0.5))
+            item.rects.push({ x: -(w >> 1), y: -(row + 1) * px, w, h: px,
+                              c: ['#7a8a7a','#667566','#889988'][row % 3] })
+          }
+        }
+        scenery.push(item)
+      }
+    }
+    initScenery()
+
+    function drawScenery(t) {
+      scenery.forEach(item => {
+        if (item.type !== 'anemone') {
+          item.rects.forEach(r => {
+            ctx.fillStyle = r.c
+            ctx.fillRect(item.x + r.x, item.y + r.y, r.w, r.h)
+          })
+          return
+        }
+        // anemone: waving tentacles
+        const { px, nTent } = item
+        for (let j = 0; j < 3; j++) {
+          ctx.fillStyle = item.dark
+          ctx.fillRect(item.x - px, item.y - j * px - px, px * 2, px)
+        }
+        for (let i = 0; i < nTent; i++) {
+          const tentPhase = item.phase + (i / nTent) * Math.PI * 2
+          let tx = item.x + (i - (nTent - 1) / 2) * px * 1.6
+          let ty = item.y - 3 * px
+          for (let seg = 0; seg < 6; seg++) {
+            const p = seg / 6
+            tx += Math.sin(t * 0.022 + tentPhase + p * 2.5) * p * 3.5
+            ty -= (33 * item.size) / 6
+            const sz = Math.max(2, px - Math.floor(seg * 0.55))
+            ctx.fillStyle = seg % 2 === 0 ? item.color : item.dark
+            ctx.fillRect(Math.round(tx) - (sz >> 1), Math.round(ty) - (sz >> 1), sz, sz)
+          }
+          ctx.fillStyle = '#ddeeff'
+          ctx.fillRect(Math.round(tx) - 2, Math.round(ty) - 2, 4, 4)
+        }
+      })
+    }
+
     // ── bubbles ───────────────────────────────────────────────────────────
     class Bubble {
       constructor() { this.reset(true) }
@@ -196,7 +348,7 @@
         this.h        = this.rows * this.px
         this.x        = Math.random() * (canvas.width  - this.w)
         this.y        = 40 + Math.random() * (canvas.height - 120 - this.h)
-        this.vx       = (0.8 + Math.random() * 2) * (Math.random() < 0.5 ? 1 : -1)
+        this.vx       = (0.4 + Math.random() * 0.8) * (Math.random() < 0.5 ? 1 : -1)
         this.bobPhase = Math.random() * Math.PI * 2
         this.bobAmp   = 0.2 + Math.random() * 0.4
         this.bobFreq  = 0.015 + Math.random() * 0.02
@@ -206,8 +358,8 @@
         this.x += this.vx
         this.y += Math.sin(t * this.bobFreq + this.bobPhase) * this.bobAmp
 
-        if (this.vx > 0 && this.x + this.w > canvas.width)  this.vx *= -1
-        if (this.vx < 0 && this.x < 0)                       this.vx *= -1
+        if (this.vx > 0 && this.x + this.w > canvas.width)  { this.vx *= -1.015 }
+        if (this.vx < 0 && this.x < 0)                       { this.vx *= -1.015 }
 
         const minY = 20, maxY = canvas.height - 60 - this.h
         if (this.y < minY) this.y = minY
@@ -239,7 +391,7 @@
     // ── octopus ───────────────────────────────────────────────────────────
     class Octopus {
       constructor() {
-        this.px   = 5
+        this.px   = 8
         // 8×8 square = circular silhouette; eyes: white(4) at cols2-3 and cols5-6, rows3-4
         this.body = [
           [0,0,1,1,1,1,0,0],
@@ -255,7 +407,7 @@
         this.bodyH  = this.body.length * this.px
         this.x      = 100 + Math.random() * (canvas.width  - 200)
         this.y      = 60  + Math.random() * (canvas.height - 220)
-        this.vx     = (0.25 + Math.random() * 0.3) * (Math.random() < 0.5 ? 1 : -1)
+        this.vx     = (0.12 + Math.random() * 0.18) * (Math.random() < 0.5 ? 1 : -1)
         this.vy     = (0.1  + Math.random() * 0.15) * (Math.random() < 0.5 ? 1 : -1)
         this.phase  = Math.random() * Math.PI * 2
         this.color  = '#cc44bb'
@@ -263,10 +415,31 @@
       }
 
       update() {
+        const angry = gameState === 'playing' && gameFrames >= 3600
+        this.color = angry ? '#ff3311' : '#cc44bb'
+        this.dark  = angry ? '#991100' : '#7711aa'
+        if (angry) {
+          const cx = this.x + this.bodyW / 2
+          const cy = this.y + this.bodyH / 2
+          const dx = (player.x + player.w / 2) - cx
+          const dy = (player.y + player.h / 2) - cy
+          const d  = Math.sqrt(dx * dx + dy * dy)
+          if (d > 0) { this.vx = (dx / d) * 1.8; this.vy = (dy / d) * 1.8 }
+        }
         this.x += this.vx
         this.y += this.vy
-        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
-        if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
+        if (!angry) {
+          if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
+          if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
+        }
+      }
+
+      hitsPlayer() {
+        const m = 6
+        return this.x + this.bodyW - m > player.x + m &&
+               this.x + m < player.x + player.w - m &&
+               this.y + this.bodyH - m > player.y + m &&
+               this.y + m < player.y + player.h - m
       }
 
       findNearest(fishes) {
@@ -283,7 +456,7 @@
       drawArms(t, nearestFish, nearestDist) {
         const cx = this.x + this.bodyW / 2
         const cy = this.y + this.bodyH / 2
-        const nArms = 8, nSegs = 10, armLen = 68
+        const nArms = 8, nSegs = 10, armLen = 110
         // arm roots sit on the body perimeter
         const r = this.bodyW * 0.48
 
@@ -361,35 +534,221 @@
           }
         }
 
-        // pupils: each eye white is 2×2 cells at px=5 → 10×10px
-        // left  white center: cols 2-3, rows 3-4 → canvas (15, 20) from ox,oy
-        // right white center: cols 5-6, rows 3-4 → canvas (30, 20) from ox,oy
-        // offset ±px/2 so pupil reaches edge of white in any direction
-        const eyeOff = this.px / 2  // 2.5
+        // pupils: left white center at (3*px, 4*px), right at (6*px, 4*px)
+        // offset ±px/2 so pupil traverses full eye white in any direction
+        const eyeOff = this.px / 2
         ctx.fillStyle = '#111111'
         ctx.fillRect(
-          Math.round(ox + 12.5 + ex * eyeOff),
-          Math.round(oy + 17.5 + ey * eyeOff),
+          Math.round(ox + 2.5 * this.px + ex * eyeOff),
+          Math.round(oy + 3.5 * this.px + ey * eyeOff),
           this.px, this.px
         )
         ctx.fillRect(
-          Math.round(ox + 27.5 + ex * eyeOff),
-          Math.round(oy + 17.5 + ey * eyeOff),
+          Math.round(ox + 5.5 * this.px + ex * eyeOff),
+          Math.round(oy + 3.5 * this.px + ey * eyeOff),
           this.px, this.px
         )
       }
 
       draw(t, fishes) {
-        const { fish, dist } = this.findNearest(fishes)
-        this.drawArms(t, fish, dist)
-        this.drawBody(fish)
+        const angry = gameState === 'playing' && gameFrames >= 3600
+        if (angry) {
+          this.drawArms(t, player, 0)
+          this.drawBody(player)
+        } else {
+          const { fish, dist } = this.findNearest(fishes)
+          this.drawArms(t, fish, dist)
+          this.drawBody(fish)
+        }
       }
+    }
+
+    // ── fish hook ────────────────────────────────────────────────────────
+    class Hook {
+      constructor() {
+        this.x     = 30 + Math.random() * (canvas.width - 60)
+        this.y     = -32
+        this.speed = 1.4
+        this.px    = 7
+      }
+      update() {
+        this.y += this.speed
+        if (this.y > canvas.height + 20) this.speed = -Math.abs(this.speed)
+      }
+      offScreen() { return this.speed < 0 && this.y < -80 }
+      hitsPlayer() {
+        const px = this.px
+        const hx = this.x - px, hy = this.y, hw = px * 3, hh = px * 4
+        const m = 3
+        return player.x + player.w - m > hx && player.x + m < hx + hw &&
+               player.y + player.h - m > hy && player.y + m < hy + hh
+      }
+      draw() {
+        const px = this.px
+        const x  = Math.floor(this.x), y = Math.floor(this.y)
+        // fishing line from canvas top to hook
+        ctx.fillStyle = '#bbbbbb'
+        ctx.fillRect(x - 1, 0, 2, y + px)
+        // hook shank (vertical bar)
+        ctx.fillStyle = '#cccccc'
+        ctx.fillRect(x - px,     y,          px, px * 3)
+        // bend (curves right at bottom)
+        ctx.fillRect(x - px,     y + px * 3, px * 3, px)
+        // point (barb going up)
+        ctx.fillRect(x + px,     y + px * 2, px, px)
+        // highlight
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(x - px,     y,          Math.ceil(px/2), px)
+      }
+    }
+
+    // ── player (submarine) ────────────────────────────────────────────────
+    const P_SPR = [
+      [0,0,0,0,0,1,1,0,0,0],
+      [0,1,1,1,1,1,1,1,1,0],
+      [1,1,1,2,2,1,1,1,1,1],
+      [1,1,1,2,2,1,1,1,1,1],
+      [0,1,1,1,1,1,1,1,1,0],
+    ]  // 0=transparent 1=yellow hull 2=blue porthole
+
+    class Player {
+      constructor() {
+        this.px   = 5
+        this.cols = P_SPR[0].length
+        this.rows = P_SPR.length
+        this.w    = this.cols * this.px
+        this.h    = this.rows * this.px
+        this.reset()
+      }
+      reset() {
+        this.x    = canvas.width  / 2 - this.w / 2
+        this.y    = canvas.height / 2 - this.h / 2
+        this.vx   = 0
+        this.vy   = 0
+        this.flip = false
+      }
+      setDir(dx, dy) {
+        const spd = 3
+        this.vx = dx * spd
+        this.vy = dy * spd
+        if (dx < 0) this.flip = true
+        if (dx > 0) this.flip = false
+      }
+      update() {
+        this.x += this.vx
+        this.y += this.vy
+        const bw = 20
+        const maxX = canvas.width  - bw - this.w
+        const maxY = canvas.height - bw - this.h
+        if (this.x < bw) this.x = maxX
+        if (this.x > maxX) this.x = bw
+        if (this.y < bw) this.y = maxY
+        if (this.y > maxY) this.y = bw
+      }
+      draw() {
+        const ox = Math.floor(this.x), oy = Math.floor(this.y)
+        for (let row = 0; row < this.rows; row++) {
+          for (let col = 0; col < this.cols; col++) {
+            const src = this.flip ? (this.cols - 1 - col) : col
+            const v = P_SPR[row][src]
+            if (!v) continue
+            ctx.fillStyle = v === 1 ? '#ffdd22' : '#2288ff'
+            ctx.fillRect(ox + col * this.px, oy + row * this.px, this.px, this.px)
+          }
+        }
+      }
+      hitsFish(fishes) {
+        const m = 4
+        const ax1 = this.x + m, ay1 = this.y + m
+        const ax2 = this.x + this.w - m, ay2 = this.y + this.h - m
+        return fishes.some(f =>
+          ax2 > f.x + m && ax1 < f.x + f.w - m &&
+          ay2 > f.y + m && ay1 < f.y + f.h - m
+        )
+      }
+    }
+
+    // ── game state ────────────────────────────────────────────────────────
+    let gameState  = 'idle'   // 'idle' | 'playing' | 'dead'
+    let gameFrames = 0
+
+    function fmtTime(frames) {
+      const s = frames / 60
+      if (s >= 60) return `${Math.floor(s/60)}m ${Math.floor(s%60)}s`
+      return s.toFixed(1) + 's'
+    }
+
+    async function killPlayer() {
+      gameState = 'dead'
+      document.getElementById('go-time').textContent = 'Survived: ' + fmtTime(gameFrames)
+      document.getElementById('gameover').classList.remove('go-hidden')
+      const loggedIn = typeof window.getLoggedInUser === 'function' && window.getLoggedInUser()
+      if (loggedIn) {
+        document.getElementById('go-entry').style.display = 'none'
+        const secs = Math.round(gameFrames / 60)
+        if (typeof window.saveScore === 'function') await window.saveScore(loggedIn, secs)
+      } else {
+        document.getElementById('go-entry').style.display = 'flex'
+        document.getElementById('go-submit').textContent = 'SUBMIT'
+        document.getElementById('go-name').value = ''
+        document.getElementById('go-name').focus()
+      }
+      if (typeof window.loadLeaderboard === 'function') window.loadLeaderboard()
+    }
+
+    function resetGame() {
+      document.getElementById('gameover').classList.add('go-hidden')
+      gameState  = 'idle'
+      gameFrames = 0
+      hooks.length = 0
+      player.reset()
+    }
+
+    document.getElementById('go-reset').addEventListener('click', resetGame)
+
+    document.getElementById('go-submit').addEventListener('click', async () => {
+      const name = document.getElementById('go-name').value.trim()
+      if (!name) return
+      document.getElementById('go-submit').textContent = '...'
+      if (typeof window.saveScore === 'function')
+        await window.saveScore(name, Math.round(gameFrames / 60))
+      document.getElementById('go-entry').style.display = 'none'
+      if (typeof window.loadLeaderboard === 'function') window.loadLeaderboard()
+    })
+
+    window.addEventListener('keydown', e => {
+      const dirs = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] }
+      if (!dirs[e.key]) return
+      e.preventDefault()
+      if (gameState === 'dead') return
+      if (gameState === 'idle') gameState = 'playing'
+      const [dx, dy] = dirs[e.key]
+      player.setDir(dx, dy)
+    })
+
+    function drawHUD() {
+      ctx.save()
+      ctx.textAlign = 'left'
+      ctx.font = 'bold 18px "Courier New", monospace'
+      if (gameState === 'idle') {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'
+        ctx.fillRect(canvas.width/2 - 182, canvas.height/2 + 28, 364, 38)
+        ctx.fillStyle = '#42F527'
+        ctx.textAlign = 'center'
+        ctx.fillText('PRESS ARROW KEY TO START', canvas.width/2, canvas.height/2 + 53)
+      } else if (gameState === 'playing') {
+        ctx.fillStyle = '#ffdd22'
+        ctx.fillText(fmtTime(gameFrames), 30, 54)
+      }
+      ctx.restore()
     }
 
     // ── init objects ──────────────────────────────────────────────────────
     const bubbles  = Array.from({ length: 35 }, () => new Bubble())
     const fishes   = Array.from({ length: 18 }, () => new Fish())
     const octopus  = new Octopus()
+    const player   = new Player()
+    const hooks    = []
 
     // ── background ────────────────────────────────────────────────────────
     function drawBg() {
@@ -465,17 +824,68 @@
     let t = 0
     function loop() {
       t++
+      if (gameState === 'playing') {
+        gameFrames++
+        player.update()
+        if (player.hitsFish(fishes))                         killPlayer()
+        if (gameState === 'playing' && octopus.hitsPlayer()) killPlayer()
+        if (gameState === 'playing') {
+          if (gameFrames % 900 === 0) hooks.push(new Hook())
+          for (let i = hooks.length - 1; i >= 0; i--) {
+            hooks[i].update()
+            if (hooks[i].hitsPlayer()) { killPlayer(); break }
+            if (hooks[i].offScreen())  hooks.splice(i, 1)
+          }
+        }
+      }
       drawBg()
       drawSand()
       drawSeaweed(t)
+      drawScenery(t)
       bubbles.forEach(b => { b.update(); b.draw() })
       octopus.update(); octopus.draw(t, fishes)
       fishes.forEach(f  => { f.update(t); f.draw() })
+      hooks.forEach(h => h.draw())
+      if (gameState !== 'dead') player.draw()
+      drawHUD()
       drawBorder()
       requestAnimationFrame(loop)
     }
     loop()
   })()
+  </script>
+
+  <script type="module">
+    import { supabase } from './supabase-client.js'
+    import { getSession } from './auth.js'
+
+    window.getLoggedInUser = function() { return getSession() }
+
+    window.saveScore = async function(name, seconds) {
+      const { error } = await supabase
+        .from('leaderboard')
+        .insert([{ name, seconds }])
+      if (error) console.error('saveScore:', error)
+    }
+
+    window.loadLeaderboard = async function() {
+      const tbl = document.getElementById('go-table')
+      tbl.innerHTML = '<tr><th>#</th><th>NAME</th><th>TIME</th></tr>'
+      const { data, error } = await supabase
+        .from('leaderboard')
+        .select('name, seconds')
+        .order('seconds', { ascending: false })
+        .limit(10)
+      if (error || !data) {
+        tbl.innerHTML += '<tr><td colspan="3" style="color:#f66">Could not load scores</td></tr>'
+        return
+      }
+      data.forEach((row, i) => {
+        const s = row.seconds
+        const time = s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`
+        tbl.innerHTML += `<tr><td>${i+1}</td><td>${row.name}</td><td>${time}</td></tr>`
+      })
+    }
   </script>
 
 </body>

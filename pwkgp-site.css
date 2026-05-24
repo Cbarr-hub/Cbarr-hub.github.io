@@ -1,0 +1,26 @@
+*{box-sizing:border-box}html{background:#020403}body{margin:0;color:#e8eee8;background:#020403;font:16px/1.65 "Courier New",Courier,monospace;letter-spacing:.01em}.topbar{height:42px;background:#f2f4ef;color:#050605;padding:8px 12px;font-weight:700;letter-spacing:.05em;box-shadow:0 0 22px rgba(205,255,209,.18)}.page-shell{max-width:1540px;margin:0 auto;display:grid;grid-template-columns:430px 1fr 350px;gap:56px;padding:78px 42px 48px;background:radial-gradient(circle at 30% 20%,rgba(190,255,196,.08),transparent 30%),linear-gradient(90deg,rgba(255,255,255,.025),transparent 20%,transparent 80%,rgba(255,255,255,.02));min-height:calc(100vh - 42px)}a{color:#bfffc4;text-decoration:underline;text-underline-offset:3px}a:hover{color:#fff;background:#193d20}.brand-block h1{margin:0 0 4px;font-family:Georgia,"Times New Roman",serif;font-size:22px;line-height:1.35;letter-spacing:.42em;font-weight:400}.brand-block p{color:#bfffc4;margin:0 0 32px;font-size:16px}.xerox{width:100%;height:548px;object-fit:cover;border:1px solid rgba(190,255,196,.18);filter:contrast(1.12) brightness(.94) grayscale(1);mix-blend-mode:screen}.left-rail blockquote{margin:36px 18px 36px;color:#d4dbd4}.left-rail blockquote span,.quote span{color:#aeb7ae}.footlinks{display:flex;gap:24px;align-items:center;color:#c7d0c7}.index-core h2{text-align:center;font-size:22px;font-weight:400;margin:0 0 12px;letter-spacing:.1em}.index-core hr{border:0;border-top:1px solid rgba(232,238,232,.45);margin:18px 0 28px}h3{font-weight:400;margin:0 0 12px;color:#f5fff5;font-size:16px}.portal-list{margin-top:26px}.row{display:grid;grid-template-columns:190px 1fr;gap:18px;margin:10px 0}.row span{color:#eef5ee}.updates{padding:0;margin:0;list-style:none}.updates li{margin:4px 0;color:#d6ded6}.updates b{font-weight:400;color:#eaf3ea;margin-right:18px}.notice p{max-width:650px;margin:0 0 12px}.enter{display:inline-block;margin-top:10px;font-size:18px;letter-spacing:.05em}.right-rail{text-align:center}.round-sigil{width:230px;max-width:100%;opacity:.9;margin:2px auto 20px;filter:drop-shadow(0 0 10px rgba(190,255,196,.14))}.quote{margin:0 auto 50px;max-width:300px;color:#d7dfd7}.access{margin:40px 0 54px}.access img{width:245px;max-width:100%;opacity:.95}.terminal-note{text-align:left;margin:0 0 32px}.terminal-note p{color:#bfffc4}.clock{text-align:left;color:#c9d2c9;font-size:18px}@media(max-width:1100px){.page-shell{grid-template-columns:1fr;gap:38px;padding:38px 22px}.xerox{height:420px}.right-rail{text-align:left}.round-sigil{display:block;margin-left:0}.row{grid-template-columns:1fr}.topbar{height:auto}}
+
+#invasive-ad{position:fixed;bottom:0;left:0;right:0;min-height:44px;background:#020403;color:#bfffc4;border-top:1px solid rgba(190,255,196,.45);font-family:"Courier New",monospace;z-index:99999;padding:6px 10px}
+.ad-message strong{color:#bfffc4;font-size:15px}
+.ad-close{position:absolute;right:8px;top:8px;background:#020403;color:#bfffc4;border:1px solid rgba(190,255,196,.45);font-weight:bold;cursor:pointer;font-family:"Courier New",monospace}
+.ad-close:hover{background:#bfffc4;color:#020403}
+
+.auth-overlay{position:fixed;inset:0;background:rgba(2,4,3,.9);z-index:9999;display:flex;align-items:center;justify-content:center}
+.auth-overlay.hidden{display:none}
+.auth-modal{width:420px;background:#020403;color:#e8eee8;border:1px solid rgba(190,255,196,.45);padding:18px;font-family:"Courier New",monospace}
+.auth-close{float:right;border:1px solid rgba(190,255,196,.4);background:#020403;color:#bfffc4;font-weight:bold;cursor:pointer;font-family:"Courier New",monospace;padding:2px 7px}
+.auth-close:hover{background:#bfffc4;color:#020403}
+.auth-tabs{border-bottom:1px solid rgba(190,255,196,.35);margin-bottom:14px}
+.auth-tab{background:#020403;border:1px solid rgba(190,255,196,.35);color:#bfffc4;padding:4px 12px;cursor:pointer;font-family:"Courier New",monospace;margin-right:4px}
+.auth-tab.active{background:rgba(190,255,196,.15);color:#fff;border-color:#bfffc4}
+.auth-form{display:block}
+.auth-form.hidden{display:none}
+.form-group{margin-bottom:10px}
+.form-group label{display:block;font-size:13px;color:#bfffc4;margin-bottom:3px;letter-spacing:.06em}
+.form-group input{background:#020403;color:#e8eee8;border:1px solid rgba(190,255,196,.35);padding:5px 7px;font-family:"Courier New",monospace;width:100%;box-sizing:border-box}
+.form-group input:focus{outline:none;border-color:#bfffc4}
+.cta-btn,.primary-btn{border:1px solid rgba(190,255,196,.5);background:#020403;color:#bfffc4;padding:6px 14px;font-weight:bold;cursor:pointer;font-family:"Courier New",monospace;letter-spacing:.05em;margin-top:6px}
+.cta-btn:hover,.primary-btn:hover{background:#bfffc4;color:#020403}
+.auth-status{font-size:13px;margin-top:6px;min-height:1em}
+.auth-status.error{color:#ff6b6b}
+.auth-status.success{color:#bfffc4}

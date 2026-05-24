@@ -22,37 +22,35 @@
       <div>
         <h1>Gambling Section</h1>
       </div>
-      <p>Play fictional-dollar tables for fun. Pick a game, set a bet, and try to leave with more money than you brought in.</p>
     </div>
 
     <div class="game-selector">
       <div class="tabs" role="tablist" aria-label="Game selection">
         <button class="tab active" id="high-card-tab" type="button" data-game="high-card" aria-controls="high-card-panel" aria-selected="true">
           <span class="tab-title">High Card</span>
-          <span class="tab-copy">One draw. Higher rank wins.</span>
         </button>
         <button class="tab" id="blackjack-tab" type="button" data-game="blackjack" aria-controls="blackjack-panel" aria-selected="false">
           <span class="tab-title">Blackjack</span>
-          <span class="tab-copy">Beat the dealer without busting.</span>
         </button>
         <button class="tab" id="roulette-tab" type="button" data-game="roulette" aria-controls="roulette-panel" aria-selected="false">
           <span class="tab-title">Roulette</span>
-          <span class="tab-copy">Pick a color or exact number.</span>
         </button>
         <button class="tab" id="slots-tab" type="button" data-game="slots" aria-controls="slots-panel" aria-selected="false">
           <span class="tab-title">Slots</span>
-          <span class="tab-copy">Spin reels, chase multipliers.</span>
         </button>
       </div>
-      <p class="game-copy" id="game-copy">Higher card wins. Ties return your bet.</p>
     </div>
 
-    <section class="table" aria-label="Fictional-dollar gambling section">
+    <section class="table" aria-label="Gambling section">
       <div class="effect-layer" id="effect-layer" aria-hidden="true"></div>
 
       <div class="play-area">
         <div class="deck-shoe" id="deck-shoe" aria-hidden="true">
-          <div class="deck-card"><span>GamerTown Solutions &reg;</span><span>solutions that solve</span></div>
+          <div class="deck-card">
+            <span class="card-back-logo" aria-hidden="true">
+              <img src="./gamertown_globe_logo_transparent.png" alt="" />
+            </span>
+          </div>
         </div>
 
         <div class="scorebar" aria-live="polite">
@@ -139,6 +137,7 @@
         <section class="game-panel" id="slots-panel" aria-label="Slots">
           <div class="slots-layout">
             <div class="slot-cabinet" id="slot-cabinet">
+              <div class="crazy-banner" aria-hidden="true"><span>Crazy Mode</span></div>
               <div class="slot-header">
                 <div class="slot-jackpot">Neon Jackpot</div>
                 <div class="slot-status">
@@ -201,7 +200,7 @@
                   <strong id="slot-rtp">95%</strong>
                 </div>
                 <div class="slot-badge slot-retrigger-badge">
-                  <span>Retrigger</span>
+                  <span>Crazy Lock</span>
                   <strong id="slot-retrigger">Ready</strong>
                 </div>
               </div>
@@ -211,7 +210,7 @@
 
         <div class="message" aria-live="polite">
           <strong id="result-title">Place a bet</strong>
-          <span id="result-copy">Choose High Card, Blackjack, Roulette, or Slots to begin.</span>
+          <span id="result-copy" hidden></span>
         </div>
       </div>
 
@@ -249,7 +248,6 @@
 
         <button class="reset" id="reset" type="button">Reset Bankroll</button>
 
-        <p class="fine-print">For fun only. These games use fictional dollars and do not support real wagers, prizes, deposits, or cashouts.</p>
       </aside>
     </section>
 
@@ -309,6 +307,6 @@
     </section>
   </main>
 
-  <script type="module" src="./gamble.js?v=slot-rtp-2"></script>
+  <script type="module" src="./gamble.js?v=slot-crazy-1"></script>
 </body>
 </html>

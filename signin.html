@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gamertown Solutions — Sign In</title>
+  <link rel="stylesheet" href="site.css" />
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: radial-gradient(circle at top, rgba(66, 245, 39, 0.12), transparent 30%),
+                  radial-gradient(circle at bottom right, rgba(0, 255, 255, 0.08), transparent 28%),
+                  var(--bg);
+    }
+
+    .auth-shell {
+      width: min(820px, 100%);
+      background: rgba(18, 24, 35, 0.96);
+      border: 2px solid rgba(123, 184, 95, 0.25);
+      border-radius: 24px;
+      box-shadow: 0 0 60px rgba(0, 255, 0, 0.08);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+
+    .auth-panel {
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      min-height: 420px;
+    }
+
+    .auth-panel:first-child {
+      background: rgba(10, 14, 18, 0.92);
+      border-right: 1px solid rgba(123, 184, 95, 0.15);
+    }
+
+    .auth-title {
+      font-size: clamp(1.7rem, 2.3vw, 2.2rem);
+      letter-spacing: 0.02em;
+      margin-bottom: 0.25rem;
+    }
+
+    .auth-copy {
+      color: #a3f9a3;
+      line-height: 1.7;
+    }
+
+    .auth-form {
+      display: grid;
+      gap: 1rem;
+      width: 100%;
+    }
+
+    .auth-form label {
+      display: grid;
+      gap: 0.4rem;
+      font-size: 0.95rem;
+      color: #d4d4b8;
+    }
+
+    .auth-form input {
+      width: 100%;
+      background: #242424;
+      border: 2px solid #3a3a3a;
+      color: var(--text);
+      padding: 0.95rem 1rem;
+      border-radius: 12px;
+    }
+
+    .auth-form button {
+      width: 100%;
+      cursor: pointer;
+      border-radius: 999px;
+      border: 2px solid var(--border);
+      background: var(--accent-soft);
+      color: var(--bg);
+      padding: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+
+    .auth-form button:hover {
+      background: transparent;
+      color: var(--accent-soft);
+    }
+
+    .auth-status {
+      min-height: 3rem;
+      padding: 1rem;
+      border-radius: 16px;
+      border: 1px solid rgba(123, 184, 95, 0.15);
+      background: rgba(255, 255, 255, 0.03);
+      color: #c3f4c3;
+      line-height: 1.5;
+      font-size: 0.95rem;
+    }
+
+    .auth-status.error {
+      color: #ff9aa8;
+      border-color: rgba(255, 154, 164, 0.3);
+    }
+
+    .auth-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .auth-links a {
+      color: var(--link);
+      font-size: 0.95rem;
+      text-decoration: underline;
+    }
+
+    .back-link {
+      margin-top: 1rem;
+      border-color: rgba(123, 184, 95, 0.3);
+    }
+
+    @media (max-width: 850px) {
+      .auth-shell {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-shell">
+    <section class="auth-panel">
+      <div>
+        <h1 class="auth-title">Gamertown auth center</h1>
+        <p class="auth-copy">
+          Create an account or sign in and unlock the hidden final page. All auth requests are handled through Supabase.
+        </p>
+      </div>
+
+      <div class="auth-status" id="authStatus">
+        Ready to sign in or sign up. Use a valid email address and a secure password.
+      </div>
+
+      <div class="auth-links">
+        <a href="index.html">Return to homepage</a>
+        <a href="final.html">Final page (auth only)</a>
+      </div>
+    </section>
+
+    <section class="auth-panel">
+      <form class="auth-form" id="signInForm">
+        <h2>Log in</h2>
+        <label>
+          Email
+          <input type="email" id="loginEmail" autocomplete="username" placeholder="you@example.com" required />
+        </label>
+        <label>
+          Password
+          <input type="password" id="loginPassword" autocomplete="current-password" placeholder="********" required />
+        </label>
+        <button type="submit">Sign In</button>
+      </form>
+
+      <form class="auth-form" id="signUpForm">
+        <h2>Create account</h2>
+        <label>
+          Email
+          <input type="email" id="signupEmail" autocomplete="email" placeholder="create@account.com" required />
+        </label>
+        <label>
+          Password
+          <input type="password" id="signupPassword" autocomplete="new-password" placeholder="New password" required minlength="8" />
+        </label>
+        <button type="submit">Sign Up</button>
+      </form>
+    </section>
+  </div>
+
+  <script type="module">
+    import { supabase } from './supabase-client.js'
+
+    const authStatus = document.getElementById('authStatus')
+    const signInForm = document.getElementById('signInForm')
+    const signUpForm = document.getElementById('signUpForm')
+
+    const setStatus = (text, isError = false) => {
+      authStatus.textContent = text
+      authStatus.classList.toggle('error', isError)
+    }
+
+    if (sessionStorage.getItem('gt_user')) {
+      window.location.href = 'final.html'
+    }
+
+    signInForm.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      setStatus('Signing in...', false)
+
+      const email = document.getElementById('loginEmail').value.trim()
+      const password = document.getElementById('loginPassword').value
+
+      if (!email || !password) {
+        setStatus('Email and password are required.', true)
+        return
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+      if (error) {
+        setStatus(`Sign in failed: ${error.message}`, true)
+        return
+      }
+
+      const username = data?.user?.email || email
+      sessionStorage.setItem('gt_user', username)
+      setStatus(`Signed in successfully as ${username}. Redirecting...`, false)
+      window.location.href = 'final.html'
+    })
+
+    signUpForm.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      setStatus('Creating account...', false)
+
+      const email = document.getElementById('signupEmail').value.trim()
+      const password = document.getElementById('signupPassword').value
+
+      if (!email || !password) {
+        setStatus('Email and password are required.', true)
+        return
+      }
+
+      const { data, error } = await supabase.auth.signUp({ email, password })
+
+      if (error) {
+        setStatus(`Sign up failed: ${error.message}`, true)
+        return
+      }
+
+      if (data?.user) {
+        setStatus('Account created. Check your inbox for confirmation and then sign in.', false)
+      } else {
+        setStatus('Sign up request processed. Check your email for the verification link.', false)
+      }
+    })
+  </script>
+</body>
+</html>

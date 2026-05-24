@@ -61,15 +61,7 @@ FILE: index.html
     <a href="tablets.html">[ THE TABLETS ]</a>
     <a href="wheel.html">[ NAME WHEEL ]</a>
     <a href="signin.html">[ SIGN IN ]</a>
-    <a href="map.html" style="font-size: 1.3em;">[ FIND THE CYBER BARN ]</a>
-    <a href="kpi.html">[ KPI DASHBOARD ]</a>
-  </nav>
-
-  <main>
-
-    <section id="services" class="panel">
-      <h2>WHAT THIS PLACE DOES</h2>
-
+    <a href="advanced_algorithms.html">[ ADVANCED ALGORITHMS ]</a>
       <ul>
         <li>&gt; custom websites built from duct tape and old dreams</li>
         <li>&gt; backend APIs that occasionally remember their state</li>
@@ -124,6 +116,7 @@ FILE: index.html
 
   <script type="module">
     import { supabase } from './supabase-client.js'
+    import { setSession } from './auth.js'
 
     window.secretDotClick = async function(e) {
       e.preventDefault()
@@ -140,7 +133,7 @@ FILE: index.html
         .single()
 
       if (data && !error) {
-        sessionStorage.setItem('gt_user', username)
+        setSession(username)
         window.location.href = 'final.html'
       } else {
         alert('access denied\n\n' + (error?.message ?? 'no rows returned'))
@@ -221,5 +214,10 @@ FILE: index.html
     })()
   </script>
 
+  <script type="module">
+    import { requireAuth, updateNavbar, getSession } from './auth.js';
+    requireAuth();
+    updateNavbar(getSession());
+  </script>
 </body>
 </html>

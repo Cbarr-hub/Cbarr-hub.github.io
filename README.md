@@ -35,6 +35,7 @@
 
 - 1.d.1 shooting down range  
 - 1.d.2 solutions that solve  
+- 1.d.3 Start late, finish early
 
 ---
 

@@ -18,7 +18,7 @@ import {
   settleSlotMath as settleSlotRulesMath,
   weightedSlotSymbol as weightedSlotRulesSymbol,
   winTierTitle
-} from './slot-rules.mjs?v=slot-rtp-1';
+} from './slot-rules.mjs?v=slot-rtp-2';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
@@ -204,7 +204,7 @@ const gameMeta = {
   slots: {
     title: "Slots",
     copy: "Five reels, ten lines, scatter bonuses, and tuned 95% RTP.",
-    activeCopy: "Match left-to-right or land 3 scatters for free spins.",
+    activeCopy: "Match from either edge or land 3 scatters for free spins.",
     action: "Spin Reels"
   }
 };
@@ -360,16 +360,18 @@ function generateSlotGrid(options = {}) {
   return generateSlotRulesGrid(options);
 }
 
-function evaluateSlotLine(grid, payline) {
+function evaluateSlotLineRun(grid, payline, direction = "left") {
   const lineSymbols = payline.rows.map((row, column) => grid[row][column]);
-  const target = lineSymbols.find((symbolId) => symbolId !== "wild" && symbolId !== "scatter") || "wild";
+  const columns = direction === "right" ? [4, 3, 2, 1, 0] : [0, 1, 2, 3, 4];
+  const orderedSymbols = columns.map((column) => lineSymbols[column]);
+  const target = orderedSymbols.find((symbolId) => symbolId !== "wild" && symbolId !== "scatter") || "wild";
 
   if (target === "scatter") {
     return null;
   }
 
   let count = 0;
-  for (const symbolId of lineSymbols) {
+  for (const symbolId of orderedSymbols) {
     if (symbolId === target || symbolId === "wild") {
       count += 1;
     } else {
@@ -390,14 +392,30 @@ function evaluateSlotLine(grid, payline) {
   }
 
   return {
-    id: payline.id,
-    name: payline.name,
+    id: direction === "right" ? `${payline.id}-right` : payline.id,
+    paylineId: payline.id,
+    name: direction === "right" ? `${payline.name} R` : payline.name,
+    direction,
     symbol: target,
-    symbols: lineSymbols.slice(0, count),
+    symbols: orderedSymbols.slice(0, count),
     count,
     multiplier,
-    cells: payline.rows.slice(0, count).map((row, column) => ({ row, column }))
+    cells: columns.slice(0, count).map((column) => ({ row: payline.rows[column], column }))
   };
+}
+
+function evaluateSlotLine(grid, payline) {
+  const leftWin = evaluateSlotLineRun(grid, payline, "left");
+  const rightWin = evaluateSlotLineRun(grid, payline, "right");
+
+  if (!leftWin) {
+    return rightWin;
+  }
+  if (!rightWin) {
+    return leftWin;
+  }
+
+  return leftWin.multiplier >= rightWin.multiplier ? leftWin : rightWin;
 }
 
 function evaluateSlotGrid(grid) {
@@ -430,7 +448,7 @@ function renderSlotGrid(grid, winningLines = [], scatterCells = []) {
   }
 
   slotLineEls.forEach((lineEl) => {
-    const line = winningLines.find((win) => win.id === lineEl.dataset.line);
+    const line = winningLines.find((win) => (win.paylineId || win.id) === lineEl.dataset.line);
     lineEl.classList.toggle("active", Boolean(line));
     if (line) {
       lineEl.dataset.hit = `${line.count} ${slotRulesSymbolMap[line.symbol].label}`;
@@ -793,7 +811,7 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}`);
     renderSlotWinPanel({
       title: result.scatterCount === 2 ? "Near bonus" : "No win",
-      detail: result.scatterCount === 2 ? "Two scatters landed. One more would start free spins." : "No active payline matched from the left.",
+      detail: result.scatterCount === 2 ? "Two scatters landed. One more would start free spins." : "No active payline matched from either edge.",
       amount: 0,
       mode: result.scatterCount === 2 ? "bonus" : ""
     });
@@ -1644,7 +1662,7 @@ bindHoldToRepeat(lowerBetButton, -5);
 bindHoldToRepeat(raiseBetButton, 5);
 
 chipButtons.forEach((button) => {
-  button.addEventListener("click", () => setBet(Number(button.dataset.chip)));
+  button.addEventListener("click", () => changeBet(Number(button.dataset.chip)));
 });
 
 roulettePickButtons.forEach((button) => {

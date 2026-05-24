@@ -6,7 +6,7 @@
   <title>KPI Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body{font-family:system-ui,Segoe UI,Arial;padding:20px;max-width:calc(100% - 400px);margin:auto}
+    body{font-family:system-ui,Segoe UI,Arial;padding:20px;margin-right:400px}
     h1{margin-bottom:6px}
     table{border-collapse:collapse;width:100%;margin-top:12px}
     th,td{border:1px solid #ddd;padding:8px;text-align:left}
@@ -837,7 +837,9 @@
   // Video close button
   document.getElementById('video-close').addEventListener('click', ()=>{
     document.getElementById('video-panel').style.display = 'none';
+    document.body.style.marginRight = '0';
     document.body.style.maxWidth = '1000px';
+    document.body.style.margin = 'auto';
   });
 
   document.getElementById('run').addEventListener('click', async ()=>{

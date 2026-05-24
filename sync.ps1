@@ -1,4 +1,5 @@
 # sync.ps1 — commit, pull, fix conflicts with Claude, push
+$env:GIT_MERGE_AUTOEDIT = 'no'
 
 Write-Host "`n==> Staging all changes..." -ForegroundColor Cyan
 git add -A
@@ -13,7 +14,7 @@ if ($dirty) {
 }
 
 Write-Host "`n==> Pulling from origin/main..." -ForegroundColor Cyan
-git pull origin main
+git pull --no-edit origin main
 
 $conflicts = git diff --name-only --diff-filter=U 2>$null
 if ($conflicts) {

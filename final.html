@@ -66,6 +66,29 @@
       text-shadow: 2px 2px 0 #fff0f5;
     }
 
+    .gallery-container {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      justify-content: center;
+    }
+
+    .gallery-nav {
+      background: none;
+      border: 1.5px solid #e05080;
+      color: #e05080;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      transition: opacity 0.2s;
+    }
+    .gallery-nav:hover { opacity: 0.8; }
+
     .photo-wrap {
       border-radius: 50%;
       padding: 6px;
@@ -75,8 +98,8 @@
     }
     .photo-wrap img {
       display: block;
-      width: 200px;
-      height: 200px;
+      width: 300px;
+      height: 300px;
       object-fit: cover;
       border-radius: 50%;
       border: 4px solid white;
@@ -123,11 +146,12 @@
 
   <div class="card">
     <div class="sparkles">&#10024; &#10084;&#65039; &#10024;</div>
-    <div class="photo-wrap">
-      <img src="boyLove.png" alt="boy love">
-    </div>
-    <div class="photo-wrap">
-      <img src="boylove3.png" alt="boy love 3">
+    <div class="gallery-container">
+      <button class="gallery-nav" id="prev-btn">←</button>
+      <div class="photo-wrap">
+        <img id="gallery-image" src="boyLove.png" alt="boy love">
+      </div>
+      <button class="gallery-nav" id="next-btn">→</button>
     </div>
     <h1>The Final Solution is Love</h1>
     <p>you made it here &mdash; that means something &#128149;</p>
@@ -157,6 +181,22 @@
       el.style.animationDelay = (Math.random() * 10) + 's'
       container.appendChild(el)
     }
+
+    const images = ['boyLove.png', 'boylove3.png']
+    let currentIndex = 0
+    const galleryImage = document.getElementById('gallery-image')
+    const prevBtn = document.getElementById('prev-btn')
+    const nextBtn = document.getElementById('next-btn')
+
+    prevBtn.addEventListener('click', () => {
+      currentIndex = (currentIndex - 1 + images.length) % images.length
+      galleryImage.src = images[currentIndex]
+    })
+
+    nextBtn.addEventListener('click', () => {
+      currentIndex = (currentIndex + 1) % images.length
+      galleryImage.src = images[currentIndex]
+    })
   </script>
 
 </body>

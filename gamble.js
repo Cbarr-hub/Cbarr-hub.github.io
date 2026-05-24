@@ -4,10 +4,12 @@ import {
   getPlayerBalance,
   insertGamblingEvent,
   savePlayerBalance as persistPlayerBalance
-} from './gamble-data.js?v=money-events-1';
-import { renderRecentEvents } from './gamble-activity.js?v=money-events-1';
-import { renderGamblingDashboard } from './gamble-dashboard.js?v=money-events-1';
-import { renderLeaderboard } from './gamble-leaderboard.js?v=money-events-1';
+} from './gamble-data.js?v=money-events-2';
+import { renderRecentEvents } from './gamble-activity.js?v=money-events-2';
+import { renderGamblingDashboard } from './gamble-dashboard.js?v=money-events-2';
+import { renderLeaderboard } from './gamble-leaderboard.js?v=money-events-2';
+import { applyNetRecord as applyNetRecordState, buildGamblingEvent } from './gamble-events.mjs?v=money-events-2';
+import { createGamblingPersistence } from './gamble-persistence.mjs?v=money-events-2';
 import {
   SLOT_PAYLINES as slotRulesPaylines,
   SLOT_RTP_TARGET,
@@ -760,6 +762,36 @@ function slotPaidDetail(result, payout, spinBet) {
   return `${winCount} ${label} paid ${formatDollars(payout)}${multiplierCopy}.`;
 }
 
+function slotPlayResultType({ settlement, payout, wasFreeSpin }) {
+  if (settlement.trigger) {
+    return "bonus_trigger";
+  }
+  if (settlement.retrigger) {
+    return "bonus_retrigger";
+  }
+  if (payout > 0) {
+    return "payout";
+  }
+  return wasFreeSpin ? "free_spin" : "no_hit";
+}
+
+function slotPlayResultLabel({ result, settlement, payout, spinBet, lineNames, wasFreeSpin }) {
+  if (settlement.trigger) {
+    return `${result.scatterCount} scatters loaded Crazy Mode`;
+  }
+  if (settlement.retrigger) {
+    return `${result.scatterCount} scatters retriggered Crazy Mode`;
+  }
+  if (payout > 0) {
+    const hitLabel = lineNames.length ? `${lineNames.length} line${lineNames.length === 1 ? "" : "s"}` : "Scatter";
+    return `${hitLabel} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}`;
+  }
+  if (result.scatterCount === 2) {
+    return "Near bonus";
+  }
+  return wasFreeSpin ? "Crazy spin no hit" : `No hit on ${formatDollars(spinBet)}`;
+}
+
 function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
   const lineWins = Array.isArray(resultOrLines) ? resultOrLines : resultOrLines.lineWins;
   const scatterPay = Array.isArray(resultOrLines) ? 0 : resultOrLines.scatterPay;
@@ -900,15 +932,14 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   renderSlotGrid(grid, result.lineWins, highlightedScatters, wasFreeSpin ? stickyWildDetails : []);
   renderSlotPaylineSummary(result, spinBet, activeMultiplier);
   animateSlotWinAmount(payout);
+  const lineNames = result.lineWins.map((line) => line.name);
 
   if (payout > 0) {
     state.credits += payout;
-    state.streak += 1;
-    state.wins += 1;
-    const lineNames = result.lineWins.map((line) => line.name).join(", ");
+    const lineNameCopy = lineNames.join(", ");
     const title = winTierTitle(winTier);
     const winSource = [
-      lineNames,
+      lineNameCopy,
       result.scatterPay ? `${result.scatterCount} scatters` : ""
     ].filter(Boolean).join(" + ") || "Bonus";
     const retriggerCopy = settlement.retrigger ? ` Retriggered ${settlement.retrigger.freeSpins} spins.` : "";
@@ -921,7 +952,6 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       amount: payout,
       mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win"
     });
-    pulseStats(creditsStatEl, streakStatEl, recordStatEl);
     playOutcomeEffect("win");
     createSlotCoins(winTier === "jackpot" ? 30 : winTier === "mega" ? 24 : winTier === "big" ? 18 : 10);
     if (wasFreeSpin) {
@@ -931,8 +961,6 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       replayAnimation(slotCabinetEl, "big-win");
     }
   } else if (settlement.trigger) {
-    state.streak += 1;
-    state.wins += 1;
     showResult("Crazy Mode", "Free spins are ready.");
     renderSlotWinPanel({
       title: "Crazy Mode",
@@ -940,12 +968,9 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       amount: 0,
       mode: "bonus"
     });
-    pulseStats(streakStatEl, recordStatEl);
     playOutcomeEffect("push");
     createSlotCoins(8);
   } else if (settlement.retrigger) {
-    state.streak += 1;
-    state.wins += 1;
     showResult("Crazy retrigger", `${settlement.retrigger.freeSpins} more free spins at ${settlement.retrigger.multiplier}x.`);
     renderSlotWinPanel({
       title: "Crazy retrigger",
@@ -953,7 +978,6 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       amount: 0,
       mode: "bonus"
     });
-    pulseStats(streakStatEl, recordStatEl);
     playOutcomeEffect("push");
     createSlotCoins(8);
   } else if (wasFreeSpin) {
@@ -977,8 +1001,6 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     playOutcomeEffect("push");
   } else {
     const nearMiss = result.scatterCount === 2 ? " Two scatters teased the bonus." : "";
-    state.streak = 0;
-    state.losses += 1;
     showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}`);
     renderSlotWinPanel({
       title: result.scatterCount === 2 ? "Near bonus" : "No win",
@@ -986,8 +1008,14 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       amount: 0,
       mode: result.scatterCount === 2 ? "bonus" : ""
     });
-    pulseStats(creditsStatEl, streakStatEl, recordStatEl);
     playOutcomeEffect("loss");
+  }
+
+  const netRecordOutcome = applyNetRecord(balanceBefore, state.credits);
+  if (netRecordOutcome === "push") {
+    pulseStats(streakStatEl, recordStatEl);
+  } else {
+    pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   }
 
   if (state.slotFreeSpins === 0 && !settlement.trigger) {
@@ -998,22 +1026,9 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   }
 
   updateSlotMeta();
-  const lineNames = result.lineWins.map((line) => line.name);
-  const slotNetChange = state.credits - balanceBefore;
-  let slotOutcome = "push";
-  if (settlement.trigger || settlement.retrigger) {
-    slotOutcome = payout > 0
-      ? (slotNetChange > 0 ? "win" : slotNetChange < 0 ? "loss" : "push")
-      : "bonus";
-  } else if (slotNetChange > 0) {
-    slotOutcome = "win";
-  } else if (slotNetChange < 0) {
-    slotOutcome = "loss";
-  }
   const slotEvent = buildEvent({
     game: "slots",
     eventType: settlement.trigger && payout === 0 ? "bonus_awarded" : (wasFreeSpin ? "free_spin_settled" : "wager_settled"),
-    outcome: slotOutcome,
     betAmount: wasFreeSpin ? 0 : spinBet,
     payoutAmount: payout,
     balanceBefore,
@@ -1035,6 +1050,11 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       retriggered: Boolean(settlement.retrigger),
       win_tier: winTier,
       multiplier: activeMultiplier,
+      play_result: {
+        type: slotPlayResultType({ settlement, payout, wasFreeSpin }),
+        label: slotPlayResultLabel({ result, settlement, payout, spinBet, lineNames, wasFreeSpin }),
+        net_outcome: netRecordOutcome
+      },
       grid
     }
   });
@@ -1300,22 +1320,11 @@ function formatMultiplier(value) {
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}x`;
 }
 
-let balanceSaveTimer = null;
 let dashboardModel = null;
 let activityFilter = "all";
 
 function gameEventKey(game = state.game) {
   return game === "high-card" ? "high_card" : game;
-}
-
-function clientEventId() {
-  if (crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-
-  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (char) =>
-    (Number(char) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(char) / 4).toString(16)
-  );
 }
 
 function cardCode(card) {
@@ -1325,26 +1334,26 @@ function cardCode(card) {
 function buildEvent({
   game = gameEventKey(),
   eventType = "wager_settled",
-  outcome,
   betAmount = state.bet,
   payoutAmount = 0,
   balanceBefore,
   balanceAfter,
   details = {}
 }) {
-  return {
+  return buildGamblingEvent({
     username: state.username,
     game,
-    event_type: eventType,
-    outcome,
-    bet_amount: Math.max(0, Math.round(betAmount)),
-    payout_amount: Math.max(0, Math.round(payoutAmount)),
-    net_change: Math.round(balanceAfter - balanceBefore),
-    balance_before: Math.max(0, Math.round(balanceBefore)),
-    balance_after: Math.max(0, Math.round(balanceAfter)),
-    client_event_id: clientEventId(),
+    eventType,
+    betAmount,
+    payoutAmount,
+    balanceBefore,
+    balanceAfter,
     details
-  };
+  });
+}
+
+function applyNetRecord(balanceBefore, balanceAfter) {
+  return applyNetRecordState(state, balanceBefore, balanceAfter);
 }
 
 async function refreshLeaderboard() {
@@ -1360,7 +1369,6 @@ async function refreshRecentEvents() {
   await renderRecentEvents({
     listEl: activityListEl,
     statusEl: activityStatusEl,
-    events: dashboardModel?.recentEvents ?? null,
     filter: activityFilter
   });
 }
@@ -1383,16 +1391,18 @@ async function refreshStatsSection() {
   ]);
 }
 
-function recordGamblingEvent(event) {
-  if (!event?.username) {
-    return;
+const gamblingPersistence = createGamblingPersistence({
+  getUsername: () => state.username,
+  persistBalance: persistPlayerBalance,
+  insertEvent: insertGamblingEvent,
+  refreshStats: refreshStatsSection,
+  onError: (label, message) => {
+    console.warn(label, message);
   }
+});
 
-  insertGamblingEvent(event)
-    .then(refreshStatsSection)
-    .catch((error) => {
-      console.warn("Gambling event save failed:", error.message);
-    });
+function recordGamblingEvent(event) {
+  gamblingPersistence.recordEvent(event);
 }
 
 async function loadPlayerBalance() {
@@ -1424,27 +1434,11 @@ function savePlayerBalance(event = null) {
   }
 
   if (event) {
-    (async () => {
-      try {
-        await persistPlayerBalance(state.username, state.credits);
-        await insertGamblingEvent(event);
-        await refreshStatsSection();
-      } catch (error) {
-        console.warn("Balance/event save failed:", error.message);
-      }
-    })();
+    gamblingPersistence.saveBalanceAndEvent(event);
     return;
   }
 
-  window.clearTimeout(balanceSaveTimer);
-  balanceSaveTimer = window.setTimeout(async () => {
-    try {
-      await persistPlayerBalance(state.username, state.credits);
-      await refreshStatsSection();
-    } catch (error) {
-      console.warn("Balance save failed:", error.message);
-    }
-  }, 250);
+  gamblingPersistence.saveBalance(state.credits);
 }
 
 function totalStateClass(hand, hidden = false, naturalBlackjack = true) {
@@ -1714,13 +1708,11 @@ function settleWin(amount, title, copy, options = {}) {
   const balanceBefore = state.credits;
   const payoutAmount = Math.round(amount);
   state.credits += payoutAmount;
-  state.streak += 1;
-  state.wins += 1;
+  applyNetRecord(balanceBefore, state.credits);
   showResult(title, copy);
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   playOutcomeEffect("win", state.game === "blackjack" ? "player" : null);
   savePlayerBalance(buildEvent({
-    outcome: "win",
     betAmount: options.betAmount ?? state.bet,
     payoutAmount,
     balanceBefore,
@@ -1733,13 +1725,11 @@ function settleLoss(title, copy, options = {}) {
   const balanceBefore = state.credits;
   const betAmount = options.betAmount ?? state.bet;
   state.credits -= betAmount;
-  state.streak = 0;
-  state.losses += 1;
+  applyNetRecord(balanceBefore, state.credits);
   showResult(title, copy);
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   playOutcomeEffect("loss", state.game === "blackjack" ? "dealer" : null);
   savePlayerBalance(buildEvent({
-    outcome: "loss",
     betAmount,
     payoutAmount: 0,
     balanceBefore,
@@ -1750,7 +1740,6 @@ function settleLoss(title, copy, options = {}) {
 
 function recordPush(details = {}) {
   recordGamblingEvent(buildEvent({
-    outcome: "push",
     payoutAmount: 0,
     balanceBefore: state.credits,
     balanceAfter: state.credits,
@@ -1767,7 +1756,6 @@ function recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, 
 
   savePlayerBalance(buildEvent({
     game: "blackjack",
-    outcome,
     betAmount: state.bet,
     payoutAmount,
     balanceBefore,
@@ -1784,15 +1772,10 @@ function settleSplitHand(index, outcome, title, details = {}) {
   if (outcome === "win") {
     payoutAmount = state.bet;
     state.credits += payoutAmount;
-    state.streak += 1;
-    state.wins += 1;
   } else if (outcome === "loss") {
     state.credits -= state.bet;
-    state.streak = 0;
-    state.losses += 1;
-  } else {
-    state.streak = 0;
   }
+  applyNetRecord(balanceBefore, state.credits);
 
   recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, state.credits, {
     player_total: handTotal(hand),
@@ -2325,7 +2308,6 @@ resetButton.addEventListener("click", () => {
   savePlayerBalance(buildEvent({
     game: "system",
     eventType: "bankroll_reset",
-    outcome: "reset",
     betAmount: 0,
     payoutAmount: 0,
     balanceBefore,

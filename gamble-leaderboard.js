@@ -1,24 +1,8 @@
-import { getLeaderboardRows } from './gamble-data.js?v=money-events-1';
-
-function esc(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function numberValue(value) {
-  return Number(value ?? 0);
-}
+import { getLeaderboardRows } from './gamble-data.js?v=money-events-2';
+import { esc, formatSignedDollars, formatWholeDollars, numberValue } from './gamble-utils.mjs?v=money-events-2';
 
 function formatDollars(value) {
-  return `$${Math.round(numberValue(value)).toLocaleString('en-US')}`;
-}
-
-function formatSignedDollars(value) {
-  const amount = Math.abs(Math.round(numberValue(value))).toLocaleString('en-US');
-  return `${numberValue(value) < 0 ? '-' : '+'}$${amount}`;
+  return formatWholeDollars(value);
 }
 
 function normalizeRows(rows) {

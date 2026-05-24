@@ -1,5 +1,5 @@
 import { supabase } from './supabase-client.js';
-import { normalizeGamblingEvent } from './gamble-stats-utils.js?v=money-events-1';
+import { normalizeGamblingEvent } from './gamble-events.mjs?v=money-events-2';
 
 export const DEFAULT_BALANCE = 5000;
 
@@ -63,7 +63,8 @@ export async function getLeaderboardRows() {
       .select('Name,Dollers'),
     supabase
       .from('gambling_events')
-      .select('username,outcome,event_type,bet_amount,net_change,payout_amount')
+      .select('created_at,username,outcome,event_type,bet_amount,net_change,payout_amount')
+      .order('created_at', { ascending: true })
   ]);
 
   if (usersError) {
@@ -170,8 +171,8 @@ export async function getGamblingDashboardData() {
     supabase
       .from('gambling_events')
       .select('created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details')
-      .order('created_at', { ascending: true })
-      .limit(2000)
+      .order('created_at', { ascending: false })
+      .limit(5000)
   ]);
 
   if (usersError) {

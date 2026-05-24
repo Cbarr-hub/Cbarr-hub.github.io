@@ -255,14 +255,22 @@
       registerForm.classList.toggle('hidden', tabName !== 'register');
     }
 
+    async function ensureBalance(username) {
+      await supabase
+        .from('Balance')
+        .upsert({ Name: username, Dollers: 5000 }, { onConflict: 'Name', ignoreDuplicates: true });
+    }
+
     authTabs.forEach(tab => {
       tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
-    openSignIn.addEventListener('click', (e) => {
-      e.preventDefault();
-      showModal();
-    });
+    if (openSignIn) {
+      openSignIn.addEventListener('click', (e) => {
+        e.preventDefault();
+        showModal();
+      });
+    }
 
     authClose.addEventListener('click', hideModal);
 
@@ -284,6 +292,7 @@
         if (error || !data) {
           setStatus(loginForm, 'Invalid username or password', true);
         } else {
+          await ensureBalance(username);
           setStatus(loginForm, 'Signed in successfully');
           setSession(username);
           setTimeout(() => location.reload(), 500);
@@ -308,6 +317,7 @@
         if (error) {
           setStatus(registerForm, 'Error: ' + (error.message || 'Username may already exist'), true);
         } else {
+          await ensureBalance(username);
           setStatus(registerForm, 'Account created! Signing in...');
           setSession(username);
           setTimeout(() => location.reload(), 500);

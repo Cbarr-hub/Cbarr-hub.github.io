@@ -66,7 +66,8 @@
       color: #d4d4b8;
     }
 
-    .auth-form input {
+    .auth-form input,
+    .auth-form select {
       width: 100%;
       background: #242424;
       border: 2px solid #3a3a3a;
@@ -140,12 +141,12 @@
       <div>
         <h1 class="auth-title">Gamertown auth center</h1>
         <p class="auth-copy">
-          Create an account or sign in and unlock the hidden final page. All auth requests are handled through Supabase.
+          Create an account or sign in with an existing Gamertown username. Accounts and balances are loaded from Supabase.
         </p>
       </div>
 
       <div class="auth-status" id="authStatus">
-        Ready to sign in or sign up. Use a valid email address and a secure password.
+        Loading users...
       </div>
 
       <div class="auth-links">
@@ -158,8 +159,14 @@
       <form class="auth-form" id="signInForm">
         <h2>Log in</h2>
         <label>
-          Email
-          <input type="email" id="loginEmail" autocomplete="username" placeholder="you@example.com" required />
+          Existing user
+          <select id="loginUsernameSelect" autocomplete="username">
+            <option value="">Loading users...</option>
+          </select>
+        </label>
+        <label>
+          Username
+          <input type="text" id="loginUsername" autocomplete="username" placeholder="or type username" />
         </label>
         <label>
           Password
@@ -171,8 +178,8 @@
       <form class="auth-form" id="signUpForm">
         <h2>Create account</h2>
         <label>
-          Email
-          <input type="email" id="signupEmail" autocomplete="email" placeholder="create@account.com" required />
+          Username
+          <input type="text" id="signupUsername" autocomplete="username" placeholder="new username" required />
         </label>
         <label>
           Password
@@ -185,41 +192,88 @@
 
   <script type="module">
     import { supabase } from './supabase-client.js'
+    import { getSession, setSession } from './auth.js'
 
     const authStatus = document.getElementById('authStatus')
     const signInForm = document.getElementById('signInForm')
     const signUpForm = document.getElementById('signUpForm')
+    const loginUsernameSelect = document.getElementById('loginUsernameSelect')
+    const loginUsername = document.getElementById('loginUsername')
 
     const setStatus = (text, isError = false) => {
       authStatus.textContent = text
       authStatus.classList.toggle('error', isError)
     }
 
-    if (sessionStorage.getItem('gt_user')) {
+    const esc = (value) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+
+    async function ensureBalance(username) {
+      await supabase
+        .from('Balance')
+        .upsert({ Name: username, Dollers: 5000 }, { onConflict: 'Name', ignoreDuplicates: true })
+    }
+
+    async function loadUsers() {
+      const { data, error } = await supabase
+        .from('Users')
+        .select('Username')
+        .order('Username', { ascending: true })
+
+      if (error) {
+        loginUsernameSelect.innerHTML = '<option value="">Type username below</option>'
+        setStatus(`Could not load users: ${error.message}`, true)
+        return
+      }
+
+      loginUsernameSelect.innerHTML = '<option value="">Choose a user...</option>' +
+        (data ?? [])
+          .filter((user) => user.Username)
+          .map((user) => `<option value="${esc(user.Username)}">${esc(user.Username)}</option>`)
+          .join('')
+
+      setStatus('Ready to sign in or create an account.', false)
+    }
+
+    loginUsernameSelect.addEventListener('change', () => {
+      loginUsername.value = loginUsernameSelect.value
+    })
+
+    if (getSession()) {
       window.location.href = 'final.html'
     }
+
+    loadUsers()
 
     signInForm.addEventListener('submit', async (event) => {
       event.preventDefault()
       setStatus('Signing in...', false)
 
-      const email = document.getElementById('loginEmail').value.trim()
+      const username = (loginUsername.value || loginUsernameSelect.value).trim()
       const password = document.getElementById('loginPassword').value
 
-      if (!email || !password) {
-        setStatus('Email and password are required.', true)
+      if (!username || !password) {
+        setStatus('Username and password are required.', true)
         return
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error } = await supabase
+        .from('Users')
+        .select('Username')
+        .eq('Username', username)
+        .eq('Password', password)
+        .single()
 
-      if (error) {
-        setStatus(`Sign in failed: ${error.message}`, true)
+      if (error || !data) {
+        setStatus('Invalid username or password.', true)
         return
       }
 
-      const username = data?.user?.email || email
-      sessionStorage.setItem('gt_user', username)
+      await ensureBalance(username)
+      setSession(username)
       setStatus(`Signed in successfully as ${username}. Redirecting...`, false)
       window.location.href = 'final.html'
     })
@@ -228,26 +282,27 @@
       event.preventDefault()
       setStatus('Creating account...', false)
 
-      const email = document.getElementById('signupEmail').value.trim()
+      const username = document.getElementById('signupUsername').value.trim()
       const password = document.getElementById('signupPassword').value
 
-      if (!email || !password) {
-        setStatus('Email and password are required.', true)
+      if (!username || !password) {
+        setStatus('Username and password are required.', true)
         return
       }
 
-      const { data, error } = await supabase.auth.signUp({ email, password })
+      const { error } = await supabase
+        .from('Users')
+        .insert([{ Username: username, Password: password }])
 
       if (error) {
         setStatus(`Sign up failed: ${error.message}`, true)
         return
       }
 
-      if (data?.user) {
-        setStatus('Account created. Check your inbox for confirmation and then sign in.', false)
-      } else {
-        setStatus('Sign up request processed. Check your email for the verification link.', false)
-      }
+      await ensureBalance(username)
+      setSession(username)
+      setStatus(`Account created as ${username}. Redirecting...`, false)
+      window.location.href = 'final.html'
     })
   </script>
 </body>

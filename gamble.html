@@ -1897,7 +1897,7 @@
         <div class="scorebar" aria-live="polite">
           <div class="stat">
             <span>Bankroll</span>
-            <strong id="credits">$100</strong>
+            <strong id="credits">$0</strong>
           </div>
           <div class="stat">
             <span>Streak</span>
@@ -2049,7 +2049,7 @@
           <span class="bet-label">Current Bet</span>
           <div class="bet-row">
             <button class="stepper" id="lower-bet" type="button" aria-label="Lower bet">-</button>
-            <div class="bet" id="bet-value">$10</div>
+            <div class="bet" id="bet-value">$5</div>
             <button class="stepper" id="raise-bet" type="button" aria-label="Raise bet">+</button>
           </div>
         </div>
@@ -2072,7 +2072,13 @@
     </section>
   </main>
 
-  <script>
+  <script type="module">
+    import { supabase } from './supabase-client.js';
+    import { getSession, requireAuth, updateNavbar } from './auth.js';
+
+    const activeUsername = requireAuth('signin.html');
+    updateNavbar(activeUsername);
+
     const ranks = [
       { label: "2", value: 2, blackjack: 2 },
       { label: "3", value: 3, blackjack: 3 },
@@ -2096,9 +2102,11 @@
     ];
 
     const state = {
+      username: activeUsername,
+      balanceLoading: true,
       game: "high-card",
-      credits: 100,
-      bet: 10,
+      credits: 0,
+      bet: 5,
       streak: 0,
       wins: 0,
       losses: 0,
@@ -2107,7 +2115,7 @@
       playerHand: [],
       hideDealerHole: false,
       blackjackResolving: false,
-      renderedBet: 10,
+      renderedBet: 5,
       blackjackRound: 0,
       rouletteActive: false,
       rouletteBetType: "color",
@@ -2740,7 +2748,7 @@
     function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       const basePayout = spinBet * result.multiplier;
       const activeMultiplier = wasFreeSpin ? state.slotMultiplier : 1;
-      const payout = basePayout * activeMultiplier;
+      const payout = Math.round(basePayout * activeMultiplier);
       state.slotActive = false;
       state.slotScatterCount = result.scatterCount;
       state.slotLastWin = payout;
@@ -2830,6 +2838,7 @@
       }
 
       updateSlotMeta();
+      savePlayerBalance();
       render();
     }
 
@@ -2986,6 +2995,73 @@
       return `$${amount}`;
     }
 
+    let balanceSaveTimer = null;
+
+    async function loadPlayerBalance() {
+      const username = getSession();
+      if (!username) {
+        return;
+      }
+
+      state.username = username;
+      state.balanceLoading = true;
+      showResult("Loading bankroll", "Pulling your live balance from Supabase.");
+      render();
+
+      const { data, error } = await supabase
+        .from("Balance")
+        .select("Dollers")
+        .eq("Name", username)
+        .maybeSingle();
+
+      if (error) {
+        state.balanceLoading = false;
+        showResult("Balance error", error.message);
+        render();
+        return;
+      }
+
+      if (data) {
+        state.credits = Number(data.Dollers ?? 5000);
+      } else {
+        const { error: createError } = await supabase
+          .from("Balance")
+          .insert({ Name: username, Dollers: 5000 });
+
+        if (createError) {
+          state.balanceLoading = false;
+          showResult("Balance error", createError.message);
+          render();
+          return;
+        }
+
+        state.credits = 5000;
+      }
+
+      state.balanceLoading = false;
+      state.bet = Math.max(5, Math.min(state.bet, maxBet() || 5));
+      showResult("Bankroll loaded", `${username} has ${formatDollars(state.credits)} ready to play.`);
+      render();
+    }
+
+    function savePlayerBalance() {
+      if (!state.username || state.balanceLoading) {
+        return;
+      }
+
+      window.clearTimeout(balanceSaveTimer);
+      balanceSaveTimer = window.setTimeout(async () => {
+        const dollars = Math.round(state.credits);
+        const { error } = await supabase
+          .from("Balance")
+          .upsert({ Name: state.username, Dollers: dollars }, { onConflict: "Name" });
+
+        if (error) {
+          console.warn("Balance save failed:", error.message);
+        }
+      }, 250);
+    }
+
     function totalStateClass(hand, hidden = false) {
       if (!hand.length) {
         return "";
@@ -3074,7 +3150,7 @@
       tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.game === state.game));
       tabs.forEach((tab) => {
         tab.setAttribute("aria-selected", String(tab.dataset.game === state.game));
-        tab.disabled = (state.blackjackActive || state.rouletteActive || state.slotActive || state.slotFreeSpins > 0) && tab.dataset.game !== state.game;
+        tab.disabled = state.balanceLoading || ((state.blackjackActive || state.rouletteActive || state.slotActive || state.slotFreeSpins > 0) && tab.dataset.game !== state.game);
       });
       Object.entries(panels).forEach(([game, panel]) => {
         panel.classList.toggle("active", game === state.game);
@@ -3082,27 +3158,29 @@
       deckShoeEl.hidden = state.game === "roulette" || state.game === "slots";
 
       const outOfCredits = state.credits < 5;
+      const balanceLoading = state.balanceLoading;
       const slotBonusLocked = state.slotActive || state.slotFreeSpins > 0;
       const lockedBet = state.blackjackActive || state.blackjackResolving || state.rouletteActive || slotBonusLocked;
       const canUseFreeSpin = state.game === "slots" && state.slotFreeSpins > 0;
       dealButton.hidden = state.game === "blackjack" && state.blackjackActive;
       hitButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
       standButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
-      dealButton.disabled = (outOfCredits && !canUseFreeSpin) || state.blackjackResolving || state.rouletteActive || state.slotActive;
-      hitButton.disabled = outOfCredits || !state.blackjackActive || state.blackjackResolving;
-      standButton.disabled = outOfCredits || !state.blackjackActive || state.blackjackResolving;
-      lowerBetButton.disabled = state.bet <= 5 || outOfCredits || lockedBet;
-      raiseBetButton.disabled = state.bet >= maxBet() || outOfCredits || lockedBet;
-      minBetButton.disabled = outOfCredits || lockedBet || state.bet <= 5;
-      maxBetButton.disabled = outOfCredits || lockedBet || state.bet >= maxBet();
+      dealButton.disabled = balanceLoading || (outOfCredits && !canUseFreeSpin) || state.blackjackResolving || state.rouletteActive || state.slotActive;
+      hitButton.disabled = balanceLoading || outOfCredits || !state.blackjackActive || state.blackjackResolving;
+      standButton.disabled = balanceLoading || outOfCredits || !state.blackjackActive || state.blackjackResolving;
+      lowerBetButton.disabled = balanceLoading || state.bet <= 5 || outOfCredits || lockedBet;
+      raiseBetButton.disabled = balanceLoading || state.bet >= maxBet() || outOfCredits || lockedBet;
+      minBetButton.disabled = balanceLoading || outOfCredits || lockedBet || state.bet <= 5;
+      maxBetButton.disabled = balanceLoading || outOfCredits || lockedBet || state.bet >= maxBet();
+      resetButton.disabled = balanceLoading || lockedBet;
       chipButtons.forEach((button) => {
-        button.disabled = outOfCredits || lockedBet || state.bet >= maxBet();
+        button.disabled = balanceLoading || outOfCredits || lockedBet || state.bet >= maxBet();
       });
       roulettePickButtons.forEach((button) => {
         const isActive = button.dataset.rouletteType === state.rouletteBetType &&
           button.dataset.rouletteValue === String(state.rouletteChoice);
         button.classList.toggle("active", isActive);
-        button.disabled = state.rouletteActive;
+        button.disabled = balanceLoading || state.rouletteActive;
       });
 
       const meta = gameMeta[state.game];
@@ -3110,13 +3188,13 @@
       gameCopyEl.textContent = meta.activeCopy || meta.copy;
       updateSlotMeta();
 
-      if (outOfCredits && !canUseFreeSpin) {
+      if (!balanceLoading && outOfCredits && !canUseFreeSpin) {
         showResult("Bankroll empty", "Reset your fictional dollars to play another round.");
       }
     }
 
     function canChangeBet() {
-      return state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
+      return !state.balanceLoading && state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
     }
 
     function setBet(value) {
@@ -3170,12 +3248,13 @@
     }
 
     function settleWin(amount, title, copy) {
-      state.credits += amount;
+      state.credits += Math.round(amount);
       state.streak += 1;
       state.wins += 1;
       showResult(title, copy);
       pulseStats(creditsStatEl, streakStatEl, recordStatEl);
       playOutcomeEffect("win", state.game === "blackjack" ? "player" : null);
+      savePlayerBalance();
     }
 
     function settleLoss(title, copy) {
@@ -3185,6 +3264,7 @@
       showResult(title, copy);
       pulseStats(creditsStatEl, streakStatEl, recordStatEl);
       playOutcomeEffect("loss", state.game === "blackjack" ? "dealer" : null);
+      savePlayerBalance();
     }
 
     function dealHighCard() {
@@ -3245,7 +3325,7 @@
           pulseStats(streakStatEl);
           playOutcomeEffect("push");
         } else if (playerNatural) {
-          const payout = state.bet * 1.5;
+          const payout = Math.round(state.bet * 1.5);
           settleWin(payout, "Blackjack", `Natural blackjack pays ${formatDollars(payout)}.`);
         } else {
           settleLoss("Dealer blackjack", `You lost ${formatDollars(state.bet)}.`);
@@ -3428,8 +3508,8 @@
     standButton.addEventListener("click", standBlackjack);
 
     resetButton.addEventListener("click", () => {
-      state.credits = 100;
-      state.bet = 10;
+      state.credits = 5000;
+      state.bet = 5;
       state.streak = 0;
       state.wins = 0;
       state.losses = 0;
@@ -3464,16 +3544,12 @@
       updateSlotMeta();
       showResult("Place a bet", "Choose High Card, Blackjack, Roulette, or Slots to begin.");
       pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+      savePlayerBalance();
       render();
     });
 
     render();
+    loadPlayerBalance();
   </script>
 </body>
-
-  <script type="module">
-    import { requireAuth, updateNavbar, getSession } from './auth.js';
-    requireAuth();
-    updateNavbar(getSession());
-  </script>
 </html>

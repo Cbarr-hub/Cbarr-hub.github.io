@@ -124,6 +124,7 @@ FILE: index.html
 
   <script type="module">
     import { supabase } from './supabase-client.js'
+    import { setSession } from './auth.js'
 
     window.secretDotClick = async function(e) {
       e.preventDefault()
@@ -140,7 +141,7 @@ FILE: index.html
         .single()
 
       if (data && !error) {
-        sessionStorage.setItem('gt_user', username)
+        setSession(username)
         window.location.href = 'final.html'
       } else {
         alert('access denied\n\n' + (error?.message ?? 'no rows returned'))

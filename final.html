@@ -130,12 +130,12 @@
   </div>
 
   <script type="module">
-    if (!sessionStorage.getItem('gt_user')) {
-      window.location.href = 'signin.html'
-    }
+    import { clearSession, requireAuth } from './auth.js'
+
+    requireAuth('signin.html')
 
     document.getElementById('sign-out').addEventListener('click', () => {
-      sessionStorage.removeItem('gt_user')
+      clearSession()
       window.location.href = 'signin.html'
     })
 
@@ -154,10 +154,4 @@
   </script>
 
 </body>
-
-  <script type="module">
-    import { requireAuth, updateNavbar, getSession } from './auth.js';
-    requireAuth();
-    updateNavbar(getSession());
-  </script>
 </html>

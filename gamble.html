@@ -22,32 +22,26 @@
       <div>
         <h1>Gambling Section</h1>
       </div>
-      <p>Play fictional-dollar tables for fun. Pick a game, set a bet, and try to leave with more money than you brought in.</p>
     </div>
 
     <div class="game-selector">
       <div class="tabs" role="tablist" aria-label="Game selection">
         <button class="tab active" id="high-card-tab" type="button" data-game="high-card" aria-controls="high-card-panel" aria-selected="true">
           <span class="tab-title">High Card</span>
-          <span class="tab-copy">One draw. Higher rank wins.</span>
         </button>
         <button class="tab" id="blackjack-tab" type="button" data-game="blackjack" aria-controls="blackjack-panel" aria-selected="false">
           <span class="tab-title">Blackjack</span>
-          <span class="tab-copy">Beat the dealer without busting.</span>
         </button>
         <button class="tab" id="roulette-tab" type="button" data-game="roulette" aria-controls="roulette-panel" aria-selected="false">
           <span class="tab-title">Roulette</span>
-          <span class="tab-copy">Pick a color or exact number.</span>
         </button>
         <button class="tab" id="slots-tab" type="button" data-game="slots" aria-controls="slots-panel" aria-selected="false">
           <span class="tab-title">Slots</span>
-          <span class="tab-copy">Spin reels, chase multipliers.</span>
         </button>
       </div>
-      <p class="game-copy" id="game-copy">Higher card wins. Ties return your bet.</p>
     </div>
 
-    <section class="table" aria-label="Fictional-dollar gambling section">
+    <section class="table" aria-label="Gambling section">
       <div class="effect-layer" id="effect-layer" aria-hidden="true"></div>
 
       <div class="play-area">
@@ -211,7 +205,7 @@
 
         <div class="message" aria-live="polite">
           <strong id="result-title">Place a bet</strong>
-          <span id="result-copy">Choose High Card, Blackjack, Roulette, or Slots to begin.</span>
+          <span id="result-copy" hidden></span>
         </div>
       </div>
 
@@ -249,7 +243,6 @@
 
         <button class="reset" id="reset" type="button">Reset Bankroll</button>
 
-        <p class="fine-print">For fun only. These games use fictional dollars and do not support real wagers, prizes, deposits, or cashouts.</p>
       </aside>
     </section>
 

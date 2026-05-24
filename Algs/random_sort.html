@@ -39,7 +39,7 @@
       </div>
     </section>
 
-    <div id="codeModal" class="modal" aria-hidden="true">
+    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1">
       <div class="modal-content">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>RANDOM SORT EXAMPLE CODE</h2>
@@ -99,17 +99,25 @@ console.log('Sorted:', sorted);
     const closeCodeButton = document.getElementById('closeCodeButton');
     const codeModal = document.getElementById('codeModal');
 
-    showCodeButton.addEventListener('click', () => {
+    function openCodeModal() {
+      if (!codeModal) return;
       codeModal.setAttribute('aria-hidden', 'false');
-    });
+      document.body.classList.add('modal-open');
+      codeModal.focus();
+    }
 
-    closeCodeButton.addEventListener('click', () => {
+    function closeCodeModal() {
+      if (!codeModal) return;
       codeModal.setAttribute('aria-hidden', 'true');
-    });
+      document.body.classList.remove('modal-open');
+    }
 
-    codeModal.addEventListener('click', event => {
+    showCodeButton?.addEventListener('click', openCodeModal);
+    closeCodeButton?.addEventListener('click', closeCodeModal);
+
+    codeModal?.addEventListener('click', event => {
       if (event.target === codeModal) {
-        codeModal.setAttribute('aria-hidden', 'true');
+        closeCodeModal();
       }
     });
   </script>

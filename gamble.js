@@ -1662,7 +1662,7 @@ bindHoldToRepeat(lowerBetButton, -5);
 bindHoldToRepeat(raiseBetButton, 5);
 
 chipButtons.forEach((button) => {
-  button.addEventListener("click", () => setBet(Number(button.dataset.chip)));
+  button.addEventListener("click", () => changeBet(Number(button.dataset.chip)));
 });
 
 roulettePickButtons.forEach((button) => {

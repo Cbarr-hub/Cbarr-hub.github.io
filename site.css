@@ -312,6 +312,74 @@ header .search-container {
 }
 
 main {
+<<<<<<< HEAD
+  padding: 1rem 0 2rem;
+  background: #DFDFDF;
+}
+
+section {
+  padding: 0;
+  border-bottom: none;
+}
+
+.main-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  gap: 1.25rem;
+  width: min(1400px, 96%);
+  margin: 0 auto;
+  align-items: start;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  position: sticky;
+  top: clamp(140px, 11vw, 200px);
+  background: #C0C0C0;
+  border: 2px outset #DFDFDF;
+  border-right: 2px solid #808080;
+  border-bottom: 2px solid #808080;
+  padding: 0.9rem;
+}
+
+.sidebar .card,
+.sidebar .about-box {
+  padding: 0.85rem 1rem;
+  margin: 0;
+}
+
+.sidebar .card h3,
+.sidebar .about-box h3 {
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.sidebar .card p,
+.sidebar .about-box p {
+  font-size: 0.85rem;
+  margin-bottom: 0;
+  line-height: 1.4;
+}
+
+.sidebar-title {
+  font-size: 1.1rem;
+  color: #FFFFFF;
+  background: linear-gradient(90deg, #000080 0%, #1084D7 100%);
+  text-shadow: 1px 1px 0 #000000;
+  padding: 0.35rem 0.6rem;
+  margin: -0.9rem -0.9rem 0.5rem -0.9rem;
+  border-bottom: 2px solid #808080;
+  letter-spacing: 0.05em;
+}
+
+.main-center {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+=======
   padding: 3rem 0 5rem;
   background: #000000;
 }
@@ -321,12 +389,94 @@ section {
   border-bottom: 3px solid var(--neon-magenta);
   border-left: 2px solid var(--neon-lime);
   position: relative;
+>>>>>>> 1ec5e7ff705abd4467c6bae415d4aaecb5c0ed44
 }
 
 .hero {
-  min-height: 65vh;
+  min-height: 0;
   display: flex;
   align-items: center;
+<<<<<<< HEAD
+  background: linear-gradient(180deg, #0066CC 0%, #1084D7 50%, #0066CC 100%);
+  padding: 2rem 1.75rem;
+  position: relative;
+  overflow: hidden;
+  border: 2px outset #DFDFDF;
+  border-right: 2px solid #808080;
+  border-bottom: 2px solid #808080;
+}
+
+.hero-content {
+  max-width: 720px;
+  position: relative;
+  z-index: 1;
+}
+
+.hero h1 {
+  font-size: clamp(1.8rem, 3.2vw, 2.8rem) !important;
+  line-height: 1.1 !important;
+  margin-bottom: 0.85rem !important;
+}
+
+.hero p {
+  margin-bottom: 1rem !important;
+  font-size: 0.95rem;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.about-section {
+  background: #DFDFDF;
+  border: 2px outset #DFDFDF;
+  border-right: 2px solid #808080;
+  border-bottom: 2px solid #808080;
+  padding: 1.25rem 1.5rem;
+}
+
+.about-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.about-header .logo-about {
+  max-width: 90px;
+  margin: 0;
+}
+
+.about-header .section-title {
+  margin-bottom: 0;
+  font-size: 1.4rem;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.about-section p {
+  margin-bottom: 0;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 1100px) {
+  .main-layout {
+    grid-template-columns: 240px 1fr 240px;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .main-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+  }
+=======
   background: linear-gradient(180deg, #000000 0%, #330033 50%, #000000 100%);
   padding: 5rem 0;
   position: relative;
@@ -334,6 +484,7 @@ section {
   border-bottom: 4px solid var(--neon-magenta);
   border-right: 4px solid var(--neon-orange);
   box-shadow: inset 0 0 40px rgba(255, 0, 255, 0.2), 0 0 30px rgba(255, 102, 0, 0.3);
+>>>>>>> 1ec5e7ff705abd4467c6bae415d4aaecb5c0ed44
 }
 
 .logo-bg-icon {
@@ -347,7 +498,7 @@ section {
 }
 
 .logo-bg-icon img {
-  height: 500px;
+  height: 260px;
   width: auto;
   display: block;
 }

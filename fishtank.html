@@ -46,41 +46,61 @@
     window.addEventListener('resize', () => { resize(); initSeaweed() })
 
     // ── pixel art sprites (facing RIGHT: head=right, tail=left) ──────────
-    // 0=transparent 1=body 2=dark belly 3=eye pupil(black) 4=eye white
+    // 0=transparent 1=body 2=stripe(dark) 3=eye pupil(black) 4=eye white
     const SPRITES = {
-      A: [  // reference fish, 10x8
+      A: [  // plain, 10x8 — eye moved back
         [0,1,1,0,0,0,0,0,0,0],
         [1,1,1,1,1,1,1,0,0,0],
         [1,1,1,1,1,1,1,1,0,0],
-        [0,0,1,1,1,1,1,4,4,0],
-        [0,0,1,1,1,1,1,4,3,0],
+        [0,0,1,1,1,4,4,1,1,0],
+        [0,0,1,1,1,4,3,1,1,0],
         [1,1,1,1,1,1,1,1,0,0],
         [1,1,1,1,1,1,1,0,0,0],
         [0,1,1,0,0,0,0,0,0,0],
       ],
-      B: [  // small, 8x6
+      A2: [  // striped, 10x8
+        [0,1,1,0,0,0,0,0,0,0],
+        [1,1,1,2,1,2,1,0,0,0],
+        [1,1,1,2,1,2,1,1,0,0],
+        [0,0,1,2,1,4,4,1,1,0],
+        [0,0,1,2,1,4,3,1,1,0],
+        [1,1,1,2,1,2,1,1,0,0],
+        [1,1,1,2,1,2,1,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0],
+      ],
+      B: [  // small plain, 8x6 — eye moved back
         [0,1,0,0,0,0,0,0],
         [1,1,1,1,1,1,0,0],
-        [0,0,1,1,4,4,0,0],
-        [0,0,1,1,4,3,0,0],
+        [0,0,1,4,4,1,0,0],
+        [0,0,1,4,3,1,0,0],
         [1,1,1,1,1,1,0,0],
         [0,1,0,0,0,0,0,0],
       ],
-      C: [  // wide, 12x8
+      C: [  // wide plain, 12x8 — eye moved back
         [0,1,1,0,0,0,0,0,0,0,0,0],
         [1,1,1,1,1,1,1,1,0,0,0,0],
         [1,1,1,1,1,1,1,1,1,0,0,0],
-        [0,0,1,1,1,1,1,1,4,4,0,0],
-        [0,0,1,1,1,1,1,1,4,3,0,0],
+        [0,0,1,1,1,1,4,4,1,1,0,0],
+        [0,0,1,1,1,1,4,3,1,1,0,0],
         [1,1,1,1,1,1,1,1,1,0,0,0],
         [1,1,1,1,1,1,1,1,0,0,0,0],
         [0,1,1,0,0,0,0,0,0,0,0,0],
       ],
-      D: [  // long, 13x6
+      C2: [  // wide striped, 12x8
+        [0,1,1,0,0,0,0,0,0,0,0,0],
+        [1,1,1,2,1,2,1,2,0,0,0,0],
+        [1,1,1,2,1,2,1,2,1,0,0,0],
+        [0,0,1,2,1,1,4,4,1,1,0,0],
+        [0,0,1,2,1,1,4,3,1,1,0,0],
+        [1,1,1,2,1,2,1,2,1,0,0,0],
+        [1,1,1,2,1,2,1,2,0,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0,0,0],
+      ],
+      D: [  // long plain, 13x6 — eye moved back
         [0,1,1,0,0,0,0,0,0,0,0,0,0],
         [1,1,1,1,1,1,1,1,1,0,0,0,0],
-        [0,0,1,1,1,1,1,1,1,4,4,0,0],
-        [0,0,1,1,1,1,1,1,1,4,3,0,0],
+        [0,0,1,1,1,1,1,4,4,1,1,0,0],
+        [0,0,1,1,1,1,1,4,3,1,1,0,0],
         [1,1,1,1,1,1,1,1,1,0,0,0,0],
         [0,1,1,0,0,0,0,0,0,0,0,0,0],
       ],
@@ -216,9 +236,106 @@
       }
     }
 
+    // ── octopus ───────────────────────────────────────────────────────────
+    class Octopus {
+      constructor() {
+        this.px   = 5
+        this.body = [
+          [0,0,0,1,1,1,1,1,1,0,0,0],
+          [0,0,1,1,1,1,1,1,1,1,0,0],
+          [0,1,1,1,1,1,1,1,1,1,1,0],
+          [1,1,1,4,4,1,1,4,4,1,1,1],
+          [1,1,1,4,3,1,1,4,3,1,1,1],
+          [0,1,1,1,1,1,1,1,1,1,1,0],
+          [0,0,1,1,1,1,1,1,1,1,0,0],
+          [0,0,0,1,1,1,1,1,1,0,0,0],
+        ]
+        this.bodyW  = this.body[0].length * this.px
+        this.bodyH  = this.body.length * this.px
+        this.x      = 100 + Math.random() * (canvas.width  - 200)
+        this.y      = 60  + Math.random() * (canvas.height - 220)
+        this.vx     = (0.25 + Math.random() * 0.3) * (Math.random() < 0.5 ? 1 : -1)
+        this.vy     = (0.1  + Math.random() * 0.15) * (Math.random() < 0.5 ? 1 : -1)
+        this.phase  = Math.random() * Math.PI * 2
+        this.color  = '#cc44bb'
+        this.dark   = '#7711aa'
+      }
+
+      update() {
+        this.x += this.vx
+        this.y += this.vy
+        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
+        if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
+      }
+
+      drawArms(t) {
+        const cx   = this.x + this.bodyW / 2
+        const base = this.y + this.bodyH - this.px
+        const nArms = 8, nSegs = 10, armLen = 62
+
+        ctx.lineCap = 'round'
+        for (let i = 0; i < nArms; i++) {
+          const spread   = (i / (nArms - 1) - 0.5)
+          const baseAngle = Math.PI / 2 + spread * 0.85
+          const armPhase  = (i / nArms) * Math.PI * 2 + this.phase
+
+          let x = cx + spread * this.bodyW * 0.55
+          let y = base
+          const pts = [{x, y}]
+
+          for (let s = 1; s <= nSegs; s++) {
+            const p    = s / nSegs
+            // travelling wave: moves from base to tip
+            const wave = Math.sin(3.5 * p - t * 0.055 + armPhase) * p * 18
+            const ang  = baseAngle + wave * 0.11
+            x += Math.cos(ang) * (armLen / nSegs)
+            y += Math.sin(ang) * (armLen / nSegs)
+            pts.push({x, y})
+          }
+
+          for (let s = 0; s < pts.length - 1; s++) {
+            const thick = Math.max(1, (1 - s / nSegs) * 5)
+            ctx.lineWidth = thick + 2
+            ctx.strokeStyle = this.dark
+            ctx.beginPath()
+            ctx.moveTo(pts[s].x, pts[s].y)
+            ctx.lineTo(pts[s+1].x, pts[s+1].y)
+            ctx.stroke()
+            ctx.lineWidth = thick
+            ctx.strokeStyle = this.color
+            ctx.beginPath()
+            ctx.moveTo(pts[s].x, pts[s].y)
+            ctx.lineTo(pts[s+1].x, pts[s+1].y)
+            ctx.stroke()
+          }
+        }
+      }
+
+      drawBody() {
+        const ox = Math.floor(this.x)
+        const oy = Math.floor(this.y)
+        for (let row = 0; row < this.body.length; row++) {
+          for (let col = 0; col < this.body[row].length; col++) {
+            const v = this.body[row][col]
+            if (v === 0) continue
+            ctx.fillStyle = v === 1 ? this.color
+                          : v === 4 ? '#ffffff'
+                          : '#111111'
+            ctx.fillRect(ox + col * this.px, oy + row * this.px, this.px, this.px)
+          }
+        }
+      }
+
+      draw(t) {
+        this.drawArms(t)
+        this.drawBody()
+      }
+    }
+
     // ── init objects ──────────────────────────────────────────────────────
-    const bubbles = Array.from({ length: 35 }, () => new Bubble())
-    const fishes  = Array.from({ length: 18 }, () => new Fish())
+    const bubbles  = Array.from({ length: 35 }, () => new Bubble())
+    const fishes   = Array.from({ length: 18 }, () => new Fish())
+    const octopus  = new Octopus()
 
     // ── background ────────────────────────────────────────────────────────
     function drawBg() {
@@ -259,6 +376,7 @@
       drawSand()
       drawSeaweed(t)
       bubbles.forEach(b => { b.update(); b.draw() })
+      octopus.update(); octopus.draw(t)
       fishes.forEach(f  => { f.update(t); f.draw() })
       requestAnimationFrame(loop)
     }

@@ -38,7 +38,10 @@
     <input id="maxPages" type="number" min="1" value="50" style="width:80px">
     <button id="crawl">Crawl site</button>
     <span id="crawlStatus"></span>
+    <label style="margin-left:12px"><input type="checkbox" id="debugVerbose"> Verbose console</label>
+    <button id="debugClear" type="button" style="margin-left:6px">Clear log</button>
   </div>
+  <pre id="debugLog" style="max-height:200px;overflow:auto;background:#111;color:#cde;padding:8px;font-size:11px;margin-top:8px;display:none"></pre>
   <div id="tree" style="margin-top:12px"></div>
 
   <div>
@@ -176,17 +179,38 @@
     };
   }
 
+  // --- DEBUG LOGGING ---
+  const debugLogEl = () => document.getElementById('debugLog');
+  function dlog(msg, opts){
+    const el = debugLogEl();
+    if(el){
+      el.style.display = 'block';
+      const ts = new Date().toISOString().slice(11,23);
+      el.textContent += `[${ts}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+    if(opts && opts.console || (document.getElementById('debugVerbose') && document.getElementById('debugVerbose').checked)){
+      console.log('[crawler]', msg);
+    }
+  }
+
   async function fetchPage(url, timeoutMs = 8000){
     const ctrl = new AbortController();
     const t = setTimeout(()=>ctrl.abort(), timeoutMs);
+    const t0 = performance.now();
     try{
       const res = await fetch(url, {cache:'no-store', signal: ctrl.signal});
+      const tFetch = performance.now() - t0;
       if(!res.ok) throw new Error('HTTP '+res.status);
+      const tBody0 = performance.now();
       const text = await res.text();
+      const tBody = performance.now() - tBody0;
+      const tParse0 = performance.now();
       const doc = new DOMParser().parseFromString(text, 'text/html');
-      return {text, doc, url};
+      const tParse = performance.now() - tParse0;
+      return {text, doc, url, timings: {fetch: tFetch, body: tBody, parse: tParse, bytes: text.length}};
     } catch(e){
-      throw new Error(e.name === 'AbortError' ? 'Timeout' : (e.message || 'Fetch failed'));
+      throw new Error(e.name === 'AbortError' ? `Timeout after ${Math.round(performance.now()-t0)}ms` : (e.message || 'Fetch failed'));
     } finally { clearTimeout(t); }
   }
 
@@ -217,6 +241,7 @@
 
     const seen = new Map(); // path -> node {url, children: [], parent: null}
     const queued = new Set(); // O(1) dedup for the crawl queue
+    const pageTimings = []; // {url, total, fetch, parse, metrics, bytes, anchors, queued, error}
     function makeNode(path){ if(!seen.has(path)) seen.set(path, {url:path, children:[], parent:null}); return seen.get(path); }
 
     const queue = [];
@@ -228,36 +253,53 @@
     const CONCURRENCY = 6;
     let nextIdx = 0;
     let active = 0;
+    let peakActive = 0;
     let done;
     const allDone = new Promise(r => { done = r; });
+    const crawlStart = performance.now();
+
+    dlog(`crawl start: from "${startPath}", maxPages=${maxPages}, concurrency=${CONCURRENCY}`);
 
     async function processOne(cur){
       const node = makeNode(cur);
+      const tStart = performance.now();
       try{
-        const {text, doc} = await fetchPage(cur);
+        const {text, doc, timings} = await fetchPage(cur);
+        const tMetrics0 = performance.now();
         metricsCache.set(cur, computeMetrics(text, doc, cur));
-        const anchors = Array.from(doc.querySelectorAll('a[href]')).map(a=>a.getAttribute('href'));
-        for(const a of anchors){
+        const tMetrics = performance.now() - tMetrics0;
+        const anchorEls = Array.from(doc.querySelectorAll('a[href]'));
+        let added = 0, skipped = 0;
+        for(const aEl of anchorEls){
+          const a = aEl.getAttribute('href');
           const np = normalize(a, cur);
-          if(!np) continue;
+          if(!np){ skipped++; continue; }
           const child = makeNode(np);
           if(child.parent === null && np !== startPath) child.parent = cur;
           if(!node.children.includes(np)) node.children.push(np);
           if(!queued.has(np) && seen.size < maxPages){
             queued.add(np);
             queue.push(np);
+            added++;
           }
         }
+        const total = performance.now() - tStart;
+        pageTimings.push({url: cur, total, fetch: timings.fetch, parse: timings.parse, metrics: tMetrics, bytes: timings.bytes, anchors: anchorEls.length, queued: added});
+        dlog(`OK   ${cur.padEnd(40)} ${Math.round(total)}ms (fetch ${Math.round(timings.fetch)} + parse ${Math.round(timings.parse)} + metrics ${Math.round(tMetrics)}) ${(timings.bytes/1024).toFixed(1)}kb, ${anchorEls.length} links, +${added} queued, ${skipped} skipped`);
       }catch(e){
+        const total = performance.now() - tStart;
         metricsCache.set(cur, {error: e.message, url: cur});
+        pageTimings.push({url: cur, total, error: e.message});
+        dlog(`FAIL ${cur.padEnd(40)} ${Math.round(total)}ms — ${e.message}`);
       }
-      if(status) status.textContent = `Crawling... ${metricsCache.size}/${seen.size} pages`;
+      if(status) status.textContent = `Crawling... ${metricsCache.size}/${seen.size} pages (active ${active}, queue ${queue.length - nextIdx})`;
     }
 
     function pump(){
       while(active < CONCURRENCY && nextIdx < queue.length && nextIdx < maxPages){
         const cur = queue[nextIdx++];
         active++;
+        if(active > peakActive) peakActive = active;
         processOne(cur).finally(()=>{
           active--;
           if(nextIdx < queue.length && nextIdx < maxPages) pump();
@@ -268,6 +310,19 @@
     }
     pump();
     await allDone;
+
+    const totalMs = performance.now() - crawlStart;
+    const errored = pageTimings.filter(p=>p.error).length;
+    const okTimings = pageTimings.filter(p=>!p.error);
+    const sumFetch = okTimings.reduce((s,p)=>s+p.fetch,0);
+    const sumParse = okTimings.reduce((s,p)=>s+p.parse,0);
+    const sumMetrics = okTimings.reduce((s,p)=>s+p.metrics,0);
+    const sumBytes = okTimings.reduce((s,p)=>s+p.bytes,0);
+    dlog(`crawl done: ${Math.round(totalMs)}ms wall, ${pageTimings.length} pages (${errored} errors), peak concurrency ${peakActive}, ${(sumBytes/1024).toFixed(1)}kb fetched`);
+    dlog(`time breakdown (sum across pages): fetch ${Math.round(sumFetch)}ms, parse ${Math.round(sumParse)}ms, metrics ${Math.round(sumMetrics)}ms`);
+    const slowest = [...pageTimings].sort((a,b)=>b.total-a.total).slice(0,5);
+    dlog(`slowest pages:`);
+    for(const s of slowest) dlog(`  ${Math.round(s.total)}ms  ${s.url}${s.error ? ' ('+s.error+')' : ''}`);
 
     const roots = Array.from(seen.values()).filter(n=>!n.parent);
     return {seen, roots};
@@ -325,8 +380,15 @@
     out.innerHTML = `<h3>Metrics: ${url}</h3><pre>${JSON.stringify(m, null, 2)}</pre>`;
   }
 
+  document.getElementById('debugClear').addEventListener('click', ()=>{
+    const el = document.getElementById('debugLog');
+    if(el){ el.textContent = ''; el.style.display = 'none'; }
+  });
+
   // Crawl button handler
   document.getElementById('crawl').addEventListener('click', async ()=>{
+    const el = document.getElementById('debugLog');
+    if(el) el.textContent = '';
     const status = document.getElementById('crawlStatus');
     const start = document.getElementById('startPath').value.trim() || 'index.html';
     const max = parseInt(document.getElementById('maxPages').value,10) || 50;

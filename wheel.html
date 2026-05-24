@@ -283,7 +283,6 @@
     </div>
 
     <div class="controls">
-      <input id="nameInput" type="text" placeholder="Add a name and press Enter" autocomplete="off" />
       <button id="spin" type="button">Spin the wheel</button>
     </div>
 
@@ -317,7 +316,6 @@
     const wheel = document.getElementById('wheel');
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
-    const nameInput = document.getElementById('nameInput');
     const namesTextarea = document.getElementById('namesList');
     const loadNamesButton = document.getElementById('loadNames');
     let names = [...defaultNames];
@@ -387,18 +385,7 @@
       return [...new Set(parsed)];
     }
 
-    function addName(name) {
-      const normalized = name.trim().toUpperCase();
-      if (!normalized) return;
-      if (!names.includes(normalized)) {
-        names.push(normalized);
-        buildWheel();
-        syncNamesTextarea();
-        resultDisplay.textContent = `Added ${normalized}. Ready to spin.`;
-      } else {
-        resultDisplay.textContent = `${normalized} is already on the wheel.`;
-      }
-    }
+
 
     function loadNamesFromTextarea() {
       const parsed = parseNamesFromTextarea();
@@ -434,13 +421,6 @@
         isSpinning = false;
       }, 5200);
     }
-
-    nameInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        addName(nameInput.value);
-        nameInput.value = '';
-      }
-    });
 
     loadNamesButton.addEventListener('click', loadNamesFromTextarea);
     spinButton.addEventListener('click', () => spinWheel());

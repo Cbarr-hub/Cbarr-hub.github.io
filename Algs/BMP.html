@@ -1,4 +1,255 @@
-<div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Billable-Hour Maximization Protocol</title>
+  <meta name="description" content="Interactive visualizer page for the Billable-Hour Maximization Protocol." />
+  <link rel="stylesheet" href="algs.css" />
+  <style>
+    /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e1e24; 
+      color: #ffffff;      
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 750px;
+      width: 100%;
+      position: relative;
+      text-align: center;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-close {
+      position: absolute;
+      top: 10px; right: 15px;
+      font-size: 28px;
+      background: none; 
+      border: none; 
+      cursor: pointer;
+      color: #aaa;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    /* Input Field & Controls */
+    .input-container {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+    .input-container select {
+      padding: 12px;
+      font-size: 1rem;
+      background-color: #111115;
+      border: 2px solid #44444f;
+      border-radius: 4px;
+      color: #ffffff;
+      outline: none;
+      cursor: pointer;
+    }
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #007bc4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-btn:hover {
+      background-color: #005fa1;
+    }
+    .action-btn:disabled {
+      background-color: #44444f;
+      color: #888888;
+      cursor: not-allowed;
+    }
+
+    /* Graph Map Visualizer Layout Container */
+    .chart-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 380px;
+      background: #111115; 
+      padding: 10px;
+      border-radius: 6px;
+      margin: 20px 0;
+      border: 1px solid #33333d;
+      position: relative;
+    }
+
+    /* SVG Elements Styling */
+    svg {
+      width: 100%;
+      height: 380px;
+    }
+    .edge-line {
+      stroke: #2c3e50;
+      stroke-width: 2;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+    .edge-line.active {
+      stroke: #e74c3c;
+      stroke-dasharray: 4;
+      animation: dash 1s linear infinite;
+    }
+    .edge-line.finalized {
+      stroke: #2ecc71;
+      stroke-width: 4;
+    }
+    .map-node {
+      fill: #2c3e50;
+      stroke: #34495e;
+      stroke-width: 2;
+      transition: all 0.2s;
+    }
+    .map-node.visiting {
+      fill: #f39c12;
+      stroke: #e67e22;
+      r: 14;
+    }
+    .map-node.visited {
+      fill: #2ecc71;
+      stroke: #27ae60;
+    }
+    .node-text {
+      fill: #ffffff;
+      font-family: sans-serif;
+      font-size: 12px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+    
+    /* Interactive Weight Labels */
+    .weight-group {
+      cursor: pointer;
+    }
+    .weight-group:hover rect {
+      fill: #2c3e50;
+      stroke: #007bc4;
+    }
+    .weight-bg {
+      fill: #111115;
+      stroke: #22222b;
+      stroke-width: 1;
+      rx: 3;
+      transition: all 0.2s;
+    }
+    .weight-text {
+      fill: #3498db;
+      font-family: monospace;
+      font-size: 11px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -20;
+      }
+    }
+
+    /* Live Progress Tracker Status Text */
+    .status-ticker {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #3498db;
+      margin: -10px 0 15px 0;
+      min-height: 36px;
+      line-height: 1.4;
+    }
+
+    /* Statistics Results Dashboard */
+    .stats-dashboard {
+      background: #1a2620; 
+      border-left: 5px solid #2ecc71;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: #dddddd;
+    }
+    
+    /* Layout preservation utility for image + button container */
+    .visualizer-trigger-block {
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="logo">GAMERTOWN<span>ALGORITHMS</span></div>
+      <nav class="nav-links">
+        <a href="../index.html">HOME</a>
+        <a href="advanced_algorithms.html">ALGORITHMS</a>
+        <a href="sorting.html">SORTING</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-content">
+        <h1>THE BILLABLE-HOUR MAXIMIZATION PROTOCOL</h1>
+        <p>Inverting Dijkstra's pathfinding mechanics to organically drive resource extraction and optimize structural budget depletion.</p>
+        
+        <div class="visualizer-trigger-block">
+          <div class="gif-block" style="margin: 0; width: 100%;">
+            <img src="BMP.png" alt="Billable-Hour Maximization Protocol demonstration" class="demo-gif" />
+          </div>
+          <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
+            LAUNCH INTERACTIVE VISUALIZER POP-UP
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="container">
+      <h2 class="section-title">OVERVIEW</h2>
+      <div class="card">
+        <h3>Algorithm Summary</h3>
+        <p>The operational framework designated as the Billable-Hour Maximization Protocol is an enterprise-grade network-routing architecture engineered to discover maximum fiscal yield paths across a corporate ecosystem. In standard, non-commercial engineering applications, traditional pathfinding methodologies—such as standard Dijkstra’s Algorithm—are deployed to systematically isolate the absolute lowest weight or shortest distance between two topological coordinates. While highly efficient for infrastructure overhead reduction, this minimizing approach represents a catastrophic failure within corporate consulting paradigms, where data routed too rapidly results in unbilled delivery structures and lost profit margins.</p>
+        <p>To correct this operational deficiency, this protocol introduces the <strong>Inverse Scope Modality</strong>. Rather than evaluating edge weights as geographical distance, spatial friction, or computational latency, the algorithm recalculates these parameters exclusively as billable engineering increments. The objective function is completely turned on its head, converting a shortest-path tree into an elongated, high-overhead corporate maze. Data deliverables entering the environment are barred from taking direct transmission links; instead, the system initiates a structured "Scope Creep Loop" that systematically targets the most bureaucratically complex, high-fee corridors available within the organizational ecosystem.</p>
+        <p>The ultimate deliverable of this methodology is to guarantee that data payloads never reach their production destination with remaining financial allocation. By intentionally charting courses through extraneous cross-functional nodes—routing uniformly through Legal Review, Brand Alignment, Pre-Compliance, and Post-Compliance Silos—the protocol systematically expands the operational horizon. By the moment the processing pipeline finally touches the ultimate target terminal, the initial statement of work is mathematically proven to be completely exhausted, forcing the automated system to cleanly compile a Change Order invoice before releasing production code.</p>
+      </div>
+
+      <div class="code-block">
+        <button id="showCodeButton" type="button">SHOW EXAMPLE CODE</button>
+      </div>
+    </section>
+
+    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
       <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d; max-width:650px;">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>BMP Example Code</h2>
@@ -35,3 +286,313 @@ async function executeBmpFind() {
 }</code></pre>
       </div>
     </div>
+
+    <div id="visualizerModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
+        <h2>THE BILLABLE-HOUR MAXIMIZATION PROTOCOL</h2>
+        <p style="font-size: 0.9rem; color:#aaa;">Configure the size of the corporate landscape. Click channel metrics to manually pad line items.</p>
+
+        <div class="input-container">
+          <label for="nodeCountSelect" style="font-size: 0.9rem; color:#bbb;">Silos Matrix Size: </label>
+          <select id="nodeCountSelect">
+            <option value="4">4 Departments</option>
+            <option value="6" selected>6 Departments</option>
+            <option value="8">8 Departments</option>
+            <option value="10">10 Departments</option>
+          </select>
+          <button id="generateNetworkBtn" class="action-btn" type="button" style="background-color: #34495e;">RE-GENERATE NETWORK</button>
+          <button id="startFindButton" class="action-btn" type="button">EXECUTE ROUTING</button>
+        </div>
+
+        <div id="statusTicker" class="status-ticker">Select dimensions to formulate consulting matrix...</div>
+
+        <div id="chartContainer" class="chart-container">
+          </div>
+
+        <div id="statsDashboard" class="stats-dashboard" style="display: none;">
+          <h3 style="margin-top: 0; color: #2ecc71; font-size: 1.1rem;">⚡ MAX FISCAL YIELD PATH DETERMINED</h3>
+          <div class="stats-grid">
+            <div><strong>Relaxation Operations:</strong> <span id="statRelax">0</span></div>
+            <div><strong>Silo Budget Updates:</strong> <span id="statUpdates">0</span></div>
+            <div><strong>Silos Exhausted:</strong> <span id="statVisited">0</span></div>
+            <div><strong>Total Extracted Value:</strong> $<span id="statTime">0</span>k</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      © 2026 GAMERTOWN SOLUTIONS / ARCHIVE
+    </div>
+  </footer>
+
+  <script>
+    // System Selectors
+    const showCodeButton = document.getElementById('showCodeButton');
+    const closeCodeButton = document.getElementById('closeCodeButton');
+    const codeModal = document.getElementById('codeModal');
+
+    const openVisualizerButton = document.getElementById('openVisualizerButton');
+    const closeVisualizerButton = document.getElementById('closeVisualizerButton');
+    const visualizerModal = document.getElementById('visualizerModal');
+    
+    const startFindButton = document.getElementById('startFindButton');
+    const generateNetworkBtn = document.getElementById('generateNetworkBtn');
+    const nodeCountSelect = document.getElementById('nodeCountSelect');
+    const chartContainer = document.getElementById('chartContainer');
+    const statsDashboard = document.getElementById('statsDashboard');
+    const statusTicker = document.getElementById('statusTicker');
+
+    let activeRun = false;
+
+    // Corporate Map Runtime State Data
+    let departments = [];
+    let weights = [];
+
+    const corporateLexicon = [
+      "Brand Align", "Pre-Compl", "Legal Rev", "Post-Compl", 
+      "HR Strategy", "Tax Havens", "PR Cleanse", "Audit Scope", "Risk Assess"
+    ];
+
+    // Code Modal Basic Triggers
+    function toggleCodeModal(open) {
+      codeModal.style.display = open ? 'flex' : 'none';
+      codeModal.setAttribute('aria-hidden', !open);
+    }
+    showCodeButton.addEventListener('click', () => toggleCodeModal(true));
+    closeCodeButton.addEventListener('click', () => toggleCodeModal(false));
+
+    // Interactive Visualizer Pop-up Control
+    function toggleVisualizerModal(open) {
+      if (activeRun && !open) {
+        if (!confirm("A BMP run is in progress. Stop the run?")) return;
+        activeRun = false; 
+      }
+      visualizerModal.style.display = open ? 'flex' : 'none';
+      visualizerModal.setAttribute('aria-hidden', !open);
+      
+      if(open) {
+        statsDashboard.style.display = 'none';
+        statusTicker.style.color = '#3498db';
+        startFindButton.disabled = false;
+        nodeCountSelect.disabled = false;
+        generateNetworkBtn.disabled = false;
+        buildProceduralMatrix();
+      }
+    }
+    openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
+    closeVisualizerButton.addEventListener('click', () => toggleVisualizerModal(false));
+
+    // Async Helper sleep utility
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Manual padding modifier handler
+    window.adjustWeight = function(u, v) {
+      if (activeRun) return;
+      weights[u][v] = weights[u][v] >= 95 ? 5 : weights[u][v] + 5;
+      statusTicker.style.color = '#e67e22';
+      statusTicker.innerText = `Padded operational link ${departments[u].label} ➔ ${departments[v].label} to $${weights[u][v]}k!`;
+      generateMapLayout();
+    };
+
+    // Formulate a dynamic topological corporate map with forward connections
+    function buildProceduralMatrix() {
+      const totalNodes = parseInt(nodeCountSelect.value, 10);
+      departments = [];
+      
+      // 1. Position Initial Node and Target Node at the borders
+      departments.push({ id: 0, label: "SOW Init", x: 50, y: 190 });
+
+      // Generate intermediate structural silos scattered procedurally
+      const midCount = totalNodes - 2;
+      let vocabulary = [...corporateLexicon].sort(() => 0.5 - Math.random());
+
+      for (let i = 0; i < midCount; i++) {
+        // Distribute X evenly across available canvas span
+        const segmentWidth = 540 / (midCount + 1);
+        const x = 50 + segmentWidth * (Math.floor(i / 2) + 1);
+        
+        // Stagger Y positions across alternative top/bottom lanes
+        const y = (i % 2 === 0) ? 90 : 290;
+        const label = vocabulary[i] || `Silo Block ${i}`;
+        departments.push({ id: i + 1, label: label, x: x, y: y });
+      }
+
+      departments.push({ id: totalNodes - 1, label: "Prod Target", x: 650, y: 190 });
+
+      // 2. Generate edge-weights matrix with directional probability matching selection scale
+      weights = Array.from({ length: totalNodes }, () => Array(totalNodes).fill(0));
+      
+      for (let u = 0; u < totalNodes; u++) {
+        for (let v = u + 1; v < totalNodes; v++) {
+          // Connect neighboring stages or add a random skip jump to foster alternate high-fee routes
+          if (v === u + 1 || (v === u + 2 && v < totalNodes) || (u === 0 && v < totalNodes - 1 && Math.random() > 0.4)) {
+            // Generate a random billable projection weight ($5k - $30k)
+            weights[u][v] = Math.floor(Math.random() * 26) + 5;
+          }
+        }
+      }
+
+      statusTicker.innerText = `Generated standard matrix featuring ${totalNodes} locations. Click link cards to adjust weights.`;
+      generateMapLayout();
+    }
+
+    // Render the procedural network layout components inside the SVG
+    function generateMapLayout() {
+      let edgeElements = '';
+      let nodeElements = '';
+
+      // Trace routing structural lines
+      for (let u = 0; u < departments.length; u++) {
+        for (let v = 0; v < departments.length; v++) {
+          if (weights[u][v] > 0) {
+            const from = departments[u];
+            const to = departments[v];
+            const midX = (from.x + to.x) / 2;
+            const midY = (from.y + to.y) / 2;
+            
+            edgeElements += `
+              <line id="edge-${u}-${v}" class="edge-line" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" />
+              <g class="weight-group" onclick="adjustWeight(${u},${v})">
+                <rect class="weight-bg" x="${midX - 20}" y="${midY - 9}" width="40" height="18" />
+                <text class="weight-text" x="${midX}" y="${midY + 4}" text-anchor="middle">$${weights[u][v]}k</text>
+              </g>
+            `;
+          }
+        }
+      }
+
+      // Trace pipeline nodes
+      departments.forEach(dept => {
+        nodeElements += `
+          <g id="node-group-${dept.id}">
+            <circle id="node-${dept.id}" class="map-node" cx="${dept.x}" cy="${dept.y}" r="11" />
+            <text class="node-text" x="${dept.x}" y="${dept.y + 4}" text-anchor="middle">${dept.id}</text>
+            <text fill="#aaa" font-family="sans-serif" font-size="10" x="${dept.x}" y="${dept.y - 16}" text-anchor="middle">${dept.label}</text>
+            <text id="node-dist-${dept.id}" fill="#3498db" font-family="monospace" font-size="10" x="${dept.x}" y="${dept.y + 26}" text-anchor="middle">-$k</text>
+          </g>
+        `;
+      });
+
+      chartContainer.innerHTML = `<svg id="mapSvg">${edgeElements}${nodeElements}</svg>`;
+    }
+
+    // Inverted Dijkstra execution loop 
+    async function executeBmpFind() {
+      if (activeRun) return;
+
+      activeRun = true;
+      startFindButton.disabled = true;
+      nodeCountSelect.disabled = true;
+      generateNetworkBtn.disabled = true;
+      statsDashboard.style.display = 'none';
+      
+      generateMapLayout();
+
+      const n = departments.length;
+      let relaxations = 0;
+      let updates = 0;
+      let visitedCount = 0;
+
+      const dist = new Array(n).fill(-Infinity);
+      const parent = new Array(n).fill(-1);
+      dist[0] = 0;
+      const visited = new Array(n).fill(false);
+
+      document.getElementById(`node-dist-0`).textContent = "$0k";
+      await sleep(500);
+
+      for (let iter = 0; iter < n; iter++) {
+        let u = -1; 
+        let best = -Infinity;
+        for (let i = 0; i < n; i++) {
+          if (!visited[i] && dist[i] > best) { 
+            best = dist[i]; 
+            u = i; 
+          }
+        }
+        if (u === -1) break;
+
+        const activeNode = document.getElementById(`node-${u}`);
+        if (activeNode) activeNode.classList.add('visiting');
+
+        statusTicker.style.color = '#f39c12';
+        statusTicker.innerText = `Processing overhead via ${departments[u].label} (Current billable yield: $${dist[u]}k)`;
+        await sleep(800);
+
+        for (let v = 0; v < n; v++) {
+          if (weights[u][v] > 0 && !visited[v]) {
+            relaxations++;
+            const edgeLine = document.getElementById(`edge-${u}-${v}`);
+            if (edgeLine) edgeLine.classList.add('active');
+            
+            statusTicker.style.color = '#3498db';
+            statusTicker.innerText = `Auditing routing channel ${departments[u].label} ➔ ${departments[v].label}...`;
+            await sleep(400);
+
+            const candidate = dist[u] + weights[u][v];
+            if (candidate > dist[v]) {
+              updates++;
+              dist[v] = candidate;
+              parent[v] = u;
+              
+              const distText = document.getElementById(`node-dist-${v}`);
+              if (distText) {
+                distText.textContent = `$${candidate}k`;
+                distText.style.fill = '#e74c3c';
+              }
+              
+              statusTicker.style.color = '#e74c3c';
+              statusTicker.innerText = `Max weight inflated at ${departments[v].label} to $${candidate}k!`;
+              await sleep(600);
+            }
+            if (edgeLine) edgeLine.classList.remove('active');
+          }
+        }
+
+        if (activeNode) {
+          activeNode.classList.remove('visiting');
+          activeNode.classList.add('visited');
+        }
+        visited[u] = true;
+        visitedCount++;
+      }
+
+      // Trace the highest overhead path backward 
+      let curr = n - 1;
+      while (parent[curr] !== -1) {
+        const p = parent[curr];
+        const edgeLine = document.getElementById(`edge-${p}-${curr}`);
+        if (edgeLine) edgeLine.classList.add('finalized');
+        curr = p;
+      }
+
+      document.getElementById('statRelax').innerText = relaxations;
+      document.getElementById('statUpdates').innerText = updates;
+      document.getElementById('statVisited').innerText = visitedCount;
+      document.getElementById('statTime').innerText = dist[n - 1] !== -Infinity ? dist[n - 1] : 0;
+      statsDashboard.style.display = 'block';
+
+      statusTicker.style.color = '#2ecc71';
+      statusTicker.innerText = 'BMP execution finalized. Invoices generated successfully.';
+
+      activeRun = false;
+      startFindButton.disabled = false;
+      nodeCountSelect.disabled = false;
+      generateNetworkBtn.disabled = false;
+    }
+
+    generateNetworkBtn.addEventListener('click', buildProceduralMatrix);
+    startFindButton.addEventListener('click', executeBmpFind);
+
+    // Global background click modal toggle dismissals
+    window.addEventListener('click', event => {
+      if (event.target === codeModal) toggleCodeModal(false);
+      if (event.target === visualizerModal) toggleVisualizerModal(false);
+    });
+  </script>
+</body>
+</html>

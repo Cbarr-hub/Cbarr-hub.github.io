@@ -1,5 +1,11 @@
 import { requireAuth, updateNavbar } from './auth.js';
-import { DEFAULT_BALANCE, getPlayerBalance, savePlayerBalance as persistPlayerBalance } from './gamble-data.js';
+import {
+  DEFAULT_BALANCE,
+  getPlayerBalance,
+  insertGamblingEvent,
+  savePlayerBalance as persistPlayerBalance
+} from './gamble-data.js';
+import { renderRecentEvents } from './gamble-activity.js';
 import { renderLeaderboard } from './gamble-leaderboard.js';
 
 const activeUsername = requireAuth('signin.html');
@@ -101,6 +107,8 @@ const slotLastWinEl = document.getElementById("slot-last-win");
 const slotMultiplierEl = document.getElementById("slot-multiplier");
 const leaderboardListEl = document.getElementById("leaderboard-list");
 const leaderboardStatusEl = document.getElementById("leaderboard-status");
+const activityListEl = document.getElementById("activity-list");
+const activityStatusEl = document.getElementById("activity-status");
 const slotLineEls = Array.from(document.querySelectorAll(".slot-line"));
 const messageEl = document.querySelector(".message");
 const betBoxEl = document.querySelector(".bet");
@@ -674,6 +682,7 @@ function startFreeSpins(count, multiplier) {
 }
 
 function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
+  const balanceBefore = state.credits;
   const basePayout = spinBet * result.multiplier;
   const activeMultiplier = wasFreeSpin ? state.slotMultiplier : 1;
   const payout = Math.round(basePayout * activeMultiplier);
@@ -766,7 +775,26 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   }
 
   updateSlotMeta();
-  savePlayerBalance();
+  const lineNames = result.lineWins.map((line) => line.name);
+  const slotEvent = buildEvent({
+    game: "slots",
+    eventType: result.scatterTriggered && payout === 0 ? "bonus_awarded" : (wasFreeSpin ? "free_spin_settled" : "wager_settled"),
+    outcome: payout > 0 ? "win" : (result.scatterTriggered ? "bonus" : (state.credits < balanceBefore ? "loss" : "push")),
+    betAmount: wasFreeSpin ? 0 : spinBet,
+    payoutAmount: payout,
+    balanceBefore,
+    balanceAfter: state.credits,
+    details: {
+      free_spin: wasFreeSpin,
+      line_wins: lineNames,
+      scatter_count: result.scatterCount,
+      scatter_triggered: result.scatterTriggered,
+      free_spins_awarded: result.freeSpinsAwarded,
+      multiplier: activeMultiplier,
+      grid
+    }
+  });
+  savePlayerBalance(slotEvent);
   render();
 }
 
@@ -925,12 +953,81 @@ function formatDollars(value) {
 
 let balanceSaveTimer = null;
 
+function gameEventKey(game = state.game) {
+  return game === "high-card" ? "high_card" : game;
+}
+
+function clientEventId() {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (char) =>
+    (Number(char) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(char) / 4).toString(16)
+  );
+}
+
+function cardCode(card) {
+  return `${card.rank.label}${card.suit.label}`;
+}
+
+function buildEvent({
+  game = gameEventKey(),
+  eventType = "wager_settled",
+  outcome,
+  betAmount = state.bet,
+  payoutAmount = 0,
+  balanceBefore,
+  balanceAfter,
+  details = {}
+}) {
+  return {
+    username: state.username,
+    game,
+    event_type: eventType,
+    outcome,
+    bet_amount: Math.max(0, Math.round(betAmount)),
+    payout_amount: Math.max(0, Math.round(payoutAmount)),
+    net_change: Math.round(balanceAfter - balanceBefore),
+    balance_before: Math.max(0, Math.round(balanceBefore)),
+    balance_after: Math.max(0, Math.round(balanceAfter)),
+    client_event_id: clientEventId(),
+    details
+  };
+}
+
 async function refreshLeaderboard() {
   await renderLeaderboard({
     listEl: leaderboardListEl,
     statusEl: leaderboardStatusEl,
     currentUsername: state.username
   });
+}
+
+async function refreshRecentEvents() {
+  await renderRecentEvents({
+    listEl: activityListEl,
+    statusEl: activityStatusEl
+  });
+}
+
+async function refreshStatsSection() {
+  await Promise.all([
+    refreshLeaderboard(),
+    refreshRecentEvents()
+  ]);
+}
+
+function recordGamblingEvent(event) {
+  if (!event?.username) {
+    return;
+  }
+
+  insertGamblingEvent(event)
+    .then(refreshRecentEvents)
+    .catch((error) => {
+      console.warn("Gambling event save failed:", error.message);
+    });
 }
 
 async function loadPlayerBalance() {
@@ -948,7 +1045,7 @@ async function loadPlayerBalance() {
     state.bet = Math.max(5, Math.min(state.bet, maxBet() || 5));
     showResult("Bankroll loaded", `${state.username} has ${formatDollars(state.credits)} ready to play.`);
     render();
-    await refreshLeaderboard();
+    await refreshStatsSection();
   } catch (error) {
     state.balanceLoading = false;
     showResult("Balance error", error.message);
@@ -956,8 +1053,21 @@ async function loadPlayerBalance() {
   }
 }
 
-function savePlayerBalance() {
+function savePlayerBalance(event = null) {
   if (!state.username || state.balanceLoading) {
+    return;
+  }
+
+  if (event) {
+    (async () => {
+      try {
+        await persistPlayerBalance(state.username, state.credits);
+        await insertGamblingEvent(event);
+        await refreshStatsSection();
+      } catch (error) {
+        console.warn("Balance/event save failed:", error.message);
+      }
+    })();
     return;
   }
 
@@ -965,7 +1075,7 @@ function savePlayerBalance() {
   balanceSaveTimer = window.setTimeout(async () => {
     try {
       await persistPlayerBalance(state.username, state.credits);
-      await refreshLeaderboard();
+      await refreshStatsSection();
     } catch (error) {
       console.warn("Balance save failed:", error.message);
     }
@@ -1157,24 +1267,51 @@ function bindHoldToRepeat(button, amount) {
   });
 }
 
-function settleWin(amount, title, copy) {
-  state.credits += Math.round(amount);
+function settleWin(amount, title, copy, options = {}) {
+  const balanceBefore = state.credits;
+  const payoutAmount = Math.round(amount);
+  state.credits += payoutAmount;
   state.streak += 1;
   state.wins += 1;
   showResult(title, copy);
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   playOutcomeEffect("win", state.game === "blackjack" ? "player" : null);
-  savePlayerBalance();
+  savePlayerBalance(buildEvent({
+    outcome: "win",
+    betAmount: options.betAmount ?? state.bet,
+    payoutAmount,
+    balanceBefore,
+    balanceAfter: state.credits,
+    details: options.details ?? {}
+  }));
 }
 
-function settleLoss(title, copy) {
+function settleLoss(title, copy, options = {}) {
+  const balanceBefore = state.credits;
   state.credits -= state.bet;
   state.streak = 0;
   state.losses += 1;
   showResult(title, copy);
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   playOutcomeEffect("loss", state.game === "blackjack" ? "dealer" : null);
-  savePlayerBalance();
+  savePlayerBalance(buildEvent({
+    outcome: "loss",
+    betAmount: options.betAmount ?? state.bet,
+    payoutAmount: 0,
+    balanceBefore,
+    balanceAfter: state.credits,
+    details: options.details ?? {}
+  }));
+}
+
+function recordPush(details = {}) {
+  recordGamblingEvent(buildEvent({
+    outcome: "push",
+    payoutAmount: 0,
+    balanceBefore: state.credits,
+    balanceAfter: state.credits,
+    details
+  }));
 }
 
 function dealHighCard() {
@@ -1186,16 +1323,30 @@ function dealHighCard() {
   renderCard(houseCardEl, houseCard, 130);
 
   if (playerCard.rank.value > houseCard.rank.value) {
-    settleWin(state.bet, "You win", `You earned ${formatDollars(state.bet)}.`);
+    settleWin(state.bet, "You win", `You earned ${formatDollars(state.bet)}.`, {
+      details: {
+        player_card: cardCode(playerCard),
+        house_card: cardCode(houseCard)
+      }
+    });
     highlightWinner(playerCardEl, 0);
   } else if (playerCard.rank.value < houseCard.rank.value) {
-    settleLoss("House wins", `You lost ${formatDollars(state.bet)}.`);
+    settleLoss("House wins", `You lost ${formatDollars(state.bet)}.`, {
+      details: {
+        player_card: cardCode(playerCard),
+        house_card: cardCode(houseCard)
+      }
+    });
     highlightWinner(houseCardEl, 130);
   } else {
     state.streak = 0;
     showResult("Push", "Same rank. Your bet comes back.");
     pulseStats(streakStatEl);
     playOutcomeEffect("push");
+    recordPush({
+      player_card: cardCode(playerCard),
+      house_card: cardCode(houseCard)
+    });
   }
 
   render();
@@ -1234,11 +1385,29 @@ function startBlackjack() {
       showResult("Push", "Both hands have blackjack. Your bet comes back.");
       pulseStats(streakStatEl);
       playOutcomeEffect("push");
+      recordPush({
+        player_total: handTotal(state.playerHand),
+        dealer_total: handTotal(state.dealerHand),
+        player_blackjack: true,
+        dealer_blackjack: true
+      });
     } else if (playerNatural) {
       const payout = Math.round(state.bet * 1.5);
-      settleWin(payout, "Blackjack", `Natural blackjack pays ${formatDollars(payout)}.`);
+      settleWin(payout, "Blackjack", `Natural blackjack pays ${formatDollars(payout)}.`, {
+        details: {
+          player_total: handTotal(state.playerHand),
+          dealer_total: handTotal(state.dealerHand),
+          player_blackjack: true
+        }
+      });
     } else {
-      settleLoss("Dealer blackjack", `You lost ${formatDollars(state.bet)}.`);
+      settleLoss("Dealer blackjack", `You lost ${formatDollars(state.bet)}.`, {
+        details: {
+          player_total: handTotal(state.playerHand),
+          dealer_total: handTotal(state.dealerHand),
+          dealer_blackjack: true
+        }
+      });
     }
   }
 
@@ -1264,7 +1433,13 @@ function hitBlackjack() {
 
       state.blackjackResolving = false;
       revealDealerHoleCard();
-      settleLoss("Bust", `You went over 21 and lost ${formatDollars(state.bet)}.`);
+      settleLoss("Bust", `You went over 21 and lost ${formatDollars(state.bet)}.`, {
+        details: {
+          player_total: handTotal(state.playerHand),
+          dealer_total: handTotal(state.dealerHand),
+          player_bust: true
+        }
+      });
       render();
     }, 650);
     return;
@@ -1289,16 +1464,36 @@ function standBlackjack() {
   state.blackjackActive = false;
 
   if (dealerTotal > 21) {
-    settleWin(state.bet, "Dealer busts", `You earned ${formatDollars(state.bet)}.`);
+    settleWin(state.bet, "Dealer busts", `You earned ${formatDollars(state.bet)}.`, {
+      details: {
+        player_total: playerTotal,
+        dealer_total: dealerTotal,
+        dealer_bust: true
+      }
+    });
   } else if (playerTotal > dealerTotal) {
-    settleWin(state.bet, "You win", `${playerTotal} beats ${dealerTotal}. You earned ${formatDollars(state.bet)}.`);
+    settleWin(state.bet, "You win", `${playerTotal} beats ${dealerTotal}. You earned ${formatDollars(state.bet)}.`, {
+      details: {
+        player_total: playerTotal,
+        dealer_total: dealerTotal
+      }
+    });
   } else if (playerTotal < dealerTotal) {
-    settleLoss("Dealer wins", `${dealerTotal} beats ${playerTotal}. You lost ${formatDollars(state.bet)}.`);
+    settleLoss("Dealer wins", `${dealerTotal} beats ${playerTotal}. You lost ${formatDollars(state.bet)}.`, {
+      details: {
+        player_total: playerTotal,
+        dealer_total: dealerTotal
+      }
+    });
   } else {
     state.streak = 0;
     showResult("Push", `${playerTotal} ties ${dealerTotal}. Your bet comes back.`);
     pulseStats(streakStatEl);
     playOutcomeEffect("push");
+    recordPush({
+      player_total: playerTotal,
+      dealer_total: dealerTotal
+    });
   }
 
   render();
@@ -1360,9 +1555,23 @@ function spinRoulette() {
     replayAnimation(rouletteResultEl, "pop");
 
     if (won) {
-      settleWin(payout, `${color.toUpperCase()} ${number}`, `Roulette pays ${formatDollars(payout)}.`);
+      settleWin(payout, `${color.toUpperCase()} ${number}`, `Roulette pays ${formatDollars(payout)}.`, {
+        details: {
+          bet_type: state.rouletteBetType,
+          bet_value: state.rouletteChoice,
+          result_number: number,
+          result_color: color
+        }
+      });
     } else {
-      settleLoss(`${color.toUpperCase()} ${number}`, `You lost ${formatDollars(state.bet)} on ${rouletteBetLabel()}.`);
+      settleLoss(`${color.toUpperCase()} ${number}`, `You lost ${formatDollars(state.bet)} on ${rouletteBetLabel()}.`, {
+        details: {
+          bet_type: state.rouletteBetType,
+          bet_value: state.rouletteChoice,
+          result_number: number,
+          result_color: color
+        }
+      });
     }
 
     render();
@@ -1418,6 +1627,7 @@ hitButton.addEventListener("click", hitBlackjack);
 standButton.addEventListener("click", standBlackjack);
 
 resetButton.addEventListener("click", () => {
+  const balanceBefore = state.credits;
   state.credits = DEFAULT_BALANCE;
   state.bet = 5;
   state.streak = 0;
@@ -1454,7 +1664,18 @@ resetButton.addEventListener("click", () => {
   updateSlotMeta();
   showResult("Place a bet", "Choose High Card, Blackjack, Roulette, or Slots to begin.");
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
-  savePlayerBalance();
+  savePlayerBalance(buildEvent({
+    game: "system",
+    eventType: "bankroll_reset",
+    outcome: "reset",
+    betAmount: 0,
+    payoutAmount: 0,
+    balanceBefore,
+    balanceAfter: state.credits,
+    details: {
+      reason: "manual_reset"
+    }
+  }));
   render();
 });
 

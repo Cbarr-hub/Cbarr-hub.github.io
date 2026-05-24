@@ -1727,21 +1727,32 @@
       color: rgba(255, 255, 255, 0.62);
     }
 
-    .leaderboard {
+    .gamble-stats {
       display: grid;
-      gap: 0.75rem;
-      padding-top: 0.9rem;
-      border-top: 1px solid var(--line);
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 1.25rem;
+      margin-top: 1.25rem;
     }
 
-    .leaderboard-header {
+    .stats-panel {
+      display: grid;
+      gap: 0.75rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.24);
+      backdrop-filter: blur(10px);
+      animation: panelIn 520ms ease 120ms both;
+    }
+
+    .stats-panel-header {
       display: flex;
       align-items: end;
       justify-content: space-between;
       gap: 0.75rem;
     }
 
-    .leaderboard-title {
+    .stats-panel-title {
       display: block;
       color: var(--muted);
       font-size: 0.78rem;
@@ -1749,7 +1760,7 @@
       text-transform: uppercase;
     }
 
-    .leaderboard-status {
+    .stats-panel-status {
       color: rgba(255, 255, 255, 0.62);
       font-size: 0.78rem;
       text-align: right;
@@ -1809,6 +1820,63 @@
       text-align: center;
     }
 
+    .activity-list {
+      display: grid;
+      gap: 0.45rem;
+      list-style: none;
+    }
+
+    .activity-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.8rem;
+      min-height: 52px;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .activity-row.win {
+      border-color: rgba(34, 197, 94, 0.38);
+    }
+
+    .activity-row.loss {
+      border-color: rgba(248, 113, 113, 0.38);
+    }
+
+    .activity-row strong,
+    .activity-row span {
+      display: block;
+    }
+
+    .activity-row span {
+      margin-top: 0.18rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .activity-money {
+      text-align: right;
+    }
+
+    .activity-row.win .activity-money strong {
+      color: #86efac;
+    }
+
+    .activity-row.loss .activity-money strong {
+      color: #fca5a5;
+    }
+
+    .activity-empty {
+      padding: 0.75rem;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      text-align: center;
+    }
+
     @media (max-width: 860px) {
       .section-head {
         align-items: start;
@@ -1830,6 +1898,10 @@
       }
 
       .table {
+        grid-template-columns: 1fr;
+      }
+
+      .gamble-stats {
         grid-template-columns: 1fr;
       }
 
@@ -2149,18 +2221,30 @@
 
         <button class="reset" id="reset" type="button">Reset Bankroll</button>
 
-        <section class="leaderboard" aria-label="Bankroll leaderboard">
-          <div class="leaderboard-header">
-            <strong class="leaderboard-title">Leaderboard</strong>
-            <span class="leaderboard-status" id="leaderboard-status">Loading...</span>
-          </div>
-          <ol class="leaderboard-list" id="leaderboard-list">
-            <li class="leaderboard-empty">Loading players...</li>
-          </ol>
-        </section>
-
         <p class="fine-print">For fun only. These games use fictional dollars and do not support real wagers, prizes, deposits, or cashouts.</p>
       </aside>
+    </section>
+
+    <section class="gamble-stats" aria-label="Gambling statistics">
+      <section class="stats-panel" aria-label="Bankroll leaderboard">
+        <div class="stats-panel-header">
+          <strong class="stats-panel-title">Leaderboard</strong>
+          <span class="stats-panel-status" id="leaderboard-status">Loading...</span>
+        </div>
+        <ol class="leaderboard-list" id="leaderboard-list">
+          <li class="leaderboard-empty">Loading players...</li>
+        </ol>
+      </section>
+
+      <section class="stats-panel" aria-label="Recent wins and losses">
+        <div class="stats-panel-header">
+          <strong class="stats-panel-title">Recent wins/losses</strong>
+          <span class="stats-panel-status" id="activity-status">Loading...</span>
+        </div>
+        <ol class="activity-list" id="activity-list">
+          <li class="activity-empty">Loading results...</li>
+        </ol>
+      </section>
     </section>
   </main>
 

@@ -80,3 +80,28 @@ export async function getLeaderboardRows() {
     }))
     .sort((a, b) => b.balance - a.balance || a.username.localeCompare(b.username));
 }
+
+export async function insertGamblingEvent(event) {
+  const { error } = await supabase
+    .from('gambling_events')
+    .insert([event]);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getRecentGamblingEvents(limit = 12) {
+  const { data, error } = await supabase
+    .from('gambling_events')
+    .select('created_at,username,game,outcome,bet_amount,payout_amount,net_change,details')
+    .in('outcome', ['win', 'loss'])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}

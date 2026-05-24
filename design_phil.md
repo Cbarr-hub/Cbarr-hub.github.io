@@ -27,13 +27,15 @@
 - 1.c.5 hate  
 - 1.c.6 shame  
 - 1.c.7 integrity  
+- 1.c.8 faith
 
 ---
 
 ## 1.d Slogans
 
 - 1.d.1 shooting down range  
-- 1.d.2 solutions that solve  
+- 1.d.2 solutions that solve
+- 1.d.3 start late finish early
 
 ---
 
@@ -103,6 +105,7 @@
 - 1.g.9 CPS = Content Per Second  
 - 1.g.10 CPS alert system (humorous internal note regarding “miles” trigger)  
 - 1.g.11 pivot early and often (Connor principle)  
+- 1.g.12 push first, ask question later!
 
 ---
 
@@ -110,3 +113,12 @@
 
 - This document represents a **high-noise, high-content experimental design philosophy**
 - Internal contradictions are considered acceptable if they increase output or expressive density
+
+---
+
+## 1.i Dev Strategy
+
+- 1.i.1 Unified CSS:
+  - Prefer a single shared stylesheet
+  - Use one canonical stylesheet to keep layout, typography, and branding unified
+  - Max speed style change

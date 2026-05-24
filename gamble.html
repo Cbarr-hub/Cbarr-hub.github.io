@@ -3470,4 +3470,10 @@
     render();
   </script>
 </body>
+
+  <script type="module">
+    import { requireAuth, updateNavbar, getSession } from './auth.js';
+    requireAuth();
+    updateNavbar(getSession());
+  </script>
 </html>

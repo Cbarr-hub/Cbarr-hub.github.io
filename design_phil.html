@@ -179,5 +179,11 @@
   </footer>
 
   <script src="site.js"></script>
+
+  <script type="module">
+    import { requireAuth, updateNavbar, getSession } from './auth.js';
+    requireAuth();
+    updateNavbar(getSession());
+  </script>
 </body>
 </html>

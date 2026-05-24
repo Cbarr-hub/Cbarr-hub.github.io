@@ -17,7 +17,7 @@
         <a href="#contact">Contact</a>
         <a href="gamble.html">Gambling</a>
         <a href="index2.html">Index 2</a>
-        <a href="signin.html">Sign In</a>
+        <button id="openSignIn" class="nav-btn">Sign In</button>
         <a href="design_phil.html">Design Philosophy</a>
         <a href="wheel.html">Name Spinner</a>
         <a href="tablets.html">The Tablets</a>
@@ -140,6 +140,45 @@
     <button class="ad-close" type="button" aria-label="Close advertisement">×</button>
   </div>
 
+  <!-- Auth Modal -->
+  <div id="auth-overlay" class="auth-overlay">
+    <div class="auth-modal">
+      <button class="auth-close" id="authClose">×</button>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Sign In</button>
+        <button class="auth-tab" data-tab="register">Register</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="loginForm" class="auth-form">
+        <div class="form-group">
+          <label for="loginUsername">USERNAME</label>
+          <input type="text" id="loginUsername" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">PASSWORD</label>
+          <input type="password" id="loginPassword" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="cta-btn primary-btn">SIGN IN</button>
+        <p id="loginStatus" class="auth-status"></p>
+      </form>
+
+      <!-- Register Form -->
+      <form id="registerForm" class="auth-form hidden">
+        <div class="form-group">
+          <label for="regUsername">USERNAME</label>
+          <input type="text" id="regUsername" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="regPassword">PASSWORD</label>
+          <input type="password" id="regPassword" required minlength="8" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="cta-btn primary-btn">CREATE ACCOUNT</button>
+        <p id="registerStatus" class="auth-status"></p>
+      </form>
+    </div>
+  </div>
+
   <script>
     ;(() => {
       const ads = [
@@ -178,5 +217,111 @@
   </script>
 
   <script src="site.js"></script>
+
+  <script type="module">
+    import { supabase } from './supabase-client.js';
+    import { setSession, getSession, requireAuth, updateNavbar } from './auth.js';
+
+    const authOverlay = document.getElementById('auth-overlay');
+    const authClose = document.getElementById('authClose');
+    const openSignIn = document.getElementById('openSignIn');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const loginStatus = document.getElementById('loginStatus');
+    const registerStatus = document.getElementById('registerStatus');
+    const authTabs = document.querySelectorAll('.auth-tab');
+
+    function showModal() {
+      authOverlay.classList.remove('hidden');
+    }
+
+    function hideModal() {
+      if (getSession()) {
+        authOverlay.classList.add('hidden');
+      }
+    }
+
+    function setStatus(form, message, isError = false) {
+      const status = form === loginForm ? loginStatus : registerStatus;
+      status.textContent = message;
+      status.className = 'auth-status' + (isError ? ' error' : ' success');
+    }
+
+    function switchTab(tabName) {
+      authTabs.forEach(tab => tab.classList.remove('active'));
+      document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+      loginForm.classList.toggle('hidden', tabName !== 'login');
+      registerForm.classList.toggle('hidden', tabName !== 'register');
+    }
+
+    authTabs.forEach(tab => {
+      tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    });
+
+    openSignIn.addEventListener('click', (e) => {
+      e.preventDefault();
+      showModal();
+    });
+
+    authClose.addEventListener('click', hideModal);
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value;
+      const password = document.getElementById('loginPassword').value;
+
+      setStatus(loginForm, 'Signing in...');
+
+      try {
+        const { data, error } = await supabase
+          .from('Users')
+          .select('Username')
+          .eq('Username', username)
+          .eq('Password', password)
+          .single();
+
+        if (error || !data) {
+          setStatus(loginForm, 'Invalid username or password', true);
+        } else {
+          setStatus(loginForm, 'Signed in successfully');
+          setSession(username);
+          setTimeout(() => location.reload(), 500);
+        }
+      } catch (err) {
+        setStatus(loginForm, 'Error: ' + (err.message || 'Unknown error'), true);
+      }
+    });
+
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('regUsername').value;
+      const password = document.getElementById('regPassword').value;
+
+      setStatus(registerForm, 'Creating account...');
+
+      try {
+        const { data, error } = await supabase
+          .from('Users')
+          .insert([{ Username: username, Password: password }]);
+
+        if (error) {
+          setStatus(registerForm, 'Error: ' + (error.message || 'Username may already exist'), true);
+        } else {
+          setStatus(registerForm, 'Account created! Signing in...');
+          setSession(username);
+          setTimeout(() => location.reload(), 500);
+        }
+      } catch (err) {
+        setStatus(registerForm, 'Error: ' + (err.message || 'Unknown error'), true);
+      }
+    });
+
+    // On page load: show modal if no session
+    if (!getSession()) {
+      showModal();
+    } else {
+      hideModal();
+    }
+  </script>
 </body>
 </html>

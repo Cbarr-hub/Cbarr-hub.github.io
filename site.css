@@ -1,4 +1,4 @@
-/* Gamertown Dark Web 90s Aesthetic - MAXIMUM CHAOS */
+/* GAMERTOWN ARCHIVE - CHAOTIC 1990s AESTHETIC */
 :root {
   --bg: #000000;
   --neon-magenta: #FF00FF;
@@ -12,20 +12,18 @@
   --accent-bright: #00FFFF;
 }
 
-/* Reset */
+/* CHAOS RESET */
 * {
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
 html, body {
-  min-height: 100%;
   width: 100%;
 }
 
 body {
-  font-family: "Comic Sans MS", "Arial Black", Arial, sans-serif;
+  font-family: "Comic Sans MS", "Arial", "Courier New", monospace;
   background-color: #000000;
   color: var(--text);
   line-height: 1.6;
@@ -34,12 +32,20 @@ body {
       90deg,
       transparent,
       transparent 2px,
-      rgba(0, 255, 0, 0.03) 2px,
-      rgba(0, 255, 0, 0.03) 4px
+      rgba(0, 255, 0, 0.04) 2px,
+      rgba(0, 255, 0, 0.04) 4px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 4px,
+      rgba(255, 0, 255, 0.02) 4px,
+      rgba(255, 0, 255, 0.02) 8px
     );
-  background-size: 4px 100%;
+  background-size: 4px 100%, 100% 8px;
   min-height: 100vh;
   position: relative;
+  padding-bottom: 80px;
 }
 
 body::before {
@@ -50,8 +56,9 @@ body::before {
   right: 0;
   bottom: 0;
   background:
-    radial-gradient(circle at 20% 50%, rgba(255, 0, 255, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(0, 255, 255, 0.03) 0%, transparent 50%);
+    radial-gradient(circle at 15% 35%, rgba(255, 0, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 85% 70%, rgba(0, 255, 255, 0.06) 0%, transparent 50%),
+    radial-gradient(circle at 40% 80%, rgba(255, 102, 0, 0.04) 0%, transparent 60%);
   pointer-events: none;
   z-index: -1;
 }
@@ -94,32 +101,19 @@ aside {
 }
 
 header {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 100;
   background: #000000;
-  border-bottom: 3px solid var(--neon-magenta);
-  border-top: 2px solid var(--neon-cyan);
-  border-left: 2px solid var(--neon-lime);
-  border-right: 2px solid var(--neon-orange);
-  box-shadow: 0 0 20px rgba(255, 0, 255, 0.5), inset 0 0 20px rgba(0, 255, 255, 0.1);
+  border: none;
+  display: none; /* Hide the modern header */
 }
 
 header .container {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding-left: clamp(1.5rem, 4vw, 7rem);
-  padding-right: clamp(1.5rem, 4vw, 7rem);
+  display: none;
 }
 
 .nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: clamp(1rem, 3vw, 2rem);
-  padding: 0.75rem 0;
-  min-height: clamp(120px, 9vw, 180px);
+  display: none;
 }
 
 .logo,
@@ -312,28 +306,15 @@ header .search-container {
 }
 
 main {
-  padding: 3rem 0 5rem;
-  background: #000000;
+  display: none; /* Hide old modern sections */
 }
 
 section {
-  padding: 2rem 0;
-  border-bottom: 3px solid var(--neon-magenta);
-  border-left: 2px solid var(--neon-lime);
-  position: relative;
+  display: none;
 }
 
 .hero {
-  min-height: 65vh;
-  display: flex;
-  align-items: center;
-  background: linear-gradient(180deg, #000000 0%, #330033 50%, #000000 100%);
-  padding: 5rem 0;
-  position: relative;
-  overflow: hidden;
-  border-bottom: 4px solid var(--neon-magenta);
-  border-right: 4px solid var(--neon-orange);
-  box-shadow: inset 0 0 40px rgba(255, 0, 255, 0.2), 0 0 30px rgba(255, 102, 0, 0.3);
+  display: none;
 }
 
 .logo-bg-icon {
@@ -458,11 +439,7 @@ footer {
 }
 
 footer {
-  background: #000000;
-  color: var(--neon-lime);
-  padding: 2rem 0;
-  border-top: 3px solid var(--neon-magenta);
-  border-bottom: 3px solid var(--neon-orange);
+  display: none; /* Hide old footer */
 }
 
 footer p,
@@ -739,12 +716,7 @@ code {
 }
 
 .policy-banner {
-  background: #000000;
-  border-top: 3px double var(--neon-magenta);
-  border-bottom: 3px double var(--neon-cyan);
-  padding: 1rem;
-  margin: 2rem 0;
-  box-shadow: 0 0 20px rgba(255, 0, 255, 0.3), 0 0 20px rgba(0, 255, 255, 0.2);
+  display: none; /* Policy is now inline in HTML */
 }
 
 .policy-banner p {
@@ -755,41 +727,7 @@ code {
   font-size: 0.9rem;
 }
 
-@media (max-width: 900px) {
-  .about {
-    grid-template-columns: 1fr;
-  }
-
-  .nav {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .nav-links,
-  .navbar-nav {
-    justify-content: center;
-  }
-
-  .hero {
-    padding: 3rem 0;
-  }
-}
-
-@media (max-width: 700px) {
-  header {
-    padding: 0.5rem 0;
-  }
-
-  .nav-links,
-  .navbar-nav {
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-
-  .search-container {
-    width: 100%;
-  }
-}
+/* NO RESPONSIVE DESIGN - THIS SITE BREAKS ON MOBILE AND THAT'S INTENTIONAL */
 
 /* Retro Theme Overrides (for index2.html, video.html, map.html, etc.) */
 .glitch-header {
@@ -1130,38 +1068,84 @@ code {
   color: var(--neon-lime);
 }
 
-.nav-user {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
+/* NEW CHAOTIC STYLES */
+
+marquee {
+  line-height: 1.4;
+  letter-spacing: 0.1em;
+  box-shadow: inset 0 0 15px rgba(255, 255, 0, 0.2);
 }
 
-.nav-username {
-  color: var(--neon-lime);
-  font-weight: 700;
-  font-size: 0.9rem;
-  text-shadow: 0 0 8px var(--neon-lime);
+table {
+  border-collapse: collapse;
 }
 
-.logout-btn {
-  background: #000000;
-  border: 2px solid var(--neon-magenta);
-  color: var(--neon-magenta);
-  padding: 0.4rem 0.7rem;
+td, th {
+  border: 1px solid;
+}
+
+/* Make the invasive ad more prominent and chaotic */
+.invasive-ad {
+  background: #000000 !important;
+  border-top: 3px double #FF00FF !important;
+  padding: 10px 12px !important;
+}
+
+.ad-message {
+  color: #00FF00;
+  text-shadow: 0 0 5px #00FF00;
+  font-size: 12px;
+}
+
+.ad-message strong {
+  color: #00FFFF;
+  text-shadow: 0 0 8px #00FFFF;
+}
+
+.ad-topper {
+  color: #FF6600;
+  text-shadow: 0 0 5px #FF6600;
+  font-weight: 900;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.ad-close {
+  background: #000000 !important;
+  border: 2px solid #FF00FF !important;
+  color: #FF00FF !important;
   cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-  transition: all 0.1s ease;
   font-weight: bold;
-  text-shadow: 0 0 5px var(--neon-magenta);
-  box-shadow: 0 0 8px rgba(255, 0, 255, 0.3);
 }
 
-.logout-btn:hover {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-  text-shadow: 0 0 10px var(--neon-cyan);
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+.ad-close:hover {
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.6) !important;
+}
+
+/* Hide grids and modern layouts */
+.grid, .about, .buttons, .container {
+  display: none;
+}
+
+/* Force basic link styles */
+a {
+  color: #00FF00 !important;
+  text-decoration: underline !important;
+  text-shadow: 0 0 5px #00FF00 !important;
+  transition: none !important;
+}
+
+a:hover {
+  color: #FF00FF !important;
+  text-shadow: 0 0 10px #FF00FF !important;
+  text-decoration: underline !important;
+}
+
+/* Bold emphasis */
+b, strong {
+  font-weight: bold !important;
 }
 
 

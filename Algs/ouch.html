@@ -52,7 +52,93 @@
         <h3>Next Steps</h3>
         <p>Build example code, analyze edge cases, and document the algorithm's experimental design in this section.</p>
       </div>
+
+      <div class="code-block">
+        <button id="showCodeButton" type="button">SHOW EXAMPLE CODE</button>
+      </div>
     </section>
+
+    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeCodeButton" class="modal-close" type="button">×</button>
+        <h2>O.U.C.H. Example Code</h2>
+        <pre><code>import time
+
+def enter_performance_review_pip(company_hierarchy, workforce_size, manager_index):
+    """
+    Evaluates a specific managerial branch. If a subordinate outperforms the manager,
+    a corporate restructure (swap) is approved, and the subordinate is promoted.
+    """
+    highest_performer_index = manager_index
+    left_subordinate_index = 2 * manager_index + 1
+    right_subordinate_index = 2 * manager_index + 2
+
+    # Check if Left Subordinate exists and outperforms the Current Manager
+    if left_subordinate_index < workforce_size:
+        print(f"  [EVALUATION]: Comparing Manager [{company_hierarchy[manager_index]}] with Left Subordinate [{company_hierarchy[left_subordinate_index]}].")
+        if company_hierarchy[left_subordinate_index] > company_hierarchy[highest_performer_index]:
+            highest_performer_index = left_subordinate_index
+
+    # Check if Right Subordinate exists and outperforms the current Highest Performer
+    if right_subordinate_index < workforce_size:
+        print(f"  [EVALUATION]: Comparing Highest Performer with Right Subordinate [{company_hierarchy[right_subordinate_index]}].")
+        if company_hierarchy[right_subordinate_index] > company_hierarchy[highest_performer_index]:
+            highest_performer_index = right_subordinate_index
+
+    # If the manager is underperforming compared to a subordinate, trigger a restructuring
+    if highest_performer_index != manager_index:
+        underperformer = company_hierarchy[manager_index]
+        high_achiever = company_hierarchy[highest_performer_index]
+        
+        print(f"    [PIP FAILURE]: Manager [{underperformer}] underperformed relative to Subordinate [{high_achiever}].")
+        print(f"    [RESTRUCTURE]: Promoting [{high_achiever}] to management. Demoting [{underperformer}].")
+        
+        # Inter-departmental asset migration (The Swap)
+        time.sleep(0.01) # Mandatory HR paperwork processing delay
+        company_hierarchy[manager_index], company_hierarchy[highest_performer_index] = company_hierarchy[highest_performer_index], company_hierarchy[manager_index]
+        
+        print(f"    [UPDATED ORG CHART]: {company_hierarchy}")
+        
+        # Recursively audit the demoted manager's new branch to ensure they aren't failing further down
+        enter_performance_review_pip(company_hierarchy, workforce_size, highest_performer_index)
+
+
+def ouch_sort(workforce_payload):
+    """
+    Executes the Oversight, Underperformance, Constraints, & Hangups Protocol.
+    Forces assets to compete up an organizational structure until fully vested.
+    """
+    workforce_size = len(workforce_payload)
+    fiscal_quarter = 0
+
+    print("=== INITIATING INITIAL ORGANIZATIONAL RESTRUCTURE (BUILDING MAX-HEAP) ===")
+    # Build the initial corporate hierarchy (heapify from the lowest managers up)
+    for i in range(workforce_size // 2 - 1, -1, -1):
+        enter_performance_review_pip(workforce_payload, workforce_size, i)
+    
+    print(f"\nInitial Merit-Based Corporate Hierarchy Established: {workforce_payload}\n")
+
+    # Begin extracting the top performers (CEOs) one by one
+    for i in range(workforce_size - 1, 0, -1):
+        fiscal_quarter += 1
+        print(f"--- INITIATING FISCAL QUARTER {fiscal_quarter} ---")
+        
+        ceo_asset = workforce_payload[0]
+        entry_level_intern = workforce_payload[i]
+        
+        print(f"[GOLDEN PARACHUTE]: CEO Asset [{ceo_asset}] has achieved maximum organizational alignment.")
+        print(f"[VESTING]: Extracting [{ceo_asset}] to Fully Vested Portfolio.")
+        print(f"[REPLACEMENT]: Promoting Entry-Level Intern [{entry_level_intern}] directly to the vacant CEO suite.")
+        
+        # Swap the top performer to the end of the active array (vesting them)
+        time.sleep(0.01) # Mandatory severance negotiation delay
+        workforce_payload[0], workforce_payload[i] = workforce_payload[i], workforce_payload[0]
+        
+        # The vested asset is now outside the active workforce size
+        active_workforce_size =
+</code></pre>
+      </div>
+    </div>
   </main>
 
   <footer>
@@ -60,5 +146,36 @@
       © 2026 GAMERTOWN SOLUTIONS / ARCHIVE
     </div>
   </footer>
+
+  <script>
+    const showCodeButton = document.getElementById('showCodeButton');
+    const closeCodeButton = document.getElementById('closeCodeButton');
+    const codeModal = document.getElementById('codeModal');
+
+    function openCodeModal() {
+      if (!codeModal) return;
+      codeModal.style.display = 'flex';
+      codeModal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('modal-open');
+      codeModal.focus();
+    }
+
+    function closeCodeModal() {
+      if (!codeModal) return;
+      codeModal.style.display = 'none';
+      codeModal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
+    }
+
+    if (showCodeButton && closeCodeButton && codeModal) {
+      showCodeButton.addEventListener('click', openCodeModal);
+      closeCodeButton.addEventListener('click', closeCodeModal);
+      codeModal.addEventListener('click', event => {
+        if (event.target === codeModal) {
+          closeCodeModal();
+        }
+      });
+    }
+  </script>
 </body>
 </html>

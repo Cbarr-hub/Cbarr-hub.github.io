@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KPI Dashboard</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;padding:20px;max-width:1000px;margin:auto}
+    h1{margin-bottom:6px}
+    table{border-collapse:collapse;width:100%;margin-top:12px}
+    th,td{border:1px solid #ddd;padding:8px;text-align:left}
+    th{background:#f4f4f4}
+    .ok{color:green}.warn{color:darkorange}.bad{color:crimson}
+    pre{white-space:pre-wrap;background:#f9f9f9;padding:10px;border:1px solid #eee}
+  </style>
+</head>
+<body>
+  <h1>KPI Dashboard — Quirky HTML Metrics</h1>
+  <p>Scans the site pages and reports unusual/interesting HTML statistics.</p>
+
+  <div>
+    <label>Pages to scan (comma-separated):</label>
+    <input id="pagesInput" style="width:100%" value="index.html,index2.html,design_phil.html,gamble.html,map.html,tablets.html">
+  </div>
+  <p><button id="run">Run scan</button> <span id="status"></span></p>
+
+  <div id="summary"></div>
+  <div id="results"></div>
+
+  <h2>Site Crawler</h2>
+  <div>
+    <label>Start path (relative):</label>
+    <input id="startPath" style="width:60%" value="index.html">
+    <label style="margin-left:8px">Max pages:</label>
+    <input id="maxPages" type="number" min="1" value="50" style="width:80px">
+    <button id="crawl">Crawl site</button>
+    <span id="crawlStatus"></span>
+  </div>
+  <div id="tree" style="margin-top:12px"></div>
+
+  <script>
+  // List of quirky metrics we'll compute for each page.
+  const metricsCache = new Map();
+  function computeMetrics(text, doc, url) {
+    const bodyText = (doc && doc.body) ? doc.body.textContent || '' : text.replace(/<[^>]+>/g,' ');
+    const words = (bodyText.match(/\b[\w'-]+\b/g) || []).filter(Boolean);
+    const sentences = (bodyText.split(/[.!?]+/).map(s=>s.trim()).filter(Boolean));
+
+    const imgs = Array.from((doc && doc.images) ? doc.images : []);
+    const anchors = Array.from((doc && doc.links) ? doc.links : []);
+
+    // duplicate IDs
+    const ids = Array.from(doc.querySelectorAll('[id]')).map(n=>n.id);
+    const dupIDs = ids.filter((v,i,a)=>a.indexOf(v)!==i);
+
+    // inline styles count
+    const inlineStyleCount = doc.querySelectorAll('[style]').length;
+
+    // comments
+    const comments = (text.match(/<!--([\s\S]*?)-->/g) || []).length;
+
+    // external links
+    const externalLinks = anchors.filter(a=>{
+      try{const u=new URL(a.href, location.href); return u.hostname !== location.hostname}catch(e){return false}
+    });
+
+    // longest word
+    let longest = '';
+    for(const w of words) if(w.length>longest.length) longest=w;
+
+    // compute DOM max depth
+    function maxDepth(node){
+      if(!node || !node.children || node.children.length===0) return 1;
+      let m=0; for(const c of node.children) m=Math.max(m, maxDepth(c)); return m+1;
+    }
+
+    const headings = [1,2,3,4,5,6].reduce((acc,n)=>{acc['h'+n]=doc.querySelectorAll('h'+n).length;return acc},{})
+
+    return {
+      url,
+      wordCount: words.length,
+      avgWordLen: words.length? (words.reduce((s,w)=>s+w.length,0)/words.length).toFixed(2):0,
+      longestWord: longest,
+      sentenceCount: sentences.length,
+      avgSentenceWords: sentences.length? (words.length/sentences.length).toFixed(2):0,
+      inlineStyleCount,
+      comments,
+      imgsTotal: imgs.length,
+      imgsMissingAlt: imgs.filter(i=>!i.alt||i.alt.trim()==='').length,
+      scriptCount: doc.scripts.length,
+      metaCount: doc.querySelectorAll('meta').length,
+      externalLinks: externalLinks.length,
+      duplicateIDs: Array.from(new Set(dupIDs)),
+      domMaxDepth: maxDepth(doc.body),
+      headings
+    };
+  }
+
+  async function fetchPage(url){
+    const res = await fetch(url, {cache:'no-store'}).catch(e=>null);
+    if(!res || !res.ok) throw new Error('Fetch failed: '+url);
+    const text = await res.text();
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    return {text, doc, url};
+  }
+
+  // --- CRAWLER: discover pages (same-origin) and build a tree ---
+  async function crawlSite(startPath, maxPages = 50){
+    const origin = location.origin;
+    const toAbsolute = p => new URL(p, location.href).href;
+    const normalize = (href, base) => {
+      try{
+        const baseAbs = new URL(base, location.href);
+        const u = new URL(href, baseAbs);
+        if(u.origin !== origin) return null;
+        let p = (u.pathname + u.search + u.hash) || '/';
+        if(p.startsWith('/')) p = p.slice(1);
+        if(!p) p = 'index.html';
+        return p;
+      }catch(e){ return null }
+    };
+
+    const seen = new Map(); // path -> node {url, children: [], parent: null}
+    function makeNode(path){ if(!seen.has(path)) seen.set(path, {url:path, children:[], parent:null}); return seen.get(path); }
+
+    const q = [];
+    makeNode(startPath);
+    q.push(startPath);
+
+    while(q.length && seen.size < maxPages){
+      const cur = q.shift();
+      const node = makeNode(cur);
+      try{
+        const {text, doc} = await fetchPage(cur);
+        // cache metrics
+        metricsCache.set(cur, computeMetrics(text, doc, cur));
+        const anchors = Array.from(doc.querySelectorAll('a[href]')).map(a=>a.getAttribute('href'));
+        for(const a of anchors){
+          const np = normalize(a, cur);
+          if(!np) continue;
+          if(!seen.has(np) && !q.includes(np)) q.push(np);
+          const child = makeNode(np);
+          if(child.parent === null && np !== startPath) child.parent = cur;
+          if(!node.children.includes(np)) node.children.push(np);
+        }
+      }catch(e){
+        metricsCache.set(cur, {error: e.message, url: cur});
+      }
+    }
+
+    const roots = Array.from(seen.values()).filter(n=>!n.parent);
+    return {seen, roots};
+  }
+
+  function renderTree(roots){
+    const rootEl = document.getElementById('tree');
+    if(!roots || roots.length===0){ rootEl.innerHTML = '<em>No pages discovered</em>'; return }
+    const seenMap = window.__kpi_seen || new Map();
+    rootEl.innerHTML = '';
+    const ul = document.createElement('ul');
+    const build = (node, visited) => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#';
+      a.textContent = node.url;
+      a.addEventListener('click', (e)=>{ e.preventDefault(); showNodeMetrics(node.url); });
+      li.appendChild(a);
+
+      if(node.children && node.children.length){
+        if(visited.has(node.url)){
+          const note = document.createElement('span');
+          note.textContent = ' (cycle detected)';
+          note.style.color = 'crimson';
+          li.appendChild(note);
+          return li;
+        }
+        const nextVisited = new Set(visited);
+        nextVisited.add(node.url);
+        const sub = document.createElement('ul');
+        for(const c of node.children){
+          const childNode = seenMap.get(c) || {url:c, children:[]};
+          sub.appendChild(build(childNode, nextVisited));
+        }
+        li.appendChild(sub);
+      }
+      return li;
+    };
+
+    for(const r of roots){
+      ul.appendChild(build(r, new Set()));
+    }
+    rootEl.appendChild(ul);
+  }
+
+  function showNodeMetrics(url){
+    const m = metricsCache.get(url);
+    const out = document.getElementById('results');
+    if(!m){ out.innerHTML = `<p>No metrics for ${url}</p>`; return }
+    if(m.error){ out.innerHTML = `<p>Error fetching ${url}: ${m.error}</p>`; return }
+    out.innerHTML = `<h3>Metrics: ${url}</h3><pre>${JSON.stringify(m, null, 2)}</pre>`;
+  }
+
+  // Crawl button handler
+  document.getElementById('crawl').addEventListener('click', async ()=>{
+    const status = document.getElementById('crawlStatus');
+    const start = document.getElementById('startPath').value.trim() || 'index.html';
+    const max = parseInt(document.getElementById('maxPages').value,10) || 50;
+    status.textContent = 'Crawling...';
+    try{
+      const {seen, roots} = await crawlSite(start, max);
+      // expose seen map for renderTree
+      window.__kpi_seen = seen;
+      // convert roots' child keys to node objects for rendering
+      const rootNodes = roots.map(r=>r);
+      renderTree(rootNodes);
+      status.textContent = `Crawled ${seen.size} pages`;
+      // render table for all collected metrics
+      const metrics = Array.from(metricsCache.entries()).map(([k,v])=> v.error ? {url:k, error:v.error} : v);
+      renderTable(metrics.filter(m=>!m.error));
+    }catch(e){ status.textContent = 'Crawl failed: '+e.message }
+  });
+
+  function renderTable(metricsList){
+    const out = document.getElementById('results');
+    if(metricsList.length===0){ out.innerHTML='No results'; return }
+    let html = '<table><thead><tr><th>Page</th><th>Words</th><th>Avg word len</th><th>Longest word</th><th>Sentences</th><th>Avg words/sent</th><th>Inline styles</th><th>Imgs (missing alt)</th><th>External links</th><th>Duplicate IDs</th><th>DOM depth</th></tr></thead><tbody>';
+    for(const m of metricsList){
+      html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgWordLen}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td><td>${m.avgSentenceWords}</td><td>${m.inlineStyleCount}</td><td>${m.imgsTotal} (${m.imgsMissingAlt})</td><td>${m.externalLinks}</td><td>${m.duplicateIDs.length}</td><td>${m.domMaxDepth}</td></tr>`;
+    }
+    html += '</tbody></table>';
+
+    // weird highlights
+    const weird = [];
+    // page with most inline styles
+    const mostStyles = metricsList.slice().sort((a,b)=>b.inlineStyleCount-a.inlineStyleCount)[0];
+    weird.push(`<strong>Most inline styles:</strong> <a href="${mostStyles.url}">${mostStyles.url}</a> (${mostStyles.inlineStyleCount})`);
+    // page with most missing alts
+    const mostMissingAlt = metricsList.slice().sort((a,b)=>b.imgsMissingAlt-a.imgsMissingAlt)[0];
+    weird.push(`<strong>Most images missing alt:</strong> <a href="${mostMissingAlt.url}">${mostMissingAlt.url}</a> (${mostMissingAlt.imgsMissingAlt})`);
+    // deepest DOM
+    const deepest = metricsList.slice().sort((a,b)=>b.domMaxDepth-a.domMaxDepth)[0];
+    weird.push(`<strong>Deepest DOM:</strong> <a href="${deepest.url}">${deepest.url}</a> (depth ${deepest.domMaxDepth})`);
+
+    out.innerHTML = html + '<h3>Weird findings</h3><ul>' + weird.map(w=>`<li>${w}</li>`).join('') + '</ul>';
+  }
+
+  function escapeHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+  document.getElementById('run').addEventListener('click', async ()=>{
+    const status = document.getElementById('status'); status.textContent='Scanning...';
+    const raw = document.getElementById('pagesInput').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const results = [];
+    for(const p of raw){
+      try{
+        const {text,doc,url} = await fetchPage(p);
+        results.push(computeMetrics(text, doc, p));
+      }catch(e){
+        results.push({url:p, error: e.message});
+      }
+    }
+    status.textContent='Done';
+    // show summary
+    document.getElementById('summary').innerHTML = `<p>Scanned ${results.length} pages.</p>`;
+    const good = results.filter(r=>!r.error);
+    renderTable(good);
+    // show raw errors
+    const errs = results.filter(r=>r.error);
+    if(errs.length){
+      const eout = errs.map(e=>`<li>${e.url}: ${e.error}</li>`).join('');
+      document.getElementById('results').insertAdjacentHTML('beforeend', '<h3>Errors</h3><ul>'+eout+'</ul>');
+    }
+  });
+  </script>
+</body>
+</html>

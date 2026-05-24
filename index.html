@@ -34,105 +34,77 @@
   </header>
 
   <main>
-    <section class="hero">
-      <div class="logo-bg-icon">
-        <img src="gamertown_globe_logo_transparent.png" alt="" />
-      </div>
-      <div class="container hero-content">
-        <h1>Building Modern Gaming & Web Experiences</h1>
-
-        <p>
-          Gamertown Solutions creates fast, scalable, and modern software for gaming communities,
-          web platforms, and online services.
-        </p>
-
-        <div class="buttons">
-          <a href="#services" class="btn btn-primary">Explore Services</a>
-          <a href="#contact" class="btn btn-secondary">Get In Touch</a>
-        </div>
-      </div>
-    </section>
-
-    <section id="services">
-      <div class="container">
-        <h2 class="section-title">What We Do</h2>
-
-        <div class="grid">
-          <div class="card">
-            <h3>Custom Websites</h3>
-            <p>
-              Responsive, high-performance websites built with modern frontend technologies.
-            </p>
-          </div>
-
-          <div class="card">
-            <h3>Backend APIs</h3>
-            <p>
-              Secure backend systems, authentication, databases, and scalable APIs.
-            </p>
-          </div>
-
-          <div class="card">
-            <h3>Gaming Communities</h3>
-            <p>
-              Tools and infrastructure for gaming groups, tournaments, and online communities.
-            </p>
-          </div>
-
-          <div class="card">
-            <h3>Cloud Hosting</h3>
-            <p>
-              Deployment pipelines, hosting configuration, and production-ready infrastructure.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="about">
-      <div class="container">
-        <div style="text-align: center; margin-bottom: 2rem;">
-          <img src="gamertown_logo_optimized.png" alt="Gamertown" class="logo logo-about" style="margin: 0 auto;" />
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: start;">
-          <div>
-            <h2 class="section-title">About Gamertown Solutions</h2>
-
-            <p>
-              We focus on building practical, modern software with clean design and strong performance.
-              Whether it's a gaming platform, a startup landing page, or a custom backend service,
-              our goal is to create reliable systems that scale.
-            </p>
-          </div>
-
-          <div class="about-box">
-            <h3 style="margin-bottom: 1rem;">Tech Stack</h3>
-
-            <p>
-              HTML • CSS • JavaScript • Node.js • APIs • PostgreSQL • Cloud Infrastructure
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="contact">
-      <div class="container">
-        <h2 class="section-title">Contact</h2>
+    <div class="main-layout">
+      <aside class="sidebar sidebar-left" id="services">
+        <h2 class="sidebar-title">What We Do</h2>
 
         <div class="card">
-          <p>
-            Interested in working together or launching a new project?
-          </p>
-
-          <br />
-
-          <p>
-            Email: hello@gamertown.solutions
-          </p>
+          <h3>Custom Websites</h3>
+          <p>Responsive, high-performance websites built with modern frontend technologies.</p>
         </div>
+
+        <div class="card">
+          <h3>Backend APIs</h3>
+          <p>Secure backend systems, authentication, databases, and scalable APIs.</p>
+        </div>
+
+        <div class="card">
+          <h3>Gaming Communities</h3>
+          <p>Tools and infrastructure for gaming groups, tournaments, and online communities.</p>
+        </div>
+
+        <div class="card">
+          <h3>Cloud Hosting</h3>
+          <p>Deployment pipelines, hosting configuration, and production-ready infrastructure.</p>
+        </div>
+      </aside>
+
+      <div class="main-center">
+        <section class="hero">
+          <div class="logo-bg-icon">
+            <img src="gamertown_globe_logo_transparent.png" alt="" />
+          </div>
+          <div class="hero-content">
+            <h1>Building Modern Gaming &amp; Web Experiences</h1>
+            <p>
+              Gamertown Solutions creates fast, scalable, and modern software for gaming communities,
+              web platforms, and online services.
+            </p>
+            <div class="buttons">
+              <a href="#services" class="btn btn-primary">Explore Services</a>
+              <a href="#contact" class="btn btn-secondary">Get In Touch</a>
+            </div>
+          </div>
+        </section>
+
+        <section id="about" class="about-section">
+          <div class="about-header">
+            <img src="gamertown_logo_optimized.png" alt="Gamertown" class="logo logo-about" />
+            <h2 class="section-title">About Gamertown Solutions</h2>
+          </div>
+          <p>
+            We focus on building practical, modern software with clean design and strong performance.
+            Whether it's a gaming platform, a startup landing page, or a custom backend service,
+            our goal is to create reliable systems that scale.
+          </p>
+        </section>
       </div>
-    </section>
+
+      <aside class="sidebar sidebar-right">
+        <section id="contact">
+          <h2 class="sidebar-title">Contact</h2>
+          <div class="card">
+            <p>Interested in working together or launching a new project?</p>
+            <p><strong>Email:</strong><br />hello@gamertown.solutions</p>
+          </div>
+        </section>
+
+        <div class="about-box">
+          <h3>Tech Stack</h3>
+          <p>HTML • CSS • JavaScript • Node.js • APIs • PostgreSQL • Cloud Infrastructure</p>
+        </div>
+      </aside>
+    </div>
   </main>
 
   <div class="policy-banner">

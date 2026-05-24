@@ -205,6 +205,7 @@
       spinButton.textContent = 'Spinning...';
       spinButton.disabled = true;
 
+      buildSlot(names);
       const selectedIndex = Math.floor(Math.random() * names.length);
       const itemWidth = parseFloat(slotTrack.dataset.itemWidth) || 240;
       const containerWidth = slotTrack.parentElement.clientWidth;
@@ -225,7 +226,6 @@
         spinButton.textContent = 'Spin';
         spinButton.disabled = false;
         isSpinning = false;
-        buildSlot();
       }, spinDuration + 50);
     }
 

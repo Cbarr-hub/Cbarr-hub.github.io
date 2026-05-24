@@ -7,26 +7,27 @@
   <meta name="description" content="Barebones Random Sort page with an interactive visualizer modal." />
   <link rel="stylesheet" href="algs.css" />
   <style>
-    /* Styling for the new Visualizer Modal Window */
+    /* Styling for the new Visualizer Modal Window - Updated to match the dark theme */
     .modal {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.85); /* Slightly darker overlay for cohesion */
       display: none;
       justify-content: center;
       align-items: center;
       z-index: 1000;
     }
     .modal-content {
-      background: #ffffff;
+      background: #1e1e24; /* Dark background matching the page theme */
+      color: #ffffff;      /* White text for contrast */
       padding: 30px;
       border-radius: 8px;
       max-width: 600px;
       width: 100%;
       position: relative;
       text-align: center;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      color: #333333;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
     }
     .modal-close {
       position: absolute;
@@ -35,10 +36,10 @@
       background: none; 
       border: none; 
       cursor: pointer;
-      color: #666;
+      color: #aaa;
     }
     .modal-close:hover {
-      color: #000;
+      color: #fff;
     }
 
     /* Input Field & Controls */
@@ -52,8 +53,10 @@
       padding: 12px;
       font-size: 1rem;
       width: 65%;
-      border: 2px solid #ccc;
+      background-color: #111115; /* Dark input fields */
+      border: 2px solid #44444f;
       border-radius: 4px;
+      color: #ffffff;
       outline: none;
     }
     .input-container input:focus {
@@ -74,7 +77,8 @@
       background-color: #005fa1;
     }
     .action-btn:disabled {
-      background-color: #cccccc;
+      background-color: #44444f;
+      color: #888888;
       cursor: not-allowed;
     }
 
@@ -85,11 +89,11 @@
       align-items: flex-end;
       height: 220px;
       gap: 10px;
-      background: #f8f9fa;
+      background: #111115; /* Dark background inside the graph */
       padding: 20px;
       border-radius: 6px;
       margin: 20px 0;
-      border: 1px dashed #ccc;
+      border: 1px dashed #44444f;
     }
     .bar {
       width: 45px;
@@ -111,7 +115,7 @@
 
     /* Statistics Results Dashboard */
     .stats-dashboard {
-      background: #edf2f7;
+      background: #1a2620; /* Dark green tint hint for success */
       border-left: 5px solid #2ecc71;
       border-radius: 4px;
       padding: 15px;
@@ -123,12 +127,17 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       font-size: 0.95rem;
+      color: #dddddd;
     }
     
-    /* Layout preservation utility */
+    /* Layout preservation utility for image + button container */
     .visualizer-trigger-block {
       margin: 20px 0;
       text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
     }
   </style>
 </head>
@@ -149,6 +158,9 @@
       <h1>RANDOM SORT</h1>
       
       <div class="visualizer-trigger-block">
+        <div class="gif-block" style="margin: 0; width: 100%;">
+          <img src="../RandomSort.png" alt="Random Sort demonstration" class="demo-gif" />
+        </div>
         <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
           LAUNCH INTERACTIVE VISUALIZER POP-UP
         </button>
@@ -171,7 +183,7 @@
     </section>
 
     <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
-      <div class="modal-content" style="text-align: left;">
+      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d;">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>RANDOM SORT EXAMPLE CODE</h2>
         <pre><code>// A simple random sort implementation (bogosort-style)
@@ -222,7 +234,7 @@ console.log('Sorted:', sorted);
       <div class="modal-content">
         <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
         <h2>STOCHASTIC RE-INDEXING MODALITY</h2>
-        <p style="font-size: 0.9rem; color:#666;">Enter a short sequence of values to visualize random distribution constraints.</p>
+        <p style="font-size: 0.9rem; color:#aaa;">Enter a short sequence of values to visualize random distribution constraints.</p>
         
         <div class="input-container">
           <input type="text" id="userInput" placeholder="e.g. 12, 5, 24, 2, 17 (Max 7 suggested)" value="5, 2, 9, 1, 4">
@@ -385,7 +397,7 @@ console.log('Sorted:', sorted);
         cycleCount++;
         renderBars(workingArray);
 
-        // 3. Controlled artificial delay frame rate (30ms) to ensure high clarity without tab freezing
+        // Controlled artificial delay frame rate (30ms) to ensure high clarity without tab freezing
         setTimeout(stepThroughComplexity, 30);
       }
 

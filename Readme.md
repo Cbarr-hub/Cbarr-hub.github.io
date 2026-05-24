@@ -52,8 +52,7 @@
 - 1.f.1 Slop Game Wheel  
 - 1.f.2 Advanced Algorithms module  
 - 1.f.3 Organizational Chart (bar graph / pie chart hybrid optional)  
-- 1.f.4 KPI Dashboard (**top priority**)
-  - Link: [https://cbarr-hub.github.io/kpi.html](https://cbarr-hub.github.io/kpi.html)
+- 1.f.4 [KPI Dashboard](https://cbarr-hub.github.io/kpi.html) (**top priority**)
 - 1.f.5 Auth-gated section:
   - Requires login to access `/final`
 - 1.f.6 About Us page:

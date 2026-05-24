@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Name Spinner</title>
+  <title>Game Spinner</title>
   <link rel="stylesheet" href="wheel.css">
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
@@ -11,11 +11,11 @@
 <body>
   <div class="page">
     <header class="glitch-header">
-      <h1 class="glitch" data-text="NAME SPINNER">NAME SPINNER</h1>
-      <p class="sub">Spin the slot to choose a random name from the list.</p>
+      <h1 class="glitch" data-text="GAME SPINNER">GAME SPINNER</h1>
+      <p class="sub">Spin the slot to choose a random game from the database.</p>
     </header>
 
-    <div class="slot-frame" aria-label="Horizontal slot name spinner">
+    <div class="slot-frame" aria-label="Horizontal slot game spinner">
       <div class="slot-window">
         <div id="slotTrack" class="slot-track" aria-live="polite">
           <div class="no-names">Choose filters, then press Spin.</div>
@@ -26,7 +26,7 @@
 
     <div class="filters">
       <div class="filter-group">
-        <span>Players</span>
+        <span>Max Players</span>
         <label for="players-2"><input id="players-2" type="checkbox" value="2" checked> 2</label>
         <label for="players-3"><input id="players-3" type="checkbox" value="3" checked> 3</label>
         <label for="players-4"><input id="players-4" type="checkbox" value="4" checked> 4</label>
@@ -46,7 +46,7 @@
     </div>
 
     <div class="result-card">
-      <p>Selected name:</p>
+      <p>Selected game:</p>
       <strong id="result">Ready to spin</strong>
     </div>
 
@@ -63,6 +63,7 @@
     </div>
   </div>
 
+<<<<<<< HEAD
   <script>
     const allGames = [
       { name: 'Lethal Company', players: ['2'], time: '<60' },
@@ -71,7 +72,7 @@
       { name: 'Goofy Gorillas', players: ['4','5','6+'], time: '<30' },
       { name: 'Super battle golf', players: ['2'], time: '<60' },
       { name: 'CSGO', players: ['2','3','4','5'], time: ['<60','no limit'] },
-      { name: 'Buckshot Roulette', players: ['2'], time: '<60' },
+      { name: 'Buckshot Roulette', players: ['4'], time: '<60' },
       { name: 'Peak', players: ['2'], time: '<60' },
       { name: 'Gamble with your friends', players: ['3','4','5','6+'], time: 'no limit' },
       { name: 'Rocket League', players: ['2','3','4','6+'], time: ['<30','<60','no limit'] },
@@ -83,6 +84,15 @@
       { name: 'Last train out of wormtown', players: ['5','6+'], time: ['<60','no limit'] },
       {name: 'Oh Deer', players: ['4'], time: ['<30','<60','no limit'] },
     ];
+=======
+  <script type="module">
+    import { supabase } from './supabase-client.js';
+    import { requireAuth, updateNavbar, getSession } from './auth.js';
+
+    requireAuth();
+    updateNavbar(getSession());
+
+>>>>>>> c63a35b71aca15f8e6bd06ca993f4e5d68997834
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
       blue: '#007bff',
@@ -110,25 +120,116 @@
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
     const filterInputs = document.querySelectorAll('.filters input');
+    let allGames = [];
     let selectedPlayers = ['2','3','4','5','6+'];
     let selectedTimes = ['<30','<60','no limit'];
     let isSpinning = false;
     const spinDuration = 6000;
 
-    function getFilteredGames() {
-      return allGames.filter(game => {
-        const playerMatch = game.players.some(player => selectedPlayers.includes(player));
-        const timeValues = Array.isArray(game.time) ? game.time : [game.time];
-        const timeMatch = timeValues.some(time => selectedTimes.includes(time));
-        return playerMatch && timeMatch;
+    function setSlotMessage(message) {
+      slotTrack.innerHTML = '';
+      const messageEl = document.createElement('div');
+      messageEl.className = 'no-names';
+      messageEl.textContent = message;
+      slotTrack.appendChild(messageEl);
+      slotTrack.style.transition = 'none';
+      slotTrack.style.transform = 'translateX(0)';
+    }
+
+    function normalizeGame(row) {
+      const maxplayers = Number(row.maxplayers);
+      const timeMinutes = Number(row.time_minutes);
+      return {
+        id: row.id,
+        name: row.name,
+        maxplayers: Number.isFinite(maxplayers) ? maxplayers : null,
+        timeMinutes: row.time_minutes === null || row.time_minutes === undefined || row.time_minutes === ''
+          ? null
+          : Number.isFinite(timeMinutes) ? timeMinutes : null
+      };
+    }
+
+    async function loadGames() {
+      spinButton.disabled = true;
+      resultDisplay.textContent = 'Loading games...';
+      setSlotMessage('Loading games...');
+
+      const { data, error } = await supabase
+        .from('games')
+        .select('id,name,maxplayers,time_minutes')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Unable to load games', error);
+        resultDisplay.textContent = 'Could not load games.';
+        setSlotMessage('Could not load games.');
+        return;
+      }
+
+      allGames = (data || [])
+        .map(normalizeGame)
+        .filter(game => game.name);
+
+      if (allGames.length === 0) {
+        resultDisplay.textContent = 'No games in the database.';
+        setSlotMessage('No games in the database.');
+        return;
+      }
+
+      resultDisplay.textContent = 'Ready to spin';
+      updateFilters();
+    }
+
+    function matchesMaxPlayers(game) {
+      if (!Number.isFinite(game.maxplayers)) {
+        return false;
+      }
+
+      return selectedPlayers.some(player => {
+        if (player === '6+') {
+          return game.maxplayers >= 6;
+        }
+
+        return game.maxplayers === Number(player);
       });
+    }
+
+    function matchesTime(game) {
+      if (!selectedTimes.length) {
+        return false;
+      }
+
+      if (game.timeMinutes === null) {
+        return selectedTimes.includes('no limit');
+      }
+
+      if (game.timeMinutes <= 30 && (selectedTimes.includes('<30') || selectedTimes.includes('<60'))) {
+        return true;
+      }
+
+      if (game.timeMinutes <= 60 && selectedTimes.includes('<60')) {
+        return true;
+      }
+
+      return game.timeMinutes > 60 && selectedTimes.includes('no limit');
+    }
+
+    function getFilteredGames() {
+      return allGames.filter(game => matchesMaxPlayers(game) && matchesTime(game));
     }
 
     function updateFilters() {
       selectedPlayers = Array.from(document.querySelectorAll('.filter-group:nth-of-type(1) input:checked')).map(input => input.value);
       selectedTimes = Array.from(document.querySelectorAll('.filter-group:nth-of-type(2) input:checked')).map(input => input.value);
       const hasResults = getFilteredGames().length > 0;
-      spinButton.disabled = !hasResults;
+      spinButton.disabled = isSpinning || !hasResults;
+      if (!isSpinning && allGames.length > 0 && !hasResults) {
+        setSlotMessage('No games match those filters.');
+        resultDisplay.textContent = 'No games available.';
+      } else if (!isSpinning && allGames.length > 0) {
+        setSlotMessage('Choose filters, then press Spin.');
+        resultDisplay.textContent = 'Ready to spin';
+      }
     }
 
     filterInputs.forEach(input => {
@@ -136,16 +237,16 @@
     });
 
     function getRandomColorByOdds() {
-      // Pick a color based on CS2 case odds
-      const roll = Math.random();
+      // Pick a color based on CS2 case odds; normalize to protect against rounding
+      const entries = Object.entries(cs2Odds);
+      const total = entries.reduce((s, [, v]) => s + v, 0);
+      const roll = Math.random() * total;
       let cumulative = 0;
-      for (const [color, odds] of Object.entries(cs2Odds)) {
+      for (const [color, odds] of entries) {
         cumulative += odds;
-        if (roll <= cumulative) {
-          return color;
-        }
+        if (roll <= cumulative) return color;
       }
-      return 'gold'; // Fallback (should rarely happen)
+      return entries[entries.length - 1][0];
     }
 
     function getRandomColor() {
@@ -153,7 +254,16 @@
       return slotColors[Math.floor(Math.random() * slotColors.length)];
     }
 
-    function buildSlot(names) {
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+
+    // buildSlot now accepts optional resultColor and selectedIndex so
+    // we can ensure the landing tile shows the chosen rarity
+    function buildSlot(names, resultColor = null, selectedIndex = 0) {
       slotTrack.innerHTML = '';
       if (!names || names.length === 0) {
         const messageEl = document.createElement('div');
@@ -166,11 +276,44 @@
       const repeatCount = loopCount + 2;
       const repeatedNames = Array.from({ length: repeatCount }, () => names).flat();
 
+      // Determine how many tiles of each rarity we should have (deterministic rounding)
+      const tileCount = repeatedNames.length;
+      const entries = Object.entries(cs2Odds);
+      const totalOdds = entries.reduce((s, [, v]) => s + v, 0);
+      const rawCounts = entries.map(([color, odds]) => ({
+        color,
+        raw: (odds / totalOdds) * tileCount,
+        count: Math.floor((odds / totalOdds) * tileCount)
+      }));
+      let assigned = rawCounts.reduce((s, r) => s + r.count, 0);
+      // distribute remaining slots by highest fractional remainder
+      const remainders = rawCounts.map(r => ({ color: r.color, frac: r.raw - r.count }));
+      remainders.sort((a, b) => b.frac - a.frac);
+      let rem = tileCount - assigned;
+      for (let i = 0; i < rem; i++) {
+        const c = remainders[i % remainders.length].color;
+        const rc = rawCounts.find(r => r.color === c);
+        rc.count += 1;
+      }
+
+      // Build color list and shuffle for visual distribution
+      const colorKeysPerTile = [];
+      rawCounts.forEach(r => {
+        for (let i = 0; i < r.count; i++) colorKeysPerTile.push(r.color);
+      });
+      shuffleArray(colorKeysPerTile);
+
+      // Compute landing index within repeatedNames and force that tile to the resultColor
+      const targetIndex = names.length + selectedIndex + loopCount * names.length;
+      if (resultColor && targetIndex >= 0 && targetIndex < colorKeysPerTile.length) {
+        colorKeysPerTile[targetIndex] = resultColor;
+      }
+
       repeatedNames.forEach((game, index) => {
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = game.name;
-        const colorKey = getRandomColor(); // Each tile gets a random color as it spins
+        const colorKey = colorKeysPerTile[index] || slotColors[Math.floor(Math.random() * slotColors.length)];
         const bg = slotColorMap[colorKey] || colorKey;
         item.style.background = bg;
         item.style.color = (colorKey === 'gold') ? '#000' : '#fff';
@@ -205,7 +348,7 @@
       const selectedIndex = Math.floor(Math.random() * names.length);
       const selectedName = names[selectedIndex].name;
 
-      buildSlot(names);
+      buildSlot(names, resultColor, selectedIndex);
       const itemWidth = parseFloat(slotTrack.dataset.itemWidth) || 240;
       const containerWidth = slotTrack.parentElement.clientWidth;
       const loopCount = 4;
@@ -221,8 +364,8 @@
         resultDisplay.textContent = selectedName;
         showPopup(selectedName, resultColor);
         spinButton.textContent = 'Spin';
-        spinButton.disabled = false;
         isSpinning = false;
+        spinButton.disabled = getFilteredGames().length === 0;
       }, spinDuration + 50);
     }
 
@@ -271,13 +414,7 @@
 
     spinButton.addEventListener('click', spinSlot);
 
-    updateFilters();
+    loadGames();
   </script>
 </body>
-
-  <script type="module">
-    import { requireAuth, updateNavbar, getSession } from './auth.js';
-    requireAuth();
-    updateNavbar(getSession());
-  </script>
 </html>

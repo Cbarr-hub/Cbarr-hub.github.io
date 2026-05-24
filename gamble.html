@@ -262,6 +262,61 @@
       }
     }
 
+    @keyframes slotWinPanelPop {
+      0% {
+        opacity: 0;
+        transform: translateY(8px) scale(0.96);
+      }
+
+      70% {
+        opacity: 1;
+        transform: translateY(-2px) scale(1.02);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes slotCoinBurst {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, 20px) scale(0.72) rotate(0deg);
+      }
+
+      18% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--coin-x, 0px)), var(--coin-y, -120px)) scale(1.08) rotate(240deg);
+      }
+    }
+
+    @keyframes slotScatterPulse {
+      0%, 100% {
+        transform: scale(1);
+        filter: brightness(1);
+      }
+
+      45% {
+        transform: scale(1.08);
+        filter: brightness(1.4);
+      }
+    }
+
+    @keyframes slotLinePop {
+      0%, 100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-3px);
+      }
+    }
+
     .section-head {
       display: flex;
       align-items: end;
@@ -1087,8 +1142,10 @@
     }
 
     .slot-header,
+    .slot-win-panel,
     .slot-meta,
     .slot-reels,
+    .slot-payline-summary,
     .slot-lines {
       position: relative;
       z-index: 1;
@@ -1131,6 +1188,67 @@
       font-size: 1.1rem;
       letter-spacing: 0;
       text-transform: none;
+    }
+
+    .slot-win-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.8rem;
+      min-height: 74px;
+      padding: 0.85rem 1rem;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgba(242, 193, 78, 0.18), rgba(34, 211, 238, 0.1)),
+        rgba(0, 0, 0, 0.26);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .slot-win-panel.win {
+      border-color: rgba(242, 193, 78, 0.62);
+      box-shadow: 0 0 28px rgba(242, 193, 78, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      animation: slotWinPanelPop 520ms ease both;
+    }
+
+    .slot-win-panel.bonus {
+      border-color: rgba(192, 132, 252, 0.7);
+      box-shadow: 0 0 28px rgba(192, 132, 252, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      animation: slotWinPanelPop 520ms ease both;
+    }
+
+    .slot-win-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .slot-win-title {
+      display: block;
+      margin-top: 0.24rem;
+      color: #fff;
+      font-size: clamp(1.15rem, 3vw, 1.75rem);
+      font-weight: 900;
+      line-height: 1.05;
+    }
+
+    .slot-win-detail {
+      margin-top: 0.28rem;
+      color: rgba(255, 255, 255, 0.76);
+      font-size: 0.88rem;
+      line-height: 1.35;
+    }
+
+    .slot-win-amount {
+      min-width: 94px;
+      color: var(--gold);
+      font-size: clamp(1.35rem, 4vw, 2.25rem);
+      font-weight: 900;
+      text-align: right;
+      text-shadow: 0 0 18px rgba(242, 193, 78, 0.58);
     }
 
     .slot-reels {
@@ -1255,6 +1373,12 @@
         linear-gradient(180deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
     }
 
+    .slot-cell.scatter-hit {
+      animation: slotScatterPulse 720ms ease both;
+      border-color: rgba(192, 132, 252, 0.86);
+      box-shadow: 0 0 22px rgba(192, 132, 252, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+
     .slot-cell[data-symbol="cherry"] {
       color: #fb7185;
     }
@@ -1309,11 +1433,12 @@
       min-height: 34px;
       display: grid;
       place-items: center;
+      gap: 0.05rem;
       color: rgba(255, 255, 255, 0.7);
       border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.06);
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       font-weight: 900;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -1324,6 +1449,73 @@
       border-color: transparent;
       background: var(--gold);
       box-shadow: 0 0 18px rgba(242, 193, 78, 0.44);
+      animation: slotLinePop 420ms ease both;
+    }
+
+    .slot-line.active::after {
+      content: attr(data-hit);
+      display: block;
+      font-size: 0.58rem;
+      letter-spacing: 0.04em;
+      opacity: 0.82;
+    }
+
+    .slot-payline-summary {
+      display: grid;
+      gap: 0.4rem;
+      min-height: 46px;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.24);
+    }
+
+    .slot-payline-summary > span {
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .slot-payline-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .slot-payline-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0.3rem 0.5rem;
+      color: #fff;
+      border: 1px solid rgba(242, 193, 78, 0.32);
+      border-radius: 999px;
+      background: rgba(242, 193, 78, 0.1);
+      font-size: 0.76rem;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .slot-payline-chip.empty {
+      color: rgba(255, 255, 255, 0.64);
+      border-color: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .slot-coin {
+      position: absolute;
+      left: 50%;
+      top: 54%;
+      z-index: 4;
+      width: 16px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #fff8c7 0 18%, var(--gold) 19% 66%, #8a5a16 67%);
+      box-shadow: 0 0 16px rgba(242, 193, 78, 0.72);
+      pointer-events: none;
+      animation: slotCoinBurst 900ms ease-out forwards;
     }
 
     .slot-meta {
@@ -1615,6 +1807,14 @@
         justify-items: start;
       }
 
+      .slot-win-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .slot-win-amount {
+        text-align: left;
+      }
+
       .slot-reels {
         --slot-cell-size: 54px;
         --slot-gap: 0.3rem;
@@ -1786,6 +1986,15 @@
                 </div>
               </div>
 
+              <div class="slot-win-panel" id="slot-win-panel" aria-live="polite">
+                <div>
+                  <span class="slot-win-label">Spin Result</span>
+                  <strong class="slot-win-title" id="slot-win-title">Ready to spin</strong>
+                  <p class="slot-win-detail" id="slot-win-detail">Awaiting result.</p>
+                </div>
+                <div class="slot-win-amount" id="slot-win-amount">$0</div>
+              </div>
+
               <div class="slot-reels" id="slot-reels" aria-label="Slot reels"></div>
 
               <div class="slot-lines" aria-label="Active paylines">
@@ -1794,6 +2003,13 @@
                 <span class="slot-line" data-line="bottom">Bottom</span>
                 <span class="slot-line" data-line="v">V</span>
                 <span class="slot-line" data-line="inverted-v">Inv V</span>
+              </div>
+
+              <div class="slot-payline-summary" aria-live="polite">
+                <span>Winning Lines</span>
+                <div class="slot-payline-list" id="slot-payline-list">
+                  <span class="slot-payline-chip empty">No line wins yet</span>
+                </div>
               </div>
 
               <div class="slot-meta">
@@ -1940,6 +2156,11 @@
     const slotReelsEl = document.getElementById("slot-reels");
     const slotModeEl = document.getElementById("slot-mode");
     const slotSpinStatusEl = document.getElementById("slot-spin-status");
+    const slotWinPanelEl = document.getElementById("slot-win-panel");
+    const slotWinTitleEl = document.getElementById("slot-win-title");
+    const slotWinDetailEl = document.getElementById("slot-win-detail");
+    const slotWinAmountEl = document.getElementById("slot-win-amount");
+    const slotPaylineListEl = document.getElementById("slot-payline-list");
     const slotScatterCountEl = document.getElementById("slot-scatter-count");
     const slotScatterFillEl = document.getElementById("slot-scatter-fill");
     const slotLastWinEl = document.getElementById("slot-last-win");
@@ -2050,13 +2271,18 @@
       effectLayerEl.innerHTML = "";
       rouletteResultEl.classList.remove("pop");
       slotCabinetEl.classList.remove("big-win");
+      slotWinPanelEl.classList.remove("win", "bonus");
+      slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
       document.querySelectorAll(".card.winner, .card.loser").forEach((cardEl) => {
         cardEl.classList.remove("winner", "loser");
       });
-      document.querySelectorAll(".slot-cell.winning").forEach((cellEl) => {
-        cellEl.classList.remove("winning");
+      document.querySelectorAll(".slot-cell.winning, .slot-cell.scatter-hit").forEach((cellEl) => {
+        cellEl.classList.remove("winning", "scatter-hit");
       });
-      slotLineEls.forEach((lineEl) => lineEl.classList.remove("active"));
+      slotLineEls.forEach((lineEl) => {
+        lineEl.classList.remove("active");
+        lineEl.removeAttribute("data-hit");
+      });
       dealerTotalEl.classList.remove("winner", "loser");
       playerTotalEl.classList.remove("winner", "loser");
     }
@@ -2224,6 +2450,7 @@
         id: payline.id,
         name: payline.name,
         symbol: target,
+        symbols: lineSymbols.slice(0, count),
         count,
         multiplier,
         cells: payline.rows.slice(0, count).map((row, column) => ({ row, column }))
@@ -2233,12 +2460,21 @@
     function evaluateSlotGrid(grid) {
       const lineWins = slotPaylines.map((payline) => evaluateSlotLine(grid, payline)).filter(Boolean);
       const scatterCount = grid.flat().filter((symbolId) => symbolId === "scatter").length;
+      const scatterCells = [];
+      grid.forEach((rowValues, row) => {
+        rowValues.forEach((symbolId, column) => {
+          if (symbolId === "scatter") {
+            scatterCells.push({ row, column });
+          }
+        });
+      });
       const lineMultiplier = lineWins.reduce((sum, win) => sum + win.multiplier, 0);
       const scatterTriggered = scatterCount >= 3;
 
       return {
         lineWins,
         scatterCount,
+        scatterCells,
         scatterTriggered,
         multiplier: lineMultiplier,
         freeSpinsAwarded: scatterTriggered ? 5 : 0,
@@ -2246,8 +2482,9 @@
       };
     }
 
-    function renderSlotGrid(grid, winningLines = []) {
+    function renderSlotGrid(grid, winningLines = [], scatterCells = []) {
       const winningCells = new Set();
+      const scatterCellSet = new Set(scatterCells.map(({ row, column }) => `${row}-${column}`));
       winningLines.forEach((line) => {
         line.cells.forEach(({ row, column }) => winningCells.add(`${row}-${column}`));
       });
@@ -2258,18 +2495,30 @@
         reelEl.className = "slot-reel";
 
         for (let row = 0; row < 3; row += 1) {
-          reelEl.appendChild(createSlotCell(grid[row][column], row, column, winningCells.has(`${row}-${column}`)));
+          reelEl.appendChild(createSlotCell(
+            grid[row][column],
+            row,
+            column,
+            winningCells.has(`${row}-${column}`),
+            scatterCellSet.has(`${row}-${column}`)
+          ));
         }
 
         slotReelsEl.appendChild(reelEl);
       }
 
       slotLineEls.forEach((lineEl) => {
-        lineEl.classList.toggle("active", winningLines.some((line) => line.id === lineEl.dataset.line));
+        const line = winningLines.find((win) => win.id === lineEl.dataset.line);
+        lineEl.classList.toggle("active", Boolean(line));
+        if (line) {
+          lineEl.dataset.hit = `${line.count} ${slotSymbolMap[line.symbol].label}`;
+        } else {
+          lineEl.removeAttribute("data-hit");
+        }
       });
     }
 
-    function createSlotCell(symbolId, row = "", column = "", winning = false) {
+    function createSlotCell(symbolId, row = "", column = "", winning = false, scatterHit = false) {
       const symbol = slotSymbolMap[symbolId];
       const cellEl = document.createElement("div");
       cellEl.className = "slot-cell";
@@ -2282,12 +2531,16 @@
       if (winning) {
         cellEl.classList.add("winning");
       }
+      if (scatterHit) {
+        cellEl.classList.add("scatter-hit");
+      }
 
       return cellEl;
     }
 
-    function renderSlotColumn(grid, column, winningLines = []) {
+    function renderSlotColumn(grid, column, winningLines = [], scatterCells = []) {
       const winningCells = new Set();
+      const scatterCellSet = new Set(scatterCells.map(({ row, column: scatterColumn }) => `${row}-${scatterColumn}`));
       winningLines.forEach((line) => {
         line.cells.forEach(({ row, column: winColumn }) => winningCells.add(`${row}-${winColumn}`));
       });
@@ -2300,7 +2553,13 @@
       reelEl.className = "slot-reel";
       reelEl.innerHTML = "";
       for (let row = 0; row < 3; row += 1) {
-        reelEl.appendChild(createSlotCell(grid[row][column], row, column, winningCells.has(`${row}-${column}`)));
+        reelEl.appendChild(createSlotCell(
+          grid[row][column],
+          row,
+          column,
+          winningCells.has(`${row}-${column}`),
+          scatterCellSet.has(`${row}-${column}`)
+        ));
       }
     }
 
@@ -2315,14 +2574,19 @@
       return firstCell.getBoundingClientRect().height + gap;
     }
 
-    function renderSlotSpin(finalGrid, winningLines = []) {
-      slotLineEls.forEach((lineEl) => lineEl.classList.remove("active"));
+    function renderSlotSpin(finalGrid) {
+      slotLineEls.forEach((lineEl) => {
+        lineEl.classList.remove("active");
+        lineEl.removeAttribute("data-hit");
+      });
       slotReelsEl.innerHTML = "";
+      const stopPromises = [];
 
       for (let column = 0; column < 5; column += 1) {
         const reelEl = document.createElement("div");
         const stripEl = document.createElement("div");
         const leadCount = 26 + column * 6;
+        const duration = 2100 + column * 430;
         reelEl.className = "slot-reel";
         stripEl.className = "slot-strip";
 
@@ -2341,20 +2605,46 @@
         reelEl.appendChild(stripEl);
         slotReelsEl.appendChild(reelEl);
 
-        const duration = 2100 + column * 430;
+        const stopPromise = new Promise((resolve) => {
+          let stopped = false;
+          const stopColumn = () => {
+            if (stopped) {
+              return;
+            }
+            stopped = true;
+            renderSlotColumn(finalGrid, column);
+            resolve();
+          };
+          const fallbackTimer = window.setTimeout(stopColumn, duration + 700);
+
+          stripEl.addEventListener("transitionend", (event) => {
+            if (event.propertyName === "transform") {
+              window.clearTimeout(fallbackTimer);
+              stopColumn();
+            }
+          }, { once: true });
+        });
+        stopPromises.push(stopPromise);
+
         stripEl.style.transitionDuration = `${duration}ms`;
         window.requestAnimationFrame(() => {
           const distance = slotStepSize(stripEl) * leadCount;
           reelEl.classList.add("stopping");
           stripEl.style.transform = `translate3d(0, -${distance}px, 0)`;
         });
-
-        stripEl.addEventListener("transitionend", (event) => {
-          if (event.propertyName === "transform") {
-            renderSlotColumn(finalGrid, column, winningLines);
-          }
-        }, { once: true });
       }
+
+      return Promise.all(stopPromises);
+    }
+
+    function readVisibleSlotGrid() {
+      const grid = Array.from({ length: 3 }, () => Array(5).fill(slotSymbols[0].id));
+      Array.from(slotReelsEl.children).forEach((reelEl, column) => {
+        Array.from(reelEl.querySelectorAll(".slot-cell")).slice(0, 3).forEach((cellEl, row) => {
+          grid[row][column] = cellEl.dataset.symbol || slotSymbols[0].id;
+        });
+      });
+      return grid;
     }
 
     function updateSlotMeta() {
@@ -2369,6 +2659,62 @@
       slotScatterFillEl.style.setProperty("--scatter-progress", `${Math.min(state.slotScatterCount, 3) / 3 * 100}%`);
       slotLastWinEl.textContent = formatDollars(state.slotLastWin);
       slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
+    }
+
+    function slotLineLabel(line, spinBet, bonusMultiplier = 1) {
+      const symbol = slotSymbolMap[line.symbol];
+      const symbolNames = line.symbols
+        ? line.symbols.map((symbolId) => slotSymbolMap[symbolId].label).join(" + ")
+        : `${line.count} ${symbol.label}`;
+      const amount = spinBet * line.multiplier * bonusMultiplier;
+      return `${line.name}: ${symbolNames} pays ${formatDollars(amount)}`;
+    }
+
+    function renderSlotPaylineSummary(lineWins, spinBet, bonusMultiplier = 1) {
+      slotPaylineListEl.innerHTML = "";
+
+      if (!lineWins.length) {
+        const emptyEl = document.createElement("span");
+        emptyEl.className = "slot-payline-chip empty";
+        emptyEl.textContent = "No active line wins";
+        slotPaylineListEl.appendChild(emptyEl);
+        return;
+      }
+
+      lineWins.forEach((line) => {
+        const chipEl = document.createElement("span");
+        chipEl.className = "slot-payline-chip";
+        chipEl.textContent = slotLineLabel(line, spinBet, bonusMultiplier);
+        slotPaylineListEl.appendChild(chipEl);
+      });
+    }
+
+    function renderSlotWinPanel({ title, detail, amount = 0, mode = "" }) {
+      slotWinTitleEl.textContent = title;
+      slotWinDetailEl.textContent = detail;
+      slotWinAmountEl.textContent = formatDollars(amount);
+      slotWinPanelEl.classList.remove("win", "bonus");
+      if (mode) {
+        replayAnimation(slotWinPanelEl, mode);
+      }
+    }
+
+    function createSlotCoins(count = 12) {
+      slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
+      for (let index = 0; index < count; index += 1) {
+        const coinEl = document.createElement("span");
+        const x = Math.round((Math.random() - 0.5) * 360);
+        const y = Math.round(-70 - Math.random() * 150);
+        coinEl.className = "slot-coin";
+        coinEl.style.setProperty("--coin-x", `${x}px`);
+        coinEl.style.setProperty("--coin-y", `${y}px`);
+        coinEl.style.animationDelay = `${index * 34}ms`;
+        slotCabinetEl.appendChild(coinEl);
+      }
+
+      window.setTimeout(() => {
+        slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
+      }, 1250);
     }
 
     function animateSlotWinAmount(amount) {
@@ -2393,12 +2739,15 @@
 
     function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       const basePayout = spinBet * result.multiplier;
-      const payout = basePayout * (wasFreeSpin ? state.slotMultiplier : 1);
+      const activeMultiplier = wasFreeSpin ? state.slotMultiplier : 1;
+      const payout = basePayout * activeMultiplier;
       state.slotActive = false;
       state.slotScatterCount = result.scatterCount;
       state.slotLastWin = payout;
 
-      renderSlotGrid(grid, result.lineWins);
+      const highlightedScatters = result.scatterCount >= 2 ? result.scatterCells : [];
+      renderSlotGrid(grid, result.lineWins, highlightedScatters);
+      renderSlotPaylineSummary(result.lineWins, spinBet, activeMultiplier);
       animateSlotWinAmount(payout);
 
       if (!wasFreeSpin) {
@@ -2418,8 +2767,15 @@
         const lineNames = result.lineWins.map((line) => line.name).join(", ");
         const title = payout >= spinBet * 20 ? "Mega win" : "Slot win";
         showResult(title, `${lineNames || "Bonus"} paid ${formatDollars(payout)}${wasFreeSpin ? " in free spins" : ""}.`);
+        renderSlotWinPanel({
+          title,
+          detail: `${result.lineWins.length} line${result.lineWins.length === 1 ? "" : "s"} hit: ${lineNames}.`,
+          amount: payout,
+          mode: "win"
+        });
         pulseStats(creditsStatEl, streakStatEl, recordStatEl);
         playOutcomeEffect("win");
+        createSlotCoins(payout >= spinBet * 8 ? 18 : 10);
         if (payout >= spinBet * 8 || result.lineWins.some((line) => slotSymbolMap[line.symbol].tier === "jackpot" && line.count === 5)) {
           replayAnimation(slotCabinetEl, "big-win");
         }
@@ -2427,14 +2783,31 @@
         state.streak += 1;
         state.wins += 1;
         showResult("Scatter bonus", "Free spins are ready. The next spins are on the house.");
+        renderSlotWinPanel({
+          title: "Scatter bonus",
+          detail: `${result.scatterCount} scatters awarded ${result.freeSpinsAwarded} free spins at ${result.bonusMultiplier}x.`,
+          amount: 0,
+          mode: "bonus"
+        });
         pulseStats(streakStatEl, recordStatEl);
         playOutcomeEffect("push");
+        createSlotCoins(8);
       } else if (wasFreeSpin) {
         if (state.slotFreeSpins > 0) {
           showResult("Free spin", "No line hit. Your bonus spins continue.");
+          renderSlotWinPanel({
+            title: "No line hit",
+            detail: `${state.slotFreeSpins} bonus spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
+            amount: 0
+          });
         } else {
           state.slotMultiplier = 1;
           showResult("Bonus ended", "Free spins are complete. Back to the base game.");
+          renderSlotWinPanel({
+            title: "Bonus ended",
+            detail: "Free spins are complete. Back to the base game.",
+            amount: 0
+          });
         }
         playOutcomeEffect("push");
       } else {
@@ -2442,6 +2815,12 @@
         state.streak = 0;
         state.losses += 1;
         showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}`);
+        renderSlotWinPanel({
+          title: result.scatterCount === 2 ? "Near bonus" : "No win",
+          detail: result.scatterCount === 2 ? "Two scatters landed. One more would start free spins." : "No active payline matched from the left.",
+          amount: 0,
+          mode: result.scatterCount === 2 ? "bonus" : ""
+        });
         pulseStats(creditsStatEl, streakStatEl, recordStatEl);
         playOutcomeEffect("loss");
       }
@@ -2473,18 +2852,16 @@
       state.slotLastWin = 0;
       slotSpinStatusEl.textContent = wasFreeSpin ? "Bonus spin..." : "Spinning...";
       slotLastWinEl.textContent = "$0";
+      renderSlotPaylineSummary([], spinBet);
+      renderSlotWinPanel({
+        title: "Reels spinning",
+        detail: wasFreeSpin ? `Bonus spin at ${state.slotMultiplier}x.` : "Waiting for the reels to stop.",
+        amount: 0
+      });
       showResult("Reels spinning", wasFreeSpin ? `${state.slotFreeSpins} free spins remaining at ${state.slotMultiplier}x.` : `${formatDollars(spinBet)} spin in progress.`);
 
-      window.setTimeout(() => {
-        if (round !== state.slotRound) {
-          return;
-        }
-
-        finishSlotSpin(grid, result, wasFreeSpin, spinBet);
-      }, 4100);
-
       let grid = generateSlotGrid({ nearMiss: true });
-      let result = evaluateSlotGrid(grid);
+      const result = evaluateSlotGrid(grid);
 
       if (!result.lineWins.length && !result.scatterTriggered && Math.random() < 0.12) {
         const row = Math.floor(Math.random() * 3);
@@ -2492,10 +2869,17 @@
         grid[row][0] = symbol;
         grid[row][1] = "wild";
         grid[row][2] = symbol;
-        result = evaluateSlotGrid(grid);
       }
 
-      renderSlotSpin(grid, result.lineWins);
+      renderSlotSpin(grid).then(() => {
+        if (round !== state.slotRound) {
+          return;
+        }
+
+        const visibleGrid = readVisibleSlotGrid();
+        const visibleResult = evaluateSlotGrid(visibleGrid);
+        finishSlotSpin(visibleGrid, visibleResult, wasFreeSpin, spinBet);
+      });
       render();
     }
 
@@ -3071,6 +3455,12 @@
       playerCardEl.classList.remove("winner");
       houseCardEl.classList.remove("winner");
       renderSlotGrid(generateSlotGrid());
+      renderSlotPaylineSummary([], state.bet);
+      renderSlotWinPanel({
+        title: "Ready to spin",
+        detail: "Awaiting result.",
+        amount: 0
+      });
       updateSlotMeta();
       showResult("Place a bet", "Choose High Card, Blackjack, Roulette, or Slots to begin.");
       pulseStats(creditsStatEl, streakStatEl, recordStatEl);

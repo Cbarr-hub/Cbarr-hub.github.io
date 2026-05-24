@@ -1369,6 +1369,7 @@
       dealerHand: [],
       playerHand: [],
       hideDealerHole: false,
+      blackjackResolving: false,
       renderedBet: 10,
       blackjackRound: 0,
       rouletteActive: false,
@@ -1765,13 +1766,13 @@
       deckShoeEl.hidden = state.game === "roulette";
 
       const outOfCredits = state.credits < 5;
-      const lockedBet = state.blackjackActive || state.rouletteActive;
+      const lockedBet = state.blackjackActive || state.blackjackResolving || state.rouletteActive;
       dealButton.hidden = state.game === "blackjack" && state.blackjackActive;
-      hitButton.hidden = state.game !== "blackjack" || !state.blackjackActive;
-      standButton.hidden = state.game !== "blackjack" || !state.blackjackActive;
+      hitButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
+      standButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
       dealButton.disabled = outOfCredits || lockedBet;
-      hitButton.disabled = outOfCredits || !state.blackjackActive;
-      standButton.disabled = outOfCredits || !state.blackjackActive;
+      hitButton.disabled = outOfCredits || !state.blackjackActive || state.blackjackResolving;
+      standButton.disabled = outOfCredits || !state.blackjackActive || state.blackjackResolving;
       lowerBetButton.disabled = state.bet <= 5 || outOfCredits || lockedBet;
       raiseBetButton.disabled = state.bet >= maxBet() || outOfCredits || lockedBet;
       minBetButton.disabled = outOfCredits || lockedBet || state.bet <= 5;
@@ -1796,7 +1797,7 @@
     }
 
     function canChangeBet() {
-      return state.credits >= 5 && !state.blackjackActive && !state.rouletteActive;
+      return state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive;
     }
 
     function setBet(value) {
@@ -1897,6 +1898,7 @@
       state.blackjackRound += 1;
       const round = state.blackjackRound;
       state.blackjackActive = true;
+      state.blackjackResolving = false;
       state.hideDealerHole = true;
       state.dealerHand = [drawCard(), drawCard()];
       state.playerHand = [drawCard(), drawCard()];
@@ -1941,8 +1943,22 @@
 
       if (handTotal(state.playerHand) > 21) {
         state.blackjackActive = false;
-        revealDealerHoleCard();
-        settleLoss("Bust", `You went over 21 and lost ${state.bet} credits.`);
+        state.blackjackResolving = true;
+        const round = state.blackjackRound;
+        showResult("Bust", "Resolving hand...");
+        render();
+
+        window.setTimeout(() => {
+          if (round !== state.blackjackRound || !state.blackjackResolving) {
+            return;
+          }
+
+          state.blackjackResolving = false;
+          revealDealerHoleCard();
+          settleLoss("Bust", `You went over 21 and lost ${state.bet} credits.`);
+          render();
+        }, 650);
+        return;
       }
 
       render();
@@ -2093,6 +2109,7 @@
       state.wins = 0;
       state.losses = 0;
       state.blackjackActive = false;
+      state.blackjackResolving = false;
       state.rouletteActive = false;
       state.rouletteBetType = "color";
       state.rouletteChoice = "red";

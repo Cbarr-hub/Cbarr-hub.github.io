@@ -54,5 +54,10 @@
     <marquee scrollamount="6">© 1998–2026 GAMERTOWN.SOLUTIONS // ALL REALITIES RESERVED // VIEWED BEST IN AOL 4.0</marquee>
   </footer>
 
+  <script type="module">
+    import { requireAuth, updateNavbar, getSession } from './auth.js';
+    requireAuth();
+    updateNavbar(getSession());
+  </script>
 </body>
 </html>

@@ -4,365 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Name Spinner</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #020001;
-      --panel: rgba(0, 255, 255, 0.08);
-      --accent: #00ffff;
-      --accent-2: #ff39ff;
-      --text: #ffffff;
-      --glow: rgba(0, 255, 255, 0.18);
-      --panel-border: rgba(0, 255, 255, 0.3);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: "Lucida Console", "Courier New", monospace;
-      background: radial-gradient(circle at 20% 10%, #200018 0%, #000 40%), #020001;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-      background-size: 100% 26px;
-      pointer-events: none;
-      opacity: 0.12;
-    }
-
-    .page {
-      position: relative;
-      width: min(100%, 980px);
-      padding: 1.5rem;
-      background: rgba(0, 0, 0, 0.68);
-      border: 2px solid rgba(0, 255, 255, 0.18);
-      box-shadow: 0 0 40px rgba(0, 255, 255, 0.08);
-      border-radius: 18px;
-      z-index: 1;
-    }
-
-    .glitch-header {
-      text-align: center;
-      margin-bottom: 1.5rem;
-    }
-
-    .glitch {
-      margin: 0;
-      font-size: clamp(2.2rem, 4vw, 4rem);
-      letter-spacing: 0.24em;
-      color: #e8ff00;
-      position: relative;
-      text-transform: uppercase;
-      text-shadow: 0 0 8px rgba(57, 255, 20, 0.25);
-    }
-
-    .glitch::before,
-    .glitch::after {
-      content: attr(data-text);
-      position: absolute;
-      left: 0;
-      width: 100%;
-      top: 0;
-      overflow: hidden;
-    }
-
-    .glitch::before {
-      color: #ff00ff;
-      clip-path: polygon(0 0, 100% 0, 100% 38%, 0 48%);
-      animation: glitchTop 2.2s infinite linear alternate-reverse;
-    }
-
-    .glitch::after {
-      color: #00ffff;
-      clip-path: polygon(0 58%, 100% 48%, 100% 100%, 0 100%);
-      animation: glitchBottom 1.7s infinite linear alternate-reverse;
-    }
-
-    @keyframes glitchTop {
-      0% { transform: translate(2px, -2px); }
-      100% { transform: translate(-2px, 2px); }
-    }
-
-    @keyframes glitchBottom {
-      0% { transform: translate(-2px, 2px); }
-      100% { transform: translate(2px, -2px); }
-    }
-
-    .sub {
-      margin: 0.6rem auto 0;
-      color: #cbd5ff;
-      letter-spacing: 0.08em;
-      max-width: 640px;
-    }
-
-    .slot-frame {
-      position: relative;
-      width: min(100%, 980px);
-      height: 220px;
-      margin: 0 auto 1.5rem;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-    }
-
-    .slot-frame::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: 28px;
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), 0 0 80px rgba(0,255,255,0.08);
-      pointer-events: none;
-    }
-
-    .slot-window {
-      position: relative;
-      width: 100%;
-      height: 140px;
-      overflow: hidden;
-      border-radius: 18px;
-      background: linear-gradient(135deg, rgba(0,0,0,0.55), rgba(0,0,0,0.75));
-      border: 1px solid rgba(0,255,255,0.18);
-      box-shadow: inset 0 0 30px rgba(0,255,255,0.08);
-    }
-
-    .slot-track {
-      display: flex;
-      align-items: center;
-      height: 100%;
-      transition: transform 6s cubic-bezier(0.22, 1, 0.36, 1);
-      will-change: transform;
-    }
-
-    .slot-item {
-      min-width: 220px;
-      padding: 1rem 1.4rem;
-      margin: 0 0.5rem;
-      border-radius: 18px;
-      background: linear-gradient(135deg, rgba(0,255,255,0.12), rgba(255,255,255,0.04));
-      border: 1px solid rgba(0,255,255,0.18);
-      color: #fff;
-      font-size: 1.1rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      backdrop-filter: blur(6px);
-    }
-
-    .slot-highlight {
-      position: absolute;
-      inset: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 200px;
-      border-left: 2px solid var(--accent);
-      border-right: 2px solid var(--accent);
-      pointer-events: none;
-      box-shadow: 0 0 40px rgba(0,255,255,0.12);
-    }
-
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.72);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-      z-index: 20;
-    }
-
-    .modal-overlay.show {
-      display: flex;
-    }
-
-    .modal {
-      width: min(100%, 500px);
-      padding: 2rem;
-      background: rgba(10, 10, 22, 0.96);
-      border: 1px solid rgba(0, 255, 255, 0.24);
-      border-radius: 24px;
-      box-shadow: 0 0 80px rgba(0, 255, 255, 0.18);
-      text-align: center;
-      color: #fff;
-      animation: popIn 260ms ease-out;
-    }
-
-    .modal h2 {
-      margin: 0 0 1rem;
-      font-size: clamp(1.8rem, 2.4vw, 2.5rem);
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    .modal p {
-      margin: 0;
-      font-size: 1.4rem;
-      letter-spacing: 0.1em;
-    }
-
-    .modal .popup-name {
-      margin: 1.25rem 0 0;
-      font-size: 2rem;
-      letter-spacing: 0.12em;
-      font-weight: 800;
-      color: var(--accent);
-    }
-
-    .modal-close {
-      margin-top: 1.75rem;
-      padding: 0.85rem 1.3rem;
-      border: 1px solid rgba(0,255,255,0.35);
-      border-radius: 999px;
-      background: rgba(0,0,0,0.35);
-      color: var(--text);
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease;
-    }
-
-    .modal-close:hover {
-      transform: translateY(-1px);
-      background: rgba(0,255,255,0.15);
-    }
-
-    @keyframes popIn {
-      from {
-        opacity: 0;
-        transform: translateY(16px) scale(0.96);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-      }
-    }
-
-    .filters {
-      display: grid;
-      gap: 1rem;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      margin-bottom: 1rem;
-    }
-
-    .filter-group {
-      display: grid;
-      gap: 0.6rem;
-      padding: 1rem;
-      border: 1px solid rgba(0,255,255,0.18);
-      border-radius: 16px;
-      background: rgba(0,0,0,0.35);
-    }
-
-    .filter-group span {
-      font-size: 0.9rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #a7f4ff;
-    }
-
-    .filter-group label {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.95rem;
-      color: #edf2ff;
-      cursor: pointer;
-    }
-
-    .filter-group input {
-      width: 1rem;
-      height: 1rem;
-      accent-color: var(--accent);
-    }
-
-    .no-names {
-      color: #fff;
-      font-size: 1rem;
-      text-align: center;
-      width: 100%;
-      padding: 1rem 0;
-    }
-
-    .controls {
-      display: grid;
-      gap: 0.75rem;
-      grid-template-columns: 1fr auto;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
-
-    .controls input,
-    .controls button {
-      font: inherit;
-      padding: 0.95rem 1rem;
-      border: 1px solid rgba(0,255,255,0.35);
-      border-radius: 12px;
-      background: rgba(0,0,0,0.4);
-      color: var(--text);
-      outline: none;
-    }
-
-    .controls button {
-      cursor: pointer;
-      transition: transform 0.2s ease, background 0.2s ease;
-    }
-
-    .controls button:hover {
-      transform: translateY(-1px);
-      background: rgba(0,255,255,0.15);
-    }
-
-    .controls input {
-      min-width: 0;
-    }
-
-    .result-card {
-      padding: 1rem;
-      border: 1px solid var(--panel-border);
-      border-radius: 16px;
-      background: var(--panel);
-      text-align: center;
-    }
-
-    .result-card strong {
-      display: block;
-      margin-top: 0.65rem;
-      font-size: 1.7rem;
-      letter-spacing: 0.12em;
-      color: #fff;
-    }
-
-    .note,
-    .return {
-      text-align: center;
-      margin-top: 1rem;
-      color: #a7f4ff;
-    }
-
-    .return a {
-      color: var(--accent);
-      text-decoration: none;
-      border-bottom: 1px dotted rgba(0,255,255,0.6);
-    }
-
-    .return a:hover {
-      color: #ffffff;
-    }
-  </style>
+  <link rel="stylesheet" href="wheel.css">
 </head>
 <body>
   <div class="page">
@@ -373,7 +15,9 @@
 
     <div class="slot-frame" aria-label="Horizontal slot name spinner">
       <div class="slot-window">
-        <div id="slotTrack" class="slot-track" aria-live="polite"></div>
+        <div id="slotTrack" class="slot-track" aria-live="polite">
+          <div class="no-names">Choose filters, then press Spin.</div>
+        </div>
         <div class="slot-highlight" aria-hidden="true"></div>
       </div>
     </div>
@@ -419,14 +63,23 @@
 
   <script>
     const allGames = [
-      { name: 'Lethal Company', players: ['4','5','6+'], time: '<60' },
-      { name: 'Lockdown protocol', players: ['2','3','4'], time: '<30' },
-      { name: 'RV there yet', players: ['2','3','4','5'], time: 'no limit' },
-      { name: 'Goofy Gorillas', players: ['2','3'], time: '<30' },
-      { name: 'Super battle golf', players: ['2','3','4'], time: '<60' },
-      { name: 'CS2 Office', players: ['4','5','6+'], time: 'no limit' },
-      { name: 'Buckshot Roulette', players: ['3','4','5'], time: '<60' },
-      { name: 'Peak', players: ['4','5','6+'], time: '<60' }
+      { name: 'Lethal Company', players: ['2'], time: '<60' },
+      { name: 'Lockdown protocol', players: ['2'], time: '<30' },
+      { name: 'RV there yet', players: ['2'], time: 'no limit' },
+      { name: 'Goofy Gorillas', players: ['4','5','6+'], time: '<30' },
+      { name: 'Super battle golf', players: ['2'], time: '<60' },
+      { name: 'CSGO', players: ['2','3','4','5'], time: ['<60','no limit'] },
+      { name: 'Buckshot Roulette', players: ['2'], time: '<60' },
+      { name: 'Peak', players: ['2'], time: '<60' },
+      { name: 'Gamble with your friends', players: ['3','4','5','6+'], time: 'no limit' },
+      { name: 'Rocket League', players: ['2','3','4','6+'], time: ['<30','<60','no limit'] },
+      { name: 'Halo', players: ['2','3','4','5','6+'], time: ['<60','no limit'] },
+      { name: 'Risk of Rain', players: ['2','3','4'], time: ['<60','no limit'] },
+      { name: 'Just another night shift', players: ['4'], time: ['<30','<60','no limit'] },
+      { name: 'League of legends', players: ['2','3','4','5','6+'], time: ['<30','<60','no limit'] },
+      { name: 'Age of Empires', players: ['4','5','6+'], time: ['no limit'] },
+      { name: 'Last train out of wormtown', players: ['5','6+'], time: ['<60','no limit'] },
+      {name: 'Oh Deer', players: ['4'], time: ['<30','<60','no limit'] },
     ];
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
@@ -456,7 +109,8 @@
     function getFilteredGames() {
       return allGames.filter(game => {
         const playerMatch = game.players.some(player => selectedPlayers.includes(player));
-        const timeMatch = selectedTimes.includes(game.time);
+        const timeValues = Array.isArray(game.time) ? game.time : [game.time];
+        const timeMatch = timeValues.some(time => selectedTimes.includes(time));
         return playerMatch && timeMatch;
       });
     }
@@ -464,26 +118,26 @@
     function updateFilters() {
       selectedPlayers = Array.from(document.querySelectorAll('.filter-group:nth-of-type(1) input:checked')).map(input => input.value);
       selectedTimes = Array.from(document.querySelectorAll('.filter-group:nth-of-type(2) input:checked')).map(input => input.value);
-      buildSlot();
+      const hasResults = getFilteredGames().length > 0;
+      spinButton.disabled = !hasResults;
     }
 
     filterInputs.forEach(input => {
       input.addEventListener('change', updateFilters);
     });
 
-    function buildSlot() {
-      const names = getFilteredGames();
+    function buildSlot(names) {
       slotTrack.innerHTML = '';
-      if (names.length === 0) {
+      if (!names || names.length === 0) {
         const messageEl = document.createElement('div');
         messageEl.className = 'no-names';
-        messageEl.textContent = 'No games match the selected filters.';
+        messageEl.textContent = 'Choose filters, then press Spin.';
         slotTrack.appendChild(messageEl);
-        spinButton.disabled = true;
         return;
       }
-      spinButton.disabled = false;
-      const repeatedNames = [...names, ...names, ...names];
+      const loopCount = 4;
+      const repeatCount = loopCount + 2;
+      const repeatedNames = Array.from({ length: repeatCount }, () => names).flat();
       // ensure each name gets a stable color assignment
       // set blue probability to 4/5 and scale other probabilities to fill the remainder
       names.forEach(n => {
@@ -551,6 +205,7 @@
       spinButton.textContent = 'Spinning...';
       spinButton.disabled = true;
 
+      buildSlot(names);
       const selectedIndex = Math.floor(Math.random() * names.length);
       const itemWidth = parseFloat(slotTrack.dataset.itemWidth) || 240;
       const containerWidth = slotTrack.parentElement.clientWidth;
@@ -571,7 +226,6 @@
         spinButton.textContent = 'Spin';
         spinButton.disabled = false;
         isSpinning = false;
-        buildSlot();
       }, spinDuration + 50);
     }
 
@@ -611,7 +265,13 @@
 
     spinButton.addEventListener('click', spinSlot);
 
-    buildSlot();
+    updateFilters();
   </script>
 </body>
+
+  <script type="module">
+    import { requireAuth, updateNavbar, getSession } from './auth.js';
+    requireAuth();
+    updateNavbar(getSession());
+  </script>
 </html>

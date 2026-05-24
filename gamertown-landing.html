@@ -12,7 +12,7 @@
         <div class="navbar-container">
             <!-- Logo -->
             <div class="navbar-logo">
-                <span class="logo-placeholder">GAMERTOWN</span>
+                <img src="gamertown_globe_logo_transparent.png" alt="Gamertown Solutions" class="logo logo-navbar" />
             </div>
 
             <!-- Search Bar -->
@@ -142,11 +142,20 @@
             </div>
 
             <div class="footer-bottom">
+                <div style="text-align: center; margin-bottom: 1rem;">
+                    <img src="gamertown_logo_optimized.png" alt="Gamertown" class="logo logo-footer" />
+                </div>
                 <p>&copy; 2026 Gamertown Solutions. All rights reserved.</p>
             </div>
         </div>
     </footer>
 
     <script src="site.js"></script>
+
+    <script type="module">
+      import { requireAuth, updateNavbar, getSession } from './auth.js';
+      requireAuth();
+      updateNavbar(getSession());
+    </script>
 </body>
 </html>

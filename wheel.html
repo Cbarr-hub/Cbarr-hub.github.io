@@ -365,6 +365,7 @@
       'Buckshot Roulette',
       'Peak'
     ];
+    const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const spinButton = document.getElementById('spin');
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
@@ -379,6 +380,8 @@
         const item = document.createElement('div');
         item.className = 'slot-item';
         item.textContent = name;
+        const color = slotColors[Math.floor(Math.random() * slotColors.length)];
+        item.style.background = color;
         slotTrack.appendChild(item);
       });
 

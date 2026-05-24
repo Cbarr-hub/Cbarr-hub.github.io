@@ -8,6 +8,17 @@ import {
 import { renderRecentEvents } from './gamble-activity.js?v=dashboard-clean-1';
 import { renderGamblingDashboard } from './gamble-dashboard.js?v=dashboard-clean-1';
 import { renderLeaderboard } from './gamble-leaderboard.js?v=dashboard-clean-1';
+import {
+  SLOT_PAYLINES as slotRulesPaylines,
+  SLOT_RTP_TARGET,
+  SLOT_SYMBOL_MAP as slotRulesSymbolMap,
+  SLOT_SYMBOLS as slotRulesSymbols,
+  evaluateSlotGrid as evaluateSlotRulesGrid,
+  generateSlotGrid as generateSlotRulesGrid,
+  settleSlotMath as settleSlotRulesMath,
+  weightedSlotSymbol as weightedSlotRulesSymbol,
+  winTierTitle
+} from './slot-rules.mjs?v=slot-rtp-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
@@ -60,7 +71,9 @@ const state = {
   slotMultiplier: 1,
   slotLastWin: 0,
   slotScatterCount: 0,
-  slotRound: 0
+  slotRound: 0,
+  slotBonusTotal: 0,
+  slotRetriggerText: ""
 };
 
 const creditsEl = document.getElementById("credits");
@@ -106,6 +119,9 @@ const slotScatterCountEl = document.getElementById("slot-scatter-count");
 const slotScatterFillEl = document.getElementById("slot-scatter-fill");
 const slotLastWinEl = document.getElementById("slot-last-win");
 const slotMultiplierEl = document.getElementById("slot-multiplier");
+const slotBonusTotalEl = document.getElementById("slot-bonus-total");
+const slotRtpEl = document.getElementById("slot-rtp");
+const slotRetriggerEl = document.getElementById("slot-retrigger");
 const leaderboardListEl = document.getElementById("leaderboard-list");
 const leaderboardStatusEl = document.getElementById("leaderboard-status");
 const activityListEl = document.getElementById("activity-list");
@@ -187,7 +203,7 @@ const gameMeta = {
   },
   slots: {
     title: "Slots",
-    copy: "Five reels, five lines, scatter bonuses, and neon multipliers.",
+    copy: "Five reels, ten lines, scatter bonuses, and tuned 95% RTP.",
     activeCopy: "Match left-to-right or land 3 scatters for free spins.",
     action: "Spin Reels"
   }
@@ -337,35 +353,11 @@ function initializeRouletteUi() {
 }
 
 function weightedSlotSymbol() {
-  const totalWeight = slotSymbols.reduce((sum, symbol) => sum + symbol.weight, 0);
-  let pick = Math.random() * totalWeight;
-
-  for (const symbol of slotSymbols) {
-    pick -= symbol.weight;
-    if (pick <= 0) {
-      return symbol;
-    }
-  }
-
-  return slotSymbols[0];
+  return weightedSlotRulesSymbol();
 }
 
 function generateSlotGrid(options = {}) {
-  const grid = Array.from({ length: 3 }, () =>
-    Array.from({ length: 5 }, () => weightedSlotSymbol().id)
-  );
-
-  if (options.nearMiss && Math.random() < 0.22 && grid.flat().filter((symbolId) => symbolId === "scatter").length === 0) {
-    const firstColumn = Math.floor(Math.random() * 5);
-    let secondColumn = Math.floor(Math.random() * 5);
-    while (secondColumn === firstColumn) {
-      secondColumn = Math.floor(Math.random() * 5);
-    }
-    grid[0][firstColumn] = "scatter";
-    grid[2][secondColumn] = "scatter";
-  }
-
-  return grid;
+  return generateSlotRulesGrid(options);
 }
 
 function evaluateSlotLine(grid, payline) {
@@ -389,7 +381,7 @@ function evaluateSlotLine(grid, payline) {
     return null;
   }
 
-  const symbol = slotSymbolMap[target];
+  const symbol = slotRulesSymbolMap[target];
   const tier = target === "wild" ? "wild" : symbol.tier;
   const multiplier = slotPayouts[tier]?.[count] || 0;
 
@@ -409,28 +401,7 @@ function evaluateSlotLine(grid, payline) {
 }
 
 function evaluateSlotGrid(grid) {
-  const lineWins = slotPaylines.map((payline) => evaluateSlotLine(grid, payline)).filter(Boolean);
-  const scatterCount = grid.flat().filter((symbolId) => symbolId === "scatter").length;
-  const scatterCells = [];
-  grid.forEach((rowValues, row) => {
-    rowValues.forEach((symbolId, column) => {
-      if (symbolId === "scatter") {
-        scatterCells.push({ row, column });
-      }
-    });
-  });
-  const lineMultiplier = lineWins.reduce((sum, win) => sum + win.multiplier, 0);
-  const scatterTriggered = scatterCount >= 3;
-
-  return {
-    lineWins,
-    scatterCount,
-    scatterCells,
-    scatterTriggered,
-    multiplier: lineMultiplier,
-    freeSpinsAwarded: scatterTriggered ? 5 : 0,
-    bonusMultiplier: scatterTriggered ? 2 : 1
-  };
+  return evaluateSlotRulesGrid(grid);
 }
 
 function renderSlotGrid(grid, winningLines = [], scatterCells = []) {
@@ -462,7 +433,7 @@ function renderSlotGrid(grid, winningLines = [], scatterCells = []) {
     const line = winningLines.find((win) => win.id === lineEl.dataset.line);
     lineEl.classList.toggle("active", Boolean(line));
     if (line) {
-      lineEl.dataset.hit = `${line.count} ${slotSymbolMap[line.symbol].label}`;
+      lineEl.dataset.hit = `${line.count} ${slotRulesSymbolMap[line.symbol].label}`;
     } else {
       lineEl.removeAttribute("data-hit");
     }
@@ -470,7 +441,7 @@ function renderSlotGrid(grid, winningLines = [], scatterCells = []) {
 }
 
 function createSlotCell(symbolId, row = "", column = "", winning = false, scatterHit = false) {
-  const symbol = slotSymbolMap[symbolId];
+  const symbol = slotRulesSymbolMap[symbolId];
   const cellEl = document.createElement("div");
   cellEl.className = "slot-cell";
   cellEl.dataset.row = String(row);
@@ -589,10 +560,10 @@ function renderSlotSpin(finalGrid) {
 }
 
 function readVisibleSlotGrid() {
-  const grid = Array.from({ length: 3 }, () => Array(5).fill(slotSymbols[0].id));
+  const grid = Array.from({ length: 3 }, () => Array(5).fill(slotRulesSymbols[0].id));
   Array.from(slotReelsEl.children).forEach((reelEl, column) => {
     Array.from(reelEl.querySelectorAll(".slot-cell")).slice(0, 3).forEach((cellEl, row) => {
-      grid[row][column] = cellEl.dataset.symbol || slotSymbols[0].id;
+      grid[row][column] = cellEl.dataset.symbol || slotRulesSymbols[0].id;
     });
   });
   return grid;
@@ -610,26 +581,45 @@ function updateSlotMeta() {
   slotScatterFillEl.style.setProperty("--scatter-progress", `${Math.min(state.slotScatterCount, 3) / 3 * 100}%`);
   slotLastWinEl.textContent = formatDollars(state.slotLastWin);
   slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
+  if (slotBonusTotalEl) {
+    slotBonusTotalEl.textContent = formatDollars(state.slotBonusTotal);
+  }
+  if (slotRtpEl) {
+    slotRtpEl.textContent = `${Math.round(SLOT_RTP_TARGET * 100)}%`;
+  }
+  if (slotRetriggerEl) {
+    slotRetriggerEl.textContent = state.slotRetriggerText || (freeSpinsActive ? "Live" : "Ready");
+  }
 }
 
 function slotLineLabel(line, spinBet, bonusMultiplier = 1) {
-  const symbol = slotSymbolMap[line.symbol];
+  const symbol = slotRulesSymbolMap[line.symbol];
   const symbolNames = line.symbols
-    ? line.symbols.map((symbolId) => slotSymbolMap[symbolId].label).join(" + ")
+    ? line.symbols.map((symbolId) => slotRulesSymbolMap[symbolId].label).join(" + ")
     : `${line.count} ${symbol.label}`;
   const amount = spinBet * line.multiplier * bonusMultiplier;
   return `${line.name}: ${symbolNames} pays ${formatDollars(amount)}`;
 }
 
-function renderSlotPaylineSummary(lineWins, spinBet, bonusMultiplier = 1) {
+function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
+  const lineWins = Array.isArray(resultOrLines) ? resultOrLines : resultOrLines.lineWins;
+  const scatterPay = Array.isArray(resultOrLines) ? 0 : resultOrLines.scatterPay;
+  const scatterCount = Array.isArray(resultOrLines) ? 0 : resultOrLines.scatterCount;
   slotPaylineListEl.innerHTML = "";
 
-  if (!lineWins.length) {
+  if (!lineWins.length && !scatterPay) {
     const emptyEl = document.createElement("span");
     emptyEl.className = "slot-payline-chip empty";
     emptyEl.textContent = "No active line wins";
     slotPaylineListEl.appendChild(emptyEl);
     return;
+  }
+
+  if (scatterPay) {
+    const chipEl = document.createElement("span");
+    chipEl.className = "slot-payline-chip bonus";
+    chipEl.textContent = `${scatterCount} Scatters pay ${formatDollars(spinBet * scatterPay * bonusMultiplier)}`;
+    slotPaylineListEl.appendChild(chipEl);
   }
 
   lineWins.forEach((line) => {
@@ -684,32 +674,46 @@ function animateSlotWinAmount(amount) {
 function startFreeSpins(count, multiplier) {
   state.slotFreeSpins += count;
   state.slotMultiplier = Math.max(state.slotMultiplier, multiplier);
+  state.slotBonusTotal = 0;
+  state.slotRetriggerText = `${count} spins`;
   showResult("Free spins unlocked", `${count} free spins at ${state.slotMultiplier}x are loaded.`);
   updateSlotMeta();
 }
 
 function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   const balanceBefore = state.credits;
-  const basePayout = spinBet * result.multiplier;
-  const activeMultiplier = wasFreeSpin ? state.slotMultiplier : 1;
-  const payout = Math.round(basePayout * activeMultiplier);
+  const bonusBeforeSpin = wasFreeSpin
+    ? {
+        freeSpins: state.slotFreeSpins,
+        multiplier: state.slotMultiplier,
+        totalWin: state.slotBonusTotal
+      }
+    : null;
+  const settlement = settleSlotRulesMath({ result, bet: spinBet, bonus: bonusBeforeSpin });
+  const { payout, activeMultiplier } = settlement;
+  const winTier = settlement.tier;
   state.slotActive = false;
   state.slotScatterCount = result.scatterCount;
   state.slotLastWin = payout;
+  state.slotRetriggerText = "";
 
   const highlightedScatters = result.scatterCount >= 2 ? result.scatterCells : [];
   renderSlotGrid(grid, result.lineWins, highlightedScatters);
-  renderSlotPaylineSummary(result.lineWins, spinBet, activeMultiplier);
+  renderSlotPaylineSummary(result, spinBet, activeMultiplier);
   animateSlotWinAmount(payout);
 
   if (!wasFreeSpin) {
     state.credits -= spinBet;
   } else {
-    state.slotFreeSpins = Math.max(0, state.slotFreeSpins - 1);
+    state.slotFreeSpins = settlement.nextBonus?.freeSpins ?? 0;
+    state.slotMultiplier = settlement.nextBonus?.multiplier ?? state.slotMultiplier;
+    state.slotBonusTotal = settlement.nextBonus?.totalWin ?? state.slotBonusTotal;
   }
 
-  if (result.scatterTriggered) {
-    startFreeSpins(result.freeSpinsAwarded, result.bonusMultiplier);
+  if (settlement.trigger) {
+    startFreeSpins(settlement.trigger.freeSpins, settlement.trigger.multiplier);
+  } else if (settlement.retrigger) {
+    state.slotRetriggerText = `+${settlement.retrigger.freeSpins} spins`;
   }
 
   if (payout > 0) {
@@ -717,27 +721,46 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     state.streak += 1;
     state.wins += 1;
     const lineNames = result.lineWins.map((line) => line.name).join(", ");
-    const title = payout >= spinBet * 20 ? "Mega win" : "Slot win";
-    showResult(title, `${lineNames || "Bonus"} paid ${formatDollars(payout)}${wasFreeSpin ? " in free spins" : ""}.`);
+    const title = winTierTitle(winTier);
+    const winSource = [
+      lineNames,
+      result.scatterPay ? `${result.scatterCount} scatters` : ""
+    ].filter(Boolean).join(" + ") || "Bonus";
+    const retriggerCopy = settlement.retrigger ? ` Retriggered ${settlement.retrigger.freeSpins} spins.` : "";
+    const triggerCopy = settlement.trigger ? ` Free spins loaded: ${settlement.trigger.freeSpins} at ${settlement.trigger.multiplier}x.` : "";
+    showResult(title, `${winSource} paid ${formatDollars(payout)}${wasFreeSpin ? " in free spins" : ""}.${triggerCopy}${retriggerCopy}`);
     renderSlotWinPanel({
       title,
-      detail: `${result.lineWins.length} line${result.lineWins.length === 1 ? "" : "s"} hit: ${lineNames}.`,
+      detail: `${result.totalWays} way${result.totalWays === 1 ? "" : "s"} paid at ${activeMultiplier}x.${triggerCopy}${retriggerCopy}`,
       amount: payout,
-      mode: "win"
+      mode: winTier === "jackpot" || winTier === "mega" ? "bonus" : "win"
     });
     pulseStats(creditsStatEl, streakStatEl, recordStatEl);
     playOutcomeEffect("win");
-    createSlotCoins(payout >= spinBet * 8 ? 18 : 10);
-    if (payout >= spinBet * 8 || result.lineWins.some((line) => slotSymbolMap[line.symbol].tier === "jackpot" && line.count === 5)) {
+    createSlotCoins(winTier === "jackpot" ? 30 : winTier === "mega" ? 24 : winTier === "big" ? 18 : 10);
+    if (["big", "mega", "jackpot"].includes(winTier) || result.lineWins.some((line) => ["jackpot", "royal"].includes(slotRulesSymbolMap[line.symbol].tier) && line.count === 5)) {
       replayAnimation(slotCabinetEl, "big-win");
     }
-  } else if (result.scatterTriggered) {
+  } else if (settlement.trigger) {
     state.streak += 1;
     state.wins += 1;
     showResult("Scatter bonus", "Free spins are ready. The next spins are on the house.");
     renderSlotWinPanel({
       title: "Scatter bonus",
       detail: `${result.scatterCount} scatters awarded ${result.freeSpinsAwarded} free spins at ${result.bonusMultiplier}x.`,
+      amount: 0,
+      mode: "bonus"
+    });
+    pulseStats(streakStatEl, recordStatEl);
+    playOutcomeEffect("push");
+    createSlotCoins(8);
+  } else if (settlement.retrigger) {
+    state.streak += 1;
+    state.wins += 1;
+    showResult("Retrigger", `${settlement.retrigger.freeSpins} more free spins added at ${settlement.retrigger.multiplier}x.`);
+    renderSlotWinPanel({
+      title: "Retrigger",
+      detail: `${result.scatterCount} scatters extended the bonus.`,
       amount: 0,
       mode: "bonus"
     });
@@ -754,10 +777,11 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       });
     } else {
       state.slotMultiplier = 1;
+      state.slotRetriggerText = "Ended";
       showResult("Bonus ended", "Free spins are complete. Back to the base game.");
       renderSlotWinPanel({
         title: "Bonus ended",
-        detail: "Free spins are complete. Back to the base game.",
+        detail: `Bonus total: ${formatDollars(state.slotBonusTotal)}.`,
         amount: 0
       });
     }
@@ -777,7 +801,7 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     playOutcomeEffect("loss");
   }
 
-  if (state.slotFreeSpins === 0 && !result.scatterTriggered) {
+  if (state.slotFreeSpins === 0 && !settlement.trigger) {
     state.slotMultiplier = 1;
   }
 
@@ -785,8 +809,8 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   const lineNames = result.lineWins.map((line) => line.name);
   const slotEvent = buildEvent({
     game: "slots",
-    eventType: result.scatterTriggered && payout === 0 ? "bonus_awarded" : (wasFreeSpin ? "free_spin_settled" : "wager_settled"),
-    outcome: payout > 0 ? "win" : (result.scatterTriggered ? "bonus" : (state.credits < balanceBefore ? "loss" : "push")),
+    eventType: settlement.trigger && payout === 0 ? "bonus_awarded" : (wasFreeSpin ? "free_spin_settled" : "wager_settled"),
+    outcome: payout > 0 ? "win" : (settlement.trigger || settlement.retrigger ? "bonus" : (state.credits < balanceBefore ? "loss" : "push")),
     betAmount: wasFreeSpin ? 0 : spinBet,
     payoutAmount: payout,
     balanceBefore,
@@ -794,9 +818,14 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     details: {
       free_spin: wasFreeSpin,
       line_wins: lineNames,
+      paylines_hit: lineNames.length,
       scatter_count: result.scatterCount,
       scatter_triggered: result.scatterTriggered,
       free_spins_awarded: result.freeSpinsAwarded,
+      free_spins_remaining: state.slotFreeSpins,
+      bonus_total: state.slotBonusTotal,
+      retriggered: Boolean(settlement.retrigger),
+      win_tier: winTier,
       multiplier: activeMultiplier,
       grid
     }
@@ -832,16 +861,7 @@ function spinSlots() {
   });
   showResult("Reels spinning", wasFreeSpin ? `${state.slotFreeSpins} free spins remaining at ${state.slotMultiplier}x.` : `${formatDollars(spinBet)} spin in progress.`);
 
-  let grid = generateSlotGrid({ nearMiss: true });
-  const result = evaluateSlotGrid(grid);
-
-  if (!result.lineWins.length && !result.scatterTriggered && Math.random() < 0.12) {
-    const row = Math.floor(Math.random() * 3);
-    const symbol = ["cherry", "banana", "apple", "hundred"][Math.floor(Math.random() * 4)];
-    grid[row][0] = symbol;
-    grid[row][1] = "wild";
-    grid[row][2] = symbol;
-  }
+  const grid = generateSlotGrid({ nearMiss: true, assistSmallWin: true });
 
   renderSlotSpin(grid).then(() => {
     if (round !== state.slotRound) {
@@ -1240,15 +1260,6 @@ function canChangeBet() {
   return !state.balanceLoading && state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
 }
 
-function setBet(value) {
-  if (!canChangeBet()) {
-    return;
-  }
-
-  state.bet = value;
-  render();
-}
-
 function changeBet(amount) {
   if (!canChangeBet()) {
     return;
@@ -1258,7 +1269,16 @@ function changeBet(amount) {
     return;
   }
 
-  state.bet += amount;
+  state.bet = Math.max(5, Math.min(state.bet + amount, maxBet()));
+  render();
+}
+
+function setBet(amount) {
+  if (!canChangeBet()) {
+    return;
+  }
+
+  state.bet = Math.max(5, Math.min(amount, maxBet()));
   render();
 }
 
@@ -1624,7 +1644,7 @@ bindHoldToRepeat(lowerBetButton, -5);
 bindHoldToRepeat(raiseBetButton, 5);
 
 chipButtons.forEach((button) => {
-  button.addEventListener("click", () => changeBet(Number(button.dataset.chip)));
+  button.addEventListener("click", () => setBet(Number(button.dataset.chip)));
 });
 
 roulettePickButtons.forEach((button) => {
@@ -1678,6 +1698,8 @@ resetButton.addEventListener("click", () => {
   state.slotMultiplier = 1;
   state.slotLastWin = 0;
   state.slotScatterCount = 0;
+  state.slotBonusTotal = 0;
+  state.slotRetriggerText = "";
   state.slotRound += 1;
   state.dealerHand = [];
   state.playerHand = [];

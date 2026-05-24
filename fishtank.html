@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fish Tank — Gamertown Solutions</title>
+  <link rel="stylesheet" href="site.css" />
+  <style>
+    body { overflow: hidden; }
+    #tank {
+      display: block;
+      width: 100%;
+      cursor: crosshair;
+    }
+  </style>
+  <link rel="stylesheet" href="site-tabs.css" />
+  <script src="site-tabs.js" defer></script>
+</head>
+<body>
+
+  <header>
+    <div class="container nav">
+      <div class="logo">Gamertown<span>.Solutions</span></div>
+      <nav class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="index2.html">Index 2</a>
+        <a href="forum.html">Forum</a>
+        <a href="support.html">Support</a>
+        <a href="fishtank.html" style="color:var(--accent-soft)">Fish Tank</a>
+      </nav>
+    </div>
+  </header>
+
+  <canvas id="tank"></canvas>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('tank')
+    const ctx    = canvas.getContext('2d')
+
+    function resize() {
+      canvas.width  = window.innerWidth
+      canvas.height = window.innerHeight - canvas.getBoundingClientRect().top
+    }
+    resize()
+    window.addEventListener('resize', () => { resize(); initSeaweed() })
+
+    // ── pixel art sprites (facing RIGHT: head=right, tail=left) ──────────
+    // 0=transparent 1=body 2=stripe(dark) 3=eye pupil(black) 4=eye white
+    const SPRITES = {
+      A: [  // plain, 10x8 — eye moved back
+        [0,1,1,0,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,0,0,0],
+        [1,1,1,1,1,1,1,1,0,0],
+        [0,0,1,1,1,4,4,1,1,0],
+        [0,0,1,1,1,4,3,1,1,0],
+        [1,1,1,1,1,1,1,1,0,0],
+        [1,1,1,1,1,1,1,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0],
+      ],
+      A2: [  // striped, 10x8
+        [0,1,1,0,0,0,0,0,0,0],
+        [1,1,1,2,1,2,1,0,0,0],
+        [1,1,1,2,1,2,1,1,0,0],
+        [0,0,1,2,1,4,4,1,1,0],
+        [0,0,1,2,1,4,3,1,1,0],
+        [1,1,1,2,1,2,1,1,0,0],
+        [1,1,1,2,1,2,1,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0],
+      ],
+      B: [  // small plain, 8x6 — eye moved back
+        [0,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,0,0],
+        [0,0,1,4,4,1,0,0],
+        [0,0,1,4,3,1,0,0],
+        [1,1,1,1,1,1,0,0],
+        [0,1,0,0,0,0,0,0],
+      ],
+      C: [  // wide plain, 12x8 — eye moved back
+        [0,1,1,0,0,0,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1,0,0,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0],
+        [0,0,1,1,1,1,4,4,1,1,0,0],
+        [0,0,1,1,1,1,4,3,1,1,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0],
+        [1,1,1,1,1,1,1,1,0,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0,0,0],
+      ],
+      C2: [  // wide striped, 12x8
+        [0,1,1,0,0,0,0,0,0,0,0,0],
+        [1,1,1,2,1,2,1,2,0,0,0,0],
+        [1,1,1,2,1,2,1,2,1,0,0,0],
+        [0,0,1,2,1,1,4,4,1,1,0,0],
+        [0,0,1,2,1,1,4,3,1,1,0,0],
+        [1,1,1,2,1,2,1,2,1,0,0,0],
+        [1,1,1,2,1,2,1,2,0,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0,0,0],
+      ],
+      D: [  // long plain, 13x6 — eye moved back
+        [0,1,1,0,0,0,0,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0,0],
+        [0,0,1,1,1,1,1,4,4,1,1,0,0],
+        [0,0,1,1,1,1,1,4,3,1,1,0,0],
+        [1,1,1,1,1,1,1,1,1,0,0,0,0],
+        [0,1,1,0,0,0,0,0,0,0,0,0,0],
+      ],
+    }
+
+    const PALETTES = [
+      ['#ff9900','#dd6600'],  // orange  (reference)
+      ['#ffcc00','#dd9900'],  // yellow
+      ['#ff5522','#cc2200'],  // red-orange
+      ['#ff44aa','#cc1177'],  // pink
+      ['#aa44ff','#7711cc'],  // purple
+      ['#44bbff','#1188cc'],  // blue
+      ['#44dd66','#119933'],  // green
+      ['#00ccaa','#009977'],  // teal
+      ['#ffffff','#bbbbbb'],  // white
+      ['#ffdd44','#ccaa00'],  // gold
+    ]
+
+    // ── seaweed ──────────────────────────────────────────────────────────
+    let seaweeds = []
+    function initSeaweed() {
+      seaweeds = []
+      const count = Math.floor(canvas.width / 80)
+      for (let i = 0; i < count; i++) {
+        seaweeds.push({
+          x: 30 + Math.random() * (canvas.width - 60),
+          segments: 5 + Math.floor(Math.random() * 6),
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.01 + Math.random() * 0.01,
+          height: 40 + Math.random() * 60,
+          hue: 100 + Math.floor(Math.random() * 40),
+        })
+      }
+    }
+    initSeaweed()
+
+    function drawSeaweed(t) {
+      seaweeds.forEach(sw => {
+        const segH = sw.height / sw.segments
+        ctx.lineWidth = 4
+        ctx.strokeStyle = `hsl(${sw.hue},55%,22%)`
+        ctx.beginPath()
+        let x = sw.x, y = canvas.height - 40
+        ctx.moveTo(x, y)
+        for (let i = 0; i < sw.segments; i++) {
+          const wave = Math.sin(t * sw.speed + sw.phase + i * 0.8) * 10
+          x += wave
+          y -= segH
+          ctx.lineTo(x, y)
+        }
+        ctx.stroke()
+      })
+    }
+
+    // ── bubbles ───────────────────────────────────────────────────────────
+    class Bubble {
+      constructor() { this.reset(true) }
+      reset(rand = false) {
+        this.x  = Math.random() * canvas.width
+        this.y  = rand ? Math.random() * canvas.height : canvas.height + 10
+        this.r  = 1.5 + Math.random() * 4
+        this.vy = 0.4 + Math.random() * 0.8
+        this.wobble = Math.random() * Math.PI * 2
+        this.alpha = 0.3 + Math.random() * 0.3
+      }
+      update() {
+        this.y -= this.vy
+        this.x += Math.sin(this.wobble) * 0.4
+        this.wobble += 0.04
+        if (this.y + this.r < 0) this.reset()
+      }
+      draw() {
+        ctx.save()
+        ctx.globalAlpha = this.alpha
+        ctx.fillStyle = '#88ccee'
+        const s = Math.round(this.r) * 2
+        ctx.fillRect(Math.round(this.x), Math.round(this.y), s, s)
+        ctx.restore()
+      }
+    }
+
+    // ── fish ──────────────────────────────────────────────────────────────
+    class Fish {
+      constructor() {
+        const keys    = Object.keys(SPRITES)
+        this.spriteKey = keys[Math.floor(Math.random() * keys.length)]
+        this.sprite   = SPRITES[this.spriteKey]
+        this.px       = 6 + Math.floor(Math.random() * 3)  // pixel size 6-8
+        this.palette  = PALETTES[Math.floor(Math.random() * PALETTES.length)]
+        this.cols     = this.sprite[0].length
+        this.rows     = this.sprite.length
+        this.w        = this.cols * this.px
+        this.h        = this.rows * this.px
+        this.x        = Math.random() * (canvas.width  - this.w)
+        this.y        = 40 + Math.random() * (canvas.height - 120 - this.h)
+        this.vx       = (0.8 + Math.random() * 2) * (Math.random() < 0.5 ? 1 : -1)
+        this.bobPhase = Math.random() * Math.PI * 2
+        this.bobAmp   = 0.2 + Math.random() * 0.4
+        this.bobFreq  = 0.015 + Math.random() * 0.02
+      }
+
+      update(t) {
+        this.x += this.vx
+        this.y += Math.sin(t * this.bobFreq + this.bobPhase) * this.bobAmp
+
+        if (this.vx > 0 && this.x + this.w > canvas.width)  this.vx *= -1
+        if (this.vx < 0 && this.x < 0)                       this.vx *= -1
+
+        const minY = 20, maxY = canvas.height - 60 - this.h
+        if (this.y < minY) this.y = minY
+        if (this.y > maxY) this.y = maxY
+      }
+
+      draw() {
+        const facingRight = this.vx > 0
+        const s = this.sprite
+        const px = this.px
+        const ox = Math.floor(this.x)
+        const oy = Math.floor(this.y)
+
+        for (let row = 0; row < this.rows; row++) {
+          for (let col = 0; col < this.cols; col++) {
+            const srcCol = facingRight ? col : (this.cols - 1 - col)
+            const v = s[row][srcCol]
+            if (v === 0) continue
+            ctx.fillStyle = v === 1 ? this.palette[0]
+                          : v === 2 ? this.palette[1]
+                          : v === 3 ? '#111111'
+                          : '#ffffff'
+            ctx.fillRect(ox + col * px, oy + row * px, px, px)
+          }
+        }
+      }
+    }
+
+    // ── octopus ───────────────────────────────────────────────────────────
+    class Octopus {
+      constructor() {
+        this.px   = 5
+        this.body = [
+          [0,0,0,1,1,1,1,1,1,0,0,0],
+          [0,0,1,1,1,1,1,1,1,1,0,0],
+          [0,1,1,1,1,1,1,1,1,1,1,0],
+          [1,1,1,4,4,1,1,4,4,1,1,1],
+          [1,1,1,4,3,1,1,4,3,1,1,1],
+          [0,1,1,1,1,1,1,1,1,1,1,0],
+          [0,0,1,1,1,1,1,1,1,1,0,0],
+          [0,0,0,1,1,1,1,1,1,0,0,0],
+        ]
+        this.bodyW  = this.body[0].length * this.px
+        this.bodyH  = this.body.length * this.px
+        this.x      = 100 + Math.random() * (canvas.width  - 200)
+        this.y      = 60  + Math.random() * (canvas.height - 220)
+        this.vx     = (0.25 + Math.random() * 0.3) * (Math.random() < 0.5 ? 1 : -1)
+        this.vy     = (0.1  + Math.random() * 0.15) * (Math.random() < 0.5 ? 1 : -1)
+        this.phase  = Math.random() * Math.PI * 2
+        this.color  = '#cc44bb'
+        this.dark   = '#7711aa'
+      }
+
+      update() {
+        this.x += this.vx
+        this.y += this.vy
+        if (this.x < 20 || this.x + this.bodyW > canvas.width  - 20) this.vx *= -1
+        if (this.y < 20 || this.y + this.bodyH > canvas.height - 80) this.vy *= -1
+      }
+
+      drawArms(t, fishes) {
+        const cx   = this.x + this.bodyW / 2
+        const base = this.y + this.bodyH - this.px
+        const nArms = 8, nSegs = 12, armLen = 64
+
+        // nearest fish within reach range
+        let nearestFish = null, nearestDist = Infinity
+        fishes.forEach(f => {
+          const fx = f.x + f.w / 2, fy = f.y + f.h / 2
+          const d  = Math.sqrt((fx - cx) ** 2 + (fy - base) ** 2)
+          if (d < 220 && d < nearestDist) { nearestDist = d; nearestFish = f }
+        })
+
+        let reachArmIdx = -1, fishAngle = 0
+        if (nearestFish) {
+          const fx = nearestFish.x + nearestFish.w / 2
+          const fy = nearestFish.y + nearestFish.h / 2
+          fishAngle = Math.atan2(fy - base, fx - cx)
+          let minDiff = Infinity
+          for (let i = 0; i < nArms; i++) {
+            const bAng = Math.PI / 2 + (i / (nArms - 1) - 0.5) * 0.85
+            const diff = Math.abs(fishAngle - bAng)
+            if (diff < minDiff) { minDiff = diff; reachArmIdx = i }
+          }
+        }
+
+        for (let i = 0; i < nArms; i++) {
+          const spread    = (i / (nArms - 1) - 0.5)
+          const baseAngle = Math.PI / 2 + spread * 0.85
+          const armPhase  = (i / nArms) * Math.PI * 2 + this.phase
+          const isReach   = (i === reachArmIdx && nearestFish !== null)
+          const reachFrac = isReach ? Math.max(0, 1 - nearestDist / 220) : 0
+
+          let x = cx + spread * this.bodyW * 0.55
+          let y = base
+          const pts = [{x, y}]
+
+          for (let s = 1; s <= nSegs; s++) {
+            const p    = s / nSegs
+            const wave = Math.sin(3.5 * p - t * 0.018 + armPhase) * p * 18 * (1 - reachFrac)
+            const ang  = baseAngle + (fishAngle - baseAngle) * reachFrac * p + wave * 0.11
+            x += Math.cos(ang) * (armLen / nSegs)
+            y += Math.sin(ang) * (armLen / nSegs)
+            pts.push({x, y})
+          }
+
+          // draw as discrete pixel blocks
+          for (let s = 0; s < pts.length; s++) {
+            const thick = Math.max(2, Math.round((1 - s / (nSegs + 1)) * 5))
+            const bx = Math.round(pts[s].x) - Math.floor(thick / 2)
+            const by = Math.round(pts[s].y) - Math.floor(thick / 2)
+            ctx.fillStyle = this.dark
+            ctx.fillRect(bx - 1, by - 1, thick + 2, thick + 2)
+            ctx.fillStyle = this.color
+            ctx.fillRect(bx, by, thick, thick)
+          }
+        }
+      }
+
+      drawBody() {
+        const ox = Math.floor(this.x)
+        const oy = Math.floor(this.y)
+        for (let row = 0; row < this.body.length; row++) {
+          for (let col = 0; col < this.body[row].length; col++) {
+            const v = this.body[row][col]
+            if (v === 0) continue
+            ctx.fillStyle = v === 1 ? this.color
+                          : v === 4 ? '#ffffff'
+                          : '#111111'
+            ctx.fillRect(ox + col * this.px, oy + row * this.px, this.px, this.px)
+          }
+        }
+      }
+
+      draw(t, fishes) {
+        this.drawArms(t, fishes)
+        this.drawBody()
+      }
+    }
+
+    // ── init objects ──────────────────────────────────────────────────────
+    const bubbles  = Array.from({ length: 35 }, () => new Bubble())
+    const fishes   = Array.from({ length: 18 }, () => new Fish())
+    const octopus  = new Octopus()
+
+    // ── background ────────────────────────────────────────────────────────
+    function drawBg() {
+      ctx.fillStyle = '#55aadd'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
+
+    function drawSand() {
+      const sandY = canvas.height - 44
+      ctx.fillStyle = '#ddb840'
+      ctx.fillRect(0, sandY, canvas.width, 44)
+      ctx.fillStyle = '#bb9020'
+      ctx.fillRect(0, sandY + 10, canvas.width, 3)
+      ctx.fillRect(0, sandY + 22, canvas.width, 3)
+      ctx.fillRect(0, sandY + 34, canvas.width, 3)
+    }
+
+    // ── border ────────────────────────────────────────────────────────────
+    function drawBorder() {
+      const bw = 18, bs = 9
+      const frame = '#1a2a3a'
+      const coral = '#ff6644'
+      const teal  = '#33ccaa'
+
+      for (let x = 0; x < canvas.width; x += bs) {
+        const idx = Math.floor(x / bs)
+        ctx.fillStyle = (idx % 7 === 3) ? coral : (idx % 7 === 6) ? teal : frame
+        ctx.fillRect(x, 0, bs, bw)
+        ctx.fillRect(x, canvas.height - bw, bs, bw)
+      }
+      for (let y = bw; y < canvas.height - bw; y += bs) {
+        const idx = Math.floor(y / bs)
+        ctx.fillStyle = (idx % 7 === 3) ? coral : (idx % 7 === 6) ? teal : frame
+        ctx.fillRect(0, y, bw, bs)
+        ctx.fillRect(canvas.width - bw, y, bw, bs)
+      }
+      ctx.fillStyle = coral
+      ctx.fillRect(0, 0, bw, bw)
+      ctx.fillRect(canvas.width - bw, 0, bw, bw)
+      ctx.fillRect(0, canvas.height - bw, bw, bw)
+      ctx.fillRect(canvas.width - bw, canvas.height - bw, bw, bw)
+      // inner glass highlight line
+      ctx.fillStyle = '#2a4a5a'
+      ctx.fillRect(bw, bw, canvas.width - bw * 2, 2)
+      ctx.fillRect(bw, canvas.height - bw - 2, canvas.width - bw * 2, 2)
+      ctx.fillRect(bw, bw + 2, 2, canvas.height - bw * 2 - 4)
+      ctx.fillRect(canvas.width - bw - 2, bw + 2, 2, canvas.height - bw * 2 - 4)
+    }
+
+    // ── click to scare fish ───────────────────────────────────────────────
+    canvas.addEventListener('click', e => {
+      const rect = canvas.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      fishes.forEach(f => {
+        const dx = (f.x + f.w / 2) - mx
+        const dy = (f.y + f.h / 2) - my
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist < 200) {
+          f.vx = Math.sign(dx) * (2 + Math.random() * 3)
+        }
+      })
+    })
+
+    // ── loop ──────────────────────────────────────────────────────────────
+    let t = 0
+    function loop() {
+      t++
+      drawBg()
+      drawSand()
+      drawSeaweed(t)
+      bubbles.forEach(b => { b.update(); b.draw() })
+      octopus.update(); octopus.draw(t, fishes)
+      fishes.forEach(f  => { f.update(t); f.draw() })
+      drawBorder()
+      requestAnimationFrame(loop)
+    }
+    loop()
+  })()
+  </script>
+
+</body>
+</html>

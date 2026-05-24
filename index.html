@@ -81,7 +81,7 @@
       <a href="#" id="openSignInSide" class="enter" style="display:inline-block;margin-top:18px;">AUTHENTICATE.</a>
       <section class="terminal-note" style="margin-top:18px;">
         <h3>//SYSTEM MODE</h3>
-        <button id="nd-toggle" style="margin-top:6px;background:none;border:1px solid currentColor;color:inherit;cursor:pointer;font-family:inherit;font-size:.78rem;letter-spacing:.12em;padding:.3rem .7rem;">NONDETERMINISM: OFF</button>
+        <button id="nd-toggle" style="margin-top:6px;background:#1a1a00;border:2px solid #aaaa00;color:#aaaa00;cursor:pointer;font-family:inherit;font-size:.78rem;letter-spacing:.12em;padding:.4rem .8rem;box-shadow:0 0 6px #aaaa0066;">NONDETERMINISM: OFF</button>
       </section>
     </aside>
   </main>
@@ -217,8 +217,10 @@
     const btn = document.getElementById('nd-toggle')
     if (!btn) return
     btn.textContent = 'NONDETERMINISM: ' + (on ? 'ON' : 'OFF')
-    btn.style.borderColor = on ? '#ff0' : ''
-    btn.style.color = on ? '#ff0' : ''
+    btn.style.borderColor   = on ? '#ff0'              : '#aaaa00'
+    btn.style.color         = on ? '#ff0'              : '#aaaa00'
+    btn.style.background    = on ? '#332200'           : '#1a1a00'
+    btn.style.boxShadow     = on ? '0 0 12px #ff08'   : '0 0 6px #aaaa0066'
   }
 
   if (localStorage.getItem(KEY) === '1') enable()

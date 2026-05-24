@@ -89,7 +89,10 @@
 - ~~1.f.15 Message board:~~
   - ~~Public posting system~~ — [complete](https://cbarr-hub.github.io/forum.html)  
 - 1.f.16 Investor deck section  
-- 1.f.17 Nondeterminism system layer  
+- ~~1.f.17 Nondeterminism system layer~~ — [complete](https://cbarr-hub.github.io/index.html)
+  - Toggleable mode on index page (`//SYSTEM MODE` panel, right rail)
+  - When enabled: page loads in random orientation, all links route to random destinations
+  - State persists via localStorage (`gt_nondeterminism`)
 
 ---
 

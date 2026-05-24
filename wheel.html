@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Name Spinner</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #020001;
+      --panel: rgba(0, 255, 255, 0.08);
+      --accent: #00ffff;
+      --accent-2: #ff39ff;
+      --text: #ffffff;
+      --glow: rgba(0, 255, 255, 0.18);
+      --panel-border: rgba(0, 255, 255, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Lucida Console", "Courier New", monospace;
+      background: radial-gradient(circle at 20% 10%, #200018 0%, #000 40%), #020001;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 100% 26px;
+      pointer-events: none;
+      opacity: 0.12;
+    }
+
+    .page {
+      position: relative;
+      width: min(100%, 980px);
+      padding: 1.5rem;
+      background: rgba(0, 0, 0, 0.68);
+      border: 2px solid rgba(0, 255, 255, 0.18);
+      box-shadow: 0 0 40px rgba(0, 255, 255, 0.08);
+      border-radius: 18px;
+      z-index: 1;
+    }
+
+    .glitch-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .glitch {
+      margin: 0;
+      font-size: clamp(2.2rem, 4vw, 4rem);
+      letter-spacing: 0.24em;
+      color: #e8ff00;
+      position: relative;
+      text-transform: uppercase;
+      text-shadow: 0 0 8px rgba(57, 255, 20, 0.25);
+    }
+
+    .glitch::before,
+    .glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      left: 0;
+      width: 100%;
+      top: 0;
+      overflow: hidden;
+    }
+
+    .glitch::before {
+      color: #ff00ff;
+      clip-path: polygon(0 0, 100% 0, 100% 38%, 0 48%);
+      animation: glitchTop 2.2s infinite linear alternate-reverse;
+    }
+
+    .glitch::after {
+      color: #00ffff;
+      clip-path: polygon(0 58%, 100% 48%, 100% 100%, 0 100%);
+      animation: glitchBottom 1.7s infinite linear alternate-reverse;
+    }
+
+    @keyframes glitchTop {
+      0% { transform: translate(2px, -2px); }
+      100% { transform: translate(-2px, 2px); }
+    }
+
+    @keyframes glitchBottom {
+      0% { transform: translate(-2px, 2px); }
+      100% { transform: translate(2px, -2px); }
+    }
+
+    .sub {
+      margin: 0.6rem auto 0;
+      color: #cbd5ff;
+      letter-spacing: 0.08em;
+      max-width: 640px;
+    }
+
+    .wheel-frame {
+      position: relative;
+      width: min(100%, 520px);
+      margin: 0 auto 1.5rem;
+      aspect-ratio: 1;
+    }
+
+    .wheel-frame::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 70px rgba(0,255,255,0.08);
+      pointer-events: none;
+    }
+
+    .pointer {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 20px solid transparent;
+      border-right: 20px solid transparent;
+      border-bottom: 36px solid var(--accent);
+      filter: drop-shadow(0 0 10px rgba(0,255,255,0.5));
+      z-index: 2;
+    }
+
+    .pointer::after {
+      content: "";
+      position: absolute;
+      top: 14px;
+      left: -10px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 2px solid rgba(255,255,255,0.8);
+    }
+
+    .wheel {
+      width: 100%;
+      height: 100%;
+      transform: rotate(0deg);
+      transition: transform 5s cubic-bezier(0.22, 1, 0.36, 1);
+      transform-origin: center;
+    }
+
+    .controls {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .controls input,
+    .controls button {
+      font: inherit;
+      padding: 0.95rem 1rem;
+      border: 1px solid rgba(0,255,255,0.35);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.4);
+      color: var(--text);
+      outline: none;
+    }
+
+    .controls button {
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .controls button:hover {
+      transform: translateY(-1px);
+      background: rgba(0,255,255,0.15);
+    }
+
+    .controls input {
+      min-width: 0;
+    }
+
+    .manual-list {
+      display: grid;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .manual-list label {
+      letter-spacing: 0.08em;
+      color: #a7f4ff;
+    }
+
+    .manual-list textarea {
+      width: 100%;
+      resize: vertical;
+      min-height: 10rem;
+      font: inherit;
+      padding: 0.95rem 1rem;
+      border: 1px solid rgba(0,255,255,0.35);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.4);
+      color: var(--text);
+    }
+
+    .manual-list button {
+      justify-self: start;
+      padding: 0.95rem 1rem;
+      border: 1px solid rgba(0,255,255,0.35);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.4);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .manual-list button:hover {
+      transform: translateY(-1px);
+      background: rgba(0,255,255,0.15);
+    }
+
+    .result-card {
+      padding: 1rem;
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      background: var(--panel);
+      text-align: center;
+    }
+
+    .result-card strong {
+      display: block;
+      margin-top: 0.65rem;
+      font-size: 1.7rem;
+      letter-spacing: 0.12em;
+      color: #fff;
+    }
+
+    .note,
+    .return {
+      text-align: center;
+      margin-top: 1rem;
+      color: #a7f4ff;
+    }
+
+    .return a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px dotted rgba(0,255,255,0.6);
+    }
+
+    .return a:hover {
+      color: #ffffff;
+    }
+
+    svg text {
+      font-family: "Lucida Console", "Courier New", monospace;
+      font-size: 18px;
+      fill: #fff;
+      text-shadow: 0 0 2px rgba(0,0,0,0.6);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="glitch-header">
+      <h1 class="glitch" data-text="NAME SPINNER">NAME SPINNER</h1>
+      <p class="sub">Spin the wheel to choose a random name from the list.</p>
+    </header>
+
+    <div class="wheel-frame">
+      <div class="pointer" aria-hidden="true"></div>
+      <svg id="wheel" class="wheel" viewBox="0 0 520 520" role="img" aria-label="Spinning name wheel"></svg>
+    </div>
+
+    <div class="controls">
+      <input id="nameInput" type="text" placeholder="Add a name and press Enter" autocomplete="off" />
+      <button id="spin" type="button">Spin the wheel</button>
+    </div>
+
+    <div class="manual-list">
+      <label for="namesList">Name list (one per line):</label>
+      <textarea id="namesList" rows="6" placeholder="Type or paste names here..."></textarea>
+      <button id="loadNames" type="button">Load names onto wheel</button>
+    </div>
+
+    <div class="result-card">
+      <p>Selected name:</p>
+      <strong id="result">Ready to spin</strong>
+    </div>
+
+    <p class="note">Add names, then press spin. The wheel will select a random entry.</p>
+    <p class="return"><a href="index.html">&laquo; Back to home</a></p>
+  </div>
+
+  <script>
+    const defaultNames = [
+      'Lethal Company',
+      'Lockdown protocol',
+      'RV there yet',
+      'Goofy Gorillas',
+      'Super battle golf',
+      'CS2 Office',
+      'Buckshot Roulette',
+      'Peak'
+    ];
+    const colors = ['#00ffff', '#ff39ff', '#39ff14', '#f5f525', '#ff6fb4', '#60e0ff', '#e89c00', '#8a4fff'];
+    const wheel = document.getElementById('wheel');
+    const spinButton = document.getElementById('spin');
+    const resultDisplay = document.getElementById('result');
+    const nameInput = document.getElementById('nameInput');
+    const namesTextarea = document.getElementById('namesList');
+    const loadNamesButton = document.getElementById('loadNames');
+    let names = [...defaultNames];
+    let currentRotation = 0;
+    let isSpinning = false;
+
+    function degToRad(deg) {
+      return (deg * Math.PI) / 180;
+    }
+
+    function buildWheel() {
+      const slice = 360 / names.length;
+      const radius = 230;
+      const ns = 'http://www.w3.org/2000/svg';
+      wheel.innerHTML = '';
+
+      names.forEach((name, index) => {
+        const startAngle = index * slice - 90;
+        const endAngle = startAngle + slice;
+        const x1 = Math.cos(degToRad(startAngle)) * radius;
+        const y1 = Math.sin(degToRad(startAngle)) * radius;
+        const x2 = Math.cos(degToRad(endAngle)) * radius;
+        const y2 = Math.sin(degToRad(endAngle)) * radius;
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', `M0,0 L${x1},${y1} A${radius},${radius} 0 0,1 ${x2},${y2} Z`);
+        path.setAttribute('fill', colors[index % colors.length]);
+        path.setAttribute('stroke', '#000');
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('opacity', '0.92');
+
+        const textAngle = startAngle + slice / 2;
+        const textX = Math.cos(degToRad(textAngle)) * radius * 0.6;
+        const textY = Math.sin(degToRad(textAngle)) * radius * 0.6;
+        const text = document.createElementNS(ns, 'text');
+        text.setAttribute('x', textX);
+        text.setAttribute('y', textY);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('transform', `rotate(${textAngle + 90} ${textX} ${textY})`);
+        text.textContent = name;
+
+        wheel.appendChild(path);
+        wheel.appendChild(text);
+      });
+
+      const center = document.createElementNS(ns, 'circle');
+      center.setAttribute('cx', '0');
+      center.setAttribute('cy', '0');
+      center.setAttribute('r', '40');
+      center.setAttribute('fill', '#030a11');
+      center.setAttribute('stroke', '#00ffff');
+      center.setAttribute('stroke-width', '4');
+      wheel.appendChild(center);
+    }
+
+    function syncNamesTextarea() {
+      namesTextarea.value = names.join('\n');
+    }
+
+    function parseNamesFromTextarea() {
+      const raw = namesTextarea.value.trim();
+      const parsed = raw
+        .split(/\r?\n/)
+        .map(name => name.trim())
+        .filter(name => name.length > 0)
+        .map(name => name.toUpperCase());
+      return [...new Set(parsed)];
+    }
+
+    function addName(name) {
+      const normalized = name.trim().toUpperCase();
+      if (!normalized) return;
+      if (!names.includes(normalized)) {
+        names.push(normalized);
+        buildWheel();
+        syncNamesTextarea();
+        resultDisplay.textContent = `Added ${normalized}. Ready to spin.`;
+      } else {
+        resultDisplay.textContent = `${normalized} is already on the wheel.`;
+      }
+    }
+
+    function loadNamesFromTextarea() {
+      const parsed = parseNamesFromTextarea();
+      if (parsed.length === 0) {
+        resultDisplay.textContent = 'Enter at least one name in the list.';
+        return;
+      }
+      names = parsed;
+      buildWheel();
+      resultDisplay.textContent = 'Wheel updated with your list.';
+    }
+
+    function spinWheel() {
+      if (isSpinning) return;
+      if (names.length === 0) {
+        resultDisplay.textContent = 'Please add at least one name.';
+        return;
+      }
+      isSpinning = true;
+      spinButton.textContent = 'Spinning...';
+      spinButton.disabled = true;
+      const slice = 360 / names.length;
+      const selectedIndex = Math.floor(Math.random() * names.length);
+      const offset = slice / 2;
+      const totalRotation = 360 * 5 - (selectedIndex * slice + offset) + (Math.random() * slice - slice / 2);
+      currentRotation = totalRotation;
+      wheel.style.transform = `rotate(${currentRotation}deg)`;
+
+      setTimeout(() => {
+        resultDisplay.textContent = names[selectedIndex];
+        spinButton.textContent = 'Spin the wheel';
+        spinButton.disabled = false;
+        isSpinning = false;
+      }, 5200);
+    }
+
+    nameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        addName(nameInput.value);
+        nameInput.value = '';
+      }
+    });
+
+    loadNamesButton.addEventListener('click', loadNamesFromTextarea);
+    spinButton.addEventListener('click', () => spinWheel());
+
+    buildWheel();
+    syncNamesTextarea();
+  </script>
+</body>
+</html>

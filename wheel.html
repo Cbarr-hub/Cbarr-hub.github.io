@@ -27,13 +27,27 @@
     <div class="filters">
       <div class="filter-group">
         <label for="player-count"><span>Players</span></label>
-        <input id="player-count" type="number" min="1" placeholder="Enter player count" />
+        <select id="player-count">
+          <option value="">Select player count</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+        </select>
       </div>
       <div class="filter-group">
-        <span>Time</span>
-        <label for="time-30"><input id="time-30" type="checkbox" value="&lt;30" checked> &lt;30 minutes</label>
-        <label for="time-60"><input id="time-60" type="checkbox" value="&lt;60" checked> &lt;1 hour</label>
-        <label for="time-none"><input id="time-none" type="checkbox" value="no limit" checked> No limit</label>
+        <label for="time-filter"><span>Max Time</span></label>
+        <select id="time-filter">
+          <option value="">Select max time</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="90">90 minutes</option>
+          <option value="null">No limit</option>
+        </select>
       </div>
     </div>
 
@@ -88,7 +102,8 @@
     const resultDisplay = document.getElementById('result');
     const slotTrack = document.getElementById('slotTrack');
     const playerCountInput = document.getElementById('player-count');
-    const filterInputs = document.querySelectorAll('.filters input');
+    const timeFilterInput = document.getElementById('time-filter');
+    const filterInputs = document.querySelectorAll('.filters select');
     let allGames = [
       { id: 1, name: 'Lethal Company', minplayers: 4, maxplayers: 6, timeMinutes: 45 },
       { id: 2, name: 'Lockdown Protocol', players: 2, timeMinutes: 20 },
@@ -109,7 +124,7 @@
       { id: 17, name: 'Oh Deer', maxplayers: 4, timeMinutes: 65 }
     ];
     let selectedPlayerCount = null;
-    let selectedTimes = [];
+    let selectedMaxTime = null;
     let isSpinning = false;
     const spinDuration = 6000;
 
@@ -219,23 +234,24 @@
     }
 
     function matchesTime(game) {
-      if (!selectedTimes.length) {
+      if (selectedMaxTime === null || selectedMaxTime === undefined) {
         return false;
       }
 
+      // "no limit" option (represented as null in the game)
+      if (selectedMaxTime === 'null') {
+        return true;
+      }
+
+      const maxTime = Number(selectedMaxTime);
+
+      // Game with no time limit matches "no limit" selection only
       if (game.timeMinutes === null) {
-        return selectedTimes.includes('no limit');
+        return false;
       }
 
-      if (game.timeMinutes <= 30 && (selectedTimes.includes('<30') || selectedTimes.includes('<60'))) {
-        return true;
-      }
-
-      if (game.timeMinutes <= 60 && selectedTimes.includes('<60')) {
-        return true;
-      }
-
-      return game.timeMinutes > 60 && selectedTimes.includes('no limit');
+      // Game matches if its time is <= selected max time
+      return game.timeMinutes <= maxTime;
     }
 
     function getFilteredGames() {
@@ -243,20 +259,20 @@
     }
 
     function updateFilters() {
-      const rawValue = playerCountInput.value.trim();
-      selectedPlayerCount = rawValue === '' ? null : Number(rawValue);
-      selectedTimes = Array.from(document.querySelectorAll('.filter-group:nth-of-type(2) input:checked')).map(input => input.value);
+      const rawPlayerValue = playerCountInput.value.trim();
+      selectedPlayerCount = rawPlayerValue === '' ? null : Number(rawPlayerValue);
+      selectedMaxTime = timeFilterInput.value === '' ? null : timeFilterInput.value;
 
       if (!Number.isInteger(selectedPlayerCount) || selectedPlayerCount <= 0) {
         spinButton.disabled = true;
-        setSlotMessage('Enter a valid player count.');
+        setSlotMessage('Select a player count.');
         resultDisplay.textContent = 'No games available.';
         return;
       }
 
-      if (!selectedTimes.length) {
+  if (selectedMaxTime === null) {
         spinButton.disabled = true;
-        setSlotMessage('Select at least one time filter.');
+        setSlotMessage('Select a max time.');
         resultDisplay.textContent = 'No games available.';
         return;
       }

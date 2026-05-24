@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gambling Section | Gamertown Solutions</title>
-  <meta name="description" content="Virtual-credit gambling games including High Card and Blackjack." />
+  <meta name="description" content="Fictional-dollar gambling games including High Card, Blackjack, Roulette, and Slots." />
 
   <style>
     * {
@@ -240,6 +240,28 @@
       }
     }
 
+    @keyframes slotGlow {
+      0%, 100% {
+        box-shadow: 0 0 0 rgba(242, 193, 78, 0);
+      }
+
+      50% {
+        box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.38), 0 0 28px rgba(242, 193, 78, 0.48);
+      }
+    }
+
+    @keyframes jackpotPulse {
+      0%, 100% {
+        transform: scale(1);
+        filter: brightness(1);
+      }
+
+      45% {
+        transform: scale(1.02);
+        filter: brightness(1.25);
+      }
+    }
+
     .section-head {
       display: flex;
       align-items: end;
@@ -274,7 +296,7 @@
 
     .tabs {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0.75rem;
     }
 
@@ -340,6 +362,15 @@
         conic-gradient(from 8deg at 72% 44%, #c0392b 0 10deg, #111827 10deg 20deg, #c0392b 20deg 30deg, #111827 30deg 40deg, #0f766e 40deg 50deg, #111827 50deg 60deg, #c0392b 60deg 70deg, #111827 70deg 80deg, #c0392b 80deg 90deg, transparent 90deg 360deg),
         var(--felt-dark);
       transform: scale(1.18);
+    }
+
+    .tab[data-game="slots"]::before {
+      background:
+        linear-gradient(90deg, transparent 0 19%, rgba(255, 255, 255, 0.82) 20% 30%, transparent 31% 38%, rgba(242, 193, 78, 0.92) 39% 49%, transparent 50% 57%, rgba(192, 57, 43, 0.88) 58% 68%, transparent 69%),
+        radial-gradient(circle at 74% 28%, rgba(56, 189, 248, 0.95) 0 8%, transparent 9%),
+        radial-gradient(circle at 28% 40%, rgba(236, 72, 153, 0.88) 0 10%, transparent 11%),
+        linear-gradient(135deg, #25104d, #08111f 58%, #451a03);
+      transform: rotate(-2deg) scale(1.16);
     }
 
     .tab:hover::before,
@@ -1020,6 +1051,332 @@
       line-height: 1.45;
     }
 
+    .slots-layout {
+      display: grid;
+      gap: 1rem;
+      padding: 0.5rem 0;
+    }
+
+    .slot-cabinet {
+      position: relative;
+      display: grid;
+      gap: 1rem;
+      padding: clamp(1rem, 2.4vw, 1.5rem);
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(236, 72, 153, 0.35), transparent 28%),
+        radial-gradient(circle at 80% 8%, rgba(56, 189, 248, 0.32), transparent 30%),
+        linear-gradient(145deg, rgba(19, 9, 44, 0.94), rgba(6, 14, 28, 0.92));
+      box-shadow: inset 0 0 0 2px rgba(242, 193, 78, 0.18), 0 24px 52px rgba(0, 0, 0, 0.35);
+    }
+
+    .slot-cabinet::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 70px),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 28%);
+      pointer-events: none;
+    }
+
+    .slot-cabinet.big-win {
+      animation: jackpotPulse 760ms ease both;
+    }
+
+    .slot-header,
+    .slot-meta,
+    .slot-reels,
+    .slot-lines {
+      position: relative;
+      z-index: 1;
+    }
+
+    .slot-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .slot-jackpot {
+      color: #fff;
+      font-size: clamp(1.65rem, 4vw, 3rem);
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-shadow:
+        0 0 9px rgba(242, 193, 78, 0.95),
+        0 0 24px rgba(236, 72, 153, 0.6),
+        0 3px 0 rgba(0, 0, 0, 0.4);
+      text-transform: uppercase;
+    }
+
+    .slot-status {
+      display: grid;
+      gap: 0.2rem;
+      justify-items: end;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .slot-status strong {
+      color: var(--gold);
+      font-size: 1.1rem;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .slot-reels {
+      --slot-cell-size: clamp(70px, 10vw, 104px);
+      --slot-gap: 0.45rem;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(76px, 1fr));
+      gap: clamp(0.45rem, 1.2vw, 0.75rem);
+      padding: clamp(0.55rem, 1.8vw, 1rem);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 16%, rgba(0, 0, 0, 0.28)),
+        rgba(0, 0, 0, 0.38);
+      box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.4);
+    }
+
+    .slot-reel {
+      position: relative;
+      display: grid;
+      grid-template-rows: repeat(3, minmax(70px, 1fr));
+      gap: var(--slot-gap);
+      height: calc(var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-gap) + var(--slot-gap));
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .slot-reel::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      background: linear-gradient(180deg, transparent, rgba(242, 193, 78, 0.24), transparent);
+      pointer-events: none;
+      transform: translateY(-100%);
+      transition: opacity 260ms ease;
+    }
+
+    .slot-reel.stopping::after {
+      opacity: 1;
+      transform: translateY(100%);
+      transition: transform 520ms ease-out, opacity 420ms ease-out;
+    }
+
+    .slot-strip {
+      display: grid;
+      grid-auto-rows: var(--slot-cell-size);
+      gap: var(--slot-gap);
+      backface-visibility: hidden;
+      transform: translate3d(0, 0, 0);
+      transition-property: transform;
+      transition-timing-function: cubic-bezier(0.08, 0.72, 0.08, 1);
+      will-change: transform;
+    }
+
+    .slot-reel.stopping .slot-strip {
+      filter: brightness(1.18);
+      transition-property: transform, filter;
+      transition-timing-function: cubic-bezier(0.08, 0.72, 0.08, 1), ease-out;
+    }
+
+    .slot-cell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: var(--slot-cell-size);
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 50% 12%, rgba(255, 255, 255, 0.16), transparent 42%),
+        linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.92));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      color: #fff;
+      font-size: clamp(1.65rem, 4vw, 2.8rem);
+      font-weight: 900;
+      text-shadow: 0 0 16px currentColor;
+    }
+
+    .slot-symbol {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: clamp(42px, 7vw, 68px);
+      aspect-ratio: 1;
+      font-size: clamp(1.35rem, 3.5vw, 2.35rem);
+      line-height: 1;
+    }
+
+    .slot-symbol::before,
+    .slot-symbol::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .slot-symbol::before {
+      inset: 8%;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.18;
+      filter: blur(10px);
+    }
+
+    .slot-symbol::after {
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid currentColor;
+      opacity: 0.24;
+    }
+
+    .slot-symbol-text {
+      position: relative;
+      z-index: 1;
+    }
+
+    .slot-cell.winning {
+      animation: slotGlow 650ms ease both;
+      border-color: rgba(242, 193, 78, 0.86);
+      background:
+        radial-gradient(circle, rgba(242, 193, 78, 0.24), transparent 58%),
+        linear-gradient(180deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
+    }
+
+    .slot-cell[data-symbol="cherry"] {
+      color: #fb7185;
+    }
+
+    .slot-cell[data-symbol="banana"] {
+      color: #fde047;
+    }
+
+    .slot-cell[data-symbol="apple"] {
+      color: #ef4444;
+    }
+
+    .slot-cell[data-symbol="gold"],
+    .slot-cell[data-symbol="jackpot"] {
+      color: var(--gold);
+    }
+
+    .slot-cell[data-symbol="hundred"] {
+      color: #86efac;
+    }
+
+    .slot-cell[data-symbol="diamond"] {
+      color: #38bdf8;
+    }
+
+    .slot-cell[data-symbol="seven"] {
+      color: #f43f5e;
+    }
+
+    .slot-cell[data-symbol="scatter"] {
+      color: #c084fc;
+    }
+
+    .slot-cell[data-symbol="wild"] {
+      color: #22d3ee;
+    }
+
+    .slot-cell[data-symbol="gold"] {
+      background:
+        radial-gradient(circle, rgba(242, 193, 78, 0.32), transparent 58%),
+        linear-gradient(180deg, rgba(113, 63, 18, 0.96), rgba(24, 16, 3, 0.96));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 20px rgba(242, 193, 78, 0.28);
+    }
+
+    .slot-lines {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.45rem;
+    }
+
+    .slot-line {
+      min-height: 34px;
+      display: grid;
+      place-items: center;
+      color: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .slot-line.active {
+      color: #111;
+      border-color: transparent;
+      background: var(--gold);
+      box-shadow: 0 0 18px rgba(242, 193, 78, 0.44);
+    }
+
+    .slot-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.65rem;
+    }
+
+    .slot-meter,
+    .slot-badge {
+      min-height: 70px;
+      padding: 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.28);
+    }
+
+    .slot-meter span,
+    .slot-badge span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .slot-meter strong,
+    .slot-badge strong {
+      display: block;
+      margin-top: 0.3rem;
+      color: #fff;
+      font-size: 1.3rem;
+    }
+
+    .slot-meter-track {
+      height: 8px;
+      margin-top: 0.55rem;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .slot-meter-fill {
+      display: block;
+      height: 100%;
+      width: var(--scatter-progress, 0%);
+      border-radius: inherit;
+      background: linear-gradient(90deg, #c084fc, var(--gold));
+      box-shadow: 0 0 16px rgba(192, 132, 252, 0.65);
+      transition: width 220ms ease;
+    }
+
     .controls {
       position: relative;
       z-index: 1;
@@ -1209,6 +1566,14 @@
       .roulette-number-grid {
         grid-template-columns: repeat(6, minmax(34px, 1fr));
       }
+
+      .slot-reels {
+        grid-template-columns: repeat(5, minmax(52px, 1fr));
+      }
+
+      .slot-meta {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 620px) {
@@ -1240,6 +1605,35 @@
       .hand-row {
         min-height: 140px;
       }
+
+      .slot-header {
+        align-items: start;
+        flex-direction: column;
+      }
+
+      .slot-status {
+        justify-items: start;
+      }
+
+      .slot-reels {
+        --slot-cell-size: 54px;
+        --slot-gap: 0.3rem;
+        gap: 0.3rem;
+        padding: 0.4rem;
+      }
+
+      .slot-reel {
+        height: calc(var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-gap) + var(--slot-gap));
+      }
+
+      .slot-cell {
+        min-height: 54px;
+        font-size: 1.45rem;
+      }
+
+      .slot-lines {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -1267,7 +1661,7 @@
       <div>
         <h1>Gambling Section</h1>
       </div>
-      <p>Play virtual-credit tables for fun. Pick a game, set a bet, and try to leave with more credits than you brought in.</p>
+      <p>Play fictional-dollar tables for fun. Pick a game, set a bet, and try to leave with more money than you brought in.</p>
     </div>
 
     <div class="game-selector">
@@ -1284,11 +1678,15 @@
           <span class="tab-title">Roulette</span>
           <span class="tab-copy">Pick a color or exact number.</span>
         </button>
+        <button class="tab" id="slots-tab" type="button" data-game="slots" aria-controls="slots-panel" aria-selected="false">
+          <span class="tab-title">Slots</span>
+          <span class="tab-copy">Spin reels, chase multipliers.</span>
+        </button>
       </div>
       <p class="game-copy" id="game-copy">Higher card wins. Ties return your bet.</p>
     </div>
 
-    <section class="table" aria-label="Virtual-credit gambling section">
+    <section class="table" aria-label="Fictional-dollar gambling section">
       <div class="effect-layer" id="effect-layer" aria-hidden="true"></div>
 
       <div class="play-area">
@@ -1298,8 +1696,8 @@
 
         <div class="scorebar" aria-live="polite">
           <div class="stat">
-            <span>Credits</span>
-            <strong id="credits">100</strong>
+            <span>Bankroll</span>
+            <strong id="credits">$100</strong>
           </div>
           <div class="stat">
             <span>Streak</span>
@@ -1377,25 +1775,65 @@
           </div>
         </section>
 
+        <section class="game-panel" id="slots-panel" aria-label="Slots">
+          <div class="slots-layout">
+            <div class="slot-cabinet" id="slot-cabinet">
+              <div class="slot-header">
+                <div class="slot-jackpot">Neon Jackpot</div>
+                <div class="slot-status">
+                  <span id="slot-mode">Base Game</span>
+                  <strong id="slot-spin-status">Ready</strong>
+                </div>
+              </div>
+
+              <div class="slot-reels" id="slot-reels" aria-label="Slot reels"></div>
+
+              <div class="slot-lines" aria-label="Active paylines">
+                <span class="slot-line" data-line="top">Top</span>
+                <span class="slot-line" data-line="middle">Middle</span>
+                <span class="slot-line" data-line="bottom">Bottom</span>
+                <span class="slot-line" data-line="v">V</span>
+                <span class="slot-line" data-line="inverted-v">Inv V</span>
+              </div>
+
+              <div class="slot-meta">
+                <div class="slot-meter">
+                  <span>Scatter Charge</span>
+                  <strong id="slot-scatter-count">0 / 3</strong>
+                  <div class="slot-meter-track"><span class="slot-meter-fill" id="slot-scatter-fill"></span></div>
+                </div>
+                <div class="slot-badge">
+                  <span>Last Win</span>
+                  <strong id="slot-last-win">$0</strong>
+                </div>
+                <div class="slot-badge">
+                  <span>Multiplier</span>
+                  <strong id="slot-multiplier">1x</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div class="message" aria-live="polite">
           <strong id="result-title">Place a bet</strong>
-          <span id="result-copy">Choose High Card, Blackjack, or Roulette to begin.</span>
+          <span id="result-copy">Choose High Card, Blackjack, Roulette, or Slots to begin.</span>
         </div>
       </div>
 
       <aside class="controls">
         <div class="chips" aria-label="Quick bet chips">
-          <button class="chip" type="button" data-chip="5">5</button>
-          <button class="chip" type="button" data-chip="10">10</button>
-          <button class="chip" type="button" data-chip="25">25</button>
-          <button class="chip" type="button" data-chip="50">50</button>
+          <button class="chip" type="button" data-chip="5">$5</button>
+          <button class="chip" type="button" data-chip="10">$10</button>
+          <button class="chip" type="button" data-chip="25">$25</button>
+          <button class="chip" type="button" data-chip="50">$50</button>
         </div>
 
         <div>
           <span class="bet-label">Current Bet</span>
           <div class="bet-row">
             <button class="stepper" id="lower-bet" type="button" aria-label="Lower bet">-</button>
-            <div class="bet" id="bet-value">10</div>
+            <div class="bet" id="bet-value">$10</div>
             <button class="stepper" id="raise-bet" type="button" aria-label="Raise bet">+</button>
           </div>
         </div>
@@ -1411,9 +1849,9 @@
           <button class="secondary" id="stand" type="button" hidden>Stand</button>
         </div>
 
-        <button class="reset" id="reset" type="button">Reset Stack</button>
+        <button class="reset" id="reset" type="button">Reset Bankroll</button>
 
-        <p class="fine-print">For fun only. These games use virtual credits and do not support real wagers, prizes, deposits, or cashouts.</p>
+        <p class="fine-print">For fun only. These games use fictional dollars and do not support real wagers, prizes, deposits, or cashouts.</p>
       </aside>
     </section>
   </main>
@@ -1459,7 +1897,13 @@
       rouletteBetType: "color",
       rouletteChoice: "red",
       rouletteWheelRotation: 0,
-      rouletteBallRotation: 0
+      rouletteBallRotation: 0,
+      slotActive: false,
+      slotFreeSpins: 0,
+      slotMultiplier: 1,
+      slotLastWin: 0,
+      slotScatterCount: 0,
+      slotRound: 0
     };
 
     const creditsEl = document.getElementById("credits");
@@ -1492,6 +1936,15 @@
     const rouletteBallTrackEl = document.getElementById("roulette-ball-track");
     const rouletteResultEl = document.getElementById("roulette-result");
     const rouletteNumberBoardEl = document.getElementById("roulette-number-board");
+    const slotCabinetEl = document.getElementById("slot-cabinet");
+    const slotReelsEl = document.getElementById("slot-reels");
+    const slotModeEl = document.getElementById("slot-mode");
+    const slotSpinStatusEl = document.getElementById("slot-spin-status");
+    const slotScatterCountEl = document.getElementById("slot-scatter-count");
+    const slotScatterFillEl = document.getElementById("slot-scatter-fill");
+    const slotLastWinEl = document.getElementById("slot-last-win");
+    const slotMultiplierEl = document.getElementById("slot-multiplier");
+    const slotLineEls = Array.from(document.querySelectorAll(".slot-line"));
     const messageEl = document.querySelector(".message");
     const betBoxEl = document.querySelector(".bet");
     const creditsStatEl = creditsEl.closest(".stat");
@@ -1501,7 +1954,8 @@
     const panels = {
       "high-card": document.getElementById("high-card-panel"),
       blackjack: document.getElementById("blackjack-panel"),
-      roulette: document.getElementById("roulette-panel")
+      roulette: document.getElementById("roulette-panel"),
+      slots: document.getElementById("slots-panel")
     };
     const chipButtons = Array.from(document.querySelectorAll("[data-chip]"));
     let roulettePickButtons = Array.from(document.querySelectorAll("[data-roulette-type]"));
@@ -1514,6 +1968,33 @@
       5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
     ];
     const redNumbers = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+    const slotSymbols = [
+      { id: "cherry", label: "Cherries", icon: "🍒", tier: "common", weight: 17 },
+      { id: "banana", label: "Banana", icon: "🍌", tier: "common", weight: 17 },
+      { id: "apple", label: "Apple", icon: "🍎", tier: "common", weight: 15 },
+      { id: "hundred", label: "Hundreds", icon: "💯", tier: "mid", weight: 12 },
+      { id: "diamond", label: "Diamond", icon: "💎", tier: "mid", weight: 10 },
+      { id: "seven", label: "Seven", icon: "7", tier: "premium", weight: 7 },
+      { id: "jackpot", label: "Jackpot", icon: "🎰", tier: "jackpot", weight: 4 },
+      { id: "scatter", label: "Scatter", icon: "⭐", tier: "scatter", weight: 3 },
+      { id: "wild", label: "Wild", icon: "⚡", tier: "wild", weight: 9 },
+      { id: "gold", label: "Gold", icon: "🏆", tier: "jackpot", weight: 3 }
+    ];
+    const slotSymbolMap = Object.fromEntries(slotSymbols.map((symbol) => [symbol.id, symbol]));
+    const slotPaylines = [
+      { id: "top", name: "Top", rows: [0, 0, 0, 0, 0] },
+      { id: "middle", name: "Middle", rows: [1, 1, 1, 1, 1] },
+      { id: "bottom", name: "Bottom", rows: [2, 2, 2, 2, 2] },
+      { id: "v", name: "V", rows: [0, 1, 2, 1, 0] },
+      { id: "inverted-v", name: "Inv V", rows: [2, 1, 0, 1, 2] }
+    ];
+    const slotPayouts = {
+      common: { 3: 0.5, 4: 1, 5: 2 },
+      mid: { 3: 1, 4: 3, 5: 6 },
+      premium: { 3: 2, 4: 8, 5: 20 },
+      jackpot: { 3: 4, 4: 15, 5: 50 },
+      wild: { 3: 2, 4: 8, 5: 20 }
+    };
     const gameMeta = {
       "high-card": {
         title: "High Card",
@@ -1528,9 +2009,15 @@
       },
       roulette: {
         title: "Roulette",
-        copy: "Pick a color or exact number and spin for virtual-credit payouts.",
+        copy: "Pick a color or exact number and spin for fictional-dollar payouts.",
         activeCopy: "Pick a color or exact number, then spin the wheel.",
         action: "Spin Wheel"
+      },
+      slots: {
+        title: "Slots",
+        copy: "Five reels, five lines, scatter bonuses, and neon multipliers.",
+        activeCopy: "Match left-to-right or land 3 scatters for free spins.",
+        action: "Spin Reels"
       }
     };
     const cardMarkMarkup = `<div class="card-mark">GTS&reg;</div>`;
@@ -1562,9 +2049,14 @@
       playerZoneEl.classList.remove("outcome-win", "outcome-loss");
       effectLayerEl.innerHTML = "";
       rouletteResultEl.classList.remove("pop");
+      slotCabinetEl.classList.remove("big-win");
       document.querySelectorAll(".card.winner, .card.loser").forEach((cardEl) => {
         cardEl.classList.remove("winner", "loser");
       });
+      document.querySelectorAll(".slot-cell.winning").forEach((cellEl) => {
+        cellEl.classList.remove("winning");
+      });
+      slotLineEls.forEach((lineEl) => lineEl.classList.remove("active"));
       dealerTotalEl.classList.remove("winner", "loser");
       playerTotalEl.classList.remove("winner", "loser");
     }
@@ -1649,6 +2141,346 @@
       }
 
       roulettePickButtons = Array.from(document.querySelectorAll("[data-roulette-type]"));
+    }
+
+    function weightedSlotSymbol() {
+      const totalWeight = slotSymbols.reduce((sum, symbol) => sum + symbol.weight, 0);
+      let pick = Math.random() * totalWeight;
+
+      for (const symbol of slotSymbols) {
+        pick -= symbol.weight;
+        if (pick <= 0) {
+          return symbol;
+        }
+      }
+
+      return slotSymbols[0];
+    }
+
+    function generateSlotGrid(options = {}) {
+      const grid = Array.from({ length: 3 }, () =>
+        Array.from({ length: 5 }, () => weightedSlotSymbol().id)
+      );
+
+      if (options.nearMiss && Math.random() < 0.22 && grid.flat().filter((symbolId) => symbolId === "scatter").length === 0) {
+        const firstColumn = Math.floor(Math.random() * 5);
+        let secondColumn = Math.floor(Math.random() * 5);
+        while (secondColumn === firstColumn) {
+          secondColumn = Math.floor(Math.random() * 5);
+        }
+        grid[0][firstColumn] = "scatter";
+        grid[2][secondColumn] = "scatter";
+      }
+
+      return grid;
+    }
+
+    function evaluateSlotLine(grid, payline) {
+      const lineSymbols = payline.rows.map((row, column) => grid[row][column]);
+      const target = lineSymbols.find((symbolId) => symbolId !== "wild" && symbolId !== "scatter") || "wild";
+
+      if (target === "scatter") {
+        return null;
+      }
+
+      let count = 0;
+      for (const symbolId of lineSymbols) {
+        if (symbolId === target || symbolId === "wild") {
+          count += 1;
+        } else {
+          break;
+        }
+      }
+
+      if (count < 3) {
+        return null;
+      }
+
+      const symbol = slotSymbolMap[target];
+      const tier = target === "wild" ? "wild" : symbol.tier;
+      const multiplier = slotPayouts[tier]?.[count] || 0;
+
+      if (!multiplier) {
+        return null;
+      }
+
+      return {
+        id: payline.id,
+        name: payline.name,
+        symbol: target,
+        count,
+        multiplier,
+        cells: payline.rows.slice(0, count).map((row, column) => ({ row, column }))
+      };
+    }
+
+    function evaluateSlotGrid(grid) {
+      const lineWins = slotPaylines.map((payline) => evaluateSlotLine(grid, payline)).filter(Boolean);
+      const scatterCount = grid.flat().filter((symbolId) => symbolId === "scatter").length;
+      const lineMultiplier = lineWins.reduce((sum, win) => sum + win.multiplier, 0);
+      const scatterTriggered = scatterCount >= 3;
+
+      return {
+        lineWins,
+        scatterCount,
+        scatterTriggered,
+        multiplier: lineMultiplier,
+        freeSpinsAwarded: scatterTriggered ? 5 : 0,
+        bonusMultiplier: scatterTriggered ? 2 : 1
+      };
+    }
+
+    function renderSlotGrid(grid, winningLines = []) {
+      const winningCells = new Set();
+      winningLines.forEach((line) => {
+        line.cells.forEach(({ row, column }) => winningCells.add(`${row}-${column}`));
+      });
+
+      slotReelsEl.innerHTML = "";
+      for (let column = 0; column < 5; column += 1) {
+        const reelEl = document.createElement("div");
+        reelEl.className = "slot-reel";
+
+        for (let row = 0; row < 3; row += 1) {
+          reelEl.appendChild(createSlotCell(grid[row][column], row, column, winningCells.has(`${row}-${column}`)));
+        }
+
+        slotReelsEl.appendChild(reelEl);
+      }
+
+      slotLineEls.forEach((lineEl) => {
+        lineEl.classList.toggle("active", winningLines.some((line) => line.id === lineEl.dataset.line));
+      });
+    }
+
+    function createSlotCell(symbolId, row = "", column = "", winning = false) {
+      const symbol = slotSymbolMap[symbolId];
+      const cellEl = document.createElement("div");
+      cellEl.className = "slot-cell";
+      cellEl.dataset.row = String(row);
+      cellEl.dataset.column = String(column);
+      cellEl.dataset.symbol = symbol.id;
+      cellEl.setAttribute("aria-label", symbol.label);
+      cellEl.innerHTML = `<span class="slot-symbol" aria-hidden="true"><span class="slot-symbol-text">${symbol.icon}</span></span>`;
+
+      if (winning) {
+        cellEl.classList.add("winning");
+      }
+
+      return cellEl;
+    }
+
+    function renderSlotColumn(grid, column, winningLines = []) {
+      const winningCells = new Set();
+      winningLines.forEach((line) => {
+        line.cells.forEach(({ row, column: winColumn }) => winningCells.add(`${row}-${winColumn}`));
+      });
+
+      const reelEl = slotReelsEl.children[column];
+      if (!reelEl) {
+        return;
+      }
+
+      reelEl.className = "slot-reel";
+      reelEl.innerHTML = "";
+      for (let row = 0; row < 3; row += 1) {
+        reelEl.appendChild(createSlotCell(grid[row][column], row, column, winningCells.has(`${row}-${column}`)));
+      }
+    }
+
+    function slotStepSize(stripEl) {
+      const firstCell = stripEl.querySelector(".slot-cell");
+      if (!firstCell) {
+        return 0;
+      }
+
+      const styles = window.getComputedStyle(stripEl);
+      const gap = Number.parseFloat(styles.rowGap) || 0;
+      return firstCell.getBoundingClientRect().height + gap;
+    }
+
+    function renderSlotSpin(finalGrid, winningLines = []) {
+      slotLineEls.forEach((lineEl) => lineEl.classList.remove("active"));
+      slotReelsEl.innerHTML = "";
+
+      for (let column = 0; column < 5; column += 1) {
+        const reelEl = document.createElement("div");
+        const stripEl = document.createElement("div");
+        const leadCount = 26 + column * 6;
+        reelEl.className = "slot-reel";
+        stripEl.className = "slot-strip";
+
+        const spinSymbols = [];
+        for (let index = 0; index < leadCount; index += 1) {
+          spinSymbols.push(weightedSlotSymbol().id);
+        }
+        for (let row = 0; row < 3; row += 1) {
+          spinSymbols.push(finalGrid[row][column]);
+        }
+
+        spinSymbols.forEach((symbolId, index) => {
+          stripEl.appendChild(createSlotCell(symbolId, index, column));
+        });
+
+        reelEl.appendChild(stripEl);
+        slotReelsEl.appendChild(reelEl);
+
+        const duration = 3250 + column * 720;
+        stripEl.style.transitionDuration = `${duration}ms`;
+        window.requestAnimationFrame(() => {
+          const distance = slotStepSize(stripEl) * leadCount;
+          reelEl.classList.add("stopping");
+          stripEl.style.transform = `translate3d(0, -${distance}px, 0)`;
+        });
+
+        stripEl.addEventListener("transitionend", (event) => {
+          if (event.propertyName === "transform") {
+            renderSlotColumn(finalGrid, column, winningLines);
+          }
+        }, { once: true });
+      }
+    }
+
+    function updateSlotMeta() {
+      const freeSpinsActive = state.slotFreeSpins > 0;
+      slotModeEl.textContent = freeSpinsActive ? "Free Spins" : "Base Game";
+      slotSpinStatusEl.textContent = state.slotActive
+        ? "Spinning..."
+        : freeSpinsActive
+          ? `${state.slotFreeSpins} remaining`
+          : "Ready";
+      slotScatterCountEl.textContent = `${Math.min(state.slotScatterCount, 3)} / 3`;
+      slotScatterFillEl.style.setProperty("--scatter-progress", `${Math.min(state.slotScatterCount, 3) / 3 * 100}%`);
+      slotLastWinEl.textContent = formatDollars(state.slotLastWin);
+      slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
+    }
+
+    function animateSlotWinAmount(amount) {
+      const steps = 18;
+      let step = 0;
+      const timer = window.setInterval(() => {
+        step += 1;
+        slotLastWinEl.textContent = formatDollars(amount * (step / steps));
+        if (step >= steps) {
+          window.clearInterval(timer);
+          slotLastWinEl.textContent = formatDollars(amount);
+        }
+      }, 28);
+    }
+
+    function startFreeSpins(count, multiplier) {
+      state.slotFreeSpins += count;
+      state.slotMultiplier = Math.max(state.slotMultiplier, multiplier);
+      showResult("Free spins unlocked", `${count} free spins at ${state.slotMultiplier}x are loaded.`);
+      updateSlotMeta();
+    }
+
+    function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
+      const basePayout = spinBet * result.multiplier;
+      const payout = basePayout * (wasFreeSpin ? state.slotMultiplier : 1);
+      state.slotActive = false;
+      state.slotScatterCount = result.scatterCount;
+      state.slotLastWin = payout;
+
+      renderSlotGrid(grid, result.lineWins);
+      animateSlotWinAmount(payout);
+
+      if (!wasFreeSpin) {
+        state.credits -= spinBet;
+      } else {
+        state.slotFreeSpins = Math.max(0, state.slotFreeSpins - 1);
+      }
+
+      if (result.scatterTriggered) {
+        startFreeSpins(result.freeSpinsAwarded, result.bonusMultiplier);
+      }
+
+      if (payout > 0) {
+        state.credits += payout;
+        state.streak += 1;
+        state.wins += 1;
+        const lineNames = result.lineWins.map((line) => line.name).join(", ");
+        const title = payout >= spinBet * 20 ? "Mega win" : "Slot win";
+        showResult(title, `${lineNames || "Bonus"} paid ${formatDollars(payout)}${wasFreeSpin ? " in free spins" : ""}.`);
+        pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+        playOutcomeEffect("win");
+        if (payout >= spinBet * 8 || result.lineWins.some((line) => slotSymbolMap[line.symbol].tier === "jackpot" && line.count === 5)) {
+          replayAnimation(slotCabinetEl, "big-win");
+        }
+      } else if (result.scatterTriggered) {
+        state.streak += 1;
+        state.wins += 1;
+        showResult("Scatter bonus", "Free spins are ready. The next spins are on the house.");
+        pulseStats(streakStatEl, recordStatEl);
+        playOutcomeEffect("push");
+      } else if (wasFreeSpin) {
+        if (state.slotFreeSpins > 0) {
+          showResult("Free spin", "No line hit. Your bonus spins continue.");
+        } else {
+          state.slotMultiplier = 1;
+          showResult("Bonus ended", "Free spins are complete. Back to the base game.");
+        }
+        playOutcomeEffect("push");
+      } else {
+        const nearMiss = result.scatterCount === 2 ? " Two scatters teased the bonus." : "";
+        state.streak = 0;
+        state.losses += 1;
+        showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}`);
+        pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+        playOutcomeEffect("loss");
+      }
+
+      if (state.slotFreeSpins === 0 && !result.scatterTriggered) {
+        state.slotMultiplier = 1;
+      }
+
+      updateSlotMeta();
+      render();
+    }
+
+    function spinSlots() {
+      if (state.slotActive) {
+        return;
+      }
+
+      const wasFreeSpin = state.slotFreeSpins > 0;
+      const spinBet = state.bet;
+      if (!wasFreeSpin && state.credits < spinBet) {
+        showResult("Bankroll low", "Lower the bet or reset your bankroll.");
+        return;
+      }
+
+      resetEffects();
+      state.slotActive = true;
+      state.slotRound += 1;
+      const round = state.slotRound;
+      state.slotLastWin = 0;
+      slotSpinStatusEl.textContent = wasFreeSpin ? "Bonus spin..." : "Spinning...";
+      slotLastWinEl.textContent = "$0";
+      showResult("Reels spinning", wasFreeSpin ? `${state.slotFreeSpins} free spins remaining at ${state.slotMultiplier}x.` : `${formatDollars(spinBet)} spin in progress.`);
+
+      window.setTimeout(() => {
+        if (round !== state.slotRound) {
+          return;
+        }
+
+        finishSlotSpin(grid, result, wasFreeSpin, spinBet);
+      }, 6500);
+
+      let grid = generateSlotGrid({ nearMiss: true });
+      let result = evaluateSlotGrid(grid);
+
+      if (!result.lineWins.length && !result.scatterTriggered && Math.random() < 0.12) {
+        const row = Math.floor(Math.random() * 3);
+        const symbol = ["cherry", "banana", "apple", "hundred"][Math.floor(Math.random() * 4)];
+        grid[row][0] = symbol;
+        grid[row][1] = "wild";
+        grid[row][2] = symbol;
+        result = evaluateSlotGrid(grid);
+      }
+
+      renderSlotSpin(grid, result.lineWins);
+      render();
     }
 
     function dealFromDeck(cardEl, delay = 0) {
@@ -1741,7 +2573,7 @@
     function clampBet() {
       const currentMax = maxBet();
       state.bet = Math.max(5, Math.min(state.bet, currentMax || 5));
-      betEl.textContent = state.bet;
+      betEl.textContent = formatDollars(state.bet);
 
       if (state.bet !== state.renderedBet) {
         state.renderedBet = state.bet;
@@ -1749,8 +2581,9 @@
       }
     }
 
-    function formatCredits(value) {
-      return Number.isInteger(value) ? value : value.toFixed(1);
+    function formatDollars(value) {
+      const amount = Number.isInteger(value) ? value : value.toFixed(2);
+      return `$${amount}`;
     }
 
     function totalStateClass(hand, hidden = false) {
@@ -1832,7 +2665,7 @@
     }
 
     function render() {
-      creditsEl.textContent = formatCredits(state.credits);
+      creditsEl.textContent = formatDollars(state.credits);
       streakEl.textContent = state.streak;
       winsEl.textContent = state.wins;
       lossesEl.textContent = state.losses;
@@ -1841,19 +2674,21 @@
       tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.game === state.game));
       tabs.forEach((tab) => {
         tab.setAttribute("aria-selected", String(tab.dataset.game === state.game));
-        tab.disabled = (state.blackjackActive || state.rouletteActive) && tab.dataset.game !== state.game;
+        tab.disabled = (state.blackjackActive || state.rouletteActive || state.slotActive || state.slotFreeSpins > 0) && tab.dataset.game !== state.game;
       });
       Object.entries(panels).forEach(([game, panel]) => {
         panel.classList.toggle("active", game === state.game);
       });
-      deckShoeEl.hidden = state.game === "roulette";
+      deckShoeEl.hidden = state.game === "roulette" || state.game === "slots";
 
       const outOfCredits = state.credits < 5;
-      const lockedBet = state.blackjackActive || state.blackjackResolving || state.rouletteActive;
+      const slotBonusLocked = state.slotActive || state.slotFreeSpins > 0;
+      const lockedBet = state.blackjackActive || state.blackjackResolving || state.rouletteActive || slotBonusLocked;
+      const canUseFreeSpin = state.game === "slots" && state.slotFreeSpins > 0;
       dealButton.hidden = state.game === "blackjack" && state.blackjackActive;
       hitButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
       standButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
-      dealButton.disabled = outOfCredits || lockedBet;
+      dealButton.disabled = (outOfCredits && !canUseFreeSpin) || state.blackjackResolving || state.rouletteActive || state.slotActive;
       hitButton.disabled = outOfCredits || !state.blackjackActive || state.blackjackResolving;
       standButton.disabled = outOfCredits || !state.blackjackActive || state.blackjackResolving;
       lowerBetButton.disabled = state.bet <= 5 || outOfCredits || lockedBet;
@@ -1873,14 +2708,15 @@
       const meta = gameMeta[state.game];
       dealButton.textContent = meta.action;
       gameCopyEl.textContent = meta.activeCopy || meta.copy;
+      updateSlotMeta();
 
-      if (outOfCredits) {
-        showResult("Stack empty", "Reset your virtual credits to play another round.");
+      if (outOfCredits && !canUseFreeSpin) {
+        showResult("Bankroll empty", "Reset your fictional dollars to play another round.");
       }
     }
 
     function canChangeBet() {
-      return state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive;
+      return state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
     }
 
     function setBet(value) {
@@ -1960,10 +2796,10 @@
       renderCard(houseCardEl, houseCard, 130);
 
       if (playerCard.rank.value > houseCard.rank.value) {
-        settleWin(state.bet, "You win", `You earned ${state.bet} credits.`);
+        settleWin(state.bet, "You win", `You earned ${formatDollars(state.bet)}.`);
         highlightWinner(playerCardEl, 0);
       } else if (playerCard.rank.value < houseCard.rank.value) {
-        settleLoss("House wins", `You lost ${state.bet} credits.`);
+        settleLoss("House wins", `You lost ${formatDollars(state.bet)}.`);
         highlightWinner(houseCardEl, 130);
       } else {
         state.streak = 0;
@@ -2010,9 +2846,9 @@
           playOutcomeEffect("push");
         } else if (playerNatural) {
           const payout = state.bet * 1.5;
-          settleWin(payout, "Blackjack", `Natural blackjack pays ${formatCredits(payout)} credits.`);
+          settleWin(payout, "Blackjack", `Natural blackjack pays ${formatDollars(payout)}.`);
         } else {
-          settleLoss("Dealer blackjack", `You lost ${state.bet} credits.`);
+          settleLoss("Dealer blackjack", `You lost ${formatDollars(state.bet)}.`);
         }
       }
 
@@ -2038,7 +2874,7 @@
 
           state.blackjackResolving = false;
           revealDealerHoleCard();
-          settleLoss("Bust", `You went over 21 and lost ${state.bet} credits.`);
+          settleLoss("Bust", `You went over 21 and lost ${formatDollars(state.bet)}.`);
           render();
         }, 650);
         return;
@@ -2063,11 +2899,11 @@
       state.blackjackActive = false;
 
       if (dealerTotal > 21) {
-        settleWin(state.bet, "Dealer busts", `You earned ${state.bet} credits.`);
+        settleWin(state.bet, "Dealer busts", `You earned ${formatDollars(state.bet)}.`);
       } else if (playerTotal > dealerTotal) {
-        settleWin(state.bet, "You win", `${playerTotal} beats ${dealerTotal}. You earned ${state.bet} credits.`);
+        settleWin(state.bet, "You win", `${playerTotal} beats ${dealerTotal}. You earned ${formatDollars(state.bet)}.`);
       } else if (playerTotal < dealerTotal) {
-        settleLoss("Dealer wins", `${dealerTotal} beats ${playerTotal}. You lost ${state.bet} credits.`);
+        settleLoss("Dealer wins", `${dealerTotal} beats ${playerTotal}. You lost ${formatDollars(state.bet)}.`);
       } else {
         state.streak = 0;
         showResult("Push", `${playerTotal} ties ${dealerTotal}. Your bet comes back.`);
@@ -2104,7 +2940,7 @@
       state.rouletteActive = true;
       rouletteResultEl.textContent = "--";
       rouletteResultEl.className = "roulette-result";
-      showResult("Wheel spinning", `Your ${state.bet} credit bet is on ${rouletteBetLabel()}.`);
+      showResult("Wheel spinning", `Your ${formatDollars(state.bet)} bet is on ${rouletteBetLabel()}.`);
 
       const pocketIndex = Math.floor(Math.random() * rouletteNumbers.length);
       const number = rouletteNumbers[pocketIndex];
@@ -2132,9 +2968,9 @@
         replayAnimation(rouletteResultEl, "pop");
 
         if (won) {
-          settleWin(payout, `${color.toUpperCase()} ${number}`, `Roulette pays ${formatCredits(payout)} credits.`);
+          settleWin(payout, `${color.toUpperCase()} ${number}`, `Roulette pays ${formatDollars(payout)}.`);
         } else {
-          settleLoss(`${color.toUpperCase()} ${number}`, `You lost ${state.bet} credits on ${rouletteBetLabel()}.`);
+          settleLoss(`${color.toUpperCase()} ${number}`, `You lost ${formatDollars(state.bet)} on ${rouletteBetLabel()}.`);
         }
 
         render();
@@ -2142,7 +2978,7 @@
     }
 
     function switchGame(game) {
-      if (state.blackjackActive || state.rouletteActive) {
+      if (state.blackjackActive || state.rouletteActive || state.slotActive || state.slotFreeSpins > 0) {
         return;
       }
 
@@ -2153,6 +2989,8 @@
     }
 
     initializeRouletteUi();
+    renderSlotGrid(generateSlotGrid());
+    updateSlotMeta();
 
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => switchGame(tab.dataset.game));
@@ -2177,8 +3015,10 @@
         dealHighCard();
       } else if (state.game === "blackjack") {
         startBlackjack();
-      } else {
+      } else if (state.game === "roulette") {
         spinRoulette();
+      } else {
+        spinSlots();
       }
     });
 
@@ -2196,6 +3036,12 @@
       state.rouletteActive = false;
       state.rouletteBetType = "color";
       state.rouletteChoice = "red";
+      state.slotActive = false;
+      state.slotFreeSpins = 0;
+      state.slotMultiplier = 1;
+      state.slotLastWin = 0;
+      state.slotScatterCount = 0;
+      state.slotRound += 1;
       state.dealerHand = [];
       state.playerHand = [];
       state.hideDealerHole = false;
@@ -2206,7 +3052,9 @@
       rouletteResultEl.className = "roulette-result";
       playerCardEl.classList.remove("winner");
       houseCardEl.classList.remove("winner");
-      showResult("Place a bet", "Choose High Card, Blackjack, or Roulette to begin.");
+      renderSlotGrid(generateSlotGrid());
+      updateSlotMeta();
+      showResult("Place a bet", "Choose High Card, Blackjack, Roulette, or Slots to begin.");
       pulseStats(creditsStatEl, streakStatEl, recordStatEl);
       render();
     });

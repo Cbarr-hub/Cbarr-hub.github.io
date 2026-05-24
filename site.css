@@ -102,7 +102,7 @@ header {
 }
 
 .logo-image img {
-  height: 50px;
+  height: 90px;
   width: auto;
   display: block;
 }
@@ -233,7 +233,7 @@ main {
   top: 50%;
   right: -10%;
   transform: translateY(-50%);
-  opacity: 0.08;
+  opacity: 0.15;
   z-index: 0;
   pointer-events: none;
 }

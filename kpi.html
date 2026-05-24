@@ -279,7 +279,7 @@
   function renderKeyMetrics(metricsList){
     const out = document.getElementById('keyMetrics');
     if(metricsList.length===0){ out.innerHTML = ''; return }
-    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Avg words/sent</th><th>Longest word</th><th>Sentences</th><th>Readability</th><th>Word diversity</th></tr></thead><tbody>';
+    let html = '<h3>Key metrics</h3><table><thead><tr><th>Page</th><th>Words</th><th>Average sentence length</th><th>Longest word</th><th>Sentences</th><th>Readability</th><th>Word diversity</th></tr></thead><tbody>';
     for(const m of metricsList){
       html += `<tr><td><a href="${m.url}" target="_blank">${m.url}</a></td><td>${m.wordCount}</td><td>${m.avgSentenceWords}</td><td>${escapeHtml(m.longestWord)}</td><td>${m.sentenceCount}</td><td>${m.readabilityScore}</td><td>${m.wordDiversity}</td></tr>`;
     }
@@ -306,7 +306,7 @@
               <tr><th>Avg word length</th><td>${m.avgWordLen}</td></tr>
               <tr><th>Longest word</th><td>${escapeHtml(m.longestWord)}</td></tr>
               <tr><th>Sentence count</th><td>${m.sentenceCount}</td></tr>
-              <tr><th>Avg words/sentence</th><td>${m.avgSentenceWords}</td></tr>
+              <tr><th>Average sentence length</th><td>${m.avgSentenceWords}</td></tr>
               <tr><th>Readability score (FK)</th><td>${m.readabilityScore}</td></tr>
               <tr><th>Word diversity ratio</th><td>${m.wordDiversity}</td></tr>
               <tr><th>Inline styles</th><td>${m.inlineStyleCount}</td></tr>

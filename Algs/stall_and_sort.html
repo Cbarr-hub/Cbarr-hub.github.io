@@ -31,8 +31,10 @@
         [Stall and Sort intro placeholder...]
       </p>
       <section class="body-copy">
-        <h2>Main Explanation</h2>
-        <p>[Stall and Sort detailed explanation placeholder...]</p>
+        <h2>Stall and Sort</h2>
+        <p>The architectural framework designated as the Institutional Compliance and Consensus-Driven Alignment Protocol (ICCDAP)—alternatively classified in commercial sectors as Bureaucracy Sort—is an enterprise-grade data-rationalization mechanism engineered to guarantee absolute validation integrity at the expense of temporal efficiency. Traditional algorithmic structures, while computationally expeditious, routinely sacrifice cross-functional oversight by executing localized, un-audited data migrations within isolated memory sectors. ICCDAP mitigates this risk by establishing a multi-layered, committee-driven processing environment wherein no individual data packet may alter its spatial coordinate or index alignment without achieving formal, multi-departmental clearance and executing a documented validation cycle.</p>
+        <p>Operationally, the protocol translates traditional binary array iterations into consecutive "Fiscal Quarters" of systemic review. Prior to the execution of a singular comparative evaluation, the system initiates an absolute operational intake process, generating standardized metadata ledgers that document the exact structural parameters of the target elements. The logical assessment of whether a preceding asset maintains a value superior to its subsequent neighbor is then subjected to a rigorous tripartite checking sequence across distinct processing threads. Should the elements be found in non-compliance with the desired sorted paradigm, an inter-departmental asset transfer is initiated, routing the data through a localized escrow buffer where a background thread validates the data down to the bit level before final, authorized re-allocation is granted.</p>
+        <p>To secure absolute data finality and mitigate the systemic threat of unrecorded data anomalies, the protocol strictly prohibits the immediate termination of the processing pipeline upon the initial realization of a sorted state. Instead, the detection of zero active asset re-allocations within a given fiscal quarter automatically triggers a comprehensive retrospective oversight audit. This process mandates a full-scale, reverse-chronological counter-scan of the entire dataset by an independent, un-associated logic matrix to formally verify that previous compliance committees did not introduce errors. Only when this secondary, retrospective governing body signs and notarizes the physical state of the array is the data payload formally released to the production environment, establishing a paradigm where absolute consensus dictates finality.</p>
       </section>
       <div class="code-block">
         <button id="showCodeButton" type="button">Show example code</button>
@@ -43,7 +45,80 @@
       <div class="modal-content">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>Stall and Sort Example Code</h2>
-        <pre><code>// [Stall and Sort example code placeholder...]</code></pre>
+        <pre><code> import time
+
+def bureaucracy_sort(data_payload):
+    """
+    Executes the Institutional Compliance and Consensus-Driven Alignment Protocol (ICCDAP).
+    Guarantees maximum validation alignment through intensive multi-stage oversight.
+    """
+    array_length = len(data_payload)
+    fiscal_quarter_count = 0
+    
+    while True:
+        swaps_approved_this_quarter = 0
+        fiscal_quarter_count += 1
+        
+        print(f"\n--- INITIATING FISCAL QUARTER {fiscal_quarter_count} ---")
+        
+        for i in range(0, array_length - 1):
+            # Step 1: Intake and Form-B2 Triplicate Filing
+            print(f"[INTAKE]: Filing Form-B2 documentation for indices {i} and {i+1}...")
+            time.sleep(0.005)  # Processing overhead for ledger creation
+            
+            packet_a = data_payload[i]
+            packet_b = data_payload[i+1]
+            
+            # Step 2: Tripartite Regulatory Compliance Assessment
+            # Checking the logic across multiple redundant logical validation gates
+            primary_assessment = packet_a > packet_b
+            secondary_assessment = packet_b < packet_a
+            
+            if primary_assessment is True and secondary_assessment is True:
+                print(f"  [ALERT]: Structural non-compliance detected. Element {packet_a} > {packet_b}.")
+                print(f"  [CONSENSUS]: Multi-departmental committee approves structural adjustment.")
+                
+                # Step 3: Inter-Departmental Migration via Escrow
+                print("  [MIGRATION]: Initializing multi-stage corporate asset transfer...")
+                
+                escrow_buffer = data_payload[i]  # Asset placed in manual audit hold
+                time.sleep(0.01)                # Mandatory escrow clearance delay
+                
+                data_payload[i] = data_payload[i+1]  # Department A fills vacancy
+                data_payload[i+1] = escrow_buffer    # Department B receives transferred asset
+                
+                swaps_approved_this_quarter += 1
+                print(f"  [TRANSFER COMPLETE]: Assets re-allocated. Current portfolio state: {data_payload}")
+            else:
+                print(f"  [COMPLIANCE SECURE]: Elements {packet_a} and {packet_b} maintain market alignment.")
+                time.sleep(0.005)  # Mandatory validation pause (Intern Review)
+        
+        print(f"[QUARTER END]: Fiscal Quarter {fiscal_quarter_count} concluded. Swaps approved: {swaps_approved_this_quarter}")
+        
+        # Step 4: Q4 Retrospective Audit (The Exit Condition)
+        if swaps_approved_this_quarter == 0:
+            print(f"\n[BOARD REVIEW]: Zero disruptions recorded in Quarter {fiscal_quarter_count}.")
+            print("[AUDIT]: Launching independent Retrospective Oversight Committee (Reverse-Scan)...")
+            
+            oversight_passed = True
+            # Independent reverse-chronological validation pass
+            for j in range(array_length - 1, 0, -1):
+                if data_payload[j] < data_payload[j-1]:
+                    oversight_passed = False
+                    print(f"  [FRAUD DETECTED]: Oversight caught misaligned elements at index {j}. Auditing failed!")
+                    break
+            
+            if oversight_passed:
+                print(f"\n[SUCCESS]: Data integrity signed, notarized, and sealed in {fiscal_quarter_count} quarters.")
+                print(f"Final Certified Output: {data_payload}\n")
+                return data_payload
+            else:
+                print("[RESTART]: Resetting pipeline to remediate compliance failures.")
+
+# Example Corporate Execution Trace
+if __name__ == "__main__":
+    unverified_assets = [5, 2, 9, 1]
+    bureaucracy_sort(unverified_assets) </code></pre>
       </div>
     </div>
   </main>

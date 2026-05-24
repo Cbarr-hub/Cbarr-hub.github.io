@@ -83,7 +83,8 @@ header {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 0;
+  padding: 0.5rem 0;
+  min-height: 110px;
 }
 
 .logo,
@@ -98,12 +99,33 @@ header {
 }
 
 .logo-image {
-  font-size: inherit;
+  flex: 0 0 25%;
+}
+
+.logo {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.logo-navbar {
+  max-width: 140px;
+}
+
+.logo-about {
+  max-width: 220px;
+}
+
+.logo-footer {
+  max-width: 180px;
 }
 
 .logo-image img {
-  height: 50px;
+  height: 90px;
   width: auto;
+  max-width: 100%;
   display: block;
 }
 
@@ -233,7 +255,7 @@ main {
   top: 50%;
   right: -10%;
   transform: translateY(-50%);
-  opacity: 0.08;
+  opacity: 0.15;
   z-index: 0;
   pointer-events: none;
 }

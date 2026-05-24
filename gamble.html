@@ -231,9 +231,35 @@
     </section>
 
     <section class="gamble-stats" aria-label="Gambling statistics">
+      <section class="stats-panel stats-panel-wide" aria-label="Gambling dashboard">
+        <div class="stats-panel-header">
+          <strong class="stats-panel-title">Gambling dashboard</strong>
+          <span class="stats-panel-status" id="dashboard-status">Loading...</span>
+        </div>
+
+        <div class="viz-grid" id="dashboard-kpis">
+          <div class="viz-empty">Loading dashboard...</div>
+        </div>
+
+        <div class="viz-charts">
+          <div class="viz-chart">
+            <div class="viz-chart-title">Net by gambler</div>
+            <div class="viz-bars" id="net-chart"></div>
+          </div>
+          <div class="viz-chart">
+            <div class="viz-chart-title">Best win streaks</div>
+            <div class="viz-bars" id="streak-chart"></div>
+          </div>
+          <div class="viz-chart">
+            <div class="viz-chart-title">Game volume</div>
+            <div class="viz-bars" id="game-chart"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="stats-panel" aria-label="Bankroll leaderboard">
         <div class="stats-panel-header">
-          <strong class="stats-panel-title">Leaderboard</strong>
+          <strong class="stats-panel-title">Leaderboard + record</strong>
           <span class="stats-panel-status" id="leaderboard-status">Loading...</span>
         </div>
         <ol class="leaderboard-list" id="leaderboard-list">
@@ -253,6 +279,6 @@
     </section>
   </main>
 
-  <script type="module" src="./gamble.js?v=events-1"></script>
+  <script type="module" src="./gamble.js?v=stats-1"></script>
 </body>
 </html>

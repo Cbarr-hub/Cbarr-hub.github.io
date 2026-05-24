@@ -240,15 +240,16 @@
     class Octopus {
       constructor() {
         this.px   = 5
+        // 8×8 square = circular silhouette; eyes: white(4) at cols2-3 and cols5-6, rows3-4
         this.body = [
-          [0,0,0,1,1,1,1,1,1,0,0,0],
-          [0,0,1,1,1,1,1,1,1,1,0,0],
-          [0,1,1,1,1,1,1,1,1,1,1,0],
-          [1,1,1,4,4,1,1,4,4,1,1,1],
-          [1,1,1,4,3,1,1,4,3,1,1,1],
-          [0,1,1,1,1,1,1,1,1,1,1,0],
-          [0,0,1,1,1,1,1,1,1,1,0,0],
-          [0,0,0,1,1,1,1,1,1,0,0,0],
+          [0,0,1,1,1,1,0,0],
+          [0,1,1,1,1,1,1,0],
+          [1,1,1,1,1,1,1,1],
+          [1,1,4,4,1,4,4,1],
+          [1,1,4,4,1,4,4,1],
+          [1,1,1,1,1,1,1,1],
+          [0,1,1,1,1,1,1,0],
+          [0,0,1,1,1,1,0,0],
         ]
         this.bodyW  = this.body[0].length * this.px
         this.bodyH  = this.body.length * this.px
@@ -280,33 +281,39 @@
       }
 
       drawArms(t, nearestFish, nearestDist) {
-        const cx   = this.x + this.bodyW / 2
-        const base = this.y + this.bodyH * 0.8
+        const cx = this.x + this.bodyW / 2
+        const cy = this.y + this.bodyH / 2
         const nArms = 8, nSegs = 10, armLen = 68
+        // arm roots sit on the body perimeter
+        const r = this.bodyW * 0.48
+
+        // arms fan across lower 144° arc: 18° to 162° from horizontal
+        const arcStart = Math.PI * 0.1
+        const arcSpan  = Math.PI * 0.8
 
         let reachArmIdx = -1, fishAngle = 0
         if (nearestFish && nearestDist < 220) {
           const fx = nearestFish.x + nearestFish.w / 2
           const fy = nearestFish.y + nearestFish.h / 2
-          fishAngle = Math.atan2(fy - base, fx - cx)
+          fishAngle = Math.atan2(fy - cy, fx - cx)
           let minDiff = Infinity
           for (let i = 0; i < nArms; i++) {
-            const bAng = Math.PI / 2 + (i / (nArms - 1) - 0.5) * 1.6
-            const diff = Math.abs(fishAngle - bAng)
+            const ang = arcStart + arcSpan * (i / (nArms - 1))
+            let diff = Math.abs(fishAngle - ang)
+            if (diff > Math.PI) diff = 2 * Math.PI - diff
             if (diff < minDiff) { minDiff = diff; reachArmIdx = i }
           }
         }
 
         for (let i = 0; i < nArms; i++) {
-          const spread    = (i / (nArms - 1) - 0.5)
-          const baseAngle = Math.PI / 2 + spread * 1.6
+          const baseAngle = arcStart + arcSpan * (i / (nArms - 1))
           const armPhase  = (i / nArms) * Math.PI * 2 + this.phase
           const isReach   = (i === reachArmIdx && nearestFish !== null && nearestDist < 220)
           const reachFrac = isReach ? Math.max(0, 1 - nearestDist / 220) : 0
 
-          // side arms attach higher on the body
-          let x = cx + spread * this.bodyW * 0.65
-          let y = base - Math.abs(spread) * this.bodyH * 0.35
+          // root on body perimeter in direction of baseAngle
+          let x = cx + Math.cos(baseAngle) * r
+          let y = cy + Math.sin(baseAngle) * r
           const pts = [{x, y}]
 
           for (let s = 1; s <= nSegs; s++) {
@@ -335,7 +342,7 @@
         const ox = Math.floor(this.x)
         const oy = Math.floor(this.y)
 
-        // unit vector from octopus center toward nearest fish for pupil offset
+        // unit vector toward nearest fish
         let ex = 0, ey = 0
         if (nearestFish) {
           const dx = (nearestFish.x + nearestFish.w / 2) - (ox + this.bodyW / 2)
@@ -344,27 +351,30 @@
           if (len > 0) { ex = dx / len; ey = dy / len }
         }
 
-        // draw sprite, skip pupils (v===3) — rendered separately with fish-tracking offset
+        // draw body sprite (no v===3 in new sprite — whites only)
         for (let row = 0; row < this.body.length; row++) {
           for (let col = 0; col < this.body[row].length; col++) {
             const v = this.body[row][col]
-            if (v === 0 || v === 3) continue
+            if (v === 0) continue
             ctx.fillStyle = v === 1 ? this.color : '#ffffff'
             ctx.fillRect(ox + col * this.px, oy + row * this.px, this.px, this.px)
           }
         }
 
-        // pupils: centered in each 2x2 eye white, offset up to 2px toward nearest fish
-        const eyeOff = 2
+        // pupils: each eye white is 2×2 cells at px=5 → 10×10px
+        // left  white center: cols 2-3, rows 3-4 → canvas (15, 20) from ox,oy
+        // right white center: cols 5-6, rows 3-4 → canvas (30, 20) from ox,oy
+        // offset ±px/2 so pupil reaches edge of white in any direction
+        const eyeOff = this.px / 2  // 2.5
         ctx.fillStyle = '#111111'
         ctx.fillRect(
-          Math.round(ox + 3.5 * this.px + ex * eyeOff - this.px / 2),
-          Math.round(oy + 3.5 * this.px + ey * eyeOff - this.px / 2),
+          Math.round(ox + 12.5 + ex * eyeOff),
+          Math.round(oy + 17.5 + ey * eyeOff),
           this.px, this.px
         )
         ctx.fillRect(
-          Math.round(ox + 7.5 * this.px + ex * eyeOff - this.px / 2),
-          Math.round(oy + 3.5 * this.px + ey * eyeOff - this.px / 2),
+          Math.round(ox + 27.5 + ex * eyeOff),
+          Math.round(oy + 17.5 + ey * eyeOff),
           this.px, this.px
         )
       }

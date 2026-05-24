@@ -4,8 +4,142 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Random Sort</title>
-  <meta name="description" content="Barebones Random Sort page." />
+  <meta name="description" content="Barebones Random Sort page with an interactive visualizer modal." />
   <link rel="stylesheet" href="algs.css" />
+  <style>
+    /* Styling for the new Visualizer Modal Window - Updated to match the dark theme */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85); /* Slightly darker overlay for cohesion */
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e1e24; /* Dark background matching the page theme */
+      color: #ffffff;      /* White text for contrast */
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 600px;
+      width: 100%;
+      position: relative;
+      text-align: center;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
+    }
+    .modal-close {
+      position: absolute;
+      top: 10px; right: 15px;
+      font-size: 28px;
+      background: none; 
+      border: none; 
+      cursor: pointer;
+      color: #aaa;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    /* Input Field & Controls */
+    .input-container {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    .input-container input {
+      padding: 12px;
+      font-size: 1rem;
+      width: 65%;
+      background-color: #111115; /* Dark input fields */
+      border: 2px solid #44444f;
+      border-radius: 4px;
+      color: #ffffff;
+      outline: none;
+    }
+    .input-container input:focus {
+      border-color: #007bc4;
+    }
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #007bc4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-btn:hover {
+      background-color: #005fa1;
+    }
+    .action-btn:disabled {
+      background-color: #44444f;
+      color: #888888;
+      cursor: not-allowed;
+    }
+
+    /* Live Bar Chart Render Box */
+    .chart-container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      height: 220px;
+      gap: 10px;
+      background: #111115; /* Dark background inside the graph */
+      padding: 20px;
+      border-radius: 6px;
+      margin: 20px 0;
+      border: 1px dashed #44444f;
+    }
+    .bar {
+      width: 45px;
+      background-color: #e74c3c; /* Volatile red during active shuffles */
+      text-align: center;
+      color: white;
+      font-weight: bold;
+      font-size: 0.9rem;
+      border-radius: 4px 4px 0 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 5px;
+      transition: height 0.05s ease;
+    }
+    .bar.sorted {
+      background-color: #2ecc71; /* Stable green on complete */
+    }
+
+    /* Statistics Results Dashboard */
+    .stats-dashboard {
+      background: #1a2620; /* Dark green tint hint for success */
+      border-left: 5px solid #2ecc71;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: #dddddd;
+    }
+    
+    /* Layout preservation utility for image + button container */
+    .visualizer-trigger-block {
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+  </style>
 </head>
 <body>
   <header>
@@ -22,25 +156,34 @@
   <main>
     <section class="container">
       <h1>RANDOM SORT</h1>
-      <div class="gif-block">
-        <img src="../RandomSort.png" alt="Random Sort demonstration" class="demo-gif" />
+      
+      <div class="visualizer-trigger-block">
+        <div class="gif-block" style="margin: 0; width: 100%;">
+          <img src="../RandomSort.png" alt="Random Sort demonstration" class="demo-gif" />
+        </div>
+        <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
+          LAUNCH INTERACTIVE VISUALIZER POP-UP
+        </button>
       </div>
+
       <p>
         Leveraging high-entropy algorithmic frameworks to organically cross-functionalize data paradigms, achieving optimal alignment through natural equilibrium.
       </p>
+      
       <section class="body-copy">
         <h2>MAIN EXPLANATION</h2>
         <p>The computational methodology colloquially designated as "Random Sort"—hereafter referred to as the Non-Deterministic Stochastic Re-indexing Modality—is a paradigm-shifting data-alignment protocol designed to achieve chronological or numerical sequentiality within a disorganized dataset. Unlike traditional, rigid algorithmic paradigms such as QuickSort or MergeSort, which rely on deterministic, binary-tree comparison mechanics to systematically migrate data elements into predefined spatial orientations, this approach prioritizes absolute structural fluidity. It operates by completely dismantling the existing architectural hierarchy of an unsorted array during each operational cycle, systematically decoupling every data packet from its index, and reallocating those packets into entirely novel spatial coordinates governed purely by probabilistic mechanics and high-entropy variable distribution.</p>
         <p>To execute this transformative data-rationalization process, the subsystem enters a continuous, iterative evaluation-and-disruption loop. In the primary phase of any given micro-cycle, an analytical validation scanner checks the entirety of the linear array to determine if the current sequential alignment satisfies the prerequisite parameters of ascending or descending order. Upon the inevitable detection of a non-aligned index pairing—meaning a preceding data packet possesses a quantitative value superior to its subsequent neighbor—the algorithm triggers a full-scale systemic reset. Rather than executing targeted, low-impact localized swaps, the protocol invokes a pseudo-random number generation sequence to completely scramble the spatial positioning of the entire dataset simultaneously. This deliberate injection of structural chaos is repeated uniformly across successive temporal intervals, forcing the dataset to undergo radical, holistic transformations until it naturally collapses into a state of perfect, compliant equilibrium.</p>
         <p>From an efficiency and resource-utilization standpoint, the operational overhead of this non-deterministic modality exhibits a highly unique, asymptotically unbounded scale of complexity. Because each successive reshuffling iteration is entirely decoupled from the historical data states that preceded it, the system maintains no internal memory of previous permutations, effectively neutralizing the concept of incremental progress. The mathematical probability of achieving optimal data alignment is entirely reliant on the factorial product of the array's total element volume, which guarantees that the temporal duration required to achieve structural consensus expands exponentially with even minor additions to the data payload. Consequently, while standard methodologies optimize for minimized CPU cycle consumption, this strategy maximizes computational saturation and algorithmic endurance, deliberately sustaining a prolonged state of operational volatility until the laws of pure statistical probability mandate a successful execution outcome.</p>
       </section>
+      
       <div class="code-block">
         <button id="showCodeButton" type="button">SHOW EXAMPLE CODE</button>
       </div>
     </section>
 
     <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
-      <div class="modal-content">
+      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d;">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>RANDOM SORT EXAMPLE CODE</h2>
         <pre><code>// A simple random sort implementation (bogosort-style)
@@ -86,6 +229,33 @@ console.log('Sorted:', sorted);
 </code></pre>
       </div>
     </div>
+
+    <div id="visualizerModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
+        <h2>STOCHASTIC RE-INDEXING MODALITY</h2>
+        <p style="font-size: 0.9rem; color:#aaa;">Enter a short sequence of values to visualize random distribution constraints.</p>
+        
+        <div class="input-container">
+          <input type="text" id="userInput" placeholder="e.g. 12, 5, 24, 2, 17 (Max 7 suggested)" value="5, 2, 9, 1, 4">
+          <button id="startSortButton" class="action-btn" type="button">RUN SORT</button>
+        </div>
+
+        <div id="chartContainer" class="chart-container">
+          <p style="color: #888; align-self: center;">Initialize layout array matrix to visualize performance analytics.</p>
+        </div>
+
+        <div id="statsDashboard" class="stats-dashboard" style="display: none;">
+          <h3 style="margin-top: 0; color: #2ecc71; font-size: 1.1rem;">⚡ RADICAL CONVERGENCE ACHIEVED</h3>
+          <div class="stats-grid">
+            <div><strong>Total Shuffles:</strong> <span id="statShuffles">0</span></div>
+            <div><strong>Processing Duration:</strong> <span id="statTime">0ms</span></div>
+            <div><strong>Payload Baseline:</strong> <span id="statInitial">[]</span></div>
+            <div><strong>Stable Array Output:</strong> <span id="statFinal">[]</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <footer>
@@ -95,34 +265,152 @@ console.log('Sorted:', sorted);
   </footer>
 
   <script>
+    // System Selectors
     const showCodeButton = document.getElementById('showCodeButton');
     const closeCodeButton = document.getElementById('closeCodeButton');
     const codeModal = document.getElementById('codeModal');
 
-    function openCodeModal() {
-      if (!codeModal) return;
-      codeModal.style.display = 'flex';
-      codeModal.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('modal-open');
-      codeModal.focus();
+    const openVisualizerButton = document.getElementById('openVisualizerButton');
+    const closeVisualizerButton = document.getElementById('closeVisualizerButton');
+    const visualizerModal = document.getElementById('visualizerModal');
+    
+    const startSortButton = document.getElementById('startSortButton');
+    const userInput = document.getElementById('userInput');
+    const chartContainer = document.getElementById('chartContainer');
+    const statsDashboard = document.getElementById('statsDashboard');
+
+    let activeSortingRun = false;
+
+    // Code Modal Basic Triggers
+    function toggleCodeModal(open) {
+      codeModal.style.display = open ? 'flex' : 'none';
+      codeModal.setAttribute('aria-hidden', !open);
+    }
+    showCodeButton.addEventListener('click', () => toggleCodeModal(true));
+    closeCodeButton.addEventListener('click', () => toggleCodeModal(false));
+
+    // Interactive Visualizer Pop-up Control
+    function toggleVisualizerModal(open) {
+      if (activeSortingRun && !open) {
+        if (!confirm("An algorithmic permutation sequence is currently processing. Abort execution?")) return;
+        activeSortingRun = false; // Halt loop
+      }
+      visualizerModal.style.display = open ? 'flex' : 'none';
+      visualizerModal.setAttribute('aria-hidden', !open);
+      
+      if(open) {
+        // Reset view states safely upon reopening
+        statsDashboard.style.display = 'none';
+        chartContainer.innerHTML = '<p style="color: #888; align-self: center;">Initialize layout array matrix to visualize performance analytics.</p>';
+        startSortButton.disabled = false;
+        userInput.disabled = false;
+      }
+    }
+    openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
+    closeVisualizerButton.addEventListener('click', () => toggleVisualizerModal(false));
+
+    // Algorithm Mechanics
+    function isSorted(items) {
+      for (let i = 1; i < items.length; i++) {
+        if (items[i - 1] > items[i]) return false;
+      }
+      return true;
     }
 
-    function closeCodeModal() {
-      if (!codeModal) return;
-      codeModal.style.display = 'none';
-      codeModal.setAttribute('aria-hidden', 'true');
-      document.body.classList.remove('modal-open');
+    function shuffle(items) {
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+      return items;
     }
 
-    if (showCodeButton && closeCodeButton && codeModal) {
-      showCodeButton.addEventListener('click', openCodeModal);
-      closeCodeButton.addEventListener('click', closeCodeModal);
-      codeModal.addEventListener('click', event => {
-        if (event.target === codeModal) {
-          closeCodeModal();
-        }
+    // Interactive Bar Generator
+    function renderBars(items, complete = false) {
+      chartContainer.innerHTML = '';
+      const scaleMax = Math.max(...items, 1);
+      
+      items.forEach(val => {
+        const barElement = document.createElement('div');
+        barElement.className = `bar ${complete ? 'sorted' : ''}`;
+        barElement.style.height = `${(val / scaleMax) * 100}%`;
+        barElement.innerText = val;
+        chartContainer.appendChild(barElement);
       });
     }
+
+    // Visual Asynchronous Controller Loop
+    async function executeRandomSort() {
+      if (activeSortingRun) return;
+
+      // Extract raw user input integers
+      const parsedValues = userInput.value.split(',')
+        .map(element => parseInt(element.trim(), 10))
+        .filter(num => !isNaN(num));
+
+      if (parsedValues.length === 0) {
+        alert("Please enter a valid dataset sequence (comma-separated integers).");
+        return;
+      }
+      
+      if (parsedValues.length > 7) {
+        if (!confirm("Processing populations greater than 7 via random high-entropy shuffle algorithms can result in astronomical delays. Run execution regardless?")) {
+          return;
+        }
+      }
+
+      // Lock UI Fields during processing loop
+      activeSortingRun = true;
+      startSortButton.disabled = true;
+      userInput.disabled = true;
+      statsDashboard.style.display = 'none';
+
+      const baselineInput = [...parsedValues];
+      let workingArray = [...parsedValues];
+      let cycleCount = 0;
+      const executionStart = performance.now();
+
+      renderBars(workingArray);
+
+      // Async visual interval loop matching user criteria 3
+      async function stepThroughComplexity() {
+        if (!activeSortingRun) return; // Immediate cancellation catcher
+
+        if (isSorted(workingArray)) {
+          const totalDuration = (performance.now() - executionStart).toFixed(2);
+          renderBars(workingArray, true);
+          
+          // Render statistics interface components
+          document.getElementById('statShuffles').innerText = cycleCount.toLocaleString();
+          document.getElementById('statTime').innerText = `${totalDuration} ms`;
+          document.getElementById('statInitial').innerText = `[${baselineInput.join(', ')}]`;
+          document.getElementById('statFinal').innerText = `[${workingArray.join(', ')}]`;
+          statsDashboard.style.display = 'block';
+
+          activeSortingRun = false;
+          startSortButton.disabled = false;
+          userInput.disabled = false;
+          return;
+        }
+
+        workingArray = shuffle(workingArray);
+        cycleCount++;
+        renderBars(workingArray);
+
+        // Controlled artificial delay frame rate (30ms) to ensure high clarity without tab freezing
+        setTimeout(stepThroughComplexity, 30);
+      }
+
+      setTimeout(stepThroughComplexity, 100);
+    }
+
+    startSortButton.addEventListener('click', executeRandomSort);
+
+    // Contextual global backdrop click handlers
+    window.addEventListener('click', event => {
+      if (event.target === codeModal) toggleCodeModal(false);
+      if (event.target === visualizerModal) toggleVisualizerModal(false);
+    });
   </script>
 </body>
 </html>

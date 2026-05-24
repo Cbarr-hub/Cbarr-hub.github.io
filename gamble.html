@@ -2118,6 +2118,22 @@
       return redNumbers.has(number) ? "red" : "black";
     }
 
+    function normalizeAngle(angle) {
+      return ((angle % 360) + 360) % 360;
+    }
+
+    function nextClockwiseRotation(current, targetAngle, spins) {
+      const currentAngle = normalizeAngle(current);
+      const target = normalizeAngle(targetAngle);
+      return current + spins * 360 + normalizeAngle(target - currentAngle);
+    }
+
+    function nextCounterClockwiseRotation(current, targetAngle, spins) {
+      const currentAngle = normalizeAngle(current);
+      const target = normalizeAngle(targetAngle);
+      return current - spins * 360 - normalizeAngle(currentAngle - target);
+    }
+
     function initializeRouletteUi() {
       const segment = 360 / rouletteNumbers.length;
       rouletteWheelEl.innerHTML = "";
@@ -2947,11 +2963,13 @@
       const color = rouletteColor(number);
       const segment = 360 / rouletteNumbers.length;
       const targetAngle = pocketIndex * segment + segment / 2;
-      const wheelSpins = 1440 + Math.floor(Math.random() * 360);
-      const ballSpins = 2160 + Math.floor(Math.random() * 420);
+      const wheelSpins = 4 + Math.floor(Math.random() * 2);
+      const ballSpins = 7 + Math.floor(Math.random() * 2);
+      const wheelTargetAngle = -targetAngle;
+      const ballTargetAngle = 0;
 
-      state.rouletteWheelRotation += wheelSpins + targetAngle;
-      state.rouletteBallRotation -= ballSpins + targetAngle;
+      state.rouletteWheelRotation = nextClockwiseRotation(state.rouletteWheelRotation, wheelTargetAngle, wheelSpins);
+      state.rouletteBallRotation = nextCounterClockwiseRotation(state.rouletteBallRotation, ballTargetAngle, ballSpins);
       rouletteWheelEl.style.transform = `rotate(${state.rouletteWheelRotation}deg)`;
       rouletteBallTrackEl.style.transform = `rotate(${state.rouletteBallRotation}deg)`;
       render();

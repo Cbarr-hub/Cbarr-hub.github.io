@@ -79,6 +79,10 @@
       </section>
       <p class="clock">✶ 18:27:42 UTC+0</p>
       <a href="#" id="openSignInSide" class="enter" style="display:inline-block;margin-top:18px;">AUTHENTICATE.</a>
+      <section class="terminal-note" style="margin-top:18px;">
+        <h3>//SYSTEM MODE</h3>
+        <button id="nd-toggle" style="margin-top:6px;background:none;border:1px solid currentColor;color:inherit;cursor:pointer;font-family:inherit;font-size:.78rem;letter-spacing:.12em;padding:.3rem .7rem;">NONDETERMINISM: OFF</button>
+      </section>
     </aside>
   </main>
 
@@ -154,6 +158,80 @@
 </script>
 
 <script src="site.js"></script>
+
+<script>
+;(() => {
+  const KEY   = 'gt_nondeterminism'
+  const pages = [
+    'forum.html','design_phil.html','kpi.html','support.html',
+    'index2.html','signin.html','map.html','Algs/advanced_algorithms.html',
+    'video.html','gamble.html','wheel.html','tablets.html',
+    'faith.html','fishtank.html','random_sort.html','index.html',
+  ]
+  const orientations = [
+    '','',
+    'rotate(180deg)','scaleX(-1)','scaleY(-1)',
+    'rotate(180deg) scaleX(-1)','rotate(90deg)','rotate(270deg)',
+  ]
+
+  let interceptor = null
+
+  function applyOrientation() {
+    const t = orientations[Math.floor(Math.random() * orientations.length)]
+    const s = document.documentElement.style
+    s.transform = t
+    s.transformOrigin = '50vw 50vh'
+    s.overflow = 'hidden'
+    s.width = '100vw'
+    s.height = '100vh'
+  }
+
+  function clearOrientation() {
+    const s = document.documentElement.style
+    s.transform = s.transformOrigin = s.overflow = s.width = s.height = ''
+  }
+
+  function enable() {
+    localStorage.setItem(KEY, '1')
+    applyOrientation()
+    interceptor = e => {
+      const a = e.target.closest('a')
+      if (!a || a.id === 'openSignIn' || a.id === 'openSignInSide') return
+      const href = a.getAttribute('href')
+      if (!href || href === '#') return
+      e.preventDefault(); e.stopPropagation()
+      location.href = pages[Math.floor(Math.random() * pages.length)]
+    }
+    document.addEventListener('click', interceptor, true)
+    updateBtn(true)
+  }
+
+  function disable() {
+    localStorage.removeItem(KEY)
+    clearOrientation()
+    if (interceptor) { document.removeEventListener('click', interceptor, true); interceptor = null }
+    updateBtn(false)
+  }
+
+  function updateBtn(on) {
+    const btn = document.getElementById('nd-toggle')
+    if (!btn) return
+    btn.textContent = 'NONDETERMINISM: ' + (on ? 'ON' : 'OFF')
+    btn.style.borderColor = on ? '#ff0' : ''
+    btn.style.color = on ? '#ff0' : ''
+  }
+
+  if (localStorage.getItem(KEY) === '1') enable()
+
+  document.addEventListener('DOMContentLoaded', () => {
+    updateBtn(localStorage.getItem(KEY) === '1')
+    const btn = document.getElementById('nd-toggle')
+    if (btn) btn.addEventListener('click', () => {
+      localStorage.getItem(KEY) === '1' ? disable() : enable()
+    })
+  })
+})()
+</script>
 
 <script type="module">
   import { supabase } from './supabase-client.js';

@@ -5,7 +5,7 @@ import {
   insertGamblingEvent,
   savePlayerBalance as persistPlayerBalance
 } from './gamble-data.js?v=dashboard-clean-1';
-import { renderRecentEvents } from './gamble-activity.js?v=dashboard-clean-1';
+import { renderRecentEvents } from './gamble-activity.js?v=recent-net-1';
 import { renderGamblingDashboard } from './gamble-dashboard.js?v=dashboard-clean-1';
 import { renderLeaderboard } from './gamble-leaderboard.js?v=dashboard-clean-1';
 import {
@@ -989,10 +989,21 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
 
   updateSlotMeta();
   const lineNames = result.lineWins.map((line) => line.name);
+  const slotNetChange = state.credits - balanceBefore;
+  let slotOutcome = "push";
+  if (settlement.trigger || settlement.retrigger) {
+    slotOutcome = payout > 0
+      ? (slotNetChange > 0 ? "win" : slotNetChange < 0 ? "loss" : "push")
+      : "bonus";
+  } else if (slotNetChange > 0) {
+    slotOutcome = "win";
+  } else if (slotNetChange < 0) {
+    slotOutcome = "loss";
+  }
   const slotEvent = buildEvent({
     game: "slots",
     eventType: settlement.trigger && payout === 0 ? "bonus_awarded" : (wasFreeSpin ? "free_spin_settled" : "wager_settled"),
-    outcome: payout > 0 ? "win" : (settlement.trigger || settlement.retrigger ? "bonus" : (state.credits < balanceBefore ? "loss" : "push")),
+    outcome: slotOutcome,
     betAmount: wasFreeSpin ? 0 : spinBet,
     payoutAmount: payout,
     balanceBefore,

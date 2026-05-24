@@ -522,6 +522,53 @@ function renderSlotGrid(grid, winningLines = [], scatterCells = [], stickyWilds 
   });
 }
 
+function initializeSlotLineExamples() {
+  const paylineMap = new Map(slotRulesPaylines.map((payline) => [payline.id, payline]));
+
+  slotLineEls.forEach((lineEl) => {
+    const payline = paylineMap.get(lineEl.dataset.line);
+    if (!payline || lineEl.querySelector(".slot-line-preview")) {
+      return;
+    }
+
+    lineEl.tabIndex = 0;
+    lineEl.setAttribute("aria-label", `${payline.name} payline. Match three or more symbols from either edge.`);
+
+    const previewEl = document.createElement("span");
+    previewEl.className = "slot-line-preview";
+    previewEl.setAttribute("aria-hidden", "true");
+
+    const titleEl = document.createElement("span");
+    titleEl.className = "slot-line-preview-title";
+    titleEl.textContent = `${payline.name} example`;
+    previewEl.appendChild(titleEl);
+
+    const gridEl = document.createElement("span");
+    gridEl.className = "slot-line-preview-grid";
+    for (let row = 0; row < 3; row += 1) {
+      for (let column = 0; column < 5; column += 1) {
+        const cellEl = document.createElement("span");
+        cellEl.className = "slot-line-preview-cell";
+        if (payline.rows[column] === row) {
+          cellEl.classList.add("path");
+        }
+        if (payline.rows[column] === row && column < 3) {
+          cellEl.classList.add("example");
+        }
+        gridEl.appendChild(cellEl);
+      }
+    }
+    previewEl.appendChild(gridEl);
+
+    const footEl = document.createElement("span");
+    footEl.className = "slot-line-preview-foot";
+    footEl.textContent = "3+ match from edge";
+    previewEl.appendChild(footEl);
+
+    lineEl.appendChild(previewEl);
+  });
+}
+
 function createSlotCell(symbolId, row = "", column = "", winning = false, scatterHit = false, stickyWild = false) {
   const symbol = slotRulesSymbolMap[symbolId];
   const cellEl = document.createElement("div");
@@ -686,8 +733,21 @@ function slotLineLabel(line, spinBet, bonusMultiplier = 1) {
   const symbolNames = line.symbols
     ? line.symbols.map((symbolId) => slotRulesSymbolMap[symbolId].label).join(" + ")
     : `${line.count} ${symbol.label}`;
-  const amount = spinBet * line.multiplier * bonusMultiplier;
-  return `${line.name}: ${symbolNames} pays ${formatDollars(amount)}`;
+  const totalMultiplier = line.multiplier * bonusMultiplier;
+  const amount = spinBet * totalMultiplier;
+  return `${line.name}: ${symbolNames} pays ${formatDollars(amount)} (${formatMultiplier(totalMultiplier)})`;
+}
+
+function slotPaidDetail(result, payout, spinBet) {
+  const lineCount = result.lineWins.length;
+  const scatterCount = result.scatterPay ? 1 : 0;
+  const winCount = lineCount + scatterCount;
+  const label = winCount === 1
+    ? (lineCount === 1 ? "line" : "scatter win")
+    : "wins";
+  const totalMultiplier = payout / spinBet;
+  const multiplierCopy = payout > 0 ? ` (${formatMultiplier(totalMultiplier)})` : "";
+  return `${winCount} ${label} paid ${formatDollars(payout)}${multiplierCopy}.`;
 }
 
 function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
@@ -707,7 +767,8 @@ function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
   if (scatterPay) {
     const chipEl = document.createElement("span");
     chipEl.className = "slot-payline-chip bonus";
-    chipEl.textContent = `${scatterCount} Scatters pay ${formatDollars(spinBet * scatterPay * bonusMultiplier)}`;
+    const totalMultiplier = scatterPay * bonusMultiplier;
+    chipEl.textContent = `${scatterCount} Scatters pay ${formatDollars(spinBet * totalMultiplier)} (${formatMultiplier(totalMultiplier)})`;
     slotPaylineListEl.appendChild(chipEl);
   }
 
@@ -846,7 +907,7 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     showResult(title, `${winSource} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}`);
     renderSlotWinPanel({
       title: wasFreeSpin ? `Crazy ${title}` : title,
-      detail: `${result.totalWays} way${result.totalWays === 1 ? "" : "s"} paid at ${activeMultiplier}x.${triggerCopy}${retriggerCopy}${crazyCopy}`,
+      detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}`,
       amount: payout,
       mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win"
     });
@@ -1107,6 +1168,11 @@ function clampBet() {
 function formatDollars(value) {
   const amount = Number.isInteger(value) ? value : value.toFixed(2);
   return `$${amount}`;
+}
+
+function formatMultiplier(value) {
+  const rounded = Math.round(value * 1000) / 1000;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}x`;
 }
 
 let balanceSaveTimer = null;
@@ -1763,6 +1829,7 @@ function switchGame(game) {
 }
 
 initializeRouletteUi();
+initializeSlotLineExamples();
 renderSlotGrid(generateSlotGrid());
 updateSlotMeta();
 

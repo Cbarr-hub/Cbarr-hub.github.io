@@ -94,6 +94,9 @@ const state = {
   slotRetriggerText: "",
   slotCrazySticky: false,
   slotCrazyWilds: [],
+  slotCrazyDisplayedTotal: 0,
+  slotCrazyAmbientTimer: null,
+  slotCrazyPrevMultiplier: 1,
   autoReroll: false,
   autoRerollTimer: null,
   soundEnabled: readSoundSetting()
@@ -138,6 +141,7 @@ const slotReelsEl = document.getElementById("slot-reels");
 const slotModeEl = document.getElementById("slot-mode");
 const slotSpinStatusEl = document.getElementById("slot-spin-status");
 const slotWinPanelEl = document.getElementById("slot-win-panel");
+const slotWinLabelEl = document.getElementById("slot-win-label");
 const slotWinTitleEl = document.getElementById("slot-win-title");
 const slotWinDetailEl = document.getElementById("slot-win-detail");
 const slotWinAmountEl = document.getElementById("slot-win-amount");
@@ -524,9 +528,10 @@ function resetEffects() {
   playerZoneEl.classList.remove("outcome-win", "outcome-loss");
   effectLayerEl.innerHTML = "";
   rouletteResultEl.classList.remove("pop");
-  slotCabinetEl.classList.remove("big-win", "crazy-trigger", "crazy-retrigger", "crazy-spin", "crazy-win");
-  slotWinPanelEl.classList.remove("win", "bonus");
-  slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
+  slotCabinetEl.classList.remove("big-win", "crazy-trigger", "crazy-retrigger", "crazy-spin", "crazy-win", "crazy-multiplier-up");
+  slotWinPanelEl.classList.remove("win", "bonus", "running");
+  slotCabinetEl.querySelectorAll(".slot-coin, .crazy-confetti").forEach((coinEl) => coinEl.remove());
+  slotWinPanelEl.querySelectorAll(".slot-win-increment").forEach((incEl) => incEl.remove());
   document.querySelectorAll(".card.winner, .card.loser").forEach((cardEl) => {
     cardEl.classList.remove("winner", "loser");
   });
@@ -994,6 +999,7 @@ function readVisibleSlotGrid() {
 function updateSlotMeta() {
   const crazyModeActive = state.slotFreeSpins > 0;
   slotCabinetEl.classList.toggle("crazy-mode", crazyModeActive);
+  document.body.classList.toggle("slots-crazy-active", crazyModeActive && state.game === "slots");
   slotModeEl.textContent = crazyModeActive
     ? (state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini")
     : "Base Game";
@@ -1012,8 +1018,20 @@ function updateSlotMeta() {
   );
   slotLastWinEl.textContent = formatDollars(state.slotLastWin);
   slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
+  if (state.slotMultiplier > state.slotCrazyPrevMultiplier && crazyModeActive) {
+    replayAnimation(slotMultiplierEl, "multiplier-pop");
+    replayAnimation(slotCabinetEl, "crazy-multiplier-up");
+    burstCrazyConfetti(14);
+    playSound("slot_bonus");
+  }
+  state.slotCrazyPrevMultiplier = state.slotMultiplier;
   if (slotBonusTotalEl) {
     slotBonusTotalEl.textContent = formatDollars(state.slotBonusTotal);
+  }
+  if (crazyModeActive) {
+    startCrazyAmbient();
+  } else {
+    stopCrazyAmbient();
   }
   if (slotRtpEl) {
     slotRtpEl.textContent = `${Math.round(SLOT_RTP_TARGET * 100)}%`;
@@ -1114,11 +1132,28 @@ function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
   });
 }
 
-function renderSlotWinPanel({ title, detail, amount = 0, mode = "" }) {
+function renderSlotWinPanel({ title, detail, amount = 0, mode = "", runningTotal = null, prevTotal = 0, label = null }) {
   slotWinTitleEl.textContent = title;
   slotWinDetailEl.textContent = detail;
-  slotWinAmountEl.textContent = formatDollars(amount);
-  slotWinPanelEl.classList.remove("win", "bonus");
+  slotWinPanelEl.classList.remove("win", "bonus", "running");
+
+  if (runningTotal !== null) {
+    if (slotWinLabelEl) {
+      slotWinLabelEl.textContent = label || "Crazy Total";
+    }
+    slotWinPanelEl.classList.add("running");
+    animateMainWinAmount(prevTotal, runningTotal);
+    const delta = runningTotal - prevTotal;
+    if (delta > 0) {
+      showCrazyIncrement(delta);
+    }
+  } else {
+    if (slotWinLabelEl) {
+      slotWinLabelEl.textContent = label || "Spin Result";
+    }
+    slotWinAmountEl.textContent = formatDollars(amount);
+  }
+
   if (mode) {
     replayAnimation(slotWinPanelEl, mode);
   }
@@ -1140,6 +1175,103 @@ function createSlotCoins(count = 12) {
   window.setTimeout(() => {
     slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
   }, 1250);
+}
+
+const crazySparkColors = ["#22d3ee", "#f472b6", "#f2c14e", "#c084fc", "#6ee7b7"];
+
+function spawnCrazySpark() {
+  if (!slotCabinetEl.classList.contains("crazy-mode")) {
+    return;
+  }
+  const spark = document.createElement("span");
+  spark.className = "crazy-spark";
+  const color = crazySparkColors[Math.floor(Math.random() * crazySparkColors.length)];
+  const size = 4 + Math.random() * 7;
+  const drift = (Math.random() - 0.5) * 90;
+  const duration = 2000 + Math.random() * 1600;
+  const left = Math.random() * 100;
+  spark.style.setProperty("--spark-color", color);
+  spark.style.setProperty("--spark-size", `${size}px`);
+  spark.style.setProperty("--spark-drift", `${drift}px`);
+  spark.style.setProperty("--spark-duration", `${duration}ms`);
+  spark.style.left = `${left}%`;
+  slotCabinetEl.appendChild(spark);
+  window.setTimeout(() => spark.remove(), duration + 80);
+}
+
+function startCrazyAmbient() {
+  if (state.slotCrazyAmbientTimer) {
+    return;
+  }
+  for (let index = 0; index < 4; index += 1) {
+    window.setTimeout(spawnCrazySpark, index * 90);
+  }
+  state.slotCrazyAmbientTimer = window.setInterval(spawnCrazySpark, 220);
+}
+
+function stopCrazyAmbient() {
+  if (state.slotCrazyAmbientTimer) {
+    window.clearInterval(state.slotCrazyAmbientTimer);
+    state.slotCrazyAmbientTimer = null;
+  }
+  slotCabinetEl.querySelectorAll(".crazy-spark").forEach((sparkEl) => sparkEl.remove());
+}
+
+function burstCrazyConfetti(count = 18) {
+  for (let index = 0; index < count; index += 1) {
+    const piece = document.createElement("span");
+    const color = crazySparkColors[Math.floor(Math.random() * crazySparkColors.length)];
+    const x = Math.round((Math.random() - 0.5) * 520);
+    const y = Math.round(-120 - Math.random() * 220);
+    const rot = Math.round((Math.random() - 0.5) * 720);
+    const duration = 900 + Math.random() * 700;
+    piece.className = "crazy-confetti";
+    piece.style.setProperty("--confetti-color", color);
+    piece.style.setProperty("--confetti-x", `${x}px`);
+    piece.style.setProperty("--confetti-y", `${y}px`);
+    piece.style.setProperty("--confetti-rot", `${rot}deg`);
+    piece.style.setProperty("--confetti-duration", `${duration}ms`);
+    piece.style.animationDelay = `${index * 18}ms`;
+    slotCabinetEl.appendChild(piece);
+    window.setTimeout(() => piece.remove(), duration + 400);
+  }
+}
+
+function showCrazyIncrement(delta) {
+  if (delta <= 0) {
+    return;
+  }
+  const incEl = document.createElement("span");
+  incEl.className = "slot-win-increment";
+  incEl.textContent = `+${formatDollars(delta)}`;
+  slotWinPanelEl.appendChild(incEl);
+  window.setTimeout(() => incEl.remove(), 1500);
+}
+
+function animateMainWinAmount(from, to) {
+  if (from === to) {
+    slotWinAmountEl.textContent = formatDollars(to);
+    return;
+  }
+  if (to > from) {
+    replayAnimation(slotWinAmountEl, "amount-pop");
+  }
+  const duration = Math.min(950, Math.max(360, Math.abs(to - from) * 0.35 + 320));
+  const start = performance.now();
+  const delta = to - from;
+  const step = (now) => {
+    const elapsed = now - start;
+    const progress = Math.min(1, elapsed / duration);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const value = from + delta * ease;
+    slotWinAmountEl.textContent = formatDollars(value);
+    if (progress < 1) {
+      window.requestAnimationFrame(step);
+    } else {
+      slotWinAmountEl.textContent = formatDollars(to);
+    }
+  };
+  window.requestAnimationFrame(step);
 }
 
 function animateSlotWinAmount(amount) {
@@ -1164,10 +1296,13 @@ function startFreeSpins(count, multiplier, options = {}) {
   if (enteringCrazyMode) {
     state.slotBonusTotal = 0;
     state.slotCrazyWilds = [];
+    state.slotCrazyDisplayedTotal = 0;
+    state.slotCrazyPrevMultiplier = state.slotMultiplier;
   }
   state.slotRetriggerText = `${count} spins`;
   playSound("slot_bonus");
   replayAnimation(slotCabinetEl, "crazy-trigger");
+  burstCrazyConfetti(24);
   const modeTitle = state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini";
   const detail = state.slotCrazySticky
     ? `${count} free spins loaded. Sticky wilds stay locked.`
@@ -1177,13 +1312,17 @@ function startFreeSpins(count, multiplier, options = {}) {
     title: modeTitle,
     detail,
     amount: 0,
-    mode: "bonus"
+    mode: "bonus",
+    runningTotal: 0,
+    prevTotal: 0,
+    label: "Crazy Total"
   });
   updateSlotMeta();
 }
 
 function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   const balanceBefore = state.credits;
+  const crazyPrevTotal = state.slotCrazyDisplayedTotal;
   const bonusBeforeSpin = wasFreeSpin
     ? {
         freeSpins: state.slotFreeSpins,
@@ -1270,7 +1409,10 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       title: wasFreeSpin ? `Crazy ${title}` : title,
       detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}`,
       amount: payout,
-      mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win"
+      mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win",
+      runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+      prevTotal: wasFreeSpin ? crazyPrevTotal : 0,
+      label: wasFreeSpin ? "Crazy Total" : null
     });
     const slotWinSound = ["big", "mega", "jackpot"].includes(winTier) ? "big_win" : "win";
     playOutcomeEffect("win", null, slotWinSound);
@@ -1304,10 +1446,14 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
         ? `${result.scatterCount} scatters extended Crazy Mode.`
         : `${result.scatterCount} scatters upgraded the bonus.`,
       amount: 0,
-      mode: "bonus"
+      mode: "bonus",
+      runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+      prevTotal: wasFreeSpin ? crazyPrevTotal : 0,
+      label: wasFreeSpin ? "Crazy Total" : null
     });
     playOutcomeEffect("push", null, "slot_bonus");
     createSlotCoins(8);
+    burstCrazyConfetti(16);
   } else if (wasFreeSpin) {
     if (state.slotFreeSpins > 0) {
       if (settlement.starBonus) {
@@ -1317,9 +1463,13 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
           title: "Star Bonus!",
           detail: `${sc} star${sc > 1 ? "s" : ""} extended Crazy Mode. ${state.slotFreeSpins} spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
           amount: 0,
-          mode: "bonus"
+          mode: "bonus",
+          runningTotal: state.slotBonusTotal,
+          prevTotal: crazyPrevTotal,
+          label: "Crazy Total"
         });
         createSlotCoins(6);
+        burstCrazyConfetti(10);
       } else {
         showResult(state.slotCrazySticky ? "Crazy spin" : "Mini spin", "No line hit.");
         renderSlotWinPanel({
@@ -1327,19 +1477,30 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
           detail: state.slotCrazySticky
             ? `${state.slotFreeSpins} Crazy spin${state.slotFreeSpins === 1 ? "" : "s"} remaining. Sticky wilds: ${stickyWildDetails.length}.`
             : `${state.slotFreeSpins} mini spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
-          amount: 0
+          amount: 0,
+          runningTotal: state.slotBonusTotal,
+          prevTotal: crazyPrevTotal,
+          label: "Crazy Total"
         });
       }
     } else {
       const endedTitle = state.slotCrazySticky ? "Crazy Mode ended" : "Crazy Mini ended";
       state.slotMultiplier = 1;
       state.slotRetriggerText = "Ended";
-      showResult(endedTitle, "Back to the base game.");
+      showResult(endedTitle, `Crazy total: ${formatDollars(state.slotBonusTotal)}.`);
       renderSlotWinPanel({
         title: endedTitle,
-        detail: `Crazy total: ${formatDollars(state.slotBonusTotal)}.`,
-        amount: 0
+        detail: `Final crazy total: ${formatDollars(state.slotBonusTotal)}. Back to the base game.`,
+        amount: 0,
+        mode: "bonus",
+        runningTotal: state.slotBonusTotal,
+        prevTotal: crazyPrevTotal,
+        label: "Final Crazy Total"
       });
+      if (state.slotBonusTotal > 0) {
+        burstCrazyConfetti(28);
+        createSlotCoins(20);
+      }
     }
     playOutcomeEffect("push");
   } else {
@@ -1366,7 +1527,11 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     if (wasFreeSpin) {
       state.slotCrazyWilds = [];
       state.slotCrazySticky = false;
+      state.slotCrazyDisplayedTotal = 0;
+      state.slotCrazyPrevMultiplier = 1;
     }
+  } else if (wasFreeSpin) {
+    state.slotCrazyDisplayedTotal = state.slotBonusTotal;
   }
 
   updateSlotMeta();
@@ -1437,7 +1602,10 @@ function spinSlots() {
     detail: wasFreeSpin
       ? (state.slotCrazySticky ? `${state.slotFreeSpins} remaining at ${state.slotMultiplier}x. Sticky wilds: ${state.slotCrazyWilds.length}.` : `${state.slotFreeSpins} mini spins remaining at ${state.slotMultiplier}x.`)
       : "Waiting for the reels to stop.",
-    amount: 0
+    amount: 0,
+    runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+    prevTotal: wasFreeSpin ? state.slotCrazyDisplayedTotal : 0,
+    label: wasFreeSpin ? "Crazy Total" : null
   });
   showResult(
     "Reels spinning",
@@ -2673,7 +2841,10 @@ resetButton.addEventListener("click", () => {
   state.slotRetriggerText = "";
   state.slotCrazySticky = false;
   state.slotCrazyWilds = [];
+  state.slotCrazyDisplayedTotal = 0;
+  state.slotCrazyPrevMultiplier = 1;
   state.slotRound += 1;
+  stopCrazyAmbient();
   state.dealerHand = [];
   state.playerHand = [];
   state.hideDealerHole = false;

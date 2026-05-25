@@ -97,7 +97,7 @@
     }
     .bar {
       width: 45px;
-      background-color: #3498db; /* Baseline corporate talent blue */
+      background-color: #3498db; 
       text-align: center;
       color: white;
       font-weight: bold;
@@ -110,13 +110,13 @@
       transition: background-color 0.1s ease, height 0.1s ease;
     }
     .bar.evaluating {
-      background-color: #f39c12; /* Corporate Amber during Performance Review */
+      background-color: #f39c12; 
     }
     .bar.restructuring {
-      background-color: #e74c3c; /* Crisis Red during corporate demotion/swap */
+      background-color: #e74c3c; 
     }
     .bar.vested {
-      background-color: #2ecc71; /* Secure Vested Green following Golden Parachute */
+      background-color: #2ecc71; 
     }
 
     /* Live Corporate Progress Tracker Status Text */
@@ -172,7 +172,7 @@
     <section class="hero">
       <div class="container hero-content">
         <h1>O.U.C.H.</h1>
-        <p>Oversight, Underperformance, Constraints, &amp; Hangups — a placeholder page for the new sorting algorithm.</p>
+        <p>Oversight, Underperformance, Constraints, &amp; Hangups — An intentionally bloated corporate simulation of a heap sort algorithm.</p>
         
         <div class="visualizer-trigger-block">
           <div class="gif-block" style="margin: 0; width: 100%;">
@@ -189,9 +189,8 @@
       <h2 class="section-title">OVERVIEW</h2>
       <div class="card">
         <h3>Algorithm Summary</h3>
-        <p>The operational framework designated as the Performance Review Pipeline, hereafter referenced through its functional acronym O.U.C.H. (Oversight, Underperformance, Constraints, & Hangups), is a strategic data-rationalization mechanism engineered to validate resource allocation efficiency. This protocol establishes a non-linear, high-complexity assessment environment where data packets are visualized as human capital competing for hierarchical alignment. Traditional, non-competitive evaluation metrics are discarded in favor of a tournament-based performance PIP (Performance Improvement Protocol), designed to surface maximum data-driven value through sustained volatility. The O.U.C.H. protocol mitigates un-audited operational overhead by establishing a strict, merit-based corporate meritocracy that forces continuous asset-driven evaluation at every organizational strata.</p>
-        <p>Operationally, the protocol begins by transforming the unordered data payload into a rigorous corporate organizational chart (a specialized Max-Heap tree). Within this architecture, no packet can achieve index stability or spatial finality without executing consecutive validation cycles against its immediate managerial layer. These evaluation intervals, or "meetings," are governed by strict tripartite checks to ensure absolute quantitative accuracy and logical alignment. Should a subordinate (child node) demonstrate data parameters that exceed their primary manager (parent node), they are immediately granted a temporary hierarchical promotion, forcing a structural swap that disrupts all related reporting lines. This process of constant re-allocation sustanis a prolonged state of operational volatility, deliberately maximizing the utilization of computational saturation until a consensus-driven data state is realized.</p>
-        <p>To secure absolute data finality and eliminate unrecorded anomalies, the protocol strictly prohibits immediate pipeline termination upon the initial realization of a sorted state. Instead, the detection of zero active asset re-allocations automatically triggers a comprehensive Q4 Retrospective Oversight Audit. This mandatory retrospective process enforces a full-scale reverse-chronological counter-scan of the entire organizational hierarchy to formally verify that previous compliance committees did not introduce errors. Once a data packet reaches the apex of the structure, it is declared "Fully Vested," extracted from the company entirely into the validated sorted array, and immediately replaced by a fresh, un-evaluated data packet from the entry-level intern pool at the very bottom, ensuring the competitive meritocracy paradigm is never fully finalized.</p>
+        <p>The O.U.C.H. protocol is a satirical simulation of an inefficient corporate environment, built on top of a classic Heapsort framework. Instead of sorting elements cleanly, this algorithm wraps every data point into a heavy middle-management object that must constantly look up its hierarchy structure. To make matters worse, it introduces randomized "Corporate Vetoes" that can completely disrupt organized sections of the pool, forcing unnecessary work and tanking algorithmic performance.</p>
+        <p>Operationally, the array acts as an organization chart. Elements are compared against their direct managers. If a subordinate out-performs their manager, a structural swap takes place to promote them. However, because of the management data overhead and random corporate interventions, the pipeline experiences intentional delays, re-orgs, and regressions before reaching finality.</p>
       </div>
 
       <div class="code-block">
@@ -203,7 +202,7 @@
       <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d;">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>O.U.C.H. Example Code</h2>
-        <pre><code>// Original Python Code Sample preserved here...</code></pre>
+        <pre><code>// Dynamic JavaScript Middle Management Heapsort with Corporate Vetoes active...</code></pre>
       </div>
     </div>
 
@@ -319,13 +318,22 @@
       });
     }
 
-    // Heapsort Visual Logic Flow
+    // Heapsort Visual Logic Flow with intentional performance degradation
     async function executeOuchSort() {
       if (activeSortingRun) return;
 
-      const workingData = userInput.value.split(',')
-        .map(element => parseInt(element.trim(), 10))
-        .filter(num => !isNaN(num));
+      // 1. Convert raw numbers into bloated "Middle Management" Objects
+      let workingData = userInput.value.split(',')
+        .map((element, index) => {
+          let num = parseInt(element.trim(), 10);
+          return isNaN(num) ? null : {
+            id: `EMP-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+            value: num,
+            managerId: null, // Populated dynamically via scans
+            performanceTier: "Standard"
+          };
+        })
+        .filter(item => item !== null);
 
       if (workingData.length < 2) {
         alert("Please enter at least 2 comma-separated values.");
@@ -342,23 +350,56 @@
       let totalVested = 0;
       const executionStart = performance.now();
 
-      // Inline visual PIP function to replicate the Max-Heap structural shift
+      // Helper to extract raw values for the visual bar chart renderer
+      const getRawValues = () => workingData.map(d => d.value);
+
+      // Helper to dynamically locate a node's parent index in the array.
+      // Sweeps the array layout to calculate corporate manager structures on demand.
+      function updateManagerIds(size) {
+        for (let i = 0; i < size; i++) {
+          let leftChild = 2 * i + 1;
+          let rightChild = 2 * i + 2;
+          if (leftChild < size) workingData[leftChild].managerId = workingData[i].id;
+          if (rightChild < size) workingData[rightChild].managerId = workingData[i].id;
+        }
+      }
+
+      // Inline visual PIP function to handle heap validation structures
       async function runVisualPip(size, managerIdx) {
         if (!activeSortingRun) return;
+
+        updateManagerIds(size);
 
         let highestPerformer = managerIdx;
         let leftSubordinate = 2 * managerIdx + 1;
         let rightSubordinate = 2 * managerIdx + 2;
 
+        // 2. Introduce the "Corporate Veto" (Randomized Failures)
+        // 15% chance an asset gets stripped of status and sent to the bottom of the active pile.
+        if (Math.random() < 0.15 && size > 2) {
+          let victimIdx = Math.floor(Math.random() * size);
+          statusTicker.style.color = '#e74c3c';
+          statusTicker.innerText = `[CORPORATE VETO]: ${workingData[victimIdx].id} failed the vibe check. Banished to index ${size - 1}.`;
+          
+          let temp = workingData[victimIdx];
+          workingData[victimIdx] = workingData[size - 1];
+          workingData[size - 1] = temp;
+          
+          totalRestructures++;
+          renderBars(getRawValues(), { workforceSize: size, evalA: victimIdx, evalB: size - 1, isSwapping: true });
+          await sleep(300);
+          updateManagerIds(size);
+        }
+
         // Evaluate left child
         if (leftSubordinate < size) {
           totalEvaluations++;
           statusTicker.style.color = '#f39c12';
-          statusTicker.innerText = `[PIP REVIEW]: Comparing Manager [${workingData[managerIdx]}] to Left Subordinate [${workingData[leftSubordinate]}]`;
-          renderBars(workingData, { workforceSize: size, evalA: managerIdx, evalB: leftSubordinate, isSwapping: false });
+          statusTicker.innerText = `[REVIEW]: Comparing Manager ${workingData[managerIdx].id} (${workingData[managerIdx].value}) to Subordinate ${workingData[leftSubordinate].id} (${workingData[leftSubordinate].value})`;
+          renderBars(getRawValues(), { workforceSize: size, evalA: managerIdx, evalB: leftSubordinate, isSwapping: false });
           await sleep(150);
 
-          if (workingData[leftSubordinate] > workingData[highestPerformer]) {
+          if (workingData[leftSubordinate].value > workingData[highestPerformer].value) {
             highestPerformer = leftSubordinate;
           }
         }
@@ -367,47 +408,47 @@
         if (rightSubordinate < size) {
           totalEvaluations++;
           statusTicker.style.color = '#f39c12';
-          statusTicker.innerText = `[PIP REVIEW]: Evaluating performance threshold against Right Subordinate [${workingData[rightSubordinate]}]`;
-          renderBars(workingData, { workforceSize: size, evalA: highestPerformer, evalB: rightSubordinate, isSwapping: false });
+          statusTicker.innerText = `[REVIEW]: Evaluating performance alignment against Right Subordinate ${workingData[rightSubordinate].id} (${workingData[rightSubordinate].value})`;
+          renderBars(getRawValues(), { workforceSize: size, evalA: highestPerformer, evalB: rightSubordinate, isSwapping: false });
           await sleep(150);
 
-          if (workingData[rightSubordinate] > workingData[highestPerformer]) {
+          if (workingData[rightSubordinate].value > workingData[highestPerformer].value) {
             highestPerformer = rightSubordinate;
           }
         }
 
-        // Trigger corporate restructure structural swap if subordinate outperforms manager
+        // Trigger restructure swap if subordinate parameters outshine the parent manager
         if (highestPerformer !== managerIdx) {
           totalRestructures++;
           statusTicker.style.color = '#e74c3c';
-          statusTicker.innerText = `[PIP FAILURE]: Subordinate [${workingData[highestPerformer]}] outperforming Manager. Restructuring branch...`;
-          renderBars(workingData, { workforceSize: size, evalA: managerIdx, evalB: highestPerformer, isSwapping: true });
+          statusTicker.innerText = `[RESTRUCTURE]: Subordinate outperforming manager. Swapping ${workingData[highestPerformer].id} with ${workingData[managerIdx].id}`;
+          renderBars(getRawValues(), { workforceSize: size, evalA: managerIdx, evalB: highestPerformer, isSwapping: true });
           await sleep(200);
 
           let temp = workingData[managerIdx];
           workingData[managerIdx] = workingData[highestPerformer];
           workingData[highestPerformer] = temp;
 
-          renderBars(workingData, { workforceSize: size, evalA: managerIdx, evalB: highestPerformer, isSwapping: false });
+          renderBars(getRawValues(), { workforceSize: size, evalA: managerIdx, evalB: highestPerformer, isSwapping: false });
           await sleep(100);
 
-          // Recursively audit the demoted asset down the new reporting branch
+          // Recursively audit down the targeted organizational branch
           await runVisualPip(size, highestPerformer);
         }
       }
 
       // Phase 1: Build the Initial Max-Heap Corporate Hierarchy Structure
       statusTicker.style.color = '#3498db';
-      statusTicker.innerText = "PHASE 1: Organizing baseline merit-based corporate matrix layout...";
+      statusTicker.innerText = "PHASE 1: Structuring initial corporate hierarchy layout...";
       await sleep(400);
 
       for (let i = Math.floor(workingData.length / 2) - 1; i >= 0; i--) {
         await runVisualPip(workingData.length, i);
       }
 
-      // Phase 2: Systematically Grant Golden Parachutes and Extract CEOs
+      // Phase 2: Systematically extract highest values and pop them out of the structure
       statusTicker.style.color = '#2ecc71';
-      statusTicker.innerText = "PHASE 1 SECURE. Executing Phase 2: Granting executive parachutes...";
+      statusTicker.innerText = "PHASE 1 SECURE. Executing Phase 2: Processing top-tier retirement paths...";
       await sleep(500);
 
       for (let i = workingData.length - 1; i > 0; i--) {
@@ -415,33 +456,33 @@
 
         totalVested++;
         statusTicker.style.color = '#2ecc71';
-        statusTicker.innerText = `[GOLDEN PARACHUTE]: CEO [${workingData[0]}] fully vested. Replacing with Entry-Level Intern [${workingData[i]}]`;
+        statusTicker.innerText = `[VESTED]: Top asset ${workingData[0].id} (${workingData[0].value}) fully sorted. Shifting index to retirement array.`;
         
-        // Swap root (CEO) to the end of the partition boundaries
-        renderBars(workingData, { workforceSize: i, evalA: 0, evalB: i, isSwapping: true });
+        // Swap root to the partition boundaries
+        renderBars(getRawValues(), { workforceSize: i, evalA: 0, evalB: i, isSwapping: true });
         await sleep(200);
 
         let temp = workingData[0];
         workingData[0] = workingData[i];
         workingData[i] = temp;
 
-        renderBars(workingData, { workforceSize: i });
+        renderBars(getRawValues(), { workforceSize: i });
         await sleep(100);
 
-        // Audit the new intern sitting in the CEO suite to force them down the hierarchy chain
+        // Audit the newly substituted root node to preserve balance structures
         await runVisualPip(i, 0);
       }
 
       // Compilation Dashboard Finalization
       if (activeSortingRun) {
         const totalDuration = (performance.now() - executionStart).toFixed(2);
-        renderBars(workingData, { workforceSize: 0 }); // Highlight everything green
+        renderBars(getRawValues(), { workforceSize: 0 }); 
         statusTicker.style.color = '#2ecc71';
-        statusTicker.innerText = "SUCCESS: All workforce assets successfully optimized and fully vested.";
+        statusTicker.innerText = "SUCCESS: Pipeline finalized. Data-workforce completely sorted.";
 
         document.getElementById('statEvaluations').innerText = totalEvaluations;
         document.getElementById('statRestructures').innerText = totalRestructures;
-        document.getElementById('statVested').innerText = totalVested + 1; // Accounting for final root item
+        document.getElementById('statVested').innerText = totalVested + 1; 
         document.getElementById('statTime').innerText = `${totalDuration} ms`;
         statsDashboard.style.display = 'block';
 

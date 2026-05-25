@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gambling Section | Gamertown Solutions</title>
   <meta name="description" content="Fictional-dollar gambling games including High Card, Blackjack, Roulette, and Slots." />
-  <link rel="stylesheet" href="gamble.css?v=mobile-fix-1">
+  <link rel="stylesheet" href="gamble.css?v=crazy-modes-2">
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
 </head>
@@ -180,23 +180,35 @@
               <div class="slot-meta">
                 <div class="slot-bonus-card" tabindex="0" aria-describedby="slot-crazy-help">
                   <div class="slot-bonus-card-main">
-                    <span>Crazy Mode</span>
-                    <strong id="slot-scatter-count">0 / 2</strong>
+                    <span>Scatters</span>
+                    <strong id="slot-scatter-count">0 / 3</strong>
                   </div>
                   <div class="slot-meter-track"><span class="slot-meter-fill" id="slot-scatter-fill"></span></div>
                   <div class="slot-bonus-state">
-                    <span>State</span>
-                    <strong id="slot-retrigger">2 scatters</strong>
+                    <span>Mode</span>
+                    <strong id="slot-retrigger">2 = Light / 3 = Crazy</strong>
                   </div>
-                  <p class="slot-crazy-help" id="slot-crazy-help" role="tooltip">2 scatters start 2 mini spins. 3+ scatters unlock sticky wilds, multiplier climbs, and retriggers.</p>
+                  <p class="slot-crazy-help" id="slot-crazy-help" role="tooltip">⭐⭐ 2 scatters: 5 free spins at 1.5×. ⭐⭐⭐ 3 scatters: Crazy Mode — 6 free spins at 2× with sticky wilds, cascades, and chain multiplier. Win streaks in the base game boost payouts up to 2×.</p>
                 </div>
                 <div class="slot-badge">
                   <span>Last Win</span>
                   <strong id="slot-last-win">$0</strong>
                 </div>
                 <div class="slot-badge">
+                  <span>Hot Streak</span>
+                  <strong id="slot-base-streak">—</strong>
+                </div>
+                <div class="slot-badge">
                   <span>Multiplier</span>
                   <strong id="slot-multiplier">1x</strong>
+                </div>
+                <div class="slot-badge">
+                  <span>Chain</span>
+                  <strong id="slot-chain">—</strong>
+                </div>
+                <div class="slot-badge">
+                  <span>Cascade</span>
+                  <strong id="slot-cascade">—</strong>
                 </div>
                 <div class="slot-badge">
                   <span>Bonus Total</span>
@@ -220,13 +232,15 @@
       <aside class="controls">
         <div class="chips" aria-label="Quick bet chips">
           <button class="chip" type="button" data-chip="5">$5</button>
-          <button class="chip" type="button" data-chip="10">$10</button>
           <button class="chip" type="button" data-chip="25">$25</button>
-          <button class="chip" type="button" data-chip="50">$50</button>
           <button class="chip" type="button" data-chip="100">$100</button>
           <button class="chip" type="button" data-chip="500">$500</button>
           <button class="chip" type="button" data-chip="1000">$1K</button>
           <button class="chip" type="button" data-chip="5000">$5K</button>
+          <button class="chip" type="button" data-chip="10000">$10K</button>
+          <button class="chip" type="button" data-chip="25000">$25K</button>
+          <button class="chip" type="button" data-chip="100000">$100K</button>
+          <button class="chip" type="button" data-chip="1000000">$1M</button>
         </div>
 
         <div>
@@ -329,6 +343,6 @@
     </section>
   </main>
 
-  <script type="module" src="./gamble.js?v=crazy-fun-1"></script>
+  <script type="module" src="./gamble.js?v=crazy-modes-1"></script>
 </body>
 </html>

@@ -16,12 +16,14 @@ import {
   SLOT_SCATTER_RULES as slotScatterRules,
   SLOT_SYMBOL_MAP as slotRulesSymbolMap,
   SLOT_SYMBOLS as slotRulesSymbols,
+  cascadeGrid as cascadeSlotRulesGrid,
   evaluateSlotGrid as evaluateSlotRulesGrid,
   generateSlotGrid as generateSlotRulesGrid,
   settleSlotMath as settleSlotRulesMath,
   weightedSlotSymbol as weightedSlotRulesSymbol,
+  winTier as slotWinTier,
   winTierTitle
-} from './slot-rules.mjs?v=slot-rtp-96-1';
+} from './slot-rules.mjs?v=cascade-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
@@ -97,6 +99,9 @@ const state = {
   slotCrazyDisplayedTotal: 0,
   slotCrazyAmbientTimer: null,
   slotCrazyPrevMultiplier: 1,
+  slotCrazyPrevChain: 0,
+  slotBaseStreak: 0,
+  slotCrazyChain: 0,
   autoReroll: false,
   autoRerollTimer: null,
   soundEnabled: readSoundSetting()
@@ -148,9 +153,13 @@ const slotWinAmountEl = document.getElementById("slot-win-amount");
 const slotPaylineListEl = document.getElementById("slot-payline-list");
 const slotScatterCountEl = document.getElementById("slot-scatter-count");
 const slotScatterFillEl = document.getElementById("slot-scatter-fill");
+const slotBonusCardEl = document.querySelector(".slot-bonus-card");
 const slotLastWinEl = document.getElementById("slot-last-win");
+const slotBaseStreakEl = document.getElementById("slot-base-streak");
 const slotMultiplierEl = document.getElementById("slot-multiplier");
 const slotBonusTotalEl = document.getElementById("slot-bonus-total");
+const slotChainEl = document.getElementById("slot-chain");
+const slotCascadeEl = document.getElementById("slot-cascade");
 const slotRtpEl = document.getElementById("slot-rtp");
 const slotRetriggerEl = document.getElementById("slot-retrigger");
 const leaderboardListEl = document.getElementById("leaderboard-list");
@@ -243,6 +252,15 @@ const crazyModeConfig = {
   maxStickyWilds: 6,
   winMultiplierStep: 1
 };
+
+function computeChainMult(chain) {
+  if (chain <= 0) return 1;
+  return 1 + Math.min(chain, 4) * 0.5;
+}
+
+function cascadeGrid(grid, winningCells, stickyWildPositions = []) {
+  return cascadeSlotRulesGrid(grid, winningCells, stickyWildPositions);
+}
 
 function replayAnimation(element, className) {
   element.classList.remove(className);
@@ -1008,7 +1026,7 @@ function updateSlotMeta() {
     : crazyModeActive
       ? `${state.slotFreeSpins} remaining`
       : "Ready";
-  const scatterGoal = 2;
+  const scatterGoal = 3;
   slotScatterCountEl.textContent = crazyModeActive
     ? `${state.slotFreeSpins} spin${state.slotFreeSpins === 1 ? "" : "s"}`
     : `${Math.min(state.slotScatterCount, scatterGoal)} / ${scatterGoal}`;
@@ -1016,7 +1034,18 @@ function updateSlotMeta() {
     "--scatter-progress",
     `${crazyModeActive ? 100 : Math.min(state.slotScatterCount, scatterGoal) / scatterGoal * 100}%`
   );
+  if (slotBonusCardEl) {
+    slotBonusCardEl.classList.toggle("hot-streak", !crazyModeActive && state.slotBaseStreak > 0);
+  }
   slotLastWinEl.textContent = formatDollars(state.slotLastWin);
+  if (slotBaseStreakEl) {
+    if (!crazyModeActive && state.slotBaseStreak > 0) {
+      const mult = 1 + Math.min(state.slotBaseStreak, 4) * 0.2;
+      slotBaseStreakEl.textContent = `${state.slotBaseStreak} (${mult.toFixed(1)}×)`;
+    } else {
+      slotBaseStreakEl.textContent = "—";
+    }
+  }
   slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
   if (state.slotMultiplier > state.slotCrazyPrevMultiplier && crazyModeActive) {
     replayAnimation(slotMultiplierEl, "multiplier-pop");
@@ -1027,6 +1056,22 @@ function updateSlotMeta() {
   state.slotCrazyPrevMultiplier = state.slotMultiplier;
   if (slotBonusTotalEl) {
     slotBonusTotalEl.textContent = formatDollars(state.slotBonusTotal);
+  }
+  if (slotChainEl) {
+    const prevChain = state.slotCrazyPrevChain;
+    if (crazyModeActive && state.slotCrazyChain > 0) {
+      const cMult = computeChainMult(state.slotCrazyChain);
+      slotChainEl.textContent = `${state.slotCrazyChain} (${cMult.toFixed(1)}×)`;
+      if (state.slotCrazyChain > prevChain) {
+        replayAnimation(slotChainEl, "chain-pop");
+      }
+    } else {
+      if (prevChain > 0 && crazyModeActive) {
+        replayAnimation(slotChainEl, "chain-break");
+      }
+      slotChainEl.textContent = "—";
+    }
+    state.slotCrazyPrevChain = state.slotCrazyChain;
   }
   if (crazyModeActive) {
     startCrazyAmbient();
@@ -1041,7 +1086,7 @@ function updateSlotMeta() {
     slotRetriggerEl.textContent = state.slotRetriggerText || (
       crazyModeActive
         ? (state.slotCrazySticky ? `${stickyCount} sticky` : "Mini active")
-        : "2 scatters"
+        : "2 = Light / 3 = Crazy"
     );
   }
 }
@@ -1298,6 +1343,9 @@ function startFreeSpins(count, multiplier, options = {}) {
     state.slotCrazyWilds = [];
     state.slotCrazyDisplayedTotal = 0;
     state.slotCrazyPrevMultiplier = state.slotMultiplier;
+    state.slotCrazyChain = 0;
+    state.slotCrazyPrevChain = 0;
+    state.slotBaseStreak = 0;
   }
   state.slotRetriggerText = `${count} spins`;
   playSound("slot_bonus");
@@ -1332,8 +1380,21 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       }
     : null;
   const settlement = settleSlotRulesMath({ result, bet: spinBet, bonus: bonusBeforeSpin });
-  const { payout, activeMultiplier } = settlement;
-  const winTier = settlement.tier;
+  const chainMult = wasFreeSpin ? computeChainMult(state.slotCrazyChain) : 1;
+  const baseStreakMult = !wasFreeSpin && state.slotBaseStreak > 0
+    ? 1 + Math.min(state.slotBaseStreak, 4) * 0.2
+    : 1;
+  const rawPayout = settlement.payout;
+  const { activeMultiplier } = settlement;
+  if (wasFreeSpin && settlement.nextBonus && chainMult > 1 && rawPayout > 0) {
+    settlement.nextBonus.totalWin = (bonusBeforeSpin?.totalWin ?? 0) + Math.round(rawPayout * chainMult);
+  }
+  const payout = wasFreeSpin && chainMult > 1
+    ? Math.round(rawPayout * chainMult)
+    : !wasFreeSpin && baseStreakMult > 1
+      ? Math.round(rawPayout * baseStreakMult)
+      : rawPayout;
+  const winTier = slotWinTier(payout, spinBet);
   state.slotActive = false;
   state.slotScatterCount = result.scatterCount;
   state.slotLastWin = payout;
@@ -1362,10 +1423,50 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     }
   }
 
+  // Cascade loop: crazy-mode winning spins tumble into fresh symbols
+  let cascadePayout = 0;
+  let cascadeLevel = 0;
+  let finalGrid = grid;
+  let finalResult = result;
+  if (wasFreeSpin && payout > 0 && result.lineWins.length > 0) {
+    const crazyMult = bonusBeforeSpin?.multiplier ?? 1;
+    let curGrid = grid;
+    let curResult = result;
+    while (cascadeLevel < 8) {
+      const winCells = curResult.lineWins.flatMap((w) => w.cells);
+      const nextGrid = cascadeGrid(curGrid, winCells, state.slotCrazyWilds);
+      const nextResult = evaluateSlotGrid(nextGrid);
+      if (nextResult.lineWins.length === 0) {
+        finalGrid = nextGrid;
+        finalResult = nextResult;
+        break;
+      }
+      cascadeLevel += 1;
+      const cMult = 1 + Math.min(cascadeLevel, 8) * 0.5;
+      const singleCascade = Math.round(
+        spinBet * nextResult.lineWins.reduce((sum, w) => sum + w.multiplier, 0) * crazyMult * cMult * chainMult
+      );
+      cascadePayout += singleCascade;
+      curGrid = nextGrid;
+      curResult = nextResult;
+    }
+    finalGrid = curGrid;
+    finalResult = curResult;
+    if (cascadePayout > 0) {
+      state.credits += cascadePayout;
+      state.slotBonusTotal += cascadePayout;
+      state.slotLastWin += cascadePayout;
+    }
+  }
+
   if (settlement.trigger) {
     startFreeSpins(settlement.trigger.freeSpins, settlement.trigger.multiplier, {
       stickyWilds: settlement.trigger.stickyWilds
     });
+    if (payout > 0) {
+      state.slotBonusTotal = payout;
+      state.slotCrazyDisplayedTotal = payout;
+    }
   } else if (settlement.retrigger) {
     state.slotRetriggerText = settlement.retrigger.freeSpins > 0
       ? `+${settlement.retrigger.freeSpins} spins`
@@ -1381,9 +1482,9 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   const highlightedScatters = (wasFreeSpin && result.scatterCount >= 1) || result.scatterCount >= 2
     ? result.scatterCells
     : [];
-  renderSlotGrid(grid, result.lineWins, highlightedScatters, wasFreeSpin && state.slotCrazySticky ? stickyWildDetails : []);
-  renderSlotPaylineSummary(result, spinBet, activeMultiplier);
-  animateSlotWinAmount(payout);
+  renderSlotGrid(finalGrid, finalResult.lineWins, highlightedScatters, wasFreeSpin && state.slotCrazySticky ? stickyWildDetails : []);
+  renderSlotPaylineSummary(finalResult, spinBet, activeMultiplier);
+  animateSlotWinAmount(payout + cascadePayout);
   const lineNames = result.lineWins.map((line) => line.name);
 
   if (payout > 0) {
@@ -1397,18 +1498,31 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     const retriggerCopy = settlement.retrigger
       ? (settlement.retrigger.freeSpins > 0 ? ` Retriggered ${settlement.retrigger.freeSpins} spins.` : " Sticky wilds unlocked.")
       : "";
-    const triggerCopy = settlement.trigger ? ` ${settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini"} loaded: ${settlement.trigger.freeSpins} spins at ${settlement.trigger.multiplier}x.` : "";
+    const triggerCopy = settlement.trigger
+      ? ` ${settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini"} loaded: ${settlement.trigger.freeSpins} spins at ${settlement.trigger.multiplier}x.`
+      : "";
+    const streakCopy = !wasFreeSpin && baseStreakMult > 1
+      ? ` Hot streak ${baseStreakMult.toFixed(1)}× bonus!`
+      : "";
     const crazyCopy = wasFreeSpin
       ? (state.slotCrazySticky ? ` Sticky wilds: ${stickyWildDetails.length}.` : " Mini mode.")
       : "";
     const starCopy = wasFreeSpin && settlement.starBonus && !settlement.retrigger
       ? ` +${settlement.starBonus.spins} star spin${settlement.starBonus.spins > 1 ? "s" : ""}.`
       : "";
-    showResult(title, `${winSource} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}`);
+    const cascadeCopy = cascadeLevel > 0
+      ? ` ${cascadeLevel} cascade${cascadeLevel > 1 ? "s" : ""} +${formatDollars(cascadePayout)}.`
+      : "";
+    const chainCopy = wasFreeSpin && chainMult > 1
+      ? ` Chain ${chainMult.toFixed(1)}×.`
+      : "";
+    const totalPayout = payout + cascadePayout;
+    const displayTitle = cascadeLevel > 0 && wasFreeSpin ? `Crazy ${title} + Cascade` : wasFreeSpin ? `Crazy ${title}` : title;
+    showResult(title, `${winSource} paid ${formatDollars(totalPayout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}${cascadeCopy}${chainCopy}${streakCopy}`);
     renderSlotWinPanel({
-      title: wasFreeSpin ? `Crazy ${title}` : title,
-      detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}`,
-      amount: payout,
+      title: displayTitle,
+      detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}${cascadeCopy}${chainCopy}${streakCopy}`,
+      amount: totalPayout,
       mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win",
       runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
       prevTotal: wasFreeSpin ? crazyPrevTotal : 0,
@@ -1504,15 +1618,24 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     }
     playOutcomeEffect("push");
   } else {
-    const nearMiss = result.scatterCount === 1 ? " One scatter landed." : "";
-    showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}`);
+    const streakBrokeCopy = state.slotBaseStreak >= 2 ? ` Hot streak of ${state.slotBaseStreak} broken.` : "";
+    const nearMiss = result.scatterCount === 1 ? " One scatter." : "";
+    showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}${streakBrokeCopy}`);
     renderSlotWinPanel({
       title: result.scatterCount === 1 ? "Scatter tease" : "No win",
-      detail: result.scatterCount === 1 ? "One scatter landed. Two start mini spins." : "No active payline matched from either edge.",
+      detail: result.scatterCount === 1
+        ? "One scatter. Land 2 more for a scatter pay."
+        : `No active payline.${streakBrokeCopy}`,
       amount: 0,
       mode: result.scatterCount === 1 ? "bonus" : ""
     });
     playOutcomeEffect("loss");
+  }
+
+  if (wasFreeSpin) {
+    state.slotCrazyChain = (payout + cascadePayout > 0) ? state.slotCrazyChain + 1 : 0;
+  } else {
+    state.slotBaseStreak = payout > 0 ? state.slotBaseStreak + 1 : 0;
   }
 
   const netRecordOutcome = applyNetRecord(balanceBefore, state.credits);
@@ -1529,6 +1652,8 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       state.slotCrazySticky = false;
       state.slotCrazyDisplayedTotal = 0;
       state.slotCrazyPrevMultiplier = 1;
+      state.slotCrazyChain = 0;
+      state.slotCrazyPrevChain = 0;
     }
   } else if (wasFreeSpin) {
     state.slotCrazyDisplayedTotal = state.slotBonusTotal;
@@ -1617,7 +1742,7 @@ function spinSlots() {
     replayAnimation(slotCabinetEl, "crazy-spin");
   }
 
-  const baseGrid = generateSlotGrid({ nearMiss: true, assistSmallWin: true });
+  const baseGrid = generateSlotGrid({ boostScatter3: !wasFreeSpin, assistSmallWin: true });
   const grid = wasFreeSpin && state.slotCrazySticky
     ? prepareCrazyModeGrid(baseGrid)
     : baseGrid;
@@ -2843,6 +2968,9 @@ resetButton.addEventListener("click", () => {
   state.slotCrazyWilds = [];
   state.slotCrazyDisplayedTotal = 0;
   state.slotCrazyPrevMultiplier = 1;
+  state.slotBaseStreak = 0;
+  state.slotCrazyChain = 0;
+  state.slotCrazyPrevChain = 0;
   state.slotRound += 1;
   stopCrazyAmbient();
   state.dealerHand = [];

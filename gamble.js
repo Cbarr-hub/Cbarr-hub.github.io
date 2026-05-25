@@ -26,6 +26,16 @@ import {
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
 
+const SOUND_STORAGE_KEY = "gambleSoundEnabled";
+
+function readSoundSetting() {
+  try {
+    return window.localStorage.getItem(SOUND_STORAGE_KEY) !== "off";
+  } catch (error) {
+    return true;
+  }
+}
+
 const ranks = [
   { label: "2", value: 2, blackjack: 2 },
   { label: "3", value: 3, blackjack: 3 },
@@ -84,8 +94,12 @@ const state = {
   slotRetriggerText: "",
   slotCrazySticky: false,
   slotCrazyWilds: [],
+  slotCrazyDisplayedTotal: 0,
+  slotCrazyAmbientTimer: null,
+  slotCrazyPrevMultiplier: 1,
   autoReroll: false,
-  autoRerollTimer: null
+  autoRerollTimer: null,
+  soundEnabled: readSoundSetting()
 };
 
 const creditsEl = document.getElementById("credits");
@@ -101,6 +115,8 @@ const standButton = document.getElementById("stand");
 const splitButton = document.getElementById("split");
 const autoRerollControlEl = document.getElementById("auto-reroll-control");
 const autoRerollToggleEl = document.getElementById("auto-reroll-toggle");
+const soundToggleEl = document.getElementById("sound-toggle");
+const soundStateEl = document.getElementById("sound-state");
 const lowerBetButton = document.getElementById("lower-bet");
 const raiseBetButton = document.getElementById("raise-bet");
 const minBetButton = document.getElementById("min-bet");
@@ -125,6 +141,7 @@ const slotReelsEl = document.getElementById("slot-reels");
 const slotModeEl = document.getElementById("slot-mode");
 const slotSpinStatusEl = document.getElementById("slot-spin-status");
 const slotWinPanelEl = document.getElementById("slot-win-panel");
+const slotWinLabelEl = document.getElementById("slot-win-label");
 const slotWinTitleEl = document.getElementById("slot-win-title");
 const slotWinDetailEl = document.getElementById("slot-win-detail");
 const slotWinAmountEl = document.getElementById("slot-win-amount");
@@ -237,6 +254,263 @@ function clearAnimationClass(element, className, delay = 900) {
   window.setTimeout(() => element.classList.remove(className), delay);
 }
 
+const audioState = {
+  context: null,
+  master: null,
+  compressor: null,
+  unsupported: false
+};
+
+function audioContext() {
+  if (audioState.unsupported || !state.soundEnabled) {
+    return null;
+  }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    audioState.unsupported = true;
+    return null;
+  }
+
+  if (!audioState.context) {
+    const context = new AudioContextClass();
+    const compressor = context.createDynamicsCompressor();
+    const master = context.createGain();
+    compressor.threshold.value = -18;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 8;
+    compressor.attack.value = 0.004;
+    compressor.release.value = 0.16;
+    master.gain.value = 0.42;
+    master.connect(compressor);
+    compressor.connect(context.destination);
+    audioState.context = context;
+    audioState.master = master;
+    audioState.compressor = compressor;
+  }
+
+  if (audioState.context.state === "suspended") {
+    audioState.context.resume().catch(() => {});
+  }
+
+  return audioState.context;
+}
+
+function unlockAudio() {
+  audioContext();
+}
+
+function envelope(gainNode, start, duration, gain = 0.08, attack = 0.01) {
+  const peak = Math.max(0.0001, gain);
+  const end = start + Math.max(attack + 0.02, duration);
+  gainNode.gain.cancelScheduledValues(start);
+  gainNode.gain.setValueAtTime(0.0001, start);
+  gainNode.gain.exponentialRampToValueAtTime(peak, start + attack);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, end);
+}
+
+function tone(frequency, delay = 0, duration = 0.12, options = {}) {
+  const context = audioContext();
+  if (!context || !audioState.master) {
+    return;
+  }
+
+  const start = context.currentTime + delay;
+  const oscillator = context.createOscillator();
+  const gainNode = context.createGain();
+  const filter = options.filter ? context.createBiquadFilter() : null;
+  oscillator.type = options.type || "sine";
+  oscillator.frequency.setValueAtTime(Math.max(20, frequency), start);
+  if (options.to) {
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, options.to), start + duration);
+  }
+  if (options.detune) {
+    oscillator.detune.setValueAtTime(options.detune, start);
+  }
+
+  if (filter) {
+    filter.type = options.filter.type || "lowpass";
+    filter.frequency.setValueAtTime(options.filter.frequency || 1000, start);
+    filter.Q.value = options.filter.q || 0.8;
+    oscillator.connect(filter);
+    filter.connect(gainNode);
+  } else {
+    oscillator.connect(gainNode);
+  }
+
+  envelope(gainNode, start, duration, options.gain, options.attack);
+  gainNode.connect(audioState.master);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.05);
+  oscillator.addEventListener("ended", () => {
+    oscillator.disconnect();
+    gainNode.disconnect();
+    if (filter) {
+      filter.disconnect();
+    }
+  }, { once: true });
+}
+
+function noise(delay = 0, duration = 0.1, options = {}) {
+  const context = audioContext();
+  if (!context || !audioState.master) {
+    return;
+  }
+
+  const start = context.currentTime + delay;
+  const frameCount = Math.max(1, Math.floor(context.sampleRate * duration));
+  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let index = 0; index < frameCount; index += 1) {
+    data[index] = Math.random() * 2 - 1;
+  }
+
+  const source = context.createBufferSource();
+  const gainNode = context.createGain();
+  const filter = context.createBiquadFilter();
+  source.buffer = buffer;
+  filter.type = options.type || "bandpass";
+  filter.frequency.setValueAtTime(options.frequency || 1200, start);
+  filter.Q.value = options.q || 1;
+  source.connect(filter);
+  filter.connect(gainNode);
+  envelope(gainNode, start, duration, options.gain || 0.04, options.attack || 0.006);
+  gainNode.connect(audioState.master);
+  source.start(start);
+  source.stop(start + duration + 0.02);
+  source.addEventListener("ended", () => {
+    source.disconnect();
+    filter.disconnect();
+    gainNode.disconnect();
+  }, { once: true });
+}
+
+function coinChimes(count = 5, delay = 0) {
+  for (let index = 0; index < count; index += 1) {
+    const offset = delay + index * 0.045;
+    const pitch = 780 + Math.random() * 520;
+    tone(pitch, offset, 0.11, { type: "triangle", gain: 0.03, to: pitch * 1.35, attack: 0.004 });
+    noise(offset, 0.045, { type: "highpass", frequency: 3600, q: 0.8, gain: 0.012 });
+  }
+}
+
+function playSound(name, details = {}) {
+  if (!state.soundEnabled || audioState.unsupported) {
+    return;
+  }
+
+  switch (name) {
+    case "ui":
+      tone(480, 0, 0.055, { type: "triangle", gain: 0.032, to: 620 });
+      break;
+    case "toggle_on":
+      tone(440, 0, 0.07, { type: "triangle", gain: 0.035, to: 660 });
+      tone(880, 0.055, 0.1, { type: "sine", gain: 0.03 });
+      break;
+    case "toggle_off":
+      tone(360, 0, 0.08, { type: "triangle", gain: 0.035, to: 240 });
+      break;
+    case "chip":
+      noise(0, 0.05, { type: "bandpass", frequency: 950, q: 8, gain: 0.035 });
+      tone(240, 0, 0.06, { type: "square", gain: 0.025, to: 180 });
+      tone(520, 0.026, 0.07, { type: "triangle", gain: 0.024 });
+      break;
+    case "card":
+      noise(details.delay || 0, 0.15, { type: "highpass", frequency: 820, q: 0.7, gain: 0.018 });
+      tone(420, (details.delay || 0) + 0.075, 0.055, { type: "triangle", gain: 0.024, to: 610 });
+      break;
+    case "card_flip":
+      noise(0, 0.12, { type: "highpass", frequency: 1300, q: 0.8, gain: 0.02 });
+      tone(360, 0, 0.08, { type: "triangle", gain: 0.028, to: 740 });
+      break;
+    case "roulette_spin":
+      noise(0, 2.2, { type: "bandpass", frequency: 260, q: 0.6, gain: 0.015, attack: 0.05 });
+      tone(90, 0, 1.2, { type: "sawtooth", gain: 0.018, to: 130, filter: { type: "lowpass", frequency: 520, q: 0.7 } });
+      for (let index = 0; index < 24; index += 1) {
+        const offset = 0.06 + index * 0.085 + Math.pow(index / 24, 2) * 0.58;
+        tone(820 + index * 6, offset, 0.025, { type: "square", gain: 0.012 });
+        noise(offset, 0.018, { type: "highpass", frequency: 2600, gain: 0.009 });
+      }
+      break;
+    case "roulette_land":
+      noise(0, 0.045, { type: "highpass", frequency: 2200, q: 1.2, gain: 0.035 });
+      tone(180, 0, 0.09, { type: "square", gain: 0.035, to: 120 });
+      tone(620, 0.075, 0.08, { type: "triangle", gain: 0.026 });
+      break;
+    case "slot_spin":
+      noise(0, 0.7, { type: "bandpass", frequency: 1150, q: 0.9, gain: 0.02, attack: 0.02 });
+      tone(82, 0, 0.52, { type: "sawtooth", gain: 0.022, to: 122, filter: { type: "lowpass", frequency: 420, q: 0.7 } });
+      for (let index = 0; index < 13; index += 1) {
+        tone(320 + index * 18, index * 0.075, 0.025, { type: "square", gain: 0.014 });
+      }
+      break;
+    case "slot_reel_stop": {
+      const column = Number(details.column) || 0;
+      const pitch = 250 + column * 42;
+      noise(0, 0.045, { type: "highpass", frequency: 1500 + column * 180, gain: 0.025 });
+      tone(pitch, 0, 0.075, { type: "triangle", gain: 0.035, to: pitch * 0.72 });
+      break;
+    }
+    case "slot_bonus":
+      tone(330, 0, 0.38, { type: "sawtooth", gain: 0.035, to: 990, filter: { type: "lowpass", frequency: 1300, q: 1 } });
+      [660, 880, 1320, 1760].forEach((pitch, index) => {
+        tone(pitch, 0.14 + index * 0.08, 0.16, { type: "triangle", gain: 0.032 });
+      });
+      coinChimes(7, 0.22);
+      break;
+    case "big_win":
+      [392, 523, 659, 784, 1046, 1318].forEach((pitch, index) => {
+        tone(pitch, index * 0.075, 0.24, { type: "triangle", gain: 0.04, to: pitch * 1.08 });
+      });
+      tone(98, 0, 0.45, { type: "sine", gain: 0.035, to: 65 });
+      coinChimes(16, 0.18);
+      break;
+    case "win":
+      [523, 659, 784, 1046].forEach((pitch, index) => {
+        tone(pitch, index * 0.055, 0.18, { type: "triangle", gain: 0.035 });
+      });
+      coinChimes(5, 0.13);
+      break;
+    case "loss":
+      tone(220, 0, 0.16, { type: "sawtooth", gain: 0.035, to: 150, filter: { type: "lowpass", frequency: 520, q: 0.8 } });
+      tone(130, 0.12, 0.18, { type: "sine", gain: 0.032, to: 92 });
+      noise(0, 0.18, { type: "lowpass", frequency: 360, q: 0.6, gain: 0.018 });
+      break;
+    case "push":
+      tone(420, 0, 0.09, { type: "triangle", gain: 0.026, to: 420 });
+      tone(560, 0.09, 0.1, { type: "triangle", gain: 0.022, to: 520 });
+      break;
+    case "reset":
+      tone(160, 0, 0.18, { type: "sine", gain: 0.032, to: 110 });
+      tone(520, 0.16, 0.12, { type: "triangle", gain: 0.025 });
+      break;
+    case "error":
+      tone(140, 0, 0.08, { type: "square", gain: 0.025, to: 120 });
+      tone(125, 0.08, 0.1, { type: "square", gain: 0.022, to: 105 });
+      break;
+    default:
+      break;
+  }
+}
+
+function setSoundEnabled(enabled) {
+  const nextEnabled = Boolean(enabled);
+  if (!nextEnabled && state.soundEnabled) {
+    playSound("toggle_off");
+  }
+  state.soundEnabled = nextEnabled;
+  try {
+    window.localStorage.setItem(SOUND_STORAGE_KEY, nextEnabled ? "on" : "off");
+  } catch (error) {
+    // Sound still works even when localStorage is unavailable.
+  }
+  if (nextEnabled) {
+    unlockAudio();
+    playSound("toggle_on");
+  }
+  render();
+}
+
 function showResult(title, copy = "") {
   titleEl.textContent = title;
   copyEl.textContent = copy;
@@ -254,9 +528,10 @@ function resetEffects() {
   playerZoneEl.classList.remove("outcome-win", "outcome-loss");
   effectLayerEl.innerHTML = "";
   rouletteResultEl.classList.remove("pop");
-  slotCabinetEl.classList.remove("big-win", "crazy-trigger", "crazy-retrigger", "crazy-spin", "crazy-win");
-  slotWinPanelEl.classList.remove("win", "bonus");
-  slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
+  slotCabinetEl.classList.remove("big-win", "crazy-trigger", "crazy-retrigger", "crazy-spin", "crazy-win", "crazy-multiplier-up");
+  slotWinPanelEl.classList.remove("win", "bonus", "running");
+  slotCabinetEl.querySelectorAll(".slot-coin, .crazy-confetti").forEach((coinEl) => coinEl.remove());
+  slotWinPanelEl.querySelectorAll(".slot-win-increment").forEach((incEl) => incEl.remove());
   document.querySelectorAll(".card.winner, .card.loser").forEach((cardEl) => {
     cardEl.classList.remove("winner", "loser");
   });
@@ -290,7 +565,11 @@ function createSparkles() {
   }, 1050);
 }
 
-function playOutcomeEffect(result, winner = null) {
+function playOutcomeEffect(result, winner = null, soundName = result) {
+  if (soundName) {
+    playSound(soundName);
+  }
+
   if (result === "win") {
     createSparkles();
   } else if (result === "loss") {
@@ -655,7 +934,7 @@ function renderSlotSpin(finalGrid) {
     const reelEl = document.createElement("div");
     const stripEl = document.createElement("div");
     const leadCount = 26 + column * 6;
-    const duration = 2100 + column * 430;
+    const duration = 1470 + column * 300;
     reelEl.className = "slot-reel";
     stripEl.className = "slot-strip";
 
@@ -682,9 +961,10 @@ function renderSlotSpin(finalGrid) {
         }
         stopped = true;
         renderSlotColumn(finalGrid, column);
+        playSound("slot_reel_stop", { column });
         resolve();
       };
-      const fallbackTimer = window.setTimeout(stopColumn, duration + 700);
+      const fallbackTimer = window.setTimeout(stopColumn, duration + 490);
 
       stripEl.addEventListener("transitionend", (event) => {
         if (event.propertyName === "transform") {
@@ -719,6 +999,7 @@ function readVisibleSlotGrid() {
 function updateSlotMeta() {
   const crazyModeActive = state.slotFreeSpins > 0;
   slotCabinetEl.classList.toggle("crazy-mode", crazyModeActive);
+  document.body.classList.toggle("slots-crazy-active", crazyModeActive && state.game === "slots");
   slotModeEl.textContent = crazyModeActive
     ? (state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini")
     : "Base Game";
@@ -737,8 +1018,20 @@ function updateSlotMeta() {
   );
   slotLastWinEl.textContent = formatDollars(state.slotLastWin);
   slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
+  if (state.slotMultiplier > state.slotCrazyPrevMultiplier && crazyModeActive) {
+    replayAnimation(slotMultiplierEl, "multiplier-pop");
+    replayAnimation(slotCabinetEl, "crazy-multiplier-up");
+    burstCrazyConfetti(14);
+    playSound("slot_bonus");
+  }
+  state.slotCrazyPrevMultiplier = state.slotMultiplier;
   if (slotBonusTotalEl) {
     slotBonusTotalEl.textContent = formatDollars(state.slotBonusTotal);
+  }
+  if (crazyModeActive) {
+    startCrazyAmbient();
+  } else {
+    stopCrazyAmbient();
   }
   if (slotRtpEl) {
     slotRtpEl.textContent = `${Math.round(SLOT_RTP_TARGET * 100)}%`;
@@ -797,9 +1090,13 @@ function slotPlayResultLabel({ result, settlement, payout, spinBet, lineNames, w
   }
   if (payout > 0) {
     const hitLabel = lineNames.length ? `${lineNames.length} line${lineNames.length === 1 ? "" : "s"}` : "Scatter";
-    return `${hitLabel} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}`;
+    const starNote = wasFreeSpin && settlement.starBonus ? ` +${settlement.starBonus.spins} star spin${settlement.starBonus.spins > 1 ? "s" : ""}` : "";
+    return `${hitLabel} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}${starNote}`;
   }
-  if (result.scatterCount === 1) {
+  if (wasFreeSpin && settlement.starBonus) {
+    return `Star Bonus! +${settlement.starBonus.spins} free spin${settlement.starBonus.spins > 1 ? "s" : ""}`;
+  }
+  if (!wasFreeSpin && result.scatterCount === 1) {
     return "Scatter tease";
   }
   return wasFreeSpin ? "Crazy spin no hit" : `No hit on ${formatDollars(spinBet)}`;
@@ -835,11 +1132,28 @@ function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
   });
 }
 
-function renderSlotWinPanel({ title, detail, amount = 0, mode = "" }) {
+function renderSlotWinPanel({ title, detail, amount = 0, mode = "", runningTotal = null, prevTotal = 0, label = null }) {
   slotWinTitleEl.textContent = title;
   slotWinDetailEl.textContent = detail;
-  slotWinAmountEl.textContent = formatDollars(amount);
-  slotWinPanelEl.classList.remove("win", "bonus");
+  slotWinPanelEl.classList.remove("win", "bonus", "running");
+
+  if (runningTotal !== null) {
+    if (slotWinLabelEl) {
+      slotWinLabelEl.textContent = label || "Crazy Total";
+    }
+    slotWinPanelEl.classList.add("running");
+    animateMainWinAmount(prevTotal, runningTotal);
+    const delta = runningTotal - prevTotal;
+    if (delta > 0) {
+      showCrazyIncrement(delta);
+    }
+  } else {
+    if (slotWinLabelEl) {
+      slotWinLabelEl.textContent = label || "Spin Result";
+    }
+    slotWinAmountEl.textContent = formatDollars(amount);
+  }
+
   if (mode) {
     replayAnimation(slotWinPanelEl, mode);
   }
@@ -861,6 +1175,103 @@ function createSlotCoins(count = 12) {
   window.setTimeout(() => {
     slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
   }, 1250);
+}
+
+const crazySparkColors = ["#22d3ee", "#f472b6", "#f2c14e", "#c084fc", "#6ee7b7"];
+
+function spawnCrazySpark() {
+  if (!slotCabinetEl.classList.contains("crazy-mode")) {
+    return;
+  }
+  const spark = document.createElement("span");
+  spark.className = "crazy-spark";
+  const color = crazySparkColors[Math.floor(Math.random() * crazySparkColors.length)];
+  const size = 4 + Math.random() * 7;
+  const drift = (Math.random() - 0.5) * 90;
+  const duration = 2000 + Math.random() * 1600;
+  const left = Math.random() * 100;
+  spark.style.setProperty("--spark-color", color);
+  spark.style.setProperty("--spark-size", `${size}px`);
+  spark.style.setProperty("--spark-drift", `${drift}px`);
+  spark.style.setProperty("--spark-duration", `${duration}ms`);
+  spark.style.left = `${left}%`;
+  slotCabinetEl.appendChild(spark);
+  window.setTimeout(() => spark.remove(), duration + 80);
+}
+
+function startCrazyAmbient() {
+  if (state.slotCrazyAmbientTimer) {
+    return;
+  }
+  for (let index = 0; index < 4; index += 1) {
+    window.setTimeout(spawnCrazySpark, index * 90);
+  }
+  state.slotCrazyAmbientTimer = window.setInterval(spawnCrazySpark, 220);
+}
+
+function stopCrazyAmbient() {
+  if (state.slotCrazyAmbientTimer) {
+    window.clearInterval(state.slotCrazyAmbientTimer);
+    state.slotCrazyAmbientTimer = null;
+  }
+  slotCabinetEl.querySelectorAll(".crazy-spark").forEach((sparkEl) => sparkEl.remove());
+}
+
+function burstCrazyConfetti(count = 18) {
+  for (let index = 0; index < count; index += 1) {
+    const piece = document.createElement("span");
+    const color = crazySparkColors[Math.floor(Math.random() * crazySparkColors.length)];
+    const x = Math.round((Math.random() - 0.5) * 520);
+    const y = Math.round(-120 - Math.random() * 220);
+    const rot = Math.round((Math.random() - 0.5) * 720);
+    const duration = 900 + Math.random() * 700;
+    piece.className = "crazy-confetti";
+    piece.style.setProperty("--confetti-color", color);
+    piece.style.setProperty("--confetti-x", `${x}px`);
+    piece.style.setProperty("--confetti-y", `${y}px`);
+    piece.style.setProperty("--confetti-rot", `${rot}deg`);
+    piece.style.setProperty("--confetti-duration", `${duration}ms`);
+    piece.style.animationDelay = `${index * 18}ms`;
+    slotCabinetEl.appendChild(piece);
+    window.setTimeout(() => piece.remove(), duration + 400);
+  }
+}
+
+function showCrazyIncrement(delta) {
+  if (delta <= 0) {
+    return;
+  }
+  const incEl = document.createElement("span");
+  incEl.className = "slot-win-increment";
+  incEl.textContent = `+${formatDollars(delta)}`;
+  slotWinPanelEl.appendChild(incEl);
+  window.setTimeout(() => incEl.remove(), 1500);
+}
+
+function animateMainWinAmount(from, to) {
+  if (from === to) {
+    slotWinAmountEl.textContent = formatDollars(to);
+    return;
+  }
+  if (to > from) {
+    replayAnimation(slotWinAmountEl, "amount-pop");
+  }
+  const duration = Math.min(950, Math.max(360, Math.abs(to - from) * 0.35 + 320));
+  const start = performance.now();
+  const delta = to - from;
+  const step = (now) => {
+    const elapsed = now - start;
+    const progress = Math.min(1, elapsed / duration);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const value = from + delta * ease;
+    slotWinAmountEl.textContent = formatDollars(value);
+    if (progress < 1) {
+      window.requestAnimationFrame(step);
+    } else {
+      slotWinAmountEl.textContent = formatDollars(to);
+    }
+  };
+  window.requestAnimationFrame(step);
 }
 
 function animateSlotWinAmount(amount) {
@@ -885,9 +1296,13 @@ function startFreeSpins(count, multiplier, options = {}) {
   if (enteringCrazyMode) {
     state.slotBonusTotal = 0;
     state.slotCrazyWilds = [];
+    state.slotCrazyDisplayedTotal = 0;
+    state.slotCrazyPrevMultiplier = state.slotMultiplier;
   }
   state.slotRetriggerText = `${count} spins`;
+  playSound("slot_bonus");
   replayAnimation(slotCabinetEl, "crazy-trigger");
+  burstCrazyConfetti(24);
   const modeTitle = state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini";
   const detail = state.slotCrazySticky
     ? `${count} free spins loaded. Sticky wilds stay locked.`
@@ -897,13 +1312,17 @@ function startFreeSpins(count, multiplier, options = {}) {
     title: modeTitle,
     detail,
     amount: 0,
-    mode: "bonus"
+    mode: "bonus",
+    runningTotal: 0,
+    prevTotal: 0,
+    label: "Crazy Total"
   });
   updateSlotMeta();
 }
 
 function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   const balanceBefore = state.credits;
+  const crazyPrevTotal = state.slotCrazyDisplayedTotal;
   const bonusBeforeSpin = wasFreeSpin
     ? {
         freeSpins: state.slotFreeSpins,
@@ -952,10 +1371,16 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       ? `+${settlement.retrigger.freeSpins} spins`
       : "Sticky unlock";
     replayAnimation(slotCabinetEl, "crazy-retrigger");
+  } else if (settlement.starBonus) {
+    const s = settlement.starBonus.spins;
+    state.slotRetriggerText = `+${s} star spin${s > 1 ? "s" : ""}`;
+    replayAnimation(slotCabinetEl, "crazy-retrigger");
   }
 
   const stickyWildDetails = [...state.slotCrazyWilds];
-  const highlightedScatters = result.scatterCount >= 2 ? result.scatterCells : [];
+  const highlightedScatters = (wasFreeSpin && result.scatterCount >= 1) || result.scatterCount >= 2
+    ? result.scatterCells
+    : [];
   renderSlotGrid(grid, result.lineWins, highlightedScatters, wasFreeSpin && state.slotCrazySticky ? stickyWildDetails : []);
   renderSlotPaylineSummary(result, spinBet, activeMultiplier);
   animateSlotWinAmount(payout);
@@ -976,14 +1401,21 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     const crazyCopy = wasFreeSpin
       ? (state.slotCrazySticky ? ` Sticky wilds: ${stickyWildDetails.length}.` : " Mini mode.")
       : "";
-    showResult(title, `${winSource} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}`);
+    const starCopy = wasFreeSpin && settlement.starBonus && !settlement.retrigger
+      ? ` +${settlement.starBonus.spins} star spin${settlement.starBonus.spins > 1 ? "s" : ""}.`
+      : "";
+    showResult(title, `${winSource} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}`);
     renderSlotWinPanel({
       title: wasFreeSpin ? `Crazy ${title}` : title,
-      detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}`,
+      detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}`,
       amount: payout,
-      mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win"
+      mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win",
+      runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+      prevTotal: wasFreeSpin ? crazyPrevTotal : 0,
+      label: wasFreeSpin ? "Crazy Total" : null
     });
-    playOutcomeEffect("win");
+    const slotWinSound = ["big", "mega", "jackpot"].includes(winTier) ? "big_win" : "win";
+    playOutcomeEffect("win", null, slotWinSound);
     createSlotCoins(winTier === "jackpot" ? 30 : winTier === "mega" ? 24 : winTier === "big" ? 18 : 10);
     if (wasFreeSpin) {
       replayAnimation(slotCabinetEl, "crazy-win");
@@ -999,7 +1431,7 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       amount: 0,
       mode: "bonus"
     });
-    playOutcomeEffect("push");
+    playOutcomeEffect("push", null, false);
     createSlotCoins(8);
   } else if (settlement.retrigger) {
     showResult(
@@ -1014,30 +1446,61 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
         ? `${result.scatterCount} scatters extended Crazy Mode.`
         : `${result.scatterCount} scatters upgraded the bonus.`,
       amount: 0,
-      mode: "bonus"
+      mode: "bonus",
+      runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+      prevTotal: wasFreeSpin ? crazyPrevTotal : 0,
+      label: wasFreeSpin ? "Crazy Total" : null
     });
-    playOutcomeEffect("push");
+    playOutcomeEffect("push", null, "slot_bonus");
     createSlotCoins(8);
+    burstCrazyConfetti(16);
   } else if (wasFreeSpin) {
     if (state.slotFreeSpins > 0) {
-      showResult(state.slotCrazySticky ? "Crazy spin" : "Mini spin", "No line hit.");
-      renderSlotWinPanel({
-        title: "No line hit",
-        detail: state.slotCrazySticky
-          ? `${state.slotFreeSpins} Crazy spin${state.slotFreeSpins === 1 ? "" : "s"} remaining. Sticky wilds: ${stickyWildDetails.length}.`
-          : `${state.slotFreeSpins} mini spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
-        amount: 0
-      });
+      if (settlement.starBonus) {
+        const sc = settlement.starBonus.spins;
+        showResult("Star Bonus!", `+${sc} free spin${sc > 1 ? "s" : ""} added.`);
+        renderSlotWinPanel({
+          title: "Star Bonus!",
+          detail: `${sc} star${sc > 1 ? "s" : ""} extended Crazy Mode. ${state.slotFreeSpins} spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
+          amount: 0,
+          mode: "bonus",
+          runningTotal: state.slotBonusTotal,
+          prevTotal: crazyPrevTotal,
+          label: "Crazy Total"
+        });
+        createSlotCoins(6);
+        burstCrazyConfetti(10);
+      } else {
+        showResult(state.slotCrazySticky ? "Crazy spin" : "Mini spin", "No line hit.");
+        renderSlotWinPanel({
+          title: "No line hit",
+          detail: state.slotCrazySticky
+            ? `${state.slotFreeSpins} Crazy spin${state.slotFreeSpins === 1 ? "" : "s"} remaining. Sticky wilds: ${stickyWildDetails.length}.`
+            : `${state.slotFreeSpins} mini spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
+          amount: 0,
+          runningTotal: state.slotBonusTotal,
+          prevTotal: crazyPrevTotal,
+          label: "Crazy Total"
+        });
+      }
     } else {
       const endedTitle = state.slotCrazySticky ? "Crazy Mode ended" : "Crazy Mini ended";
       state.slotMultiplier = 1;
       state.slotRetriggerText = "Ended";
-      showResult(endedTitle, "Back to the base game.");
+      showResult(endedTitle, `Crazy total: ${formatDollars(state.slotBonusTotal)}.`);
       renderSlotWinPanel({
         title: endedTitle,
-        detail: `Crazy total: ${formatDollars(state.slotBonusTotal)}.`,
-        amount: 0
+        detail: `Final crazy total: ${formatDollars(state.slotBonusTotal)}. Back to the base game.`,
+        amount: 0,
+        mode: "bonus",
+        runningTotal: state.slotBonusTotal,
+        prevTotal: crazyPrevTotal,
+        label: "Final Crazy Total"
       });
+      if (state.slotBonusTotal > 0) {
+        burstCrazyConfetti(28);
+        createSlotCoins(20);
+      }
     }
     playOutcomeEffect("push");
   } else {
@@ -1064,7 +1527,11 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     if (wasFreeSpin) {
       state.slotCrazyWilds = [];
       state.slotCrazySticky = false;
+      state.slotCrazyDisplayedTotal = 0;
+      state.slotCrazyPrevMultiplier = 1;
     }
+  } else if (wasFreeSpin) {
+    state.slotCrazyDisplayedTotal = state.slotBonusTotal;
   }
 
   updateSlotMeta();
@@ -1114,11 +1581,13 @@ function spinSlots() {
   const wasFreeSpin = state.slotFreeSpins > 0;
   const spinBet = state.bet;
   if (!wasFreeSpin && state.credits < spinBet) {
+    playSound("error");
     showResult("Bankroll low", "Lower the bet or reset your bankroll.");
     return;
   }
 
   resetEffects();
+  playSound("slot_spin");
   state.slotActive = true;
   state.slotRound += 1;
   const round = state.slotRound;
@@ -1133,7 +1602,10 @@ function spinSlots() {
     detail: wasFreeSpin
       ? (state.slotCrazySticky ? `${state.slotFreeSpins} remaining at ${state.slotMultiplier}x. Sticky wilds: ${state.slotCrazyWilds.length}.` : `${state.slotFreeSpins} mini spins remaining at ${state.slotMultiplier}x.`)
       : "Waiting for the reels to stop.",
-    amount: 0
+    amount: 0,
+    runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+    prevTotal: wasFreeSpin ? state.slotCrazyDisplayedTotal : 0,
+    label: wasFreeSpin ? "Crazy Total" : null
   });
   showResult(
     "Reels spinning",
@@ -1173,6 +1645,7 @@ function dealFromDeck(cardEl, delay = 0) {
   cardEl.style.setProperty("--deal-x", `${deckX - cardX}px`);
   cardEl.style.setProperty("--deal-y", `${deckY - cardY}px`);
   cardEl.style.animationDelay = `${delay}ms`;
+  playSound("card", { delay: delay / 1000 });
   replayAnimation(cardEl, "dealt");
 }
 
@@ -1214,6 +1687,7 @@ function createCard(card, hidden = false) {
 function revealCard(cardEl, card) {
   const tilt = cardEl.style.getPropertyValue("--tilt");
   cardEl.classList.remove("back");
+  playSound("card_flip");
   replayAnimation(cardEl, "revealing");
   window.setTimeout(() => {
     const freshCard = createCard(card);
@@ -1618,6 +2092,8 @@ function render() {
   autoRerollControlEl.hidden = !autoGame;
   autoRerollToggleEl.checked = state.autoReroll && autoGame;
   autoRerollToggleEl.disabled = balanceLoading || !autoGame;
+  soundToggleEl.checked = state.soundEnabled;
+  soundStateEl.textContent = state.soundEnabled ? "Effects on" : "Muted";
   chipButtons.forEach((button) => {
     button.disabled = balanceLoading || outOfCredits || lockedBet || state.bet >= maxBet();
   });
@@ -1653,6 +2129,7 @@ function supportsAutoReroll(game = state.game) {
 function setAutoReroll(enabled) {
   state.autoReroll = Boolean(enabled && supportsAutoReroll());
   clearAutoRerollTimer();
+  playSound(state.autoReroll ? "toggle_on" : "toggle_off");
   if (state.autoReroll) {
     showResult("Auto on", `${gameMeta[state.game].title} will repeat after each spin.`);
     scheduleAutoReroll(250);
@@ -1716,7 +2193,12 @@ function changeBet(amount) {
     return;
   }
 
-  state.bet = Math.max(5, Math.min(state.bet + amount, maxBet()));
+  const nextBet = Math.max(5, Math.min(state.bet + amount, maxBet()));
+  if (nextBet === state.bet) {
+    return;
+  }
+  state.bet = nextBet;
+  playSound("chip");
   render();
 }
 
@@ -1725,7 +2207,12 @@ function setBet(amount) {
     return;
   }
 
-  state.bet = Math.max(5, Math.min(amount, maxBet()));
+  const nextBet = Math.max(5, Math.min(amount, maxBet()));
+  if (nextBet === state.bet) {
+    return;
+  }
+  state.bet = nextBet;
+  playSound("chip");
   render();
 }
 
@@ -2022,6 +2509,7 @@ function splitBlackjack() {
   }
 
   resetEffects();
+  playSound("chip");
   state.blackjackSplitActive = true;
   state.blackjackSplitRound += 1;
   state.blackjackActiveHandIndex = 0;
@@ -2180,6 +2668,7 @@ function selectRouletteBet(type, value) {
 
   state.rouletteBetType = type;
   state.rouletteChoice = type === "number" ? Number(value) : value;
+  playSound("ui");
   showResult("Roulette", `Betting on ${rouletteBetLabel()}.`);
   render();
 }
@@ -2190,6 +2679,7 @@ function spinRoulette() {
   }
 
   resetEffects();
+  playSound("roulette_spin");
   state.rouletteActive = true;
   rouletteResultEl.textContent = "--";
   rouletteResultEl.className = "roulette-result";
@@ -2220,6 +2710,7 @@ function spinRoulette() {
     state.rouletteActive = false;
     rouletteResultEl.textContent = number;
     rouletteResultEl.className = `roulette-result ${color}`;
+    playSound("roulette_land");
     replayAnimation(rouletteResultEl, "pop");
 
     if (won) {
@@ -2244,7 +2735,7 @@ function spinRoulette() {
 
     render();
     scheduleAutoReroll();
-  }, 4550);
+  }, 3185);
 }
 
 function switchGame(game) {
@@ -2256,6 +2747,9 @@ function switchGame(game) {
     state.autoReroll = false;
     clearAutoRerollTimer();
   }
+  if (state.game !== game) {
+    playSound("ui");
+  }
   state.game = game;
   resetEffects();
   showResult(gameMeta[game].title);
@@ -2266,6 +2760,13 @@ initializeRouletteUi();
 initializeSlotLineExamples();
 renderSlotGrid(generateSlotGrid());
 updateSlotMeta();
+
+document.addEventListener("pointerdown", unlockAudio, { passive: true });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    unlockAudio();
+  }
+});
 
 tabs.forEach((tab) => {
   tab.addEventListener("click", () => switchGame(tab.dataset.game));
@@ -2313,8 +2814,10 @@ hitButton.addEventListener("click", hitBlackjack);
 standButton.addEventListener("click", standBlackjack);
 splitButton.addEventListener("click", splitBlackjack);
 autoRerollToggleEl.addEventListener("change", () => setAutoReroll(autoRerollToggleEl.checked));
+soundToggleEl.addEventListener("change", () => setSoundEnabled(soundToggleEl.checked));
 
 resetButton.addEventListener("click", () => {
+  playSound("reset");
   const balanceBefore = state.credits;
   state.credits = DEFAULT_BALANCE;
   state.bet = 5;
@@ -2338,7 +2841,10 @@ resetButton.addEventListener("click", () => {
   state.slotRetriggerText = "";
   state.slotCrazySticky = false;
   state.slotCrazyWilds = [];
+  state.slotCrazyDisplayedTotal = 0;
+  state.slotCrazyPrevMultiplier = 1;
   state.slotRound += 1;
+  stopCrazyAmbient();
   state.dealerHand = [];
   state.playerHand = [];
   state.hideDealerHole = false;

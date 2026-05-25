@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reviews — Gamertown Solutions</title>
+  <link rel="stylesheet" href="pwkgp-site.css" />
+  <style>
+    .reviews-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+
+    .reviews-header {
+      text-align: center;
+      margin-bottom: 2rem;
+      border-bottom: 2px solid #00ff00;
+      padding-bottom: 1rem;
+    }
+
+    .reviews-header h1 {
+      margin: 0;
+      font-size: 2rem;
+      letter-spacing: 0.1em;
+    }
+
+    .reviews-header p {
+      margin: 0.5rem 0 0 0;
+      font-size: 0.9rem;
+      color: #00aa00;
+    }
+
+    .review-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .review-item {
+      background: #000000;
+      border: 2px solid #00ff00;
+      padding: 1.5rem;
+      border-radius: 0;
+    }
+
+    .review-item:hover {
+      border-color: #ffff00;
+      box-shadow: 0 0 10px rgba(255, 255, 0, 0.2);
+    }
+
+    .review-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.8rem;
+      border-bottom: 1px dashed #00ff00;
+      padding-bottom: 0.5rem;
+    }
+
+    .review-author {
+      font-weight: bold;
+      color: #ffff00;
+      font-size: 1rem;
+    }
+
+    .review-date {
+      color: #00aa00;
+      font-size: 0.85rem;
+    }
+
+    .review-rating {
+      font-size: 0.9rem;
+      letter-spacing: 0.05em;
+      color: #00ff00;
+      margin-bottom: 0.5rem;
+    }
+
+    .review-text {
+      color: #00ff00;
+      line-height: 1.5;
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    .review-form {
+      background: #000000;
+      border: 2px solid #00ff00;
+      padding: 1.5rem;
+      margin-top: 2rem;
+      border-top: 4px solid #00ff00;
+    }
+
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-row label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #00ff00;
+    }
+
+    .form-row input,
+    .form-row textarea,
+    .form-row select {
+      background: #0a0a0a;
+      border: 1px solid #00ff00;
+      color: #00ff00;
+      padding: 0.6rem;
+      font-family: "Courier New", monospace;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    .form-row input:focus,
+    .form-row textarea:focus,
+    .form-row select:focus {
+      background: #1a1a1a;
+      border-color: #ffff00;
+      box-shadow: 0 0 5px rgba(255, 255, 0, 0.3);
+    }
+
+    .form-row textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    .submit-btn {
+      background: #00ff00;
+      color: #000000;
+      border: 2px solid #00ff00;
+      padding: 0.7rem 1.5rem;
+      font-size: 0.9rem;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      font-family: "Courier New", monospace;
+      text-transform: uppercase;
+    }
+
+    .submit-btn:hover {
+      background: #ffff00;
+      border-color: #ffff00;
+    }
+
+    .no-reviews {
+      text-align: center;
+      color: #00aa00;
+      padding: 2rem;
+      border: 1px dashed #00ff00;
+      font-style: italic;
+    }
+
+    .nav-back {
+      margin-top: 2rem;
+      text-align: center;
+    }
+
+    .nav-back a {
+      color: #00ff00;
+      text-decoration: none;
+      border: 1px solid #00ff00;
+      padding: 0.5rem 1rem;
+      display: inline-block;
+    }
+
+    .nav-back a:hover {
+      background: #00ff00;
+      color: #000000;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">GAMERTOWN SOLUTIONS // REVIEWS INDEX</div>
+  <main class="page-shell">
+    <aside class="left-rail">
+      <header class="brand-block">
+        <h1>G A M E R T O W N<br>S O L U T I O N S</h1>
+        <p>//Solutions That Solve//</p>
+      </header>
+      <img class="xerox" src="pwkgp-xerox-panel.png" alt="Degraded monochrome technical collage" />
+      <blockquote>"The route is not hidden. It is merely indexed incorrectly."<br><span>— internal note, unsigned</span></blockquote>
+      <nav class="footlinks">
+        <a href="index.html">home</a><span>|</span><a href="#">contact</a><span>|</span><a href="#">about</a><span>|</span><a href="#">terms</a>
+      </nav>
+    </aside>
+
+    <section class="index-core">
+      <div class="reviews-wrap">
+        <div class="reviews-header">
+          <h1>.: REVIEWS :.</h1>
+          <p>User Reports / Testimonials / Feedback Registry</p>
+        </div>
+
+        <div class="review-container" id="reviewContainer">
+          <div class="review-item">
+            <div class="review-header">
+              <span class="review-author">System Administrator</span>
+              <span class="review-date">05.01.26</span>
+            </div>
+            <div class="review-rating">★★★★★ // OPERATIONAL / STABLE</div>
+            <p class="review-text">Infrastructure remains optimal. All systems nominal. Uptime registry verified. Status: PALE GREEN.</p>
+          </div>
+
+          <div class="review-item">
+            <div class="review-header">
+              <span class="review-author">Field Agent Designate 7</span>
+              <span class="review-date">04.28.26</span>
+            </div>
+            <div class="review-rating">★★★★☆ // FUNCTIONAL / RELIABLE</div>
+            <p class="review-text">Navigation protocols executed without incident. Dispatch sequences accurate. Minor latency on secondary nodes noted, but within tolerance parameters.</p>
+          </div>
+
+          <div class="review-item">
+            <div class="review-header">
+              <span class="review-author">Technical Service Unit</span>
+              <span class="review-date">04.15.26</span>
+            </div>
+            <div class="review-rating">★★★★★ // VERIFIED / ROBUST</div>
+            <p class="review-text">Comprehensive diagnostic sweep completed. Zero critical failures detected. Archive integrity confirmed. Recommend continued standard maintenance cycles.</p>
+          </div>
+        </div>
+
+        <div class="review-form">
+          <h2>.: SUBMIT TESTIMONY :.</h2>
+          <form id="reviewForm">
+            <div class="form-row">
+              <label for="reviewName">YOUR DESIGNATION</label>
+              <input type="text" id="reviewName" name="name" placeholder="Agent / Unit / Registry" required />
+            </div>
+
+            <div class="form-row">
+              <label for="reviewRating">OPERATIONAL RATING</label>
+              <select id="reviewRating" name="rating" required>
+                <option value="">-- SELECT RATING --</option>
+                <option value="5">★★★★★ // OPTIMAL</option>
+                <option value="4">★★★★☆ // FUNCTIONAL</option>
+                <option value="3">★★★☆☆ // ADEQUATE</option>
+                <option value="2">★★☆☆☆ // MARGINAL</option>
+                <option value="1">★☆☆☆☆ // CRITICAL</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <label for="reviewText">TESTIMONY / OBSERVATIONS</label>
+              <textarea id="reviewText" name="message" placeholder="Share your assessment..." required></textarea>
+            </div>
+
+            <button type="submit" class="submit-btn">REGISTER TESTIMONY</button>
+          </form>
+        </div>
+
+        <div class="nav-back">
+          <a href="index.html">← RETURN TO INDEX</a>
+        </div>
+      </div>
+    </section>
+
+    <aside class="right-rail">
+      <img class="round-sigil" src="pwkgp-circular-sigil.png" alt="Circular pale green sigil" />
+      <p class="quote">"Start late, finish early"<br><span>— Gamertown memo</span></p>
+      <section class="terminal-note">
+        <h3>//REVIEW CHANNELS</h3>
+        <p>Feedback / Testimonials / Assessment Registry</p>
+      </section>
+    </aside>
+  </main>
+
+  <script src="site.js"></script>
+</body>
+</html>

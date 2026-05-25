@@ -21,7 +21,7 @@ import {
   settleSlotMath as settleSlotRulesMath,
   weightedSlotSymbol as weightedSlotRulesSymbol,
   winTierTitle
-} from './slot-rules.mjs?v=slot-rtp-87-1';
+} from './slot-rules.mjs?v=slot-rtp-96-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
@@ -82,6 +82,7 @@ const state = {
   slotRound: 0,
   slotBonusTotal: 0,
   slotRetriggerText: "",
+  slotCrazySticky: false,
   slotCrazyWilds: [],
   autoReroll: false,
   autoRerollTimer: null
@@ -718,14 +719,22 @@ function readVisibleSlotGrid() {
 function updateSlotMeta() {
   const crazyModeActive = state.slotFreeSpins > 0;
   slotCabinetEl.classList.toggle("crazy-mode", crazyModeActive);
-  slotModeEl.textContent = crazyModeActive ? "Crazy Mode" : "Base Game";
+  slotModeEl.textContent = crazyModeActive
+    ? (state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini")
+    : "Base Game";
   slotSpinStatusEl.textContent = state.slotActive
     ? "Spinning..."
     : crazyModeActive
       ? `${state.slotFreeSpins} remaining`
       : "Ready";
-  slotScatterCountEl.textContent = `${Math.min(state.slotScatterCount, 3)} / 3`;
-  slotScatterFillEl.style.setProperty("--scatter-progress", `${Math.min(state.slotScatterCount, 3) / 3 * 100}%`);
+  const scatterGoal = 2;
+  slotScatterCountEl.textContent = crazyModeActive
+    ? `${state.slotFreeSpins} spin${state.slotFreeSpins === 1 ? "" : "s"}`
+    : `${Math.min(state.slotScatterCount, scatterGoal)} / ${scatterGoal}`;
+  slotScatterFillEl.style.setProperty(
+    "--scatter-progress",
+    `${crazyModeActive ? 100 : Math.min(state.slotScatterCount, scatterGoal) / scatterGoal * 100}%`
+  );
   slotLastWinEl.textContent = formatDollars(state.slotLastWin);
   slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
   if (slotBonusTotalEl) {
@@ -736,7 +745,11 @@ function updateSlotMeta() {
   }
   if (slotRetriggerEl) {
     const stickyCount = state.slotCrazyWilds.length;
-    slotRetriggerEl.textContent = state.slotRetriggerText || (crazyModeActive ? `${stickyCount} sticky` : "Ready");
+    slotRetriggerEl.textContent = state.slotRetriggerText || (
+      crazyModeActive
+        ? (state.slotCrazySticky ? `${stickyCount} sticky` : "Mini active")
+        : "2 scatters"
+    );
   }
 }
 
@@ -777,7 +790,7 @@ function slotPlayResultType({ settlement, payout, wasFreeSpin }) {
 
 function slotPlayResultLabel({ result, settlement, payout, spinBet, lineNames, wasFreeSpin }) {
   if (settlement.trigger) {
-    return `${result.scatterCount} scatters loaded Crazy Mode`;
+    return `${result.scatterCount} scatters loaded ${settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini"}`;
   }
   if (settlement.retrigger) {
     return `${result.scatterCount} scatters retriggered Crazy Mode`;
@@ -786,8 +799,8 @@ function slotPlayResultLabel({ result, settlement, payout, spinBet, lineNames, w
     const hitLabel = lineNames.length ? `${lineNames.length} line${lineNames.length === 1 ? "" : "s"}` : "Scatter";
     return `${hitLabel} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}`;
   }
-  if (result.scatterCount === 2) {
-    return "Near bonus";
+  if (result.scatterCount === 1) {
+    return "Scatter tease";
   }
   return wasFreeSpin ? "Crazy spin no hit" : `No hit on ${formatDollars(spinBet)}`;
 }
@@ -863,20 +876,26 @@ function animateSlotWinAmount(amount) {
   }, 28);
 }
 
-function startFreeSpins(count, multiplier) {
+function startFreeSpins(count, multiplier, options = {}) {
   const enteringCrazyMode = state.slotFreeSpins === 0;
+  const stickyWilds = options.stickyWilds !== false;
   state.slotFreeSpins += count;
   state.slotMultiplier = Math.max(state.slotMultiplier, multiplier);
+  state.slotCrazySticky = enteringCrazyMode ? stickyWilds : state.slotCrazySticky || stickyWilds;
   if (enteringCrazyMode) {
     state.slotBonusTotal = 0;
     state.slotCrazyWilds = [];
   }
   state.slotRetriggerText = `${count} spins`;
   replayAnimation(slotCabinetEl, "crazy-trigger");
-  showResult("Crazy Mode", `${count} free spins at ${state.slotMultiplier}x.`);
+  const modeTitle = state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini";
+  const detail = state.slotCrazySticky
+    ? `${count} free spins loaded. Sticky wilds stay locked.`
+    : `${count} free spins loaded. Land 3+ scatters to unlock sticky wilds.`;
+  showResult(modeTitle, `${count} free spins at ${state.slotMultiplier}x.`);
   renderSlotWinPanel({
-    title: "Crazy Mode",
-    detail: `${count} free spins loaded. Sticky wilds stay locked.`,
+    title: modeTitle,
+    detail,
     amount: 0,
     mode: "bonus"
   });
@@ -889,7 +908,8 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     ? {
         freeSpins: state.slotFreeSpins,
         multiplier: state.slotMultiplier,
-        totalWin: state.slotBonusTotal
+        totalWin: state.slotBonusTotal,
+        stickyWilds: state.slotCrazySticky
       }
     : null;
   const settlement = settleSlotRulesMath({ result, bet: spinBet, bonus: bonusBeforeSpin });
@@ -906,9 +926,12 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     state.slotFreeSpins = settlement.nextBonus?.freeSpins ?? 0;
     state.slotMultiplier = settlement.nextBonus?.multiplier ?? state.slotMultiplier;
     state.slotBonusTotal = settlement.nextBonus?.totalWin ?? state.slotBonusTotal;
-    collectCrazyWilds(grid);
+    state.slotCrazySticky = settlement.nextBonus?.stickyWilds ?? state.slotCrazySticky;
+    if (state.slotCrazySticky) {
+      collectCrazyWilds(grid);
+    }
 
-    if (payout > 0 && result.lineWins.length && state.slotFreeSpins > 0) {
+    if (state.slotCrazySticky && payout > 0 && result.lineWins.length && state.slotFreeSpins > 0) {
       const nextMultiplier = Math.min(
         slotScatterRules.multiplierCap,
         state.slotMultiplier + crazyModeConfig.winMultiplierStep
@@ -921,15 +944,19 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   }
 
   if (settlement.trigger) {
-    startFreeSpins(settlement.trigger.freeSpins, settlement.trigger.multiplier);
+    startFreeSpins(settlement.trigger.freeSpins, settlement.trigger.multiplier, {
+      stickyWilds: settlement.trigger.stickyWilds
+    });
   } else if (settlement.retrigger) {
-    state.slotRetriggerText = `+${settlement.retrigger.freeSpins} spins`;
+    state.slotRetriggerText = settlement.retrigger.freeSpins > 0
+      ? `+${settlement.retrigger.freeSpins} spins`
+      : "Sticky unlock";
     replayAnimation(slotCabinetEl, "crazy-retrigger");
   }
 
   const stickyWildDetails = [...state.slotCrazyWilds];
   const highlightedScatters = result.scatterCount >= 2 ? result.scatterCells : [];
-  renderSlotGrid(grid, result.lineWins, highlightedScatters, wasFreeSpin ? stickyWildDetails : []);
+  renderSlotGrid(grid, result.lineWins, highlightedScatters, wasFreeSpin && state.slotCrazySticky ? stickyWildDetails : []);
   renderSlotPaylineSummary(result, spinBet, activeMultiplier);
   animateSlotWinAmount(payout);
   const lineNames = result.lineWins.map((line) => line.name);
@@ -942,9 +969,13 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       lineNameCopy,
       result.scatterPay ? `${result.scatterCount} scatters` : ""
     ].filter(Boolean).join(" + ") || "Bonus";
-    const retriggerCopy = settlement.retrigger ? ` Retriggered ${settlement.retrigger.freeSpins} spins.` : "";
-    const triggerCopy = settlement.trigger ? ` Crazy Mode loaded: ${settlement.trigger.freeSpins} spins at ${settlement.trigger.multiplier}x.` : "";
-    const crazyCopy = wasFreeSpin ? ` Sticky wilds: ${stickyWildDetails.length}.` : "";
+    const retriggerCopy = settlement.retrigger
+      ? (settlement.retrigger.freeSpins > 0 ? ` Retriggered ${settlement.retrigger.freeSpins} spins.` : " Sticky wilds unlocked.")
+      : "";
+    const triggerCopy = settlement.trigger ? ` ${settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini"} loaded: ${settlement.trigger.freeSpins} spins at ${settlement.trigger.multiplier}x.` : "";
+    const crazyCopy = wasFreeSpin
+      ? (state.slotCrazySticky ? ` Sticky wilds: ${stickyWildDetails.length}.` : " Mini mode.")
+      : "";
     showResult(title, `${winSource} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}`);
     renderSlotWinPanel({
       title: wasFreeSpin ? `Crazy ${title}` : title,
@@ -961,9 +992,9 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       replayAnimation(slotCabinetEl, "big-win");
     }
   } else if (settlement.trigger) {
-    showResult("Crazy Mode", "Free spins are ready.");
+    showResult(settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini", "Free spins are ready.");
     renderSlotWinPanel({
-      title: "Crazy Mode",
+      title: settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini",
       detail: `${result.scatterCount} scatters awarded ${result.freeSpinsAwarded} free spins at ${result.bonusMultiplier}x.`,
       amount: 0,
       mode: "bonus"
@@ -971,10 +1002,17 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     playOutcomeEffect("push");
     createSlotCoins(8);
   } else if (settlement.retrigger) {
-    showResult("Crazy retrigger", `${settlement.retrigger.freeSpins} more free spins at ${settlement.retrigger.multiplier}x.`);
+    showResult(
+      "Crazy retrigger",
+      settlement.retrigger.freeSpins > 0
+        ? `${settlement.retrigger.freeSpins} more free spins at ${settlement.retrigger.multiplier}x.`
+        : "Sticky wilds unlocked."
+    );
     renderSlotWinPanel({
       title: "Crazy retrigger",
-      detail: `${result.scatterCount} scatters extended Crazy Mode.`,
+      detail: settlement.retrigger.freeSpins > 0
+        ? `${result.scatterCount} scatters extended Crazy Mode.`
+        : `${result.scatterCount} scatters upgraded the bonus.`,
       amount: 0,
       mode: "bonus"
     });
@@ -982,31 +1020,34 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     createSlotCoins(8);
   } else if (wasFreeSpin) {
     if (state.slotFreeSpins > 0) {
-      showResult("Crazy spin", "No line hit.");
+      showResult(state.slotCrazySticky ? "Crazy spin" : "Mini spin", "No line hit.");
       renderSlotWinPanel({
         title: "No line hit",
-        detail: `${state.slotFreeSpins} Crazy spin${state.slotFreeSpins === 1 ? "" : "s"} remaining. Sticky wilds: ${stickyWildDetails.length}.`,
+        detail: state.slotCrazySticky
+          ? `${state.slotFreeSpins} Crazy spin${state.slotFreeSpins === 1 ? "" : "s"} remaining. Sticky wilds: ${stickyWildDetails.length}.`
+          : `${state.slotFreeSpins} mini spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
         amount: 0
       });
     } else {
+      const endedTitle = state.slotCrazySticky ? "Crazy Mode ended" : "Crazy Mini ended";
       state.slotMultiplier = 1;
       state.slotRetriggerText = "Ended";
-      showResult("Crazy Mode ended", "Back to the base game.");
+      showResult(endedTitle, "Back to the base game.");
       renderSlotWinPanel({
-        title: "Crazy Mode ended",
+        title: endedTitle,
         detail: `Crazy total: ${formatDollars(state.slotBonusTotal)}.`,
         amount: 0
       });
     }
     playOutcomeEffect("push");
   } else {
-    const nearMiss = result.scatterCount === 2 ? " Two scatters teased the bonus." : "";
+    const nearMiss = result.scatterCount === 1 ? " One scatter landed." : "";
     showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}`);
     renderSlotWinPanel({
-      title: result.scatterCount === 2 ? "Near bonus" : "No win",
-      detail: result.scatterCount === 2 ? "Two scatters landed. One more would start free spins." : "No active payline matched from either edge.",
+      title: result.scatterCount === 1 ? "Scatter tease" : "No win",
+      detail: result.scatterCount === 1 ? "One scatter landed. Two start mini spins." : "No active payline matched from either edge.",
       amount: 0,
-      mode: result.scatterCount === 2 ? "bonus" : ""
+      mode: result.scatterCount === 1 ? "bonus" : ""
     });
     playOutcomeEffect("loss");
   }
@@ -1022,6 +1063,7 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     state.slotMultiplier = 1;
     if (wasFreeSpin) {
       state.slotCrazyWilds = [];
+      state.slotCrazySticky = false;
     }
   }
 
@@ -1044,6 +1086,7 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       crazy_mode: wasFreeSpin || Boolean(settlement.trigger),
       crazy_spins_remaining: state.slotFreeSpins,
       crazy_multiplier: state.slotMultiplier,
+      crazy_sticky_enabled: state.slotCrazySticky,
       crazy_sticky_wilds: stickyWildDetails,
       crazy_sticky_wild_count: stickyWildDetails.length,
       bonus_total: state.slotBonusTotal,
@@ -1080,22 +1123,32 @@ function spinSlots() {
   state.slotRound += 1;
   const round = state.slotRound;
   state.slotLastWin = 0;
-  slotSpinStatusEl.textContent = wasFreeSpin ? "Crazy spin..." : "Spinning...";
+  slotSpinStatusEl.textContent = wasFreeSpin
+    ? (state.slotCrazySticky ? "Crazy spin..." : "Mini spin...")
+    : "Spinning...";
   slotLastWinEl.textContent = "$0";
   renderSlotPaylineSummary([], spinBet);
   renderSlotWinPanel({
-    title: wasFreeSpin ? "Crazy spin" : "Reels spinning",
-    detail: wasFreeSpin ? `${state.slotFreeSpins} remaining at ${state.slotMultiplier}x. Sticky wilds: ${state.slotCrazyWilds.length}.` : "Waiting for the reels to stop.",
+    title: wasFreeSpin ? (state.slotCrazySticky ? "Crazy spin" : "Mini spin") : "Reels spinning",
+    detail: wasFreeSpin
+      ? (state.slotCrazySticky ? `${state.slotFreeSpins} remaining at ${state.slotMultiplier}x. Sticky wilds: ${state.slotCrazyWilds.length}.` : `${state.slotFreeSpins} mini spins remaining at ${state.slotMultiplier}x.`)
+      : "Waiting for the reels to stop.",
     amount: 0
   });
-  showResult("Reels spinning", wasFreeSpin ? `${state.slotFreeSpins} Crazy spins remaining at ${state.slotMultiplier}x.` : `${formatDollars(spinBet)} spin in progress.`);
+  showResult(
+    "Reels spinning",
+    wasFreeSpin
+      ? `${state.slotFreeSpins} ${state.slotCrazySticky ? "Crazy" : "mini"} spins remaining at ${state.slotMultiplier}x.`
+      : `${formatDollars(spinBet)} spin in progress.`
+  );
   if (wasFreeSpin) {
     replayAnimation(slotCabinetEl, "crazy-spin");
   }
 
-  const grid = wasFreeSpin
-    ? prepareCrazyModeGrid(generateSlotGrid({ nearMiss: true, assistSmallWin: true }))
-    : generateSlotGrid({ nearMiss: true, assistSmallWin: true });
+  const baseGrid = generateSlotGrid({ nearMiss: true, assistSmallWin: true });
+  const grid = wasFreeSpin && state.slotCrazySticky
+    ? prepareCrazyModeGrid(baseGrid)
+    : baseGrid;
 
   renderSlotSpin(grid).then(() => {
     if (round !== state.slotRound) {
@@ -2283,6 +2336,7 @@ resetButton.addEventListener("click", () => {
   state.slotScatterCount = 0;
   state.slotBonusTotal = 0;
   state.slotRetriggerText = "";
+  state.slotCrazySticky = false;
   state.slotCrazyWilds = [];
   state.slotRound += 1;
   state.dealerHand = [];

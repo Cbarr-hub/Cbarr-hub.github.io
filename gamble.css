@@ -1597,6 +1597,14 @@ main {
 
 .slot-cell[data-symbol="scatter"] {
   color: #c084fc;
+  border-color: rgba(244, 114, 182, 0.62);
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255, 248, 199, 0.44), transparent 36%),
+    radial-gradient(circle at 50% 54%, rgba(244, 114, 182, 0.34), transparent 58%),
+    linear-gradient(180deg, rgba(88, 28, 135, 0.96), rgba(24, 10, 44, 0.96));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 0 18px rgba(244, 114, 182, 0.22);
 }
 
 .slot-cell[data-symbol="wild"] {
@@ -1834,15 +1842,17 @@ main {
 
 .slot-meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(180px, 1.35fr) repeat(4, minmax(104px, 1fr));
   gap: 0.65rem;
 }
 
-.crazy-rules-tablet {
+.slot-bonus-card {
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 0.28rem;
+  align-content: space-between;
+  gap: 0.5rem;
+  min-height: 70px;
   padding: 0.75rem 0.85rem;
   overflow: hidden;
   border: 1px solid rgba(242, 193, 78, 0.38);
@@ -1851,40 +1861,57 @@ main {
     linear-gradient(135deg, rgba(242, 193, 78, 0.16), rgba(34, 211, 238, 0.1)),
     rgba(0, 0, 0, 0.28);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 26px rgba(0, 0, 0, 0.24);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
-.crazy-rules-tablet::before {
-  content: "";
+.slot-bonus-card:hover,
+.slot-bonus-card:focus-visible {
+  border-color: rgba(34, 211, 238, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 16px 30px rgba(0, 0, 0, 0.3), 0 0 22px rgba(34, 211, 238, 0.2);
+  transform: translateY(-1px);
+}
+
+.slot-bonus-card-main,
+.slot-bonus-state {
+  position: relative;
+  z-index: 1;
+}
+
+.slot-bonus-state {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.slot-crazy-help {
   position: absolute;
-  top: 0.7rem;
-  right: 0.85rem;
-  width: 2.2rem;
-  aspect-ratio: 1;
-  background: radial-gradient(circle, #fff8c7 0 18%, var(--gold) 19% 36%, transparent 37%);
-  clip-path: polygon(50% 0, 62% 35%, 100% 35%, 68% 56%, 80% 94%, 50% 70%, 20% 94%, 32% 56%, 0 35%, 38% 35%);
-  filter: drop-shadow(0 0 12px rgba(242, 193, 78, 0.72));
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.crazy-rules-tablet strong {
-  display: block;
-  color: var(--gold);
-  font-size: 0.86rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.crazy-rules-tablet span {
-  display: block;
-  max-width: calc(100% - 3.2rem);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 0.82rem;
-  font-weight: 700;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0.75rem;
+  color: #fff;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(242, 193, 78, 0.28), transparent 44%),
+    linear-gradient(135deg, rgba(8, 13, 34, 0.96), rgba(12, 74, 110, 0.94));
+  font-size: 0.78rem;
+  font-weight: 800;
   line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  transform: translateY(5px);
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
-.slot-meter,
+.slot-bonus-card:hover .slot-crazy-help,
+.slot-bonus-card:focus-visible .slot-crazy-help {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .slot-badge {
   min-height: 70px;
   padding: 0.75rem;
@@ -1893,7 +1920,7 @@ main {
   background: rgba(0, 0, 0, 0.28);
 }
 
-.slot-meter span,
+.slot-bonus-card span,
 .slot-badge span {
   display: block;
   color: var(--muted);
@@ -1903,7 +1930,7 @@ main {
   text-transform: uppercase;
 }
 
-.slot-meter strong,
+.slot-bonus-card strong,
 .slot-badge strong {
   display: block;
   margin-top: 0.3rem;
@@ -1911,10 +1938,12 @@ main {
   font-size: 1.3rem;
 }
 
-.slot-retrigger-badge strong {
+.slot-bonus-state strong {
   color: #c084fc;
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   line-height: 1.15;
+  margin-top: 0;
+  text-align: right;
 }
 
 .slot-meter-track {
@@ -2607,6 +2636,10 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .slot-bonus-card {
+    grid-column: span 2;
+  }
+
   .hand-row.split-layout {
     grid-template-columns: 1fr;
   }
@@ -2725,9 +2758,8 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .crazy-rules-tablet span {
-    max-width: 100%;
-    padding-right: 2.6rem;
+  .slot-bonus-card {
+    grid-column: auto;
   }
 }
 

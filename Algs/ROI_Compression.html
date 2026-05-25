@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ROI-Compress: Return on Image Optimization Pipeline</title>
+  <meta name="description" content="Interactive visualizer page for the ROI-Compress lossy matrix with dynamic margin-pruning mechanics." />
+  <link rel="stylesheet" href="algs.css" />
+  <style>
+    /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e1e24; 
+      color: #ffffff;      
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 750px;
+      width: 100%;
+      position: relative;
+      text-align: center;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-close {
+      position: absolute;
+      top: 10px; right: 15px;
+      font-size: 28px;
+      background: none; 
+      border: none; 
+      cursor: pointer;
+      color: #aaa;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    /* Input Field & Controls */
+    .input-container {
+      margin: 20px 0;
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #111115;
+      padding: 8px 15px;
+      border-radius: 4px;
+      border: 1px solid #33333d;
+    }
+
+    .input-container input[type="range"] {
+      accent-color: #e0a800;
+      cursor: pointer;
+      width: 150px;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+    }
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      left: 0; top: 0; opacity: 0;
+      cursor: pointer;
+      height: 100%; width: 100%;
+    }
+
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #e0a800; 
+      color: #111;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-btn:hover {
+      background-color: #d39e00;
+    }
+    .action-btn:disabled {
+      background-color: #44444f;
+      color: #888888;
+      cursor: not-allowed;
+    }
+    .secondary-btn {
+      background-color: #34495e;
+      color: #fff;
+    }
+    .secondary-btn:hover {
+      background-color: #2c3e50;
+    }
+
+    /* Compression Studio Layout Container */
+    .chart-container {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      align-items: center;
+      min-height: 320px;
+      background: #111115; 
+      padding: 20px;
+      border-radius: 6px;
+      margin: 20px 0;
+      border: 1px solid #33333d;
+      flex-wrap: wrap;
+    }
+
+    .canvas-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .canvas-box span {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #888;
+    }
+
+    canvas {
+      background: #1a1a22;
+      border: 2px dashed #33333d;
+      border-radius: 4px;
+      max-width: 280px;
+      max-height: 280px;
+      object-fit: contain;
+    }
+    
+    /* Live Progress Tracker Status Text */
+    .status-ticker {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #e0a800;
+      margin: -10px 0 15px 0;
+      min-height: 36px;
+      line-height: 1.4;
+    }
+
+    /* Statistics Results Dashboard */
+    .stats-dashboard {
+      background: #26241a; 
+      border-left: 5px solid #e0a800;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: #dddddd;
+    }
+    
+    .visualizer-trigger-block {
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="logo">GAMERTOWN<span>ALGORITHMS</span></div>
+      <nav class="nav-links">
+        <a href="../index.html">HOME</a>
+        <a href="advanced_algorithms.html">ALGORITHMS</a>
+        <a href="mapping.html">MAPPING</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-content">
+        <h1>ROI-COMPRESS: THE RETURN ON IMAGE PIPELINE</h1>
+        <p>A lossy, margin-driven compression standard that ruthlessly liquidates low-yield pixel demographics.</p>
+        
+        <div class="visualizer-trigger-block">
+          <div class="gif-block" style="margin: 0; width: 100%;">
+            <img src="ROICOMPRESS.png" alt="ROI-Compress pipeline demonstration" class="demo-gif" onerror="this.style.display='none'"/>
+          </div>
+          <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
+            LAUNCH COMPRESSION PIPELINE
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="container">
+      <h2 class="section-title">OVERVIEW</h2>
+      <div class="card">
+        <h3>Algorithm Summary</h3>
+        <p>Standard asset optimization tools make a critical commercial error: they assume all data deserves equal structural representation. To eliminate these costly data silos, the <strong>ROI-Compress Matrix</strong> bypasses traditional spatial boundaries to evaluate pixels purely by their corporate profitability.</p>
+        <p>The algorithm maps RGB vectors across a dynamic cost-basis threshold. Non-revenue-generating visual overhead (such as sky gradients, artistic shadows, and employee morale indicators) are instantly targeted for liquidation. Pixels falling below the user-defined <em>Desired Quarterly Margin</em> are crushed into pure, zero-cost corporate void space, while surviving premium pixels are aggressively scaled up to maximize raw operational density.</p>
+      </div>
+
+      <div class="code-block">
+        <button id="showCodeButton" type="button">SHOW EXAMPLE CODE</button>
+      </div>
+    </section>
+
+    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d; max-width:650px;">
+        <button id="closeCodeButton" class="modal-close" type="button">×</button>
+        <h2>Lossy Corporate Margin Liquidator</h2>
+        <pre><code>// Dynamic Data-Silo Liquidation Vector
+async function runAssetPruning(ctx, width, height, targetMargin) {
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+
+  // Evaluate structural components across fiscal boundaries
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i+1];
+    let b = data[i+2];
+
+    // Compute pixel performance metrics vs liability thresholds
+    let assetYield = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+    
+    if (assetYield < targetMargin) {
+      // Liquidate underperforming pixel demographics into corporate void
+      data[i]     = 0;   // R
+      data[i+1]   = 0;   // G
+      data[i+2]   = 0;   // B
+    } else {
+      // Aggressively scale hyper-performing corporate assets
+      data[i]     = Math.min(255, r * 1.45);
+      data[i+1]   = Math.min(255, g * 1.10); // Corporate branding bias
+      data[i+2]   = Math.max(0, b * 0.70);
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}</code></pre>
+      </div>
+    </div>
+
+    <div id="visualizerModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
+        <h2>THE ROI-COMPRESS PIPELINE MATRIX</h2>
+        <p style="font-size: 0.9rem; color:#aaa;">Prune overhead metrics. Watch the compiler aggressively purge liability zones from the frame.</p>
+
+        <div class="input-container">
+          <div class="file-input-wrapper">
+            <button class="action-btn secondary-btn" type="button">UPLOAD RAW ASSET</button>
+            <input type="file" id="imageLoader" accept="image/*" />
+          </div>
+          
+          <div class="slider-group">
+            <label for="marginSlider" style="font-size: 0.9rem; color:#bbb;">Desired Margin: <span id="sliderVal" style="color: #e0a800; font-weight: bold;">35%</span></label>
+            <input type="range" id="marginSlider" min="0" max="100" value="35" />
+          </div>
+          
+          <button id="startFindButton" class="action-btn" type="button" disabled>RUN LIQUIDATION MATRIX</button>
+        </div>
+
+        <div id="statusTicker" class="status-ticker">Awaiting raw asset acquisition parameters...</div>
+
+        <div id="chartContainer" class="chart-container">
+          <div class="canvas-box">
+            <span>UNOPTIMIZED LIABILITY (BEFORE)</span>
+            <canvas id="sourceCanvas" width="250" height="250"></canvas>
+          </div>
+          <div class="canvas-box">
+            <span>STREAMLINED CAPITAL (AFTER)</span>
+            <canvas id="targetCanvas" width="250" height="250"></canvas>
+          </div>
+        </div>
+
+        <div id="statsDashboard" class="stats-dashboard" style="display: none;">
+          <h3 style="margin-top: 0; color: #e0a800; font-size: 1.1rem;">📉 OPERATIONAL MARGIN STABILIZED</h3>
+          <div class="stats-grid">
+            <div><strong>Structural Overhead Purged:</strong> <span id="statDrag">0</span>% liability</div>
+            <div><strong>Silos Downsized:</strong> <span id="statVisited">0</span> blocks</div>
+            <div><strong>Retained Corporate Assets:</strong> <span id="statEndorse">0</span>% equity</div>
+            <div><strong>Shareholder Outlook:</strong> Maximized Dividends</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      © 2026 GAMERTOWN SOLUTIONS / ARCHIVE
+    </div>
+  </footer>
+
+  <script>
+    const showCodeButton = document.getElementById('showCodeButton');
+    const closeCodeButton = document.getElementById('closeCodeButton');
+    const codeModal = document.getElementById('codeModal');
+
+    const openVisualizerButton = document.getElementById('openVisualizerButton');
+    const closeVisualizerButton = document.getElementById('closeVisualizerButton');
+    const visualizerModal = document.getElementById('visualizerModal');
+    
+    const startFindButton = document.getElementById('startFindButton');
+    const imageLoader = document.getElementById('imageLoader');
+    const marginSlider = document.getElementById('marginSlider');
+    const sliderVal = document.getElementById('sliderVal');
+    
+    const sourceCanvas = document.getElementById('sourceCanvas');
+    const targetCanvas = document.getElementById('targetCanvas');
+    const sCtx = sourceCanvas.getContext('2d');
+    const tCtx = targetCanvas.getContext('2d');
+
+    const statsDashboard = document.getElementById('statsDashboard');
+    const statusTicker = document.getElementById('statusTicker');
+
+    let activeRun = false;
+    let loadedImage = null;
+
+    function toggleCodeModal(open) {
+      codeModal.style.display = open ? 'flex' : 'none';
+      codeModal.setAttribute('aria-hidden', !open);
+    }
+    showCodeButton.addEventListener('click', () => toggleCodeModal(true));
+    closeCodeButton.addEventListener('click', () => toggleCodeModal(false));
+
+    function toggleVisualizerModal(open) {
+      if (activeRun && !open) {
+        if (!confirm("Liquidation engine spinning. Cancel asset downsizing?")) return;
+        activeRun = false; 
+      }
+      visualizerModal.style.display = open ? 'flex' : 'none';
+      visualizerModal.setAttribute('aria-hidden', !open);
+      
+      if(open) {
+        statsDashboard.style.display = 'none';
+        statusTicker.style.color = '#e0a800';
+        if(!loadedImage) {
+          statusTicker.innerText = `Awaiting raw asset acquisition parameters... Please upload an image to optimize.`;
+          startFindButton.disabled = true;
+          clearCanvases();
+        } else {
+          statusTicker.innerText = `Asset ready in buffer cache. Adjust target quarterly performance metrics to initiate downsizing.`;
+          startFindButton.disabled = false;
+        }
+        marginSlider.disabled = false;
+        imageLoader.disabled = false;
+      }
+    }
+    openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
+    closeVisualizerButton.addEventListener('click', () => toggleVisualizerModal(false));
+
+    marginSlider.addEventListener('input', (e) => {
+      sliderVal.textContent = `${e.target.value}%`;
+    });
+
+    imageLoader.addEventListener('change', handleImageUpload);
+
+    function clearCanvases() {
+      sCtx.clearRect(0, 0, 250, 250);
+      tCtx.clearRect(0, 0, 250, 250);
+      sCtx.fillStyle = "#1a1a22";
+      sCtx.fillRect(0, 0, 250, 250);
+      tCtx.fillStyle = "#1a1a22";
+      tCtx.fillRect(0, 0, 250, 250);
+    }
+
+    function handleImageUpload(e) {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          loadedImage = img;
+          clearCanvases();
+          
+          // Center draw preserving aspect ratio
+          const scale = Math.min(250 / img.width, 250 / img.height);
+          const x = (250 - img.width * scale) / 2;
+          const y = (250 - img.height * scale) / 2;
+          
+          sCtx.drawImage(img, x, y, img.width * scale, img.height * scale);
+          tCtx.drawImage(img, x, y, img.width * scale, img.height * scale);
+          
+          statusTicker.style.color = '#e0a800';
+          statusTicker.innerText = `Asset parsed successfully (${img.width}x${img.height} frame block). Ready for matrix optimization.`;
+          startFindButton.disabled = false;
+          statsDashboard.style.display = 'none';
+        }
+        img.src = event.target.result;
+      }
+      if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+    }
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    async function executeBmpFind() {
+      if (activeRun || !loadedImage) return;
+
+      activeRun = true;
+      startFindButton.disabled = true;
+      marginSlider.disabled = true;
+      imageLoader.disabled = true;
+      statsDashboard.style.display = 'none';
+
+      const cutoff = parseInt(marginSlider.value, 10) / 100;
+      let purgedCount = 0;
+      let totalBlocks = 0;
+
+      statusTicker.style.color = '#3498db';
+      statusTicker.innerText = `Initiating structural margin sweep... Auditing pixels for legal and operational compliance...`;
+      await sleep(600);
+
+      const blockSize = 5; // Chunk size to give a cool chunk-by-chunk pixelation shred effect
+      let imgData = tCtx.getImageData(0, 0, 250, 250);
+      let data = imgData.data;
+
+      // Scan through the picture in blocks to simulate active algorithmic processing
+      for (let y = 0; y < 250; y += blockSize) {
+        if (!activeRun) return;
+        
+        statusTicker.innerText = `Liquidating asset liabilities: Scanning horizontal silo region [Y-Axis: ${y}/250]...`;
+        
+        for (let x = 0; x < 250; x += blockSize) {
+          totalBlocks++;
+          let rSum = 0, gSum = 0, bSum = 0, count = 0;
+          
+          // Audit performance criteria for current cell matrix
+          for (let by = 0; by < blockSize && (y + by) < 250; by++) {
+            for (let bx = 0; bx < blockSize && (x + bx) < 250; bx++) {
+              let idx = ((y + by) * 250 + (x + bx)) * 4;
+              rSum += data[idx];
+              gSum += data[idx+1];
+              bSum += data[idx+2];
+              count++;
+            }
+          }
+
+          let rAvg = rSum / count;
+          let gAvg = gSum / count;
+          let bAvg = bSum / count;
+          // Standard structural yield relative metrics (Luminance check)
+          let currentYield = (rAvg * 0.299 + gAvg * 0.587 + bAvg * 0.114) / 255;
+
+          let finalR = 0, finalG = 0, finalB = 0;
+          if (currentYield < cutoff) {
+            purgedCount++;
+            // Downsized to pure corporate blue-black corporate void space
+            finalR = 10; finalG = 12; finalB = 18; 
+          } else {
+            // Hyper-performers: Boost contrast and corporate branding signature tints
+            finalR = Math.min(255, rAvg * 1.3);
+            finalG = Math.min(255, gAvg * 1.1);
+            finalB = Math.max(0, bAvg * 0.6);
+          }
+
+          // Write back processed block
+          for (let by = 0; by < blockSize && (y + by) < 250; by++) {
+            for (let bx = 0; bx < blockSize && (x + bx) < 250; bx++) {
+              let idx = ((y + by) * 250 + (x + bx)) * 4;
+              data[idx] = finalR;
+              data[idx+1] = finalG;
+              data[idx+2] = finalB;
+            }
+          }
+        }
+        
+        // Push processed data fragment straight to interface viewport
+        tCtx.putImageData(imgData, 0, 0);
+        await sleep(15); // Gives it a wonderful, smooth line-by-line shredding visualization
+      }
+
+      const rawOverheadPurged = Math.floor((purgedCount / totalBlocks) * 100);
+      const remainingEquity = 100 - rawOverheadPurged;
+
+      document.getElementById('statDrag').innerText = rawOverheadPurged;
+      document.getElementById('statVisited').innerText = purgedCount;
+      document.getElementById('statEndorse').innerText = remainingEquity;
+      statsDashboard.style.display = 'block';
+
+      statusTicker.style.color = '#e0a800';
+      statusTicker.innerText = `Shredding complete. Corporate pipeline effectively stabilized at ${marginSlider.value}% efficiency criteria.`;
+
+      activeRun = false;
+      startFindButton.disabled = false;
+      marginSlider.disabled = false;
+      imageLoader.disabled = false;
+    }
+
+    startFindButton.addEventListener('click', executeBmpFind);
+
+    window.addEventListener('click', event => {
+      if (event.target === codeModal) toggleCodeModal(false);
+      if (event.target === visualizerModal) toggleVisualizerModal(false);
+    });
+  </script>
+</body>
+</html>

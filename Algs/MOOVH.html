@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Multi-Officer Optics Visibility Heuristic</title>
+  <meta name="description" content="Interactive visualizer page for the C-Suite Visibility Heuristic with State-Space Bitmask mechanics." />
+  <link rel="stylesheet" href="algs.css" />
+  <style>
+    /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e1e24; 
+      color: #ffffff;      
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 750px;
+      width: 100%;
+      position: relative;
+      text-align: center;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-close {
+      position: absolute;
+      top: 10px; right: 15px;
+      font-size: 28px;
+      background: none; 
+      border: none; 
+      cursor: pointer;
+      color: #aaa;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    /* Input Field & Controls */
+    .input-container {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .input-container input[type="number"] {
+      padding: 11px;
+      font-size: 1rem;
+      background-color: #111115;
+      border: 2px solid #44444f;
+      border-radius: 4px;
+      color: #ffffff;
+      outline: none;
+      width: 80px;
+      text-align: center;
+    }
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #e0a800; 
+      color: #111;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-btn:hover {
+      background-color: #d39e00;
+    }
+    .action-btn:disabled {
+      background-color: #44444f;
+      color: #888888;
+      cursor: not-allowed;
+    }
+
+    /* Graph Map Visualizer Layout Container */
+    .chart-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 380px;
+      background: #111115; 
+      padding: 10px;
+      border-radius: 6px;
+      margin: 20px 0;
+      border: 1px solid #33333d;
+      position: relative;
+    }
+
+    /* SVG Elements Styling */
+    svg {
+      width: 100%;
+      height: 380px;
+    }
+    .edge-line {
+      stroke: #2c3e50;
+      stroke-width: 2;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+    .edge-line.active {
+      stroke: #e0a800;
+      stroke-dasharray: 4;
+      animation: dash 1s linear infinite;
+    }
+    .edge-line.finalized {
+      stroke: #e0a800;
+      stroke-width: 4.5;
+    }
+    
+    /* Executive Field Highlights Overlay Styles */
+    .zone-ceo { fill: rgba(231, 76, 60, 0.03); stroke: rgba(231, 76, 60, 0.25); stroke-dasharray: 3; }
+    .zone-cto { fill: rgba(52, 152, 219, 0.03); stroke: rgba(52, 152, 219, 0.25); stroke-dasharray: 3; }
+    .zone-cfo { fill: rgba(46, 204, 113, 0.03); stroke: rgba(46, 204, 113, 0.25); stroke-dasharray: 3; }
+
+    .map-node {
+      fill: #1e272e;
+      stroke: #34495e;
+      stroke-width: 2;
+      transition: all 0.2s;
+    }
+    .map-node.visiting {
+      fill: #9b59b6;
+      stroke: #8e44ad;
+      r: 13;
+    }
+    .map-node.visited {
+      fill: #2c3e50;
+      stroke: #1b2a47;
+    }
+    .map-node.spotted {
+      stroke: #e0a800;
+      stroke-width: 3;
+    }
+    .map-node.final-path {
+      fill: #e0a800;
+      stroke: #fff;
+      r: 11;
+    }
+
+    .node-text {
+      fill: #ffffff;
+      font-family: sans-serif;
+      font-size: 10px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -20;
+      }
+    }
+
+    /* Live Progress Tracker Status Text */
+    .status-ticker {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #e0a800;
+      margin: -10px 0 15px 0;
+      min-height: 36px;
+      line-height: 1.4;
+    }
+
+    /* Statistics Results Dashboard */
+    .stats-dashboard {
+      background: #26241a; 
+      border-left: 5px solid #e0a800;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: #dddddd;
+    }
+    
+    .visualizer-trigger-block {
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="logo">GAMERTOWN<span>ALGORITHMS</span></div>
+      <nav class="nav-links">
+        <a href="../index.html">HOME</a>
+        <a href="advanced_algorithms.html">ALGORITHMS</a>
+        <a href="mapping.html">MAPPING</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-content">
+        <h1>THE MULTI-OFFICER OPTICS VISIBILITY HEURISTIC</h1>
+        <p>State-space pathfinding designed to maximize boardroom visibility by actively seeking out political overhead.</p>
+        
+        <div class="visualizer-trigger-block">
+          <div class="gif-block" style="margin: 0; width: 100%;">
+            <img src="MOOVH.png" alt="Multi-Officer Optics Visibility Heuristic demonstration" class="demo-gif" />
+          </div>
+          <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
+            LAUNCH BOARDROOM TRAVERSAL
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="container">
+      <h2 class="section-title">OVERVIEW</h2>
+      <div class="card">
+        <h3>Algorithm Summary</h3>
+        <p>A standard optimization algorithm makes a fatal corporate mistake: it prioritizes completion. If it spots a quick route to the finish line that only crosses one executive's radar, it will take it. To correct this efficiency bias, the <strong>State-Space Bitmask Matrix</strong> tracks data not just by physical location, but by its political payload.</p>
+        <p>The algorithm actively records a binary bitmask of the executives who have seen the project (e.g., collecting the CEO and CFO generates a state mask of <code>101</code>). Instead of rushing to the finish, the engine continuously re-evaluates the grid, seeking out looping, high-drag technical pathways specifically designed to capture the missing bits in its mask. It will happily stall a deployment for an extra 400 engineering hours if it means securing that final CTO endorsement before the slide deck is compiled.</p>
+      </div>
+
+      <div class="code-block">
+        <button id="showCodeButton" type="button">SHOW EXAMPLE CODE</button>
+      </div>
+    </section>
+
+    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d; max-width:650px;">
+        <button id="closeCodeButton" class="modal-close" type="button">×</button>
+        <h2>State-Space Bitmask Routing</h2>
+        <pre><code>// Boardroom Synergy Tracker: State-Space Dijkstra
+async function executePoliticalTraversal() {
+  // State definition: [nodeIndex][endorsementBitmask]
+  const dist = Array.from({length: n}, () => new Array(8).fill(Infinity));
+  const parent = Array.from({length: n}, () => new Array(8).fill(null));
+  
+  let startMask = getOfficerMask(departments[0]);
+  dist[0][startMask] = 0;
+  
+  let pq = [{ u: 0, mask: startMask, cost: 0 }];
+
+  while(pq.length > 0) {
+    pq.sort((a,b) => a.cost - b.cost); // Explore lowest cost states first
+    let { u, mask, cost } = pq.shift();
+
+    if (cost > dist[u][mask]) continue;
+
+    for (let v of getNeighbors(u)) {
+      // Accumulate new endorsements into the bitmask
+      let nextMask = mask | getOfficerMask(departments[v]);
+      let nextCost = cost + technicalDrag[u][v];
+
+      // If this path offers a cheaper way to achieve this specific political state
+      if (nextCost < dist[v][nextMask]) {
+        dist[v][nextMask] = nextCost;
+        parent[v][nextMask] = { u: u, mask: mask };
+        pq.push({ u: v, mask: nextMask, cost: nextCost });
+      }
+    }
+  }
+  
+  // Select the final target state that has the MAXIMUM bits set (most visibility)
+  return extractHighestVisibilityPath(targetNode, dist, parent);
+}</code></pre>
+      </div>
+    </div>
+
+    <div id="visualizerModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
+        <h2>THE MULTI-OFFICER OPTICS SEARCH MATRIX</h2>
+        <p style="font-size: 0.9rem; color:#aaa;">State-Space Architecture. Watch the algorithm trace complex routes to collect every possible radar signature.</p>
+
+        <div class="input-container">
+          <label for="nodeCountInput" style="font-size: 0.9rem; color:#bbb;">Custom Silos Target: </label>
+          <input type="number" id="nodeCountInput" min="5" max="35" value="12" />
+          <button id="generateNetworkBtn" class="action-btn" type="button" style="background-color: #34495e; color:#fff;">RE-DRAFT GRID</button>
+          <button id="startFindButton" class="action-btn" type="button">RUN BOARDROOM SEARCH</button>
+        </div>
+
+        <div id="statusTicker" class="status-ticker">Awaiting slide-deck prioritization alignment...</div>
+
+        <div id="chartContainer" class="chart-container">
+          </div>
+
+        <div id="statsDashboard" class="stats-dashboard" style="display: none;">
+          <h3 style="margin-top: 0; color: #e0a800; font-size: 1.1rem;">💼 BOARDROOM SYNERGY SECURED</h3>
+          <div class="stats-grid">
+            <div><strong>Technical Drag Incurred:</strong> <span id="statDrag">0</span> hours</div>
+            <div><strong>Matrix States Evaluated:</strong> <span id="statVisited">0</span> Operations</div>
+            <div><strong>Officers Successfully Intercepted:</strong> <span id="statEndorse">0</span> / 3</div>
+            <div><strong>Deployment Priority:</strong> Maximized Visibility</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      © 2026 GAMERTOWN SOLUTIONS / ARCHIVE
+    </div>
+  </footer>
+
+  <script>
+    const showCodeButton = document.getElementById('showCodeButton');
+    const closeCodeButton = document.getElementById('closeCodeButton');
+    const codeModal = document.getElementById('codeModal');
+
+    const openVisualizerButton = document.getElementById('openVisualizerButton');
+    const closeVisualizerButton = document.getElementById('closeVisualizerButton');
+    const visualizerModal = document.getElementById('visualizerModal');
+    
+    const startFindButton = document.getElementById('startFindButton');
+    const generateNetworkBtn = document.getElementById('generateNetworkBtn');
+    const nodeCountInput = document.getElementById('nodeCountInput');
+    const chartContainer = document.getElementById('chartContainer');
+    const statsDashboard = document.getElementById('statsDashboard');
+    const statusTicker = document.getElementById('statusTicker');
+
+    let activeRun = false;
+    let departments = [];
+    let technicalDrag = [];
+    
+    const executiveBoard = [
+      { name: "CEO", bit: 1, x: 260, y: 130, radius: 70, cssClass: "zone-ceo" },
+      { name: "CTO", bit: 2, x: 440, y: 150, radius: 80, cssClass: "zone-cto" },
+      { name: "CFO", bit: 4, x: 350, y: 260, radius: 75, cssClass: "zone-cfo" }
+    ];
+
+    const corporateLexicon = [
+      "Legacy Code", "HR Portal", "DB Core", "Legal Deck", 
+      "Brand Audit", "Tax Loophole", "PR Cleanse", "Audit Silo", 
+      "Risk Control", "SRE Queue", "DevOps Cloud", "Budget Desk"
+    ];
+
+    // Helper functions for bitmask management
+    function getOfficerMask(officerNames) {
+      let mask = 0;
+      officerNames.forEach(name => {
+        let exec = executiveBoard.find(e => e.name === name);
+        if (exec) mask |= exec.bit;
+      });
+      return mask;
+    }
+
+    function countBits(n) {
+      return n.toString(2).split('0').join('').length;
+    }
+
+    function toggleCodeModal(open) {
+      codeModal.style.display = open ? 'flex' : 'none';
+      codeModal.setAttribute('aria-hidden', !open);
+    }
+    showCodeButton.addEventListener('click', () => toggleCodeModal(true));
+    closeCodeButton.addEventListener('click', () => toggleCodeModal(false));
+
+    function toggleVisualizerModal(open) {
+      if (activeRun && !open) {
+        if (!confirm("Boardroom routing evaluation active. Cancel corporate alignment?")) return;
+        activeRun = false; 
+      }
+      visualizerModal.style.display = open ? 'flex' : 'none';
+      visualizerModal.setAttribute('aria-hidden', !open);
+      
+      if(open) {
+        statsDashboard.style.display = 'none';
+        statusTicker.style.color = '#e0a800';
+        startFindButton.disabled = false;
+        nodeCountInput.disabled = false;
+        generateNetworkBtn.disabled = false;
+        buildProceduralMatrix();
+      }
+    }
+    openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
+    closeVisualizerButton.addEventListener('click', () => toggleVisualizerModal(false));
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    function buildProceduralMatrix() {
+      let totalNodes = parseInt(nodeCountInput.value, 10);
+      if (isNaN(totalNodes) || totalNodes < 5) { totalNodes = 5; nodeCountInput.value = 5; }
+      if (totalNodes > 35) { totalNodes = 35; nodeCountInput.value = 35; }
+      
+      departments = [];
+
+      departments.push({ id: 0, label: "Back-End Source", x: 40, y: 190, officersWatching: [] });
+
+      const minX = 120, maxX = 580;
+      const minY = 40, maxY = 340;
+      const minDistance = 45; 
+
+      for (let i = 1; i < totalNodes - 1; i++) {
+        let x, y, validPosition = false;
+        let protectionCycles = 0;
+
+        while (!validPosition && protectionCycles < 300) {
+          x = Math.floor(Math.random() * (maxX - minX)) + minX;
+          y = Math.floor(Math.random() * (maxY - minY)) + minY;
+          validPosition = true;
+          protectionCycles++;
+
+          for (let j = 0; j < departments.length; j++) {
+            if (Math.hypot(x - departments[j].x, y - departments[j].y) < minDistance) {
+              validPosition = false;
+              break;
+            }
+          }
+        }
+
+        let officersWatching = [];
+        executiveBoard.forEach(off => {
+          if (Math.hypot(x - off.x, y - off.y) <= off.radius) {
+            officersWatching.push(off.name);
+          }
+        });
+
+        const textLabel = corporateLexicon[i % corporateLexicon.length];
+        departments.push({ id: i, label: textLabel, x: x, y: y, officersWatching: officersWatching });
+      }
+
+      departments.push({ id: totalNodes - 1, label: "Quarterly Review Deck", x: 660, y: 190, officersWatching: [] });
+
+      technicalDrag = Array.from({ length: totalNodes }, () => Array(totalNodes).fill(0));
+      for (let u = 0; u < totalNodes; u++) {
+        for (let v = u + 1; v < totalNodes; v++) {
+          let distance = Math.hypot(departments[u].x - departments[v].x, departments[u].y - departments[v].y);
+          if (distance < 240 || (u === 0 && v < totalNodes / 1.8) || (v === totalNodes - 1 && u > totalNodes / 2.2)) {
+            let baseDrag = Math.floor(distance / 10) + Math.floor(Math.random() * 20);
+            technicalDrag[u][v] = baseDrag;
+            technicalDrag[v][u] = baseDrag; 
+          }
+        }
+      }
+
+      statusTicker.innerText = `Procedural layout configured. The engine will now map paths via state permutations to maximize officer collection.`;
+      generateMapLayout();
+    }
+
+    function generateMapLayout() {
+      let overlayElements = '';
+      let edgeElements = '';
+      let nodeElements = '';
+
+      executiveBoard.forEach(off => {
+        overlayElements += `
+          <circle cx="${off.x}" cy="${off.y}" r="${off.radius}" class="${off.cssClass}" />
+          <text x="${off.x}" y="${off.y - off.radius + 14}" fill="#aaa" font-family="monospace" font-size="9" font-weight="bold" text-anchor="middle">${off.name} RADAR</text>
+        `;
+      });
+
+      for (let u = 0; u < departments.length; u++) {
+        for (let v = u + 1; v < departments.length; v++) {
+          if (technicalDrag[u][v] > 0) {
+            edgeElements += `
+              <line id="edge-${u}-${v}" class="edge-line" x1="${departments[u].x}" y1="${departments[u].y}" x2="${departments[v].x}" y2="${departments[v].y}" />
+            `;
+          }
+        }
+      }
+
+      departments.forEach(dept => {
+        const spotStyle = dept.officersWatching.length > 0 ? 'spotted' : '';
+        const displayLabel = departments.length > 15 ? 'display:none;' : '';
+        
+        nodeElements += `
+          <g id="node-group-${dept.id}">
+            <circle id="node-${dept.id}" class="map-node ${spotStyle}" cx="${dept.x}" cy="${dept.y}" r="9" />
+            <text class="node-text" x="${dept.x}" y="${dept.y + 3}" text-anchor="middle">${dept.id}</text>
+            <text fill="#aaa" font-family="sans-serif" font-size="9" font-weight="bold" x="${dept.x}" y="${dept.y - 14}" text-anchor="middle" style="${displayLabel}">${dept.label}</text>
+            <text id="node-metric-${dept.id}" fill="#666" font-family="monospace" font-size="8" x="${dept.x}" y="${dept.y + 22}" text-anchor="middle">Unscanned</text>
+          </g>
+        `;
+      });
+
+      chartContainer.innerHTML = `<svg id="mapSvg">${overlayElements}${edgeElements}${nodeElements}</svg>`;
+    }
+
+    async function executeBmpFind() {
+      if (activeRun) return;
+
+      activeRun = true;
+      startFindButton.disabled = true;
+      nodeCountInput.disabled = true;
+      generateNetworkBtn.disabled = true;
+      statsDashboard.style.display = 'none';
+
+      generateMapLayout();
+
+      const n = departments.length;
+      const target = n - 1;
+      let evaluatedStatesCount = 0;
+
+      // State matrix: [Node][Bitmask]
+      const maxMasks = 8;
+      const dist = Array.from({length: n}, () => new Array(maxMasks).fill(Infinity));
+      const parent = Array.from({length: n}, () => new Array(maxMasks).fill(null));
+
+      let startMask = getOfficerMask(departments[0].officersWatching);
+      dist[0][startMask] = 0;
+
+      let pq = [{ u: 0, mask: startMask, cost: 0 }];
+
+      while (pq.length > 0) {
+        if (!activeRun) return;
+
+        // Sort to explore lowest drag routes first (standard Dijkstra)
+        pq.sort((a, b) => a.cost - b.cost);
+        let current = pq.shift();
+        let u = current.u;
+        let mask = current.mask;
+
+        if (current.cost > dist[u][mask]) continue;
+
+        evaluatedStatesCount++;
+
+        // Fast visual tracing to represent rapid permutation scanning
+        if (evaluatedStatesCount % 3 === 0) {
+            statusTicker.style.color = '#3498db';
+            statusTicker.innerText = `Matrix permutations active: Simulating path constraints... State evaluated: [Silo ${u}, Mask: ${mask.toString(2).padStart(3, '0')}]`;
+            
+            const activeCircle = document.getElementById(`node-${u}`);
+            if (activeCircle) activeCircle.classList.add('visiting');
+            
+            const metricText = document.getElementById(`node-metric-${u}`);
+            if (metricText) {
+                metricText.textContent = `Bits: ${countBits(mask)}`;
+                metricText.style.fill = '#e0a800';
+            }
+            
+            await sleep(25);
+            if (activeCircle) activeCircle.classList.remove('visiting');
+            if (activeCircle) activeCircle.classList.add('visited');
+        }
+
+        for (let v = 0; v < n; v++) {
+          if (technicalDrag[u][v] > 0) {
+            let nextMask = mask | getOfficerMask(departments[v].officersWatching);
+            let nextCost = current.cost + technicalDrag[u][v];
+
+            if (nextCost < dist[v][nextMask]) {
+              dist[v][nextMask] = nextCost;
+              parent[v][nextMask] = { u: u, mask: mask };
+              pq.push({ u: v, mask: nextMask, cost: nextCost });
+              
+              if (evaluatedStatesCount % 10 === 0) {
+                  const edgeId = u < v ? `edge-${u}-${v}` : `edge-${v}-${u}`;
+                  const lineElement = document.getElementById(edgeId);
+                  if (lineElement) {
+                      lineElement.classList.add('active');
+                      await sleep(15);
+                      lineElement.classList.remove('active');
+                  }
+              }
+            }
+          }
+        }
+      }
+
+      statusTicker.style.color = '#9b59b6';
+      statusTicker.innerText = `Calculations complete. Isolating the target path configuration that yields maximum executive visibility...`;
+      await sleep(1000);
+
+      // Objective Function Selection: Choose the target state that has the most bit flags activated
+      let bestMask = -1;
+      let maxBits = -1;
+      let minCost = Infinity;
+
+      for (let m = 0; m < maxMasks; m++) {
+          if (dist[target][m] !== Infinity) {
+              let bits = countBits(m);
+              // Prioritize max officers. Tie breaker: minimum cost to achieve that specific mask
+              if (bits > maxBits || (bits === maxBits && dist[target][m] < minCost)) {
+                  maxBits = bits;
+                  minCost = dist[target][m];
+                  bestMask = m;
+              }
+          }
+      }
+
+      if (bestMask === -1) {
+          statusTicker.innerText = 'Routing failure: No valid paths to target destination discovered.';
+          activeRun = false;
+          return;
+      }
+
+      // Trace back the absolute best political trajectory
+      let currU = target;
+      let currMask = bestMask;
+      let pathNodes = [];
+
+      while (currU !== null && parent[currU][currMask] !== null) {
+        let p = parent[currU][currMask];
+        pathNodes.push({ u: p.u, v: currU });
+        
+        const pathNode = document.getElementById(`node-${currU}`);
+        if (pathNode) pathNode.className = 'map-node final-path';
+        
+        const lineId = p.u < currU ? `edge-${p.u}-${currU}` : `edge-${currU}-${p.u}`;
+        const finalLine = document.getElementById(lineId);
+        if (finalLine) finalLine.classList.add('finalized');
+
+        currU = p.u;
+        currMask = p.mask;
+      }
+      
+      const startNodeElement = document.getElementById(`node-0`);
+      if (startNodeElement) startNodeElement.className = 'map-node final-path';
+
+      document.getElementById('statDrag').innerText = minCost;
+      document.getElementById('statVisited').innerText = evaluatedStatesCount;
+      document.getElementById('statEndorse').innerText = countBits(bestMask);
+      statsDashboard.style.display = 'block';
+
+      statusTicker.style.color = '#e0a800';
+      statusTicker.innerText = `Boardroom traversal secured. Optimization algorithms willingly bypassed faster routes to collect ${countBits(bestMask)} executive signatures.`;
+
+      activeRun = false;
+      startFindButton.disabled = false;
+      nodeCountInput.disabled = false;
+      generateNetworkBtn.disabled = false;
+    }
+
+    generateNetworkBtn.addEventListener('click', buildProceduralMatrix);
+    startFindButton.addEventListener('click', executeBmpFind);
+
+    window.addEventListener('click', event => {
+      if (event.target === codeModal) toggleCodeModal(false);
+      if (event.target === visualizerModal) toggleVisualizerModal(false);
+    });
+  </script>
+</body>
+</html>

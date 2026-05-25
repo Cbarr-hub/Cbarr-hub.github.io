@@ -4,8 +4,157 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>O.U.C.H. (Oversight, Underperformance, Constraints, & Hangups)</title>
-  <meta name="description" content="Placeholder page for the O.U.C.H. sorting algorithm in the Gamertown algorithms section." />
+  <meta name="description" content="Interactive visualizer page for the O.U.C.H. sorting algorithm." />
   <link rel="stylesheet" href="algs.css" />
+  <style>
+    /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e1e24; 
+      color: #ffffff;      
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 600px;
+      width: 100%;
+      position: relative;
+      text-align: center;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
+    }
+    .modal-close {
+      position: absolute;
+      top: 10px; right: 15px;
+      font-size: 28px;
+      background: none; 
+      border: none; 
+      cursor: pointer;
+      color: #aaa;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    /* Input Field & Controls */
+    .input-container {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    .input-container input {
+      padding: 12px;
+      font-size: 1rem;
+      width: 65%;
+      background-color: #111115; 
+      border: 2px solid #44444f;
+      border-radius: 4px;
+      color: #ffffff;
+      outline: none;
+    }
+    .input-container input:focus {
+      border-color: #007bc4;
+    }
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #007bc4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-btn:hover {
+      background-color: #005fa1;
+    }
+    .action-btn:disabled {
+      background-color: #44444f;
+      color: #888888;
+      cursor: not-allowed;
+    }
+
+    /* Live Bar Chart Render Box */
+    .chart-container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      height: 220px;
+      gap: 10px;
+      background: #111115; 
+      padding: 20px;
+      border-radius: 6px;
+      margin: 20px 0;
+      border: 1px dashed #44444f;
+    }
+    .bar {
+      width: 45px;
+      background-color: #3498db; 
+      text-align: center;
+      color: white;
+      font-weight: bold;
+      font-size: 0.9rem;
+      border-radius: 4px 4px 0 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 5px;
+      transition: background-color 0.1s ease, height 0.1s ease;
+    }
+    .bar.evaluating {
+      background-color: #f39c12; 
+    }
+    .bar.restructuring {
+      background-color: #e74c3c; 
+    }
+    .bar.vested {
+      background-color: #2ecc71; 
+    }
+
+    /* Live Corporate Progress Tracker Status Text */
+    .status-ticker {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #3498db;
+      margin: -10px 0 15px 0;
+      min-height: 18px;
+    }
+
+    /* Statistics Results Dashboard */
+    .stats-dashboard {
+      background: #1a2620; 
+      border-left: 5px solid #2ecc71;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: #dddddd;
+    }
+    
+    /* Layout preservation utility for image + button container */
+    .visualizer-trigger-block {
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+  </style>
 </head>
 <body>
   <header>
@@ -23,9 +172,15 @@
     <section class="hero">
       <div class="container hero-content">
         <h1>O.U.C.H.</h1>
-        <p>Oversight, Underperformance, Constraints, &amp; Hangups — a placeholder page for the new sorting algorithm.</p>
-        <div class="gif-block">
-          <img src="../OUCH.png" alt="O.U.C.H. algorithm placeholder" class="demo-gif" />
+        <p>Oversight, Underperformance, Constraints, &amp; Hangups — An intentionally bloated corporate simulation of a heap sort algorithm.</p>
+        
+        <div class="visualizer-trigger-block">
+          <div class="gif-block" style="margin: 0; width: 100%;">
+            <img src="../OUCH.png" alt="O.U.C.H. algorithm placeholder" class="demo-gif" />
+          </div>
+          <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
+            LAUNCH INTERACTIVE VISUALIZER POP-UP
+          </button>
         </div>
       </div>
     </section>
@@ -34,9 +189,8 @@
       <h2 class="section-title">OVERVIEW</h2>
       <div class="card">
         <h3>Algorithm Summary</h3>
-        <p>The operational framework designated as the Performance Review Pipeline, hereafter referenced through its functional acronym O.U.C.H. (Oversight, Underperformance, Constraints, & Hangups), is a strategic data-rationalization mechanism engineered to validate resource allocation efficiency. This protocol establishes a non-linear, high-complexity assessment environment where data packets are visualized as human capital competing for hierarchical alignment. Traditional, non-competitive evaluation metrics are discarded in favor of a tournament-based performance PIP (Performance Improvement Protocol), designed to surface maximum data-driven value through sustained volatility. The O.U.C.H. protocol mitigates un-audited operational overhead by establishing a strict, merit-based corporate meritocracy that forces continuous asset-driven evaluation at every organizational strata.</p>
-        <p>Operationally, the protocol begins by transforming the unordered data payload into a rigorous corporate organizational chart (a specialized Max-Heap tree). Within this architecture, no packet can achieve index stability or spatial finality without executing consecutive validation cycles against its immediate managerial layer. These evaluation intervals, or "meetings," are governed by strict tripartite checks to ensure absolute quantitative accuracy and logical alignment. Should a subordinate (child node) demonstrate data parameters that exceed their primary manager (parent node), they are immediately granted a temporary hierarchical promotion, forcing a structural swap that disrupts all related reporting lines. This process of constant re-allocation sustanis a prolonged state of operational volatility, deliberately maximizing the utilization of computational saturation until a consensus-driven data state is realized.</p>
-        <p>To secure absolute data finality and eliminate unrecorded anomalies, the protocol strictly prohibits immediate pipeline termination upon the initial realization of a sorted state. Instead, the detection of zero active asset re-allocations automatically triggers a comprehensive Q4 Retrospective Oversight Audit. This mandatory retrospective process enforces a full-scale reverse-chronological counter-scan of the entire organizational hierarchy to formally verify that previous compliance committees did not introduce errors. Once a data packet reaches the apex of the structure, it is declared "Fully Vested," extracted from the company entirely into the validated sorted array, and immediately replaced by a fresh, un-evaluated data packet from the entry-level intern pool at the very bottom, ensuring the competitive meritocracy paradigm is never fully finalized.</p>
+        <p>The O.U.C.H. protocol is a satirical simulation of an inefficient corporate environment, built on top of a classic Heapsort framework. Instead of sorting elements cleanly, this algorithm wraps every data point into a heavy middle-management object that must constantly look up its hierarchy structure. To make matters worse, it introduces randomized "Corporate Vetoes" that can completely disrupt organized sections of the pool, forcing unnecessary work and tanking algorithmic performance.</p>
+        <p>Operationally, the array acts as an organization chart. Elements are compared against their direct managers. If a subordinate out-performs their manager, a structural swap takes place to promote them. However, because of the management data overhead and random corporate interventions, the pipeline experiences intentional delays, re-orgs, and regressions before reaching finality.</p>
       </div>
 
       <div class="code-block">
@@ -45,84 +199,39 @@
     </section>
 
     <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
-      <div class="modal-content">
+      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d;">
         <button id="closeCodeButton" class="modal-close" type="button">×</button>
         <h2>O.U.C.H. Example Code</h2>
-        <pre><code>import time
+        <pre><code>// Dynamic JavaScript Middle Management Heapsort with Corporate Vetoes active...</code></pre>
+      </div>
+    </div>
 
-def enter_performance_review_pip(company_hierarchy, workforce_size, manager_index):
-    """
-    Evaluates a specific managerial branch. If a subordinate outperforms the manager,
-    a corporate restructure (swap) is approved, and the subordinate is promoted.
-    """
-    highest_performer_index = manager_index
-    left_subordinate_index = 2 * manager_index + 1
-    right_subordinate_index = 2 * manager_index + 2
+    <div id="visualizerModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
+        <h2>PERFORMANCE REVIEW PIPELINE (O.U.C.H.)</h2>
+        <p style="font-size: 0.9rem; color:#aaa;">Provide workforce asset metrics to run the corporate meritocracy pipeline.</p>
+        
+        <div class="input-container">
+          <input type="text" id="userInput" placeholder="e.g. 5, 2, 9, 1, 4" value="5, 2, 9, 1, 4">
+          <button id="startSortButton" class="action-btn" type="button">INITIATE PIP</button>
+        </div>
 
-    # Check if Left Subordinate exists and outperforms the Current Manager
-    if left_subordinate_index < workforce_size:
-        print(f"  [EVALUATION]: Comparing Manager [{company_hierarchy[manager_index]}] with Left Subordinate [{company_hierarchy[left_subordinate_index]}].")
-        if company_hierarchy[left_subordinate_index] > company_hierarchy[highest_performer_index]:
-            highest_performer_index = left_subordinate_index
+        <div id="statusTicker" class="status-ticker">Awaiting workforce intake registration data...</div>
 
-    # Check if Right Subordinate exists and outperforms the current Highest Performer
-    if right_subordinate_index < workforce_size:
-        print(f"  [EVALUATION]: Comparing Highest Performer with Right Subordinate [{company_hierarchy[right_subordinate_index]}].")
-        if company_hierarchy[right_subordinate_index] > company_hierarchy[highest_performer_index]:
-            highest_performer_index = right_subordinate_index
+        <div id="chartContainer" class="chart-container">
+          <p style="color: #888; align-self: center;">Initialize organizational chart infrastructure to begin audit.</p>
+        </div>
 
-    # If the manager is underperforming compared to a subordinate, trigger a restructuring
-    if highest_performer_index != manager_index:
-        underperformer = company_hierarchy[manager_index]
-        high_achiever = company_hierarchy[highest_performer_index]
-        
-        print(f"    [PIP FAILURE]: Manager [{underperformer}] underperformed relative to Subordinate [{high_achiever}].")
-        print(f"    [RESTRUCTURE]: Promoting [{high_achiever}] to management. Demoting [{underperformer}].")
-        
-        # Inter-departmental asset migration (The Swap)
-        time.sleep(0.01) # Mandatory HR paperwork processing delay
-        company_hierarchy[manager_index], company_hierarchy[highest_performer_index] = company_hierarchy[highest_performer_index], company_hierarchy[manager_index]
-        
-        print(f"    [UPDATED ORG CHART]: {company_hierarchy}")
-        
-        # Recursively audit the demoted manager's new branch to ensure they aren't failing further down
-        enter_performance_review_pip(company_hierarchy, workforce_size, highest_performer_index)
-
-
-def ouch_sort(workforce_payload):
-    """
-    Executes the Oversight, Underperformance, Constraints, & Hangups Protocol.
-    Forces assets to compete up an organizational structure until fully vested.
-    """
-    workforce_size = len(workforce_payload)
-    fiscal_quarter = 0
-
-    print("=== INITIATING INITIAL ORGANIZATIONAL RESTRUCTURE (BUILDING MAX-HEAP) ===")
-    # Build the initial corporate hierarchy (heapify from the lowest managers up)
-    for i in range(workforce_size // 2 - 1, -1, -1):
-        enter_performance_review_pip(workforce_payload, workforce_size, i)
-    
-    print(f"\nInitial Merit-Based Corporate Hierarchy Established: {workforce_payload}\n")
-
-    # Begin extracting the top performers (CEOs) one by one
-    for i in range(workforce_size - 1, 0, -1):
-        fiscal_quarter += 1
-        print(f"--- INITIATING FISCAL QUARTER {fiscal_quarter} ---")
-        
-        ceo_asset = workforce_payload[0]
-        entry_level_intern = workforce_payload[i]
-        
-        print(f"[GOLDEN PARACHUTE]: CEO Asset [{ceo_asset}] has achieved maximum organizational alignment.")
-        print(f"[VESTING]: Extracting [{ceo_asset}] to Fully Vested Portfolio.")
-        print(f"[REPLACEMENT]: Promoting Entry-Level Intern [{entry_level_intern}] directly to the vacant CEO suite.")
-        
-        # Swap the top performer to the end of the active array (vesting them)
-        time.sleep(0.01) # Mandatory severance negotiation delay
-        workforce_payload[0], workforce_payload[i] = workforce_payload[i], workforce_payload[0]
-        
-        # The vested asset is now outside the active workforce size
-        active_workforce_size =
-</code></pre>
+        <div id="statsDashboard" class="stats-dashboard" style="display: none;">
+          <h3 style="margin-top: 0; color: #2ecc71; font-size: 1.1rem;">⚡ CORPORATE RESTRUCTURE CONCLUDED</h3>
+          <div class="stats-grid">
+            <div><strong>Active Performance Reviews:</strong> <span id="statEvaluations">0</span></div>
+            <div><strong>Demotions/Restructures:</strong> <span id="statRestructures">0</span></div>
+            <div><strong>Golden Parachutes Granted:</strong> <span id="statVested">0</span></div>
+            <div><strong>Total Real-Time Duration:</strong> <span id="statTime">0ms</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -134,34 +243,262 @@ def ouch_sort(workforce_payload):
   </footer>
 
   <script>
+    // System Selectors
     const showCodeButton = document.getElementById('showCodeButton');
     const closeCodeButton = document.getElementById('closeCodeButton');
     const codeModal = document.getElementById('codeModal');
 
-    function openCodeModal() {
-      if (!codeModal) return;
-      codeModal.style.display = 'flex';
-      codeModal.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('modal-open');
-      codeModal.focus();
-    }
+    const openVisualizerButton = document.getElementById('openVisualizerButton');
+    const closeVisualizerButton = document.getElementById('closeVisualizerButton');
+    const visualizerModal = document.getElementById('visualizerModal');
+    
+    const startSortButton = document.getElementById('startSortButton');
+    const userInput = document.getElementById('userInput');
+    const chartContainer = document.getElementById('chartContainer');
+    const statsDashboard = document.getElementById('statsDashboard');
+    const statusTicker = document.getElementById('statusTicker');
 
-    function closeCodeModal() {
-      if (!codeModal) return;
-      codeModal.style.display = 'none';
-      codeModal.setAttribute('aria-hidden', 'true');
-      document.body.classList.remove('modal-open');
-    }
+    let activeSortingRun = false;
 
-    if (showCodeButton && closeCodeButton && codeModal) {
-      showCodeButton.addEventListener('click', openCodeModal);
-      closeCodeButton.addEventListener('click', closeCodeModal);
-      codeModal.addEventListener('click', event => {
-        if (event.target === codeModal) {
-          closeCodeModal();
+    // Code Modal Basic Triggers
+    function toggleCodeModal(open) {
+      codeModal.style.display = open ? 'flex' : 'none';
+      codeModal.setAttribute('aria-hidden', !open);
+    }
+    showCodeButton.addEventListener('click', () => toggleCodeModal(true));
+    closeCodeButton.addEventListener('click', () => toggleCodeModal(false));
+
+    // Interactive Visualizer Pop-up Control
+    function toggleVisualizerModal(open) {
+      if (activeSortingRun && !open) {
+        if (!confirm("An executive restructuring operation is underway. Halt the performance review?")) return;
+        activeSortingRun = false; 
+      }
+      visualizerModal.style.display = open ? 'flex' : 'none';
+      visualizerModal.setAttribute('aria-hidden', !open);
+      
+      if(open) {
+        statsDashboard.style.display = 'none';
+        statusTicker.innerText = 'Awaiting workforce intake registration data...';
+        statusTicker.style.color = '#3498db';
+        chartContainer.innerHTML = '<p style="color: #888; align-self: center;">Initialize organizational chart infrastructure to begin audit.</p>';
+        startSortButton.disabled = false;
+        userInput.disabled = false;
+      }
+    }
+    openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
+    closeVisualizerButton.addEventListener('click', () => toggleVisualizerModal(false));
+
+    // Async Helper sleep utility for handling step delays cleanly
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Specialized Render Box to map Heapsort states to business metrics
+    function renderBars(items, stateMap = {}) {
+      chartContainer.innerHTML = '';
+      const scaleMax = Math.max(...items, 1);
+      
+      items.forEach((val, idx) => {
+        const barElement = document.createElement('div');
+        barElement.className = 'bar';
+        
+        // Items beyond the working partition length are 'Vested' (Sorted)
+        if (idx >= stateMap.workforceSize) {
+          barElement.classList.add('vested');
+        } else if (idx === stateMap.evalA || idx === stateMap.evalB) {
+          if (stateMap.isSwapping) {
+            barElement.classList.add('restructuring');
+          } else {
+            barElement.classList.add('evaluating');
+          }
         }
+        
+        barElement.style.height = `${(val / scaleMax) * 100}%`;
+        barElement.innerText = val;
+        chartContainer.appendChild(barElement);
       });
     }
+
+    // Heapsort Visual Logic Flow with intentional performance degradation
+    async function executeOuchSort() {
+      if (activeSortingRun) return;
+
+      // 1. Convert raw numbers into bloated "Middle Management" Objects
+      let workingData = userInput.value.split(',')
+        .map((element, index) => {
+          let num = parseInt(element.trim(), 10);
+          return isNaN(num) ? null : {
+            id: `EMP-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+            value: num,
+            managerId: null, // Populated dynamically via scans
+            performanceTier: "Standard"
+          };
+        })
+        .filter(item => item !== null);
+
+      if (workingData.length < 2) {
+        alert("Please enter at least 2 comma-separated values.");
+        return;
+      }
+
+      activeSortingRun = true;
+      startSortButton.disabled = true;
+      userInput.disabled = true;
+      statsDashboard.style.display = 'none';
+
+      let totalEvaluations = 0;
+      let totalRestructures = 0;
+      let totalVested = 0;
+      const executionStart = performance.now();
+
+      // Helper to extract raw values for the visual bar chart renderer
+      const getRawValues = () => workingData.map(d => d.value);
+
+      // Helper to dynamically locate a node's parent index in the array.
+      // Sweeps the array layout to calculate corporate manager structures on demand.
+      function updateManagerIds(size) {
+        for (let i = 0; i < size; i++) {
+          let leftChild = 2 * i + 1;
+          let rightChild = 2 * i + 2;
+          if (leftChild < size) workingData[leftChild].managerId = workingData[i].id;
+          if (rightChild < size) workingData[rightChild].managerId = workingData[i].id;
+        }
+      }
+
+      // Inline visual PIP function to handle heap validation structures
+      async function runVisualPip(size, managerIdx) {
+        if (!activeSortingRun) return;
+
+        updateManagerIds(size);
+
+        let highestPerformer = managerIdx;
+        let leftSubordinate = 2 * managerIdx + 1;
+        let rightSubordinate = 2 * managerIdx + 2;
+
+        // 2. Introduce the "Corporate Veto" (Randomized Failures)
+        // 15% chance an asset gets stripped of status and sent to the bottom of the active pile.
+        if (Math.random() < 0.15 && size > 2) {
+          let victimIdx = Math.floor(Math.random() * size);
+          statusTicker.style.color = '#e74c3c';
+          statusTicker.innerText = `[CORPORATE VETO]: ${workingData[victimIdx].id} failed the vibe check. Banished to index ${size - 1}.`;
+          
+          let temp = workingData[victimIdx];
+          workingData[victimIdx] = workingData[size - 1];
+          workingData[size - 1] = temp;
+          
+          totalRestructures++;
+          renderBars(getRawValues(), { workforceSize: size, evalA: victimIdx, evalB: size - 1, isSwapping: true });
+          await sleep(300);
+          updateManagerIds(size);
+        }
+
+        // Evaluate left child
+        if (leftSubordinate < size) {
+          totalEvaluations++;
+          statusTicker.style.color = '#f39c12';
+          statusTicker.innerText = `[REVIEW]: Comparing Manager ${workingData[managerIdx].id} (${workingData[managerIdx].value}) to Subordinate ${workingData[leftSubordinate].id} (${workingData[leftSubordinate].value})`;
+          renderBars(getRawValues(), { workforceSize: size, evalA: managerIdx, evalB: leftSubordinate, isSwapping: false });
+          await sleep(150);
+
+          if (workingData[leftSubordinate].value > workingData[highestPerformer].value) {
+            highestPerformer = leftSubordinate;
+          }
+        }
+
+        // Evaluate right child
+        if (rightSubordinate < size) {
+          totalEvaluations++;
+          statusTicker.style.color = '#f39c12';
+          statusTicker.innerText = `[REVIEW]: Evaluating performance alignment against Right Subordinate ${workingData[rightSubordinate].id} (${workingData[rightSubordinate].value})`;
+          renderBars(getRawValues(), { workforceSize: size, evalA: highestPerformer, evalB: rightSubordinate, isSwapping: false });
+          await sleep(150);
+
+          if (workingData[rightSubordinate].value > workingData[highestPerformer].value) {
+            highestPerformer = rightSubordinate;
+          }
+        }
+
+        // Trigger restructure swap if subordinate parameters outshine the parent manager
+        if (highestPerformer !== managerIdx) {
+          totalRestructures++;
+          statusTicker.style.color = '#e74c3c';
+          statusTicker.innerText = `[RESTRUCTURE]: Subordinate outperforming manager. Swapping ${workingData[highestPerformer].id} with ${workingData[managerIdx].id}`;
+          renderBars(getRawValues(), { workforceSize: size, evalA: managerIdx, evalB: highestPerformer, isSwapping: true });
+          await sleep(200);
+
+          let temp = workingData[managerIdx];
+          workingData[managerIdx] = workingData[highestPerformer];
+          workingData[highestPerformer] = temp;
+
+          renderBars(getRawValues(), { workforceSize: size, evalA: managerIdx, evalB: highestPerformer, isSwapping: false });
+          await sleep(100);
+
+          // Recursively audit down the targeted organizational branch
+          await runVisualPip(size, highestPerformer);
+        }
+      }
+
+      // Phase 1: Build the Initial Max-Heap Corporate Hierarchy Structure
+      statusTicker.style.color = '#3498db';
+      statusTicker.innerText = "PHASE 1: Structuring initial corporate hierarchy layout...";
+      await sleep(400);
+
+      for (let i = Math.floor(workingData.length / 2) - 1; i >= 0; i--) {
+        await runVisualPip(workingData.length, i);
+      }
+
+      // Phase 2: Systematically extract highest values and pop them out of the structure
+      statusTicker.style.color = '#2ecc71';
+      statusTicker.innerText = "PHASE 1 SECURE. Executing Phase 2: Processing top-tier retirement paths...";
+      await sleep(500);
+
+      for (let i = workingData.length - 1; i > 0; i--) {
+        if (!activeSortingRun) return;
+
+        totalVested++;
+        statusTicker.style.color = '#2ecc71';
+        statusTicker.innerText = `[VESTED]: Top asset ${workingData[0].id} (${workingData[0].value}) fully sorted. Shifting index to retirement array.`;
+        
+        // Swap root to the partition boundaries
+        renderBars(getRawValues(), { workforceSize: i, evalA: 0, evalB: i, isSwapping: true });
+        await sleep(200);
+
+        let temp = workingData[0];
+        workingData[0] = workingData[i];
+        workingData[i] = temp;
+
+        renderBars(getRawValues(), { workforceSize: i });
+        await sleep(100);
+
+        // Audit the newly substituted root node to preserve balance structures
+        await runVisualPip(i, 0);
+      }
+
+      // Compilation Dashboard Finalization
+      if (activeSortingRun) {
+        const totalDuration = (performance.now() - executionStart).toFixed(2);
+        renderBars(getRawValues(), { workforceSize: 0 }); 
+        statusTicker.style.color = '#2ecc71';
+        statusTicker.innerText = "SUCCESS: Pipeline finalized. Data-workforce completely sorted.";
+
+        document.getElementById('statEvaluations').innerText = totalEvaluations;
+        document.getElementById('statRestructures').innerText = totalRestructures;
+        document.getElementById('statVested').innerText = totalVested + 1; 
+        document.getElementById('statTime').innerText = `${totalDuration} ms`;
+        statsDashboard.style.display = 'block';
+
+        activeSortingRun = false;
+        startSortButton.disabled = false;
+        userInput.disabled = false;
+      }
+    }
+
+    startSortButton.addEventListener('click', executeOuchSort);
+
+    // Global background click modal toggle dismissals
+    window.addEventListener('click', event => {
+      if (event.target === codeModal) toggleCodeModal(false);
+      if (event.target === visualizerModal) toggleVisualizerModal(false);
+    });
   </script>
 </body>
 </html>

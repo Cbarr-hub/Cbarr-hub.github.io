@@ -390,6 +390,166 @@ main {
   }
 }
 
+@keyframes crazySparkFloat {
+  0% {
+    opacity: 0;
+    transform: translate(0, 16px) scale(0.4) rotate(0deg);
+  }
+
+  18% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(var(--spark-drift, 0px), -130%) scale(1.1) rotate(220deg);
+  }
+}
+
+@keyframes crazyConfettiBurst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.6) rotate(0deg);
+  }
+
+  14% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--confetti-x, 0px)), var(--confetti-y, -160px)) scale(1.1) rotate(var(--confetti-rot, 360deg));
+  }
+}
+
+@keyframes crazyAmountPop {
+  0% {
+    transform: scale(1);
+    text-shadow: 0 0 18px rgba(242, 193, 78, 0.58);
+  }
+
+  35% {
+    transform: scale(1.16);
+    text-shadow:
+      0 0 32px rgba(242, 193, 78, 0.92),
+      0 0 56px rgba(244, 114, 182, 0.6),
+      0 0 18px rgba(34, 211, 238, 0.5);
+  }
+
+  100% {
+    transform: scale(1);
+    text-shadow: 0 0 18px rgba(242, 193, 78, 0.58);
+  }
+}
+
+@keyframes crazyIncrementFloat {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.7);
+  }
+
+  18% {
+    opacity: 1;
+    transform: translateY(-14px) scale(1.12);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-64px) scale(0.96);
+  }
+}
+
+@keyframes crazyMultiplierPop {
+  0% {
+    transform: scale(1);
+    color: #fff;
+    text-shadow: 0 0 0 transparent;
+  }
+
+  35% {
+    transform: scale(1.4) rotate(-4deg);
+    color: #fff8c7;
+    text-shadow:
+      0 0 22px rgba(242, 193, 78, 0.95),
+      0 0 38px rgba(244, 114, 182, 0.7);
+  }
+
+  100% {
+    transform: scale(1);
+    color: #fff;
+    text-shadow: 0 0 6px rgba(242, 193, 78, 0.4);
+  }
+}
+
+@keyframes crazyBorderFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes crazyTitleShimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes crazyJackpotGlow {
+  0%, 100% {
+    text-shadow:
+      0 0 9px rgba(242, 193, 78, 0.95),
+      0 0 24px rgba(236, 72, 153, 0.6),
+      0 3px 0 rgba(0, 0, 0, 0.4);
+  }
+
+  50% {
+    text-shadow:
+      0 0 16px rgba(242, 193, 78, 1),
+      0 0 36px rgba(34, 211, 238, 0.85),
+      0 0 60px rgba(244, 114, 182, 0.7),
+      0 3px 0 rgba(0, 0, 0, 0.4);
+  }
+}
+
+@keyframes crazyReelsGlow {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 26px rgba(0, 0, 0, 0.4),
+      0 0 18px rgba(34, 211, 238, 0.32),
+      0 0 0 1px rgba(34, 211, 238, 0.3);
+  }
+
+  50% {
+    box-shadow:
+      inset 0 0 26px rgba(0, 0, 0, 0.4),
+      0 0 38px rgba(244, 114, 182, 0.48),
+      0 0 64px rgba(192, 132, 252, 0.4),
+      0 0 0 1px rgba(244, 114, 182, 0.5);
+  }
+}
+
+@keyframes crazyRunningPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 24px rgba(192, 132, 252, 0.28),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  50% {
+    box-shadow:
+      0 0 38px rgba(34, 211, 238, 0.5),
+      0 0 60px rgba(244, 114, 182, 0.32),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  }
+}
+
+@keyframes crazyMultiplierFlash {
+  0%, 100% {
+    filter: brightness(1) saturate(1);
+  }
+
+  35% {
+    filter: brightness(1.6) saturate(1.5);
+  }
+}
+
 .section-head {
   display: flex;
   align-items: end;
@@ -1031,7 +1191,7 @@ main {
       #c0392b 340.55deg 350.28deg,
       #111827 350.28deg 360deg
     );
-  transition: transform 4.4s cubic-bezier(0.12, 0.7, 0.08, 1);
+  transition: transform 3.1s cubic-bezier(0.12, 0.7, 0.08, 1);
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
 }
 
@@ -1070,7 +1230,7 @@ main {
   position: absolute;
   inset: 24px;
   border-radius: 50%;
-  transition: transform 4.4s cubic-bezier(0.09, 0.78, 0.05, 1);
+  transition: transform 3.1s cubic-bezier(0.09, 0.78, 0.05, 1);
 }
 
 .roulette-ball {
@@ -1257,10 +1417,107 @@ main {
     radial-gradient(circle at 82% 10%, rgba(244, 114, 182, 0.42), transparent 31%),
     radial-gradient(circle at 50% 100%, rgba(242, 193, 78, 0.22), transparent 36%),
     linear-gradient(145deg, rgba(28, 10, 60, 0.96), rgba(3, 20, 35, 0.94));
+  animation: crazyCabinetGlow 3.6s ease-in-out infinite;
+}
+
+@keyframes crazyCabinetGlow {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 0 2px rgba(34, 211, 238, 0.55),
+      0 0 36px rgba(34, 211, 238, 0.5),
+      0 0 64px rgba(244, 114, 182, 0.22),
+      0 24px 52px rgba(0, 0, 0, 0.35);
+  }
+
+  33% {
+    box-shadow:
+      inset 0 0 0 2px rgba(244, 114, 182, 0.55),
+      0 0 36px rgba(244, 114, 182, 0.5),
+      0 0 64px rgba(192, 132, 252, 0.25),
+      0 24px 52px rgba(0, 0, 0, 0.35);
+  }
+
+  66% {
+    box-shadow:
+      inset 0 0 0 2px rgba(242, 193, 78, 0.55),
+      0 0 36px rgba(242, 193, 78, 0.5),
+      0 0 64px rgba(34, 211, 238, 0.22),
+      0 24px 52px rgba(0, 0, 0, 0.35);
+  }
+}
+
+.slot-cabinet.crazy-mode .slot-jackpot {
+  background: linear-gradient(
+    90deg,
+    #22d3ee,
+    #c084fc,
+    #f472b6,
+    #f2c14e,
+    #22d3ee
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  animation: crazyTitleShimmer 3.6s linear infinite;
+}
+
+.slot-cabinet.crazy-mode .slot-reels {
+  animation: crazyReelsGlow 2.4s ease-in-out infinite;
+}
+
+.slot-cabinet.crazy-mode .slot-status strong {
+  background: linear-gradient(90deg, #22d3ee, #f472b6, #f2c14e, #22d3ee);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: crazyTitleShimmer 2.8s linear infinite;
+}
+
+.slot-cabinet.crazy-mode .slot-cell {
+  transition: transform 280ms ease, box-shadow 280ms ease;
+}
+
+.slot-cabinet.crazy-mode .slot-cell.winning {
   box-shadow:
-    inset 0 0 0 2px rgba(34, 211, 238, 0.2),
-    0 0 34px rgba(34, 211, 238, 0.18),
-    0 24px 52px rgba(0, 0, 0, 0.35);
+    0 0 0 2px rgba(242, 193, 78, 0.65),
+    0 0 24px rgba(244, 114, 182, 0.55),
+    0 0 42px rgba(192, 132, 252, 0.45);
+}
+
+.slot-cabinet.crazy-multiplier-up {
+  animation: crazyMultiplierFlash 620ms ease both;
+}
+
+.slot-cabinet.crazy-mode .slot-badge,
+.slot-cabinet.crazy-mode .slot-bonus-card {
+  border-color: rgba(192, 132, 252, 0.55);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 18px rgba(192, 132, 252, 0.22);
+}
+
+.slot-cabinet.crazy-mode .slot-badge strong {
+  background: linear-gradient(90deg, #fff8c7, #f472b6, #c084fc, #22d3ee, #fff8c7);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: crazyTitleShimmer 4.4s linear infinite;
+}
+
+body.slots-crazy-active .primary {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent),
+    linear-gradient(135deg, #f2c14e, #f472b6 55%, #c084fc);
+  box-shadow:
+    0 12px 28px rgba(244, 114, 182, 0.32),
+    0 0 24px rgba(192, 132, 252, 0.5);
 }
 
 .slot-cabinet.crazy-mode .slot-cell[data-symbol="scatter"],
@@ -1286,6 +1543,13 @@ main {
 .slot-cabinet.crazy-spin,
 .slot-cabinet.crazy-win {
   animation: crazyModeSurge 780ms ease both;
+}
+
+.slot-cabinet.crazy-mode.crazy-trigger,
+.slot-cabinet.crazy-mode.crazy-retrigger,
+.slot-cabinet.crazy-mode.crazy-spin,
+.slot-cabinet.crazy-mode.crazy-win {
+  animation: crazyModeSurge 780ms ease both, crazyCabinetGlow 3.6s ease-in-out infinite;
 }
 
 .slot-cabinet.crazy-trigger::after,
@@ -1378,6 +1642,7 @@ main {
 }
 
 .slot-win-panel {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1402,6 +1667,51 @@ main {
   border-color: rgba(192, 132, 252, 0.7);
   box-shadow: 0 0 28px rgba(192, 132, 252, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   animation: slotWinPanelPop 520ms ease both;
+}
+
+.slot-win-panel.running {
+  border-color: rgba(192, 132, 252, 0.75);
+  background:
+    linear-gradient(90deg, rgba(34, 211, 238, 0.18), rgba(192, 132, 252, 0.18), rgba(244, 114, 182, 0.18)),
+    rgba(0, 0, 0, 0.32);
+  animation: crazyRunningPulse 2.6s ease-in-out infinite;
+}
+
+.slot-win-panel.running.win,
+.slot-win-panel.running.bonus {
+  animation: slotWinPanelPop 520ms ease both, crazyRunningPulse 2.6s ease-in-out infinite;
+}
+
+.slot-win-panel.running .slot-win-label {
+  color: #fff8c7;
+  text-shadow: 0 0 12px rgba(242, 193, 78, 0.65);
+}
+
+.slot-win-panel.running .slot-win-amount {
+  color: #fff8c7;
+  text-shadow:
+    0 0 18px rgba(242, 193, 78, 0.65),
+    0 0 36px rgba(244, 114, 182, 0.5);
+}
+
+.slot-win-amount.amount-pop {
+  animation: crazyAmountPop 620ms ease both;
+}
+
+.slot-win-increment {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  color: #6ee7b7;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-shadow:
+    0 0 12px rgba(110, 231, 183, 0.85),
+    0 0 24px rgba(34, 211, 238, 0.55);
+  pointer-events: none;
+  z-index: 4;
+  animation: crazyIncrementFloat 1450ms ease-out forwards;
 }
 
 .slot-win-label {
@@ -1456,7 +1766,7 @@ main {
 .slot-reel {
   position: relative;
   display: grid;
-  grid-template-rows: repeat(3, minmax(70px, 1fr));
+  grid-template-rows: repeat(3, var(--slot-cell-size));
   gap: var(--slot-gap);
   height: calc(var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-gap) + var(--slot-gap));
   min-width: 0;
@@ -1597,6 +1907,14 @@ main {
 
 .slot-cell[data-symbol="scatter"] {
   color: #c084fc;
+  border-color: rgba(244, 114, 182, 0.62);
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255, 248, 199, 0.44), transparent 36%),
+    radial-gradient(circle at 50% 54%, rgba(244, 114, 182, 0.34), transparent 58%),
+    linear-gradient(180deg, rgba(88, 28, 135, 0.96), rgba(24, 10, 44, 0.96));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 0 18px rgba(244, 114, 182, 0.22);
 }
 
 .slot-cell[data-symbol="wild"] {
@@ -1832,18 +2150,50 @@ main {
   animation: slotCoinBurst 900ms ease-out forwards;
 }
 
+.crazy-spark {
+  position: absolute;
+  bottom: 0;
+  z-index: 2;
+  width: var(--spark-size, 6px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--spark-color, #22d3ee);
+  box-shadow:
+    0 0 8px var(--spark-color, #22d3ee),
+    0 0 18px var(--spark-color, #22d3ee);
+  opacity: 0;
+  pointer-events: none;
+  animation: crazySparkFloat var(--spark-duration, 2400ms) ease-out forwards;
+}
+
+.crazy-confetti {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  z-index: 5;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--confetti-color, #22d3ee);
+  box-shadow: 0 0 10px var(--confetti-color, #22d3ee);
+  pointer-events: none;
+  animation: crazyConfettiBurst var(--confetti-duration, 1100ms) ease-out forwards;
+}
+
 .slot-meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(180px, 1.35fr) repeat(4, minmax(104px, 1fr));
   gap: 0.65rem;
 }
 
-.crazy-rules-tablet {
+.slot-bonus-card {
   position: relative;
   z-index: 1;
   display: grid;
-  gap: 0.28rem;
-  padding: 0.75rem 0.85rem;
+  align-content: space-between;
+  gap: 0.45rem;
+  min-height: 100px;
+  padding: 0.7rem 0.85rem;
   overflow: hidden;
   border: 1px solid rgba(242, 193, 78, 0.38);
   border-radius: 8px;
@@ -1851,49 +2201,66 @@ main {
     linear-gradient(135deg, rgba(242, 193, 78, 0.16), rgba(34, 211, 238, 0.1)),
     rgba(0, 0, 0, 0.28);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 26px rgba(0, 0, 0, 0.24);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
-.crazy-rules-tablet::before {
-  content: "";
+.slot-bonus-card:hover,
+.slot-bonus-card:focus-visible {
+  border-color: rgba(34, 211, 238, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 16px 30px rgba(0, 0, 0, 0.3), 0 0 22px rgba(34, 211, 238, 0.2);
+  transform: translateY(-1px);
+}
+
+.slot-bonus-card-main,
+.slot-bonus-state {
+  position: relative;
+  z-index: 1;
+}
+
+.slot-bonus-state {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 0.15rem;
+}
+
+.slot-crazy-help {
   position: absolute;
-  top: 0.7rem;
-  right: 0.85rem;
-  width: 2.2rem;
-  aspect-ratio: 1;
-  background: radial-gradient(circle, #fff8c7 0 18%, var(--gold) 19% 36%, transparent 37%);
-  clip-path: polygon(50% 0, 62% 35%, 100% 35%, 68% 56%, 80% 94%, 50% 70%, 20% 94%, 32% 56%, 0 35%, 38% 35%);
-  filter: drop-shadow(0 0 12px rgba(242, 193, 78, 0.72));
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.crazy-rules-tablet strong {
-  display: block;
-  color: var(--gold);
-  font-size: 0.86rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.crazy-rules-tablet span {
-  display: block;
-  max-width: calc(100% - 3.2rem);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 0.82rem;
-  font-weight: 700;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0.75rem;
+  color: #fff;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(242, 193, 78, 0.28), transparent 44%),
+    linear-gradient(135deg, rgba(8, 13, 34, 0.96), rgba(12, 74, 110, 0.94));
+  font-size: 0.78rem;
+  font-weight: 800;
   line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  transform: translateY(5px);
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
-.slot-meter,
+.slot-bonus-card:hover .slot-crazy-help,
+.slot-bonus-card:focus-visible .slot-crazy-help {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .slot-badge {
-  min-height: 70px;
+  min-height: 100px;
   padding: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.28);
 }
 
-.slot-meter span,
+.slot-bonus-card span,
 .slot-badge span {
   display: block;
   color: var(--muted);
@@ -1903,7 +2270,7 @@ main {
   text-transform: uppercase;
 }
 
-.slot-meter strong,
+.slot-bonus-card strong,
 .slot-badge strong {
   display: block;
   margin-top: 0.3rem;
@@ -1911,10 +2278,20 @@ main {
   font-size: 1.3rem;
 }
 
-.slot-retrigger-badge strong {
+.slot-bonus-state strong {
   color: #c084fc;
-  font-size: 1.05rem;
-  line-height: 1.15;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  margin-top: 0;
+  text-align: left;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.slot-badge strong.multiplier-pop,
+.slot-cabinet.crazy-mode .slot-badge strong.multiplier-pop {
+  display: inline-block;
+  animation: crazyMultiplierPop 720ms ease both, crazyTitleShimmer 4.4s linear infinite;
 }
 
 .slot-meter-track {
@@ -2017,7 +2394,7 @@ button:disabled {
   gap: 0.55rem;
 }
 
-.auto-reroll {
+.toggle-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -2032,36 +2409,36 @@ button:disabled {
   cursor: pointer;
 }
 
-.auto-reroll[hidden] {
+.toggle-control[hidden] {
   display: none;
 }
 
-.auto-reroll strong,
-.auto-reroll em {
+.toggle-control strong,
+.toggle-control em {
   display: block;
 }
 
-.auto-reroll strong {
+.toggle-control strong {
   color: #fff;
   font-size: 0.9rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.auto-reroll em {
+.toggle-control em {
   margin-top: 0.16rem;
   color: var(--muted);
   font-size: 0.76rem;
   font-style: normal;
 }
 
-.auto-reroll input {
+.toggle-control input {
   position: absolute;
   opacity: 0;
   pointer-events: none;
 }
 
-.auto-reroll i {
+.toggle-control i {
   position: relative;
   display: block;
   width: 54px;
@@ -2072,7 +2449,7 @@ button:disabled {
   transition: background 160ms ease, box-shadow 160ms ease;
 }
 
-.auto-reroll i::after {
+.toggle-control i::after {
   content: "";
   position: absolute;
   top: 4px;
@@ -2085,16 +2462,16 @@ button:disabled {
   transition: transform 160ms ease;
 }
 
-.auto-reroll input:checked + i {
+.toggle-control input:checked + i {
   background: linear-gradient(90deg, #22d3ee, var(--gold));
   box-shadow: 0 0 20px rgba(242, 193, 78, 0.28);
 }
 
-.auto-reroll input:checked + i::after {
+.toggle-control input:checked + i::after {
   transform: translateX(24px);
 }
 
-.auto-reroll:focus-within {
+.toggle-control:focus-within {
   border-color: rgba(242, 193, 78, 0.72);
   box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.16);
 }
@@ -2607,6 +2984,10 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .slot-bonus-card {
+    grid-column: span 2;
+  }
+
   .hand-row.split-layout {
     grid-template-columns: 1fr;
   }
@@ -2725,10 +3106,88 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .crazy-rules-tablet span {
-    max-width: 100%;
-    padding-right: 2.6rem;
+  .slot-bonus-card {
+    grid-column: auto;
   }
+}
+
+@keyframes hotStreakPulse {
+  0%, 100% {
+    border-color: rgba(251, 146, 60, 0.55);
+    box-shadow: 0 0 8px rgba(251, 146, 60, 0.3);
+  }
+
+  50% {
+    border-color: rgba(251, 146, 60, 0.9);
+    box-shadow: 0 0 18px rgba(251, 146, 60, 0.6);
+  }
+}
+
+.slot-bonus-card.hot-streak {
+  border-color: rgba(251, 146, 60, 0.55);
+  animation: hotStreakPulse 2s ease-in-out infinite;
+}
+
+@keyframes chainPop {
+  0% {
+    transform: scale(1);
+    color: #fff;
+  }
+
+  30% {
+    transform: scale(1.5) rotate(6deg);
+    color: #fde68a;
+    text-shadow:
+      0 0 18px rgba(251, 146, 60, 0.95),
+      0 0 34px rgba(244, 114, 182, 0.7);
+  }
+
+  100% {
+    transform: scale(1);
+    color: #fff;
+    text-shadow: 0 0 6px rgba(251, 146, 60, 0.4);
+  }
+}
+
+@keyframes chainBreak {
+  0% { transform: scale(1); opacity: 1; }
+  25% { transform: scale(0.85) rotate(-8deg); opacity: 0.5; color: #fca5a5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes cascadeCellPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); filter: brightness(1.6) saturate(2); }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+@keyframes cascadeCellDrop {
+  0% { transform: translateY(-110%); opacity: 0; }
+  70% { transform: translateY(6%); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.slot-badge strong.chain-pop {
+  display: inline-block;
+  animation: chainPop 600ms ease both;
+}
+
+.slot-badge strong.chain-break {
+  display: inline-block;
+  animation: chainBreak 500ms ease both;
+}
+
+.slot-cell.cascade-pop {
+  animation: cascadeCellPop 320ms ease forwards;
+}
+
+.slot-cell.cascade-drop {
+  animation: cascadeCellDrop 360ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.slot-cabinet.crazy-mode #slot-chain.chain-active {
+  color: #fde68a;
+  text-shadow: 0 0 10px rgba(251, 146, 60, 0.8);
 }
 
 @media (prefers-reduced-motion: reduce) {

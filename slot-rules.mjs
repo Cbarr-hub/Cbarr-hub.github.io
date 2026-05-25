@@ -1,4 +1,5 @@
-export const SLOT_RTP_TARGET = 0.87;
+export const SLOT_RTP_TARGET = 0.96;
+export const SLOT_LINE_PAYOUT_SCALE = 0.98;
 
 export const SLOT_SYMBOLS = [
   { id: "cherry", label: "Cherries", icon: "🍒", tier: "common", weight: 18 },
@@ -41,9 +42,10 @@ export const SLOT_PAYOUTS = {
 export const SLOT_SCATTER_RULES = {
   pays: { 2: 0.11844, 3: 1.48064, 4: 7.896, 5: 39.48, 6: 78.96, 7: 118.44, 8: 177.66, 9: 256.62, 10: 375.06, 11: 513.24, 12: 690.9, 13: 888.3, 14: 1135.05, 15: 1480.5 },
   awards: {
-    3: { freeSpins: 6, multiplier: 2, retriggerSpins: 3, multiplierStep: 1 },
-    4: { freeSpins: 10, multiplier: 3, retriggerSpins: 5, multiplierStep: 2 },
-    5: { freeSpins: 15, multiplier: 5, retriggerSpins: 8, multiplierStep: 3 }
+    2: { freeSpins: 5, multiplier: 1.5, retriggerSpins: 2, multiplierStep: 0, stickyWilds: false },
+    3: { freeSpins: 6, multiplier: 2, retriggerSpins: 3, multiplierStep: 1, stickyWilds: true },
+    4: { freeSpins: 10, multiplier: 3, retriggerSpins: 5, multiplierStep: 2, stickyWilds: true },
+    5: { freeSpins: 15, multiplier: 5, retriggerSpins: 8, multiplierStep: 3, stickyWilds: true }
   },
   multiplierCap: 10,
   freeSpinBankCap: 50
@@ -90,6 +92,28 @@ export function generateSlotGrid(options = {}) {
     grid[2][secondColumn] = "scatter";
   }
 
+  if (options.boostScatter3 && rng() < 0.125) {
+    const scatterCells = [];
+    for (let row = 0; row < 3; row += 1) {
+      for (let col = 0; col < 5; col += 1) {
+        if (grid[row][col] === "scatter") scatterCells.push([row, col]);
+      }
+    }
+    if (scatterCells.length === 2) {
+      const scatterSet = new Set(scatterCells.map(([r, c]) => `${r}-${c}`));
+      const candidates = [];
+      for (let row = 0; row < 3; row += 1) {
+        for (let col = 0; col < 5; col += 1) {
+          if (!scatterSet.has(`${row}-${col}`)) candidates.push([row, col]);
+        }
+      }
+      if (candidates.length > 0) {
+        const [r, c] = candidates[Math.floor(rng() * candidates.length)];
+        grid[r][c] = "scatter";
+      }
+    }
+  }
+
   if (options.assistSmallWin && rng() < 0.08) {
     const result = evaluateSlotGrid(grid);
     if (!result.lineWins.length && !result.scatterTriggered) {
@@ -129,7 +153,7 @@ function evaluateSlotLineRun(grid, payline, direction = "left") {
 
   const symbol = SLOT_SYMBOL_MAP[target];
   const tier = target === "wild" ? "wild" : symbol.tier;
-  const multiplier = SLOT_PAYOUTS[tier]?.[count] || 0;
+  const multiplier = (SLOT_PAYOUTS[tier]?.[count] || 0) * SLOT_LINE_PAYOUT_SCALE;
 
   if (!multiplier) {
     return null;
@@ -207,6 +231,7 @@ export function evaluateSlotGrid(grid) {
     retriggerSpins: scatterAward?.retriggerSpins || 0,
     bonusMultiplier: scatterAward?.multiplier || 1,
     multiplierStep: scatterAward?.multiplierStep || 0,
+    stickyWildsAwarded: Boolean(scatterAward?.stickyWilds),
     totalWays: lineWins.length + (scatterPay > 0 ? 1 : 0)
   };
 }
@@ -244,31 +269,49 @@ export function settleSlotMath({ result, bet = 1, bonus = null }) {
   const nextBonus = bonus ? { ...bonus } : null;
   let trigger = null;
   let retrigger = null;
+  let starBonusSpins = 0;
 
   if (inBonus) {
     nextBonus.freeSpins = Math.max(0, nextBonus.freeSpins - 1);
     nextBonus.totalWin += payout;
+    nextBonus.stickyWilds = Boolean(nextBonus.stickyWilds);
+
+    if (result.scatterCount > 0) {
+      starBonusSpins = Math.min(
+        result.scatterCount,
+        Math.max(0, SLOT_SCATTER_RULES.freeSpinBankCap - nextBonus.freeSpins)
+      );
+      nextBonus.freeSpins += starBonusSpins;
+    }
 
     if (result.scatterTriggered) {
       const addedSpins = Math.min(
         result.retriggerSpins,
         Math.max(0, SLOT_SCATTER_RULES.freeSpinBankCap - nextBonus.freeSpins)
       );
+      const previousMultiplier = nextBonus.multiplier;
+      const previousStickyWilds = nextBonus.stickyWilds;
       nextBonus.freeSpins += addedSpins;
       nextBonus.multiplier = Math.min(
         SLOT_SCATTER_RULES.multiplierCap,
         nextBonus.multiplier + result.multiplierStep
       );
-      retrigger = {
-        freeSpins: addedSpins,
-        multiplier: nextBonus.multiplier
-      };
+      nextBonus.stickyWilds = nextBonus.stickyWilds || result.stickyWildsAwarded;
+
+      if (addedSpins > 0 || nextBonus.multiplier > previousMultiplier || nextBonus.stickyWilds !== previousStickyWilds) {
+        retrigger = {
+          freeSpins: addedSpins,
+          multiplier: nextBonus.multiplier,
+          stickyWilds: nextBonus.stickyWilds
+        };
+      }
     }
   } else if (result.scatterTriggered) {
     trigger = {
       freeSpins: result.freeSpinsAwarded,
       multiplier: result.bonusMultiplier,
-      totalWin: 0
+      totalWin: 0,
+      stickyWilds: result.stickyWildsAwarded
     };
   }
 
@@ -278,6 +321,31 @@ export function settleSlotMath({ result, bet = 1, bonus = null }) {
     trigger,
     retrigger,
     nextBonus,
-    tier: winTier(payout, bet)
+    tier: winTier(payout, bet),
+    starBonus: starBonusSpins > 0 ? { spins: starBonusSpins } : null
   };
+}
+
+export function cascadeGrid(grid, winningCells, stickyWildPositions = [], rng = Math.random) {
+  const winSet = new Set(winningCells.map(({ row, column }) => `${row}-${column}`));
+  const stickySet = new Set(stickyWildPositions.map(({ row, column }) => `${row}-${column}`));
+  const newGrid = Array.from({ length: 3 }, () => Array(5).fill(""));
+
+  for (let col = 0; col < 5; col += 1) {
+    const survivors = [];
+    for (let row = 0; row < 3; row += 1) {
+      const key = `${row}-${col}`;
+      if (!winSet.has(key) || stickySet.has(key)) {
+        survivors.push(grid[row][col]);
+      }
+    }
+    const needed = 3 - survivors.length;
+    const fresh = Array.from({ length: needed }, () => weightedSlotSymbol(rng).id);
+    const column = [...fresh, ...survivors];
+    for (let row = 0; row < 3; row += 1) {
+      newGrid[row][col] = column[row];
+    }
+  }
+
+  return newGrid;
 }

@@ -4,25 +4,39 @@ import {
   getPlayerBalance,
   insertGamblingEvent,
   savePlayerBalance as persistPlayerBalance
-} from './gamble-data.js?v=money-events-1';
-import { renderRecentEvents } from './gamble-activity.js?v=money-events-1';
-import { renderGamblingDashboard } from './gamble-dashboard.js?v=money-events-1';
-import { renderLeaderboard } from './gamble-leaderboard.js?v=money-events-1';
+} from './gamble-data.js?v=money-events-2';
+import { renderRecentEvents } from './gamble-activity.js?v=money-events-2';
+import { renderGamblingDashboard } from './gamble-dashboard.js?v=money-events-2';
+import { renderLeaderboard } from './gamble-leaderboard.js?v=money-events-2';
+import { applyNetRecord as applyNetRecordState, buildGamblingEvent } from './gamble-events.mjs?v=money-events-2';
+import { createGamblingPersistence } from './gamble-persistence.mjs?v=money-events-2';
 import {
   SLOT_PAYLINES as slotRulesPaylines,
   SLOT_RTP_TARGET,
   SLOT_SCATTER_RULES as slotScatterRules,
   SLOT_SYMBOL_MAP as slotRulesSymbolMap,
   SLOT_SYMBOLS as slotRulesSymbols,
+  cascadeGrid as cascadeSlotRulesGrid,
   evaluateSlotGrid as evaluateSlotRulesGrid,
   generateSlotGrid as generateSlotRulesGrid,
   settleSlotMath as settleSlotRulesMath,
   weightedSlotSymbol as weightedSlotRulesSymbol,
+  winTier as slotWinTier,
   winTierTitle
-} from './slot-rules.mjs?v=slot-rtp-87-1';
+} from './slot-rules.mjs?v=cascade-1';
 
 const activeUsername = requireAuth('signin.html');
 updateNavbar(activeUsername);
+
+const SOUND_STORAGE_KEY = "gambleSoundEnabled";
+
+function readSoundSetting() {
+  try {
+    return window.localStorage.getItem(SOUND_STORAGE_KEY) !== "off";
+  } catch (error) {
+    return true;
+  }
+}
 
 const ranks = [
   { label: "2", value: 2, blackjack: 2 },
@@ -80,9 +94,17 @@ const state = {
   slotRound: 0,
   slotBonusTotal: 0,
   slotRetriggerText: "",
+  slotCrazySticky: false,
   slotCrazyWilds: [],
+  slotCrazyDisplayedTotal: 0,
+  slotCrazyAmbientTimer: null,
+  slotCrazyPrevMultiplier: 1,
+  slotCrazyPrevChain: 0,
+  slotBaseStreak: 0,
+  slotCrazyChain: 0,
   autoReroll: false,
-  autoRerollTimer: null
+  autoRerollTimer: null,
+  soundEnabled: readSoundSetting()
 };
 
 const creditsEl = document.getElementById("credits");
@@ -98,6 +120,8 @@ const standButton = document.getElementById("stand");
 const splitButton = document.getElementById("split");
 const autoRerollControlEl = document.getElementById("auto-reroll-control");
 const autoRerollToggleEl = document.getElementById("auto-reroll-toggle");
+const soundToggleEl = document.getElementById("sound-toggle");
+const soundStateEl = document.getElementById("sound-state");
 const lowerBetButton = document.getElementById("lower-bet");
 const raiseBetButton = document.getElementById("raise-bet");
 const minBetButton = document.getElementById("min-bet");
@@ -122,15 +146,20 @@ const slotReelsEl = document.getElementById("slot-reels");
 const slotModeEl = document.getElementById("slot-mode");
 const slotSpinStatusEl = document.getElementById("slot-spin-status");
 const slotWinPanelEl = document.getElementById("slot-win-panel");
+const slotWinLabelEl = document.getElementById("slot-win-label");
 const slotWinTitleEl = document.getElementById("slot-win-title");
 const slotWinDetailEl = document.getElementById("slot-win-detail");
 const slotWinAmountEl = document.getElementById("slot-win-amount");
 const slotPaylineListEl = document.getElementById("slot-payline-list");
 const slotScatterCountEl = document.getElementById("slot-scatter-count");
 const slotScatterFillEl = document.getElementById("slot-scatter-fill");
+const slotBonusCardEl = document.querySelector(".slot-bonus-card");
 const slotLastWinEl = document.getElementById("slot-last-win");
+const slotBaseStreakEl = document.getElementById("slot-base-streak");
 const slotMultiplierEl = document.getElementById("slot-multiplier");
 const slotBonusTotalEl = document.getElementById("slot-bonus-total");
+const slotChainEl = document.getElementById("slot-chain");
+const slotCascadeEl = document.getElementById("slot-cascade");
 const slotRtpEl = document.getElementById("slot-rtp");
 const slotRetriggerEl = document.getElementById("slot-retrigger");
 const leaderboardListEl = document.getElementById("leaderboard-list");
@@ -224,6 +253,15 @@ const crazyModeConfig = {
   winMultiplierStep: 1
 };
 
+function computeChainMult(chain) {
+  if (chain <= 0) return 1;
+  return 1 + Math.min(chain, 4) * 0.5;
+}
+
+function cascadeGrid(grid, winningCells, stickyWildPositions = []) {
+  return cascadeSlotRulesGrid(grid, winningCells, stickyWildPositions);
+}
+
 function replayAnimation(element, className) {
   element.classList.remove(className);
   void element.offsetWidth;
@@ -232,6 +270,263 @@ function replayAnimation(element, className) {
 
 function clearAnimationClass(element, className, delay = 900) {
   window.setTimeout(() => element.classList.remove(className), delay);
+}
+
+const audioState = {
+  context: null,
+  master: null,
+  compressor: null,
+  unsupported: false
+};
+
+function audioContext() {
+  if (audioState.unsupported || !state.soundEnabled) {
+    return null;
+  }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    audioState.unsupported = true;
+    return null;
+  }
+
+  if (!audioState.context) {
+    const context = new AudioContextClass();
+    const compressor = context.createDynamicsCompressor();
+    const master = context.createGain();
+    compressor.threshold.value = -18;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 8;
+    compressor.attack.value = 0.004;
+    compressor.release.value = 0.16;
+    master.gain.value = 0.42;
+    master.connect(compressor);
+    compressor.connect(context.destination);
+    audioState.context = context;
+    audioState.master = master;
+    audioState.compressor = compressor;
+  }
+
+  if (audioState.context.state === "suspended") {
+    audioState.context.resume().catch(() => {});
+  }
+
+  return audioState.context;
+}
+
+function unlockAudio() {
+  audioContext();
+}
+
+function envelope(gainNode, start, duration, gain = 0.08, attack = 0.01) {
+  const peak = Math.max(0.0001, gain);
+  const end = start + Math.max(attack + 0.02, duration);
+  gainNode.gain.cancelScheduledValues(start);
+  gainNode.gain.setValueAtTime(0.0001, start);
+  gainNode.gain.exponentialRampToValueAtTime(peak, start + attack);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, end);
+}
+
+function tone(frequency, delay = 0, duration = 0.12, options = {}) {
+  const context = audioContext();
+  if (!context || !audioState.master) {
+    return;
+  }
+
+  const start = context.currentTime + delay;
+  const oscillator = context.createOscillator();
+  const gainNode = context.createGain();
+  const filter = options.filter ? context.createBiquadFilter() : null;
+  oscillator.type = options.type || "sine";
+  oscillator.frequency.setValueAtTime(Math.max(20, frequency), start);
+  if (options.to) {
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, options.to), start + duration);
+  }
+  if (options.detune) {
+    oscillator.detune.setValueAtTime(options.detune, start);
+  }
+
+  if (filter) {
+    filter.type = options.filter.type || "lowpass";
+    filter.frequency.setValueAtTime(options.filter.frequency || 1000, start);
+    filter.Q.value = options.filter.q || 0.8;
+    oscillator.connect(filter);
+    filter.connect(gainNode);
+  } else {
+    oscillator.connect(gainNode);
+  }
+
+  envelope(gainNode, start, duration, options.gain, options.attack);
+  gainNode.connect(audioState.master);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.05);
+  oscillator.addEventListener("ended", () => {
+    oscillator.disconnect();
+    gainNode.disconnect();
+    if (filter) {
+      filter.disconnect();
+    }
+  }, { once: true });
+}
+
+function noise(delay = 0, duration = 0.1, options = {}) {
+  const context = audioContext();
+  if (!context || !audioState.master) {
+    return;
+  }
+
+  const start = context.currentTime + delay;
+  const frameCount = Math.max(1, Math.floor(context.sampleRate * duration));
+  const buffer = context.createBuffer(1, frameCount, context.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let index = 0; index < frameCount; index += 1) {
+    data[index] = Math.random() * 2 - 1;
+  }
+
+  const source = context.createBufferSource();
+  const gainNode = context.createGain();
+  const filter = context.createBiquadFilter();
+  source.buffer = buffer;
+  filter.type = options.type || "bandpass";
+  filter.frequency.setValueAtTime(options.frequency || 1200, start);
+  filter.Q.value = options.q || 1;
+  source.connect(filter);
+  filter.connect(gainNode);
+  envelope(gainNode, start, duration, options.gain || 0.04, options.attack || 0.006);
+  gainNode.connect(audioState.master);
+  source.start(start);
+  source.stop(start + duration + 0.02);
+  source.addEventListener("ended", () => {
+    source.disconnect();
+    filter.disconnect();
+    gainNode.disconnect();
+  }, { once: true });
+}
+
+function coinChimes(count = 5, delay = 0) {
+  for (let index = 0; index < count; index += 1) {
+    const offset = delay + index * 0.045;
+    const pitch = 780 + Math.random() * 520;
+    tone(pitch, offset, 0.11, { type: "triangle", gain: 0.03, to: pitch * 1.35, attack: 0.004 });
+    noise(offset, 0.045, { type: "highpass", frequency: 3600, q: 0.8, gain: 0.012 });
+  }
+}
+
+function playSound(name, details = {}) {
+  if (!state.soundEnabled || audioState.unsupported) {
+    return;
+  }
+
+  switch (name) {
+    case "ui":
+      tone(480, 0, 0.055, { type: "triangle", gain: 0.032, to: 620 });
+      break;
+    case "toggle_on":
+      tone(440, 0, 0.07, { type: "triangle", gain: 0.035, to: 660 });
+      tone(880, 0.055, 0.1, { type: "sine", gain: 0.03 });
+      break;
+    case "toggle_off":
+      tone(360, 0, 0.08, { type: "triangle", gain: 0.035, to: 240 });
+      break;
+    case "chip":
+      noise(0, 0.05, { type: "bandpass", frequency: 950, q: 8, gain: 0.035 });
+      tone(240, 0, 0.06, { type: "square", gain: 0.025, to: 180 });
+      tone(520, 0.026, 0.07, { type: "triangle", gain: 0.024 });
+      break;
+    case "card":
+      noise(details.delay || 0, 0.15, { type: "highpass", frequency: 820, q: 0.7, gain: 0.018 });
+      tone(420, (details.delay || 0) + 0.075, 0.055, { type: "triangle", gain: 0.024, to: 610 });
+      break;
+    case "card_flip":
+      noise(0, 0.12, { type: "highpass", frequency: 1300, q: 0.8, gain: 0.02 });
+      tone(360, 0, 0.08, { type: "triangle", gain: 0.028, to: 740 });
+      break;
+    case "roulette_spin":
+      noise(0, 2.2, { type: "bandpass", frequency: 260, q: 0.6, gain: 0.015, attack: 0.05 });
+      tone(90, 0, 1.2, { type: "sawtooth", gain: 0.018, to: 130, filter: { type: "lowpass", frequency: 520, q: 0.7 } });
+      for (let index = 0; index < 24; index += 1) {
+        const offset = 0.06 + index * 0.085 + Math.pow(index / 24, 2) * 0.58;
+        tone(820 + index * 6, offset, 0.025, { type: "square", gain: 0.012 });
+        noise(offset, 0.018, { type: "highpass", frequency: 2600, gain: 0.009 });
+      }
+      break;
+    case "roulette_land":
+      noise(0, 0.045, { type: "highpass", frequency: 2200, q: 1.2, gain: 0.035 });
+      tone(180, 0, 0.09, { type: "square", gain: 0.035, to: 120 });
+      tone(620, 0.075, 0.08, { type: "triangle", gain: 0.026 });
+      break;
+    case "slot_spin":
+      noise(0, 0.7, { type: "bandpass", frequency: 1150, q: 0.9, gain: 0.02, attack: 0.02 });
+      tone(82, 0, 0.52, { type: "sawtooth", gain: 0.022, to: 122, filter: { type: "lowpass", frequency: 420, q: 0.7 } });
+      for (let index = 0; index < 13; index += 1) {
+        tone(320 + index * 18, index * 0.075, 0.025, { type: "square", gain: 0.014 });
+      }
+      break;
+    case "slot_reel_stop": {
+      const column = Number(details.column) || 0;
+      const pitch = 250 + column * 42;
+      noise(0, 0.045, { type: "highpass", frequency: 1500 + column * 180, gain: 0.025 });
+      tone(pitch, 0, 0.075, { type: "triangle", gain: 0.035, to: pitch * 0.72 });
+      break;
+    }
+    case "slot_bonus":
+      tone(330, 0, 0.38, { type: "sawtooth", gain: 0.035, to: 990, filter: { type: "lowpass", frequency: 1300, q: 1 } });
+      [660, 880, 1320, 1760].forEach((pitch, index) => {
+        tone(pitch, 0.14 + index * 0.08, 0.16, { type: "triangle", gain: 0.032 });
+      });
+      coinChimes(7, 0.22);
+      break;
+    case "big_win":
+      [392, 523, 659, 784, 1046, 1318].forEach((pitch, index) => {
+        tone(pitch, index * 0.075, 0.24, { type: "triangle", gain: 0.04, to: pitch * 1.08 });
+      });
+      tone(98, 0, 0.45, { type: "sine", gain: 0.035, to: 65 });
+      coinChimes(16, 0.18);
+      break;
+    case "win":
+      [523, 659, 784, 1046].forEach((pitch, index) => {
+        tone(pitch, index * 0.055, 0.18, { type: "triangle", gain: 0.035 });
+      });
+      coinChimes(5, 0.13);
+      break;
+    case "loss":
+      tone(220, 0, 0.16, { type: "sawtooth", gain: 0.035, to: 150, filter: { type: "lowpass", frequency: 520, q: 0.8 } });
+      tone(130, 0.12, 0.18, { type: "sine", gain: 0.032, to: 92 });
+      noise(0, 0.18, { type: "lowpass", frequency: 360, q: 0.6, gain: 0.018 });
+      break;
+    case "push":
+      tone(420, 0, 0.09, { type: "triangle", gain: 0.026, to: 420 });
+      tone(560, 0.09, 0.1, { type: "triangle", gain: 0.022, to: 520 });
+      break;
+    case "reset":
+      tone(160, 0, 0.18, { type: "sine", gain: 0.032, to: 110 });
+      tone(520, 0.16, 0.12, { type: "triangle", gain: 0.025 });
+      break;
+    case "error":
+      tone(140, 0, 0.08, { type: "square", gain: 0.025, to: 120 });
+      tone(125, 0.08, 0.1, { type: "square", gain: 0.022, to: 105 });
+      break;
+    default:
+      break;
+  }
+}
+
+function setSoundEnabled(enabled) {
+  const nextEnabled = Boolean(enabled);
+  if (!nextEnabled && state.soundEnabled) {
+    playSound("toggle_off");
+  }
+  state.soundEnabled = nextEnabled;
+  try {
+    window.localStorage.setItem(SOUND_STORAGE_KEY, nextEnabled ? "on" : "off");
+  } catch (error) {
+    // Sound still works even when localStorage is unavailable.
+  }
+  if (nextEnabled) {
+    unlockAudio();
+    playSound("toggle_on");
+  }
+  render();
 }
 
 function showResult(title, copy = "") {
@@ -251,9 +546,10 @@ function resetEffects() {
   playerZoneEl.classList.remove("outcome-win", "outcome-loss");
   effectLayerEl.innerHTML = "";
   rouletteResultEl.classList.remove("pop");
-  slotCabinetEl.classList.remove("big-win", "crazy-trigger", "crazy-retrigger", "crazy-spin", "crazy-win");
-  slotWinPanelEl.classList.remove("win", "bonus");
-  slotCabinetEl.querySelectorAll(".slot-coin").forEach((coinEl) => coinEl.remove());
+  slotCabinetEl.classList.remove("big-win", "crazy-trigger", "crazy-retrigger", "crazy-spin", "crazy-win", "crazy-multiplier-up");
+  slotWinPanelEl.classList.remove("win", "bonus", "running");
+  slotCabinetEl.querySelectorAll(".slot-coin, .crazy-confetti").forEach((coinEl) => coinEl.remove());
+  slotWinPanelEl.querySelectorAll(".slot-win-increment").forEach((incEl) => incEl.remove());
   document.querySelectorAll(".card.winner, .card.loser").forEach((cardEl) => {
     cardEl.classList.remove("winner", "loser");
   });
@@ -287,7 +583,11 @@ function createSparkles() {
   }, 1050);
 }
 
-function playOutcomeEffect(result, winner = null) {
+function playOutcomeEffect(result, winner = null, soundName = result) {
+  if (soundName) {
+    playSound(soundName);
+  }
+
   if (result === "win") {
     createSparkles();
   } else if (result === "loss") {
@@ -652,7 +952,7 @@ function renderSlotSpin(finalGrid) {
     const reelEl = document.createElement("div");
     const stripEl = document.createElement("div");
     const leadCount = 26 + column * 6;
-    const duration = 2100 + column * 430;
+    const duration = 1470 + column * 300;
     reelEl.className = "slot-reel";
     stripEl.className = "slot-strip";
 
@@ -679,9 +979,10 @@ function renderSlotSpin(finalGrid) {
         }
         stopped = true;
         renderSlotColumn(finalGrid, column);
+        playSound("slot_reel_stop", { column });
         resolve();
       };
-      const fallbackTimer = window.setTimeout(stopColumn, duration + 700);
+      const fallbackTimer = window.setTimeout(stopColumn, duration + 490);
 
       stripEl.addEventListener("transitionend", (event) => {
         if (event.propertyName === "transform") {
@@ -716,25 +1017,77 @@ function readVisibleSlotGrid() {
 function updateSlotMeta() {
   const crazyModeActive = state.slotFreeSpins > 0;
   slotCabinetEl.classList.toggle("crazy-mode", crazyModeActive);
-  slotModeEl.textContent = crazyModeActive ? "Crazy Mode" : "Base Game";
+  document.body.classList.toggle("slots-crazy-active", crazyModeActive && state.game === "slots");
+  slotModeEl.textContent = crazyModeActive
+    ? (state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini")
+    : "Base Game";
   slotSpinStatusEl.textContent = state.slotActive
     ? "Spinning..."
     : crazyModeActive
       ? `${state.slotFreeSpins} remaining`
       : "Ready";
-  slotScatterCountEl.textContent = `${Math.min(state.slotScatterCount, 3)} / 3`;
-  slotScatterFillEl.style.setProperty("--scatter-progress", `${Math.min(state.slotScatterCount, 3) / 3 * 100}%`);
+  const scatterGoal = 3;
+  slotScatterCountEl.textContent = crazyModeActive
+    ? `${state.slotFreeSpins} spin${state.slotFreeSpins === 1 ? "" : "s"}`
+    : `${Math.min(state.slotScatterCount, scatterGoal)} / ${scatterGoal}`;
+  slotScatterFillEl.style.setProperty(
+    "--scatter-progress",
+    `${crazyModeActive ? 100 : Math.min(state.slotScatterCount, scatterGoal) / scatterGoal * 100}%`
+  );
+  if (slotBonusCardEl) {
+    slotBonusCardEl.classList.toggle("hot-streak", !crazyModeActive && state.slotBaseStreak > 0);
+  }
   slotLastWinEl.textContent = formatDollars(state.slotLastWin);
+  if (slotBaseStreakEl) {
+    if (!crazyModeActive && state.slotBaseStreak > 0) {
+      const mult = 1 + Math.min(state.slotBaseStreak, 4) * 0.2;
+      slotBaseStreakEl.textContent = `${state.slotBaseStreak} (${mult.toFixed(1)}×)`;
+    } else {
+      slotBaseStreakEl.textContent = "—";
+    }
+  }
   slotMultiplierEl.textContent = `${state.slotMultiplier}x`;
+  if (state.slotMultiplier > state.slotCrazyPrevMultiplier && crazyModeActive) {
+    replayAnimation(slotMultiplierEl, "multiplier-pop");
+    replayAnimation(slotCabinetEl, "crazy-multiplier-up");
+    burstCrazyConfetti(14);
+    playSound("slot_bonus");
+  }
+  state.slotCrazyPrevMultiplier = state.slotMultiplier;
   if (slotBonusTotalEl) {
     slotBonusTotalEl.textContent = formatDollars(state.slotBonusTotal);
+  }
+  if (slotChainEl) {
+    const prevChain = state.slotCrazyPrevChain;
+    if (crazyModeActive && state.slotCrazyChain > 0) {
+      const cMult = computeChainMult(state.slotCrazyChain);
+      slotChainEl.textContent = `${state.slotCrazyChain} (${cMult.toFixed(1)}×)`;
+      if (state.slotCrazyChain > prevChain) {
+        replayAnimation(slotChainEl, "chain-pop");
+      }
+    } else {
+      if (prevChain > 0 && crazyModeActive) {
+        replayAnimation(slotChainEl, "chain-break");
+      }
+      slotChainEl.textContent = "—";
+    }
+    state.slotCrazyPrevChain = state.slotCrazyChain;
+  }
+  if (crazyModeActive) {
+    startCrazyAmbient();
+  } else {
+    stopCrazyAmbient();
   }
   if (slotRtpEl) {
     slotRtpEl.textContent = `${Math.round(SLOT_RTP_TARGET * 100)}%`;
   }
   if (slotRetriggerEl) {
     const stickyCount = state.slotCrazyWilds.length;
-    slotRetriggerEl.textContent = state.slotRetriggerText || (crazyModeActive ? `${stickyCount} sticky` : "Ready");
+    slotRetriggerEl.textContent = state.slotRetriggerText || (
+      crazyModeActive
+        ? (state.slotCrazySticky ? `${stickyCount} sticky` : "Mini active")
+        : "2 = Light / 3 = Crazy"
+    );
   }
 }
 
@@ -758,6 +1111,40 @@ function slotPaidDetail(result, payout, spinBet) {
   const totalMultiplier = payout / spinBet;
   const multiplierCopy = payout > 0 ? ` (${formatMultiplier(totalMultiplier)})` : "";
   return `${winCount} ${label} paid ${formatDollars(payout)}${multiplierCopy}.`;
+}
+
+function slotPlayResultType({ settlement, payout, wasFreeSpin }) {
+  if (settlement.trigger) {
+    return "bonus_trigger";
+  }
+  if (settlement.retrigger) {
+    return "bonus_retrigger";
+  }
+  if (payout > 0) {
+    return "payout";
+  }
+  return wasFreeSpin ? "free_spin" : "no_hit";
+}
+
+function slotPlayResultLabel({ result, settlement, payout, spinBet, lineNames, wasFreeSpin }) {
+  if (settlement.trigger) {
+    return `${result.scatterCount} scatters loaded ${settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini"}`;
+  }
+  if (settlement.retrigger) {
+    return `${result.scatterCount} scatters retriggered Crazy Mode`;
+  }
+  if (payout > 0) {
+    const hitLabel = lineNames.length ? `${lineNames.length} line${lineNames.length === 1 ? "" : "s"}` : "Scatter";
+    const starNote = wasFreeSpin && settlement.starBonus ? ` +${settlement.starBonus.spins} star spin${settlement.starBonus.spins > 1 ? "s" : ""}` : "";
+    return `${hitLabel} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}${starNote}`;
+  }
+  if (wasFreeSpin && settlement.starBonus) {
+    return `Star Bonus! +${settlement.starBonus.spins} free spin${settlement.starBonus.spins > 1 ? "s" : ""}`;
+  }
+  if (!wasFreeSpin && result.scatterCount === 1) {
+    return "Scatter tease";
+  }
+  return wasFreeSpin ? "Crazy spin no hit" : `No hit on ${formatDollars(spinBet)}`;
 }
 
 function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
@@ -790,11 +1177,28 @@ function renderSlotPaylineSummary(resultOrLines, spinBet, bonusMultiplier = 1) {
   });
 }
 
-function renderSlotWinPanel({ title, detail, amount = 0, mode = "" }) {
+function renderSlotWinPanel({ title, detail, amount = 0, mode = "", runningTotal = null, prevTotal = 0, label = null }) {
   slotWinTitleEl.textContent = title;
   slotWinDetailEl.textContent = detail;
-  slotWinAmountEl.textContent = formatDollars(amount);
-  slotWinPanelEl.classList.remove("win", "bonus");
+  slotWinPanelEl.classList.remove("win", "bonus", "running");
+
+  if (runningTotal !== null) {
+    if (slotWinLabelEl) {
+      slotWinLabelEl.textContent = label || "Crazy Total";
+    }
+    slotWinPanelEl.classList.add("running");
+    animateMainWinAmount(prevTotal, runningTotal);
+    const delta = runningTotal - prevTotal;
+    if (delta > 0) {
+      showCrazyIncrement(delta);
+    }
+  } else {
+    if (slotWinLabelEl) {
+      slotWinLabelEl.textContent = label || "Spin Result";
+    }
+    slotWinAmountEl.textContent = formatDollars(amount);
+  }
+
   if (mode) {
     replayAnimation(slotWinPanelEl, mode);
   }
@@ -818,6 +1222,103 @@ function createSlotCoins(count = 12) {
   }, 1250);
 }
 
+const crazySparkColors = ["#22d3ee", "#f472b6", "#f2c14e", "#c084fc", "#6ee7b7"];
+
+function spawnCrazySpark() {
+  if (!slotCabinetEl.classList.contains("crazy-mode")) {
+    return;
+  }
+  const spark = document.createElement("span");
+  spark.className = "crazy-spark";
+  const color = crazySparkColors[Math.floor(Math.random() * crazySparkColors.length)];
+  const size = 4 + Math.random() * 7;
+  const drift = (Math.random() - 0.5) * 90;
+  const duration = 2000 + Math.random() * 1600;
+  const left = Math.random() * 100;
+  spark.style.setProperty("--spark-color", color);
+  spark.style.setProperty("--spark-size", `${size}px`);
+  spark.style.setProperty("--spark-drift", `${drift}px`);
+  spark.style.setProperty("--spark-duration", `${duration}ms`);
+  spark.style.left = `${left}%`;
+  slotCabinetEl.appendChild(spark);
+  window.setTimeout(() => spark.remove(), duration + 80);
+}
+
+function startCrazyAmbient() {
+  if (state.slotCrazyAmbientTimer) {
+    return;
+  }
+  for (let index = 0; index < 4; index += 1) {
+    window.setTimeout(spawnCrazySpark, index * 90);
+  }
+  state.slotCrazyAmbientTimer = window.setInterval(spawnCrazySpark, 220);
+}
+
+function stopCrazyAmbient() {
+  if (state.slotCrazyAmbientTimer) {
+    window.clearInterval(state.slotCrazyAmbientTimer);
+    state.slotCrazyAmbientTimer = null;
+  }
+  slotCabinetEl.querySelectorAll(".crazy-spark").forEach((sparkEl) => sparkEl.remove());
+}
+
+function burstCrazyConfetti(count = 18) {
+  for (let index = 0; index < count; index += 1) {
+    const piece = document.createElement("span");
+    const color = crazySparkColors[Math.floor(Math.random() * crazySparkColors.length)];
+    const x = Math.round((Math.random() - 0.5) * 520);
+    const y = Math.round(-120 - Math.random() * 220);
+    const rot = Math.round((Math.random() - 0.5) * 720);
+    const duration = 900 + Math.random() * 700;
+    piece.className = "crazy-confetti";
+    piece.style.setProperty("--confetti-color", color);
+    piece.style.setProperty("--confetti-x", `${x}px`);
+    piece.style.setProperty("--confetti-y", `${y}px`);
+    piece.style.setProperty("--confetti-rot", `${rot}deg`);
+    piece.style.setProperty("--confetti-duration", `${duration}ms`);
+    piece.style.animationDelay = `${index * 18}ms`;
+    slotCabinetEl.appendChild(piece);
+    window.setTimeout(() => piece.remove(), duration + 400);
+  }
+}
+
+function showCrazyIncrement(delta) {
+  if (delta <= 0) {
+    return;
+  }
+  const incEl = document.createElement("span");
+  incEl.className = "slot-win-increment";
+  incEl.textContent = `+${formatDollars(delta)}`;
+  slotWinPanelEl.appendChild(incEl);
+  window.setTimeout(() => incEl.remove(), 1500);
+}
+
+function animateMainWinAmount(from, to) {
+  if (from === to) {
+    slotWinAmountEl.textContent = formatDollars(to);
+    return;
+  }
+  if (to > from) {
+    replayAnimation(slotWinAmountEl, "amount-pop");
+  }
+  const duration = Math.min(950, Math.max(360, Math.abs(to - from) * 0.35 + 320));
+  const start = performance.now();
+  const delta = to - from;
+  const step = (now) => {
+    const elapsed = now - start;
+    const progress = Math.min(1, elapsed / duration);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const value = from + delta * ease;
+    slotWinAmountEl.textContent = formatDollars(value);
+    if (progress < 1) {
+      window.requestAnimationFrame(step);
+    } else {
+      slotWinAmountEl.textContent = formatDollars(to);
+    }
+  };
+  window.requestAnimationFrame(step);
+}
+
 function animateSlotWinAmount(amount) {
   const steps = 18;
   let step = 0;
@@ -831,38 +1332,69 @@ function animateSlotWinAmount(amount) {
   }, 28);
 }
 
-function startFreeSpins(count, multiplier) {
+function startFreeSpins(count, multiplier, options = {}) {
   const enteringCrazyMode = state.slotFreeSpins === 0;
+  const stickyWilds = options.stickyWilds !== false;
   state.slotFreeSpins += count;
   state.slotMultiplier = Math.max(state.slotMultiplier, multiplier);
+  state.slotCrazySticky = enteringCrazyMode ? stickyWilds : state.slotCrazySticky || stickyWilds;
   if (enteringCrazyMode) {
     state.slotBonusTotal = 0;
     state.slotCrazyWilds = [];
+    state.slotCrazyDisplayedTotal = 0;
+    state.slotCrazyPrevMultiplier = state.slotMultiplier;
+    state.slotCrazyChain = 0;
+    state.slotCrazyPrevChain = 0;
+    state.slotBaseStreak = 0;
   }
   state.slotRetriggerText = `${count} spins`;
+  playSound("slot_bonus");
   replayAnimation(slotCabinetEl, "crazy-trigger");
-  showResult("Crazy Mode", `${count} free spins at ${state.slotMultiplier}x.`);
+  burstCrazyConfetti(24);
+  const modeTitle = state.slotCrazySticky ? "Crazy Mode" : "Crazy Mini";
+  const detail = state.slotCrazySticky
+    ? `${count} free spins loaded. Sticky wilds stay locked.`
+    : `${count} free spins loaded. Land 3+ scatters to unlock sticky wilds.`;
+  showResult(modeTitle, `${count} free spins at ${state.slotMultiplier}x.`);
   renderSlotWinPanel({
-    title: "Crazy Mode",
-    detail: `${count} free spins loaded. Sticky wilds stay locked.`,
+    title: modeTitle,
+    detail,
     amount: 0,
-    mode: "bonus"
+    mode: "bonus",
+    runningTotal: 0,
+    prevTotal: 0,
+    label: "Crazy Total"
   });
   updateSlotMeta();
 }
 
 function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   const balanceBefore = state.credits;
+  const crazyPrevTotal = state.slotCrazyDisplayedTotal;
   const bonusBeforeSpin = wasFreeSpin
     ? {
         freeSpins: state.slotFreeSpins,
         multiplier: state.slotMultiplier,
-        totalWin: state.slotBonusTotal
+        totalWin: state.slotBonusTotal,
+        stickyWilds: state.slotCrazySticky
       }
     : null;
   const settlement = settleSlotRulesMath({ result, bet: spinBet, bonus: bonusBeforeSpin });
-  const { payout, activeMultiplier } = settlement;
-  const winTier = settlement.tier;
+  const chainMult = wasFreeSpin ? computeChainMult(state.slotCrazyChain) : 1;
+  const baseStreakMult = !wasFreeSpin && state.slotBaseStreak > 0
+    ? 1 + Math.min(state.slotBaseStreak, 4) * 0.2
+    : 1;
+  const rawPayout = settlement.payout;
+  const { activeMultiplier } = settlement;
+  if (wasFreeSpin && settlement.nextBonus && chainMult > 1 && rawPayout > 0) {
+    settlement.nextBonus.totalWin = (bonusBeforeSpin?.totalWin ?? 0) + Math.round(rawPayout * chainMult);
+  }
+  const payout = wasFreeSpin && chainMult > 1
+    ? Math.round(rawPayout * chainMult)
+    : !wasFreeSpin && baseStreakMult > 1
+      ? Math.round(rawPayout * baseStreakMult)
+      : rawPayout;
+  const winTier = slotWinTier(payout, spinBet);
   state.slotActive = false;
   state.slotScatterCount = result.scatterCount;
   state.slotLastWin = payout;
@@ -874,9 +1406,12 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     state.slotFreeSpins = settlement.nextBonus?.freeSpins ?? 0;
     state.slotMultiplier = settlement.nextBonus?.multiplier ?? state.slotMultiplier;
     state.slotBonusTotal = settlement.nextBonus?.totalWin ?? state.slotBonusTotal;
-    collectCrazyWilds(grid);
+    state.slotCrazySticky = settlement.nextBonus?.stickyWilds ?? state.slotCrazySticky;
+    if (state.slotCrazySticky) {
+      collectCrazyWilds(grid);
+    }
 
-    if (payout > 0 && result.lineWins.length && state.slotFreeSpins > 0) {
+    if (state.slotCrazySticky && payout > 0 && result.lineWins.length && state.slotFreeSpins > 0) {
       const nextMultiplier = Math.min(
         slotScatterRules.multiplierCap,
         state.slotMultiplier + crazyModeConfig.winMultiplierStep
@@ -888,41 +1423,113 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
     }
   }
 
+  // Cascade loop: crazy-mode winning spins tumble into fresh symbols
+  let cascadePayout = 0;
+  let cascadeLevel = 0;
+  let finalGrid = grid;
+  let finalResult = result;
+  if (wasFreeSpin && payout > 0 && result.lineWins.length > 0) {
+    const crazyMult = bonusBeforeSpin?.multiplier ?? 1;
+    let curGrid = grid;
+    let curResult = result;
+    while (cascadeLevel < 8) {
+      const winCells = curResult.lineWins.flatMap((w) => w.cells);
+      const nextGrid = cascadeGrid(curGrid, winCells, state.slotCrazyWilds);
+      const nextResult = evaluateSlotGrid(nextGrid);
+      if (nextResult.lineWins.length === 0) {
+        finalGrid = nextGrid;
+        finalResult = nextResult;
+        break;
+      }
+      cascadeLevel += 1;
+      const cMult = 1 + Math.min(cascadeLevel, 8) * 0.5;
+      const singleCascade = Math.round(
+        spinBet * nextResult.lineWins.reduce((sum, w) => sum + w.multiplier, 0) * crazyMult * cMult * chainMult
+      );
+      cascadePayout += singleCascade;
+      curGrid = nextGrid;
+      curResult = nextResult;
+    }
+    finalGrid = curGrid;
+    finalResult = curResult;
+    if (cascadePayout > 0) {
+      state.credits += cascadePayout;
+      state.slotBonusTotal += cascadePayout;
+      state.slotLastWin += cascadePayout;
+    }
+  }
+
   if (settlement.trigger) {
-    startFreeSpins(settlement.trigger.freeSpins, settlement.trigger.multiplier);
+    startFreeSpins(settlement.trigger.freeSpins, settlement.trigger.multiplier, {
+      stickyWilds: settlement.trigger.stickyWilds
+    });
+    if (payout > 0) {
+      state.slotBonusTotal = payout;
+      state.slotCrazyDisplayedTotal = payout;
+    }
   } else if (settlement.retrigger) {
-    state.slotRetriggerText = `+${settlement.retrigger.freeSpins} spins`;
+    state.slotRetriggerText = settlement.retrigger.freeSpins > 0
+      ? `+${settlement.retrigger.freeSpins} spins`
+      : "Sticky unlock";
+    replayAnimation(slotCabinetEl, "crazy-retrigger");
+  } else if (settlement.starBonus) {
+    const s = settlement.starBonus.spins;
+    state.slotRetriggerText = `+${s} star spin${s > 1 ? "s" : ""}`;
     replayAnimation(slotCabinetEl, "crazy-retrigger");
   }
 
   const stickyWildDetails = [...state.slotCrazyWilds];
-  const highlightedScatters = result.scatterCount >= 2 ? result.scatterCells : [];
-  renderSlotGrid(grid, result.lineWins, highlightedScatters, wasFreeSpin ? stickyWildDetails : []);
-  renderSlotPaylineSummary(result, spinBet, activeMultiplier);
-  animateSlotWinAmount(payout);
+  const highlightedScatters = (wasFreeSpin && result.scatterCount >= 1) || result.scatterCount >= 2
+    ? result.scatterCells
+    : [];
+  renderSlotGrid(finalGrid, finalResult.lineWins, highlightedScatters, wasFreeSpin && state.slotCrazySticky ? stickyWildDetails : []);
+  renderSlotPaylineSummary(finalResult, spinBet, activeMultiplier);
+  animateSlotWinAmount(payout + cascadePayout);
+  const lineNames = result.lineWins.map((line) => line.name);
 
   if (payout > 0) {
     state.credits += payout;
-    state.streak += 1;
-    state.wins += 1;
-    const lineNames = result.lineWins.map((line) => line.name).join(", ");
+    const lineNameCopy = lineNames.join(", ");
     const title = winTierTitle(winTier);
     const winSource = [
-      lineNames,
+      lineNameCopy,
       result.scatterPay ? `${result.scatterCount} scatters` : ""
     ].filter(Boolean).join(" + ") || "Bonus";
-    const retriggerCopy = settlement.retrigger ? ` Retriggered ${settlement.retrigger.freeSpins} spins.` : "";
-    const triggerCopy = settlement.trigger ? ` Crazy Mode loaded: ${settlement.trigger.freeSpins} spins at ${settlement.trigger.multiplier}x.` : "";
-    const crazyCopy = wasFreeSpin ? ` Sticky wilds: ${stickyWildDetails.length}.` : "";
-    showResult(title, `${winSource} paid ${formatDollars(payout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}`);
+    const retriggerCopy = settlement.retrigger
+      ? (settlement.retrigger.freeSpins > 0 ? ` Retriggered ${settlement.retrigger.freeSpins} spins.` : " Sticky wilds unlocked.")
+      : "";
+    const triggerCopy = settlement.trigger
+      ? ` ${settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini"} loaded: ${settlement.trigger.freeSpins} spins at ${settlement.trigger.multiplier}x.`
+      : "";
+    const streakCopy = !wasFreeSpin && baseStreakMult > 1
+      ? ` Hot streak ${baseStreakMult.toFixed(1)}× bonus!`
+      : "";
+    const crazyCopy = wasFreeSpin
+      ? (state.slotCrazySticky ? ` Sticky wilds: ${stickyWildDetails.length}.` : " Mini mode.")
+      : "";
+    const starCopy = wasFreeSpin && settlement.starBonus && !settlement.retrigger
+      ? ` +${settlement.starBonus.spins} star spin${settlement.starBonus.spins > 1 ? "s" : ""}.`
+      : "";
+    const cascadeCopy = cascadeLevel > 0
+      ? ` ${cascadeLevel} cascade${cascadeLevel > 1 ? "s" : ""} +${formatDollars(cascadePayout)}.`
+      : "";
+    const chainCopy = wasFreeSpin && chainMult > 1
+      ? ` Chain ${chainMult.toFixed(1)}×.`
+      : "";
+    const totalPayout = payout + cascadePayout;
+    const displayTitle = cascadeLevel > 0 && wasFreeSpin ? `Crazy ${title} + Cascade` : wasFreeSpin ? `Crazy ${title}` : title;
+    showResult(title, `${winSource} paid ${formatDollars(totalPayout)}${wasFreeSpin ? " in Crazy Mode" : ""}.${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}${cascadeCopy}${chainCopy}${streakCopy}`);
     renderSlotWinPanel({
-      title: wasFreeSpin ? `Crazy ${title}` : title,
-      detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}`,
-      amount: payout,
-      mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win"
+      title: displayTitle,
+      detail: `${slotPaidDetail(result, payout, spinBet)}${triggerCopy}${retriggerCopy}${crazyCopy}${starCopy}${cascadeCopy}${chainCopy}${streakCopy}`,
+      amount: totalPayout,
+      mode: wasFreeSpin || winTier === "jackpot" || winTier === "mega" ? "bonus" : "win",
+      runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+      prevTotal: wasFreeSpin ? crazyPrevTotal : 0,
+      label: wasFreeSpin ? "Crazy Total" : null
     });
-    pulseStats(creditsStatEl, streakStatEl, recordStatEl);
-    playOutcomeEffect("win");
+    const slotWinSound = ["big", "mega", "jackpot"].includes(winTier) ? "big_win" : "win";
+    playOutcomeEffect("win", null, slotWinSound);
     createSlotCoins(winTier === "jackpot" ? 30 : winTier === "mega" ? 24 : winTier === "big" ? 18 : 10);
     if (wasFreeSpin) {
       replayAnimation(slotCabinetEl, "crazy-win");
@@ -931,89 +1538,131 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       replayAnimation(slotCabinetEl, "big-win");
     }
   } else if (settlement.trigger) {
-    state.streak += 1;
-    state.wins += 1;
-    showResult("Crazy Mode", "Free spins are ready.");
+    showResult(settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini", "Free spins are ready.");
     renderSlotWinPanel({
-      title: "Crazy Mode",
+      title: settlement.trigger.stickyWilds ? "Crazy Mode" : "Crazy Mini",
       detail: `${result.scatterCount} scatters awarded ${result.freeSpinsAwarded} free spins at ${result.bonusMultiplier}x.`,
       amount: 0,
       mode: "bonus"
     });
-    pulseStats(streakStatEl, recordStatEl);
-    playOutcomeEffect("push");
+    playOutcomeEffect("push", null, false);
     createSlotCoins(8);
   } else if (settlement.retrigger) {
-    state.streak += 1;
-    state.wins += 1;
-    showResult("Crazy retrigger", `${settlement.retrigger.freeSpins} more free spins at ${settlement.retrigger.multiplier}x.`);
+    showResult(
+      "Crazy retrigger",
+      settlement.retrigger.freeSpins > 0
+        ? `${settlement.retrigger.freeSpins} more free spins at ${settlement.retrigger.multiplier}x.`
+        : "Sticky wilds unlocked."
+    );
     renderSlotWinPanel({
       title: "Crazy retrigger",
-      detail: `${result.scatterCount} scatters extended Crazy Mode.`,
+      detail: settlement.retrigger.freeSpins > 0
+        ? `${result.scatterCount} scatters extended Crazy Mode.`
+        : `${result.scatterCount} scatters upgraded the bonus.`,
       amount: 0,
-      mode: "bonus"
+      mode: "bonus",
+      runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+      prevTotal: wasFreeSpin ? crazyPrevTotal : 0,
+      label: wasFreeSpin ? "Crazy Total" : null
     });
-    pulseStats(streakStatEl, recordStatEl);
-    playOutcomeEffect("push");
+    playOutcomeEffect("push", null, "slot_bonus");
     createSlotCoins(8);
+    burstCrazyConfetti(16);
   } else if (wasFreeSpin) {
     if (state.slotFreeSpins > 0) {
-      showResult("Crazy spin", "No line hit.");
-      renderSlotWinPanel({
-        title: "No line hit",
-        detail: `${state.slotFreeSpins} Crazy spin${state.slotFreeSpins === 1 ? "" : "s"} remaining. Sticky wilds: ${stickyWildDetails.length}.`,
-        amount: 0
-      });
+      if (settlement.starBonus) {
+        const sc = settlement.starBonus.spins;
+        showResult("Star Bonus!", `+${sc} free spin${sc > 1 ? "s" : ""} added.`);
+        renderSlotWinPanel({
+          title: "Star Bonus!",
+          detail: `${sc} star${sc > 1 ? "s" : ""} extended Crazy Mode. ${state.slotFreeSpins} spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
+          amount: 0,
+          mode: "bonus",
+          runningTotal: state.slotBonusTotal,
+          prevTotal: crazyPrevTotal,
+          label: "Crazy Total"
+        });
+        createSlotCoins(6);
+        burstCrazyConfetti(10);
+      } else {
+        showResult(state.slotCrazySticky ? "Crazy spin" : "Mini spin", "No line hit.");
+        renderSlotWinPanel({
+          title: "No line hit",
+          detail: state.slotCrazySticky
+            ? `${state.slotFreeSpins} Crazy spin${state.slotFreeSpins === 1 ? "" : "s"} remaining. Sticky wilds: ${stickyWildDetails.length}.`
+            : `${state.slotFreeSpins} mini spin${state.slotFreeSpins === 1 ? "" : "s"} remaining.`,
+          amount: 0,
+          runningTotal: state.slotBonusTotal,
+          prevTotal: crazyPrevTotal,
+          label: "Crazy Total"
+        });
+      }
     } else {
+      const endedTitle = state.slotCrazySticky ? "Crazy Mode ended" : "Crazy Mini ended";
       state.slotMultiplier = 1;
       state.slotRetriggerText = "Ended";
-      showResult("Crazy Mode ended", "Back to the base game.");
+      showResult(endedTitle, `Crazy total: ${formatDollars(state.slotBonusTotal)}.`);
       renderSlotWinPanel({
-        title: "Crazy Mode ended",
-        detail: `Crazy total: ${formatDollars(state.slotBonusTotal)}.`,
-        amount: 0
+        title: endedTitle,
+        detail: `Final crazy total: ${formatDollars(state.slotBonusTotal)}. Back to the base game.`,
+        amount: 0,
+        mode: "bonus",
+        runningTotal: state.slotBonusTotal,
+        prevTotal: crazyPrevTotal,
+        label: "Final Crazy Total"
       });
+      if (state.slotBonusTotal > 0) {
+        burstCrazyConfetti(28);
+        createSlotCoins(20);
+      }
     }
     playOutcomeEffect("push");
   } else {
-    const nearMiss = result.scatterCount === 2 ? " Two scatters teased the bonus." : "";
-    state.streak = 0;
-    state.losses += 1;
-    showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}`);
+    const streakBrokeCopy = state.slotBaseStreak >= 2 ? ` Hot streak of ${state.slotBaseStreak} broken.` : "";
+    const nearMiss = result.scatterCount === 1 ? " One scatter." : "";
+    showResult("No win", `You lost ${formatDollars(spinBet)}.${nearMiss}${streakBrokeCopy}`);
     renderSlotWinPanel({
-      title: result.scatterCount === 2 ? "Near bonus" : "No win",
-      detail: result.scatterCount === 2 ? "Two scatters landed. One more would start free spins." : "No active payline matched from either edge.",
+      title: result.scatterCount === 1 ? "Scatter tease" : "No win",
+      detail: result.scatterCount === 1
+        ? "One scatter. Land 2 more for a scatter pay."
+        : `No active payline.${streakBrokeCopy}`,
       amount: 0,
-      mode: result.scatterCount === 2 ? "bonus" : ""
+      mode: result.scatterCount === 1 ? "bonus" : ""
     });
-    pulseStats(creditsStatEl, streakStatEl, recordStatEl);
     playOutcomeEffect("loss");
+  }
+
+  if (wasFreeSpin) {
+    state.slotCrazyChain = (payout + cascadePayout > 0) ? state.slotCrazyChain + 1 : 0;
+  } else {
+    state.slotBaseStreak = payout > 0 ? state.slotBaseStreak + 1 : 0;
+  }
+
+  const netRecordOutcome = applyNetRecord(balanceBefore, state.credits);
+  if (netRecordOutcome === "push") {
+    pulseStats(streakStatEl, recordStatEl);
+  } else {
+    pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   }
 
   if (state.slotFreeSpins === 0 && !settlement.trigger) {
     state.slotMultiplier = 1;
     if (wasFreeSpin) {
       state.slotCrazyWilds = [];
+      state.slotCrazySticky = false;
+      state.slotCrazyDisplayedTotal = 0;
+      state.slotCrazyPrevMultiplier = 1;
+      state.slotCrazyChain = 0;
+      state.slotCrazyPrevChain = 0;
     }
+  } else if (wasFreeSpin) {
+    state.slotCrazyDisplayedTotal = state.slotBonusTotal;
   }
 
   updateSlotMeta();
-  const lineNames = result.lineWins.map((line) => line.name);
-  const slotNetChange = state.credits - balanceBefore;
-  let slotOutcome = "push";
-  if (settlement.trigger || settlement.retrigger) {
-    slotOutcome = payout > 0
-      ? (slotNetChange > 0 ? "win" : slotNetChange < 0 ? "loss" : "push")
-      : "bonus";
-  } else if (slotNetChange > 0) {
-    slotOutcome = "win";
-  } else if (slotNetChange < 0) {
-    slotOutcome = "loss";
-  }
   const slotEvent = buildEvent({
     game: "slots",
     eventType: settlement.trigger && payout === 0 ? "bonus_awarded" : (wasFreeSpin ? "free_spin_settled" : "wager_settled"),
-    outcome: slotOutcome,
     betAmount: wasFreeSpin ? 0 : spinBet,
     payoutAmount: payout,
     balanceBefore,
@@ -1029,12 +1678,18 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
       crazy_mode: wasFreeSpin || Boolean(settlement.trigger),
       crazy_spins_remaining: state.slotFreeSpins,
       crazy_multiplier: state.slotMultiplier,
+      crazy_sticky_enabled: state.slotCrazySticky,
       crazy_sticky_wilds: stickyWildDetails,
       crazy_sticky_wild_count: stickyWildDetails.length,
       bonus_total: state.slotBonusTotal,
       retriggered: Boolean(settlement.retrigger),
       win_tier: winTier,
       multiplier: activeMultiplier,
+      play_result: {
+        type: slotPlayResultType({ settlement, payout, wasFreeSpin }),
+        label: slotPlayResultLabel({ result, settlement, payout, spinBet, lineNames, wasFreeSpin }),
+        net_outcome: netRecordOutcome
+      },
       grid
     }
   });
@@ -1051,31 +1706,46 @@ function spinSlots() {
   const wasFreeSpin = state.slotFreeSpins > 0;
   const spinBet = state.bet;
   if (!wasFreeSpin && state.credits < spinBet) {
+    playSound("error");
     showResult("Bankroll low", "Lower the bet or reset your bankroll.");
     return;
   }
 
   resetEffects();
+  playSound("slot_spin");
   state.slotActive = true;
   state.slotRound += 1;
   const round = state.slotRound;
   state.slotLastWin = 0;
-  slotSpinStatusEl.textContent = wasFreeSpin ? "Crazy spin..." : "Spinning...";
+  slotSpinStatusEl.textContent = wasFreeSpin
+    ? (state.slotCrazySticky ? "Crazy spin..." : "Mini spin...")
+    : "Spinning...";
   slotLastWinEl.textContent = "$0";
   renderSlotPaylineSummary([], spinBet);
   renderSlotWinPanel({
-    title: wasFreeSpin ? "Crazy spin" : "Reels spinning",
-    detail: wasFreeSpin ? `${state.slotFreeSpins} remaining at ${state.slotMultiplier}x. Sticky wilds: ${state.slotCrazyWilds.length}.` : "Waiting for the reels to stop.",
-    amount: 0
+    title: wasFreeSpin ? (state.slotCrazySticky ? "Crazy spin" : "Mini spin") : "Reels spinning",
+    detail: wasFreeSpin
+      ? (state.slotCrazySticky ? `${state.slotFreeSpins} remaining at ${state.slotMultiplier}x. Sticky wilds: ${state.slotCrazyWilds.length}.` : `${state.slotFreeSpins} mini spins remaining at ${state.slotMultiplier}x.`)
+      : "Waiting for the reels to stop.",
+    amount: 0,
+    runningTotal: wasFreeSpin ? state.slotBonusTotal : null,
+    prevTotal: wasFreeSpin ? state.slotCrazyDisplayedTotal : 0,
+    label: wasFreeSpin ? "Crazy Total" : null
   });
-  showResult("Reels spinning", wasFreeSpin ? `${state.slotFreeSpins} Crazy spins remaining at ${state.slotMultiplier}x.` : `${formatDollars(spinBet)} spin in progress.`);
+  showResult(
+    "Reels spinning",
+    wasFreeSpin
+      ? `${state.slotFreeSpins} ${state.slotCrazySticky ? "Crazy" : "mini"} spins remaining at ${state.slotMultiplier}x.`
+      : `${formatDollars(spinBet)} spin in progress.`
+  );
   if (wasFreeSpin) {
     replayAnimation(slotCabinetEl, "crazy-spin");
   }
 
-  const grid = wasFreeSpin
-    ? prepareCrazyModeGrid(generateSlotGrid({ nearMiss: true, assistSmallWin: true }))
-    : generateSlotGrid({ nearMiss: true, assistSmallWin: true });
+  const baseGrid = generateSlotGrid({ boostScatter3: !wasFreeSpin, assistSmallWin: true });
+  const grid = wasFreeSpin && state.slotCrazySticky
+    ? prepareCrazyModeGrid(baseGrid)
+    : baseGrid;
 
   renderSlotSpin(grid).then(() => {
     if (round !== state.slotRound) {
@@ -1100,6 +1770,7 @@ function dealFromDeck(cardEl, delay = 0) {
   cardEl.style.setProperty("--deal-x", `${deckX - cardX}px`);
   cardEl.style.setProperty("--deal-y", `${deckY - cardY}px`);
   cardEl.style.animationDelay = `${delay}ms`;
+  playSound("card", { delay: delay / 1000 });
   replayAnimation(cardEl, "dealt");
 }
 
@@ -1141,6 +1812,7 @@ function createCard(card, hidden = false) {
 function revealCard(cardEl, card) {
   const tilt = cardEl.style.getPropertyValue("--tilt");
   cardEl.classList.remove("back");
+  playSound("card_flip");
   replayAnimation(cardEl, "revealing");
   window.setTimeout(() => {
     const freshCard = createCard(card);
@@ -1300,22 +1972,11 @@ function formatMultiplier(value) {
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}x`;
 }
 
-let balanceSaveTimer = null;
 let dashboardModel = null;
 let activityFilter = "all";
 
 function gameEventKey(game = state.game) {
   return game === "high-card" ? "high_card" : game;
-}
-
-function clientEventId() {
-  if (crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-
-  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (char) =>
-    (Number(char) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(char) / 4).toString(16)
-  );
 }
 
 function cardCode(card) {
@@ -1325,26 +1986,26 @@ function cardCode(card) {
 function buildEvent({
   game = gameEventKey(),
   eventType = "wager_settled",
-  outcome,
   betAmount = state.bet,
   payoutAmount = 0,
   balanceBefore,
   balanceAfter,
   details = {}
 }) {
-  return {
+  return buildGamblingEvent({
     username: state.username,
     game,
-    event_type: eventType,
-    outcome,
-    bet_amount: Math.max(0, Math.round(betAmount)),
-    payout_amount: Math.max(0, Math.round(payoutAmount)),
-    net_change: Math.round(balanceAfter - balanceBefore),
-    balance_before: Math.max(0, Math.round(balanceBefore)),
-    balance_after: Math.max(0, Math.round(balanceAfter)),
-    client_event_id: clientEventId(),
+    eventType,
+    betAmount,
+    payoutAmount,
+    balanceBefore,
+    balanceAfter,
     details
-  };
+  });
+}
+
+function applyNetRecord(balanceBefore, balanceAfter) {
+  return applyNetRecordState(state, balanceBefore, balanceAfter);
 }
 
 async function refreshLeaderboard() {
@@ -1360,7 +2021,6 @@ async function refreshRecentEvents() {
   await renderRecentEvents({
     listEl: activityListEl,
     statusEl: activityStatusEl,
-    events: dashboardModel?.recentEvents ?? null,
     filter: activityFilter
   });
 }
@@ -1383,16 +2043,18 @@ async function refreshStatsSection() {
   ]);
 }
 
-function recordGamblingEvent(event) {
-  if (!event?.username) {
-    return;
+const gamblingPersistence = createGamblingPersistence({
+  getUsername: () => state.username,
+  persistBalance: persistPlayerBalance,
+  insertEvent: insertGamblingEvent,
+  refreshStats: refreshStatsSection,
+  onError: (label, message) => {
+    console.warn(label, message);
   }
+});
 
-  insertGamblingEvent(event)
-    .then(refreshStatsSection)
-    .catch((error) => {
-      console.warn("Gambling event save failed:", error.message);
-    });
+function recordGamblingEvent(event) {
+  gamblingPersistence.recordEvent(event);
 }
 
 async function loadPlayerBalance() {
@@ -1424,27 +2086,11 @@ function savePlayerBalance(event = null) {
   }
 
   if (event) {
-    (async () => {
-      try {
-        await persistPlayerBalance(state.username, state.credits);
-        await insertGamblingEvent(event);
-        await refreshStatsSection();
-      } catch (error) {
-        console.warn("Balance/event save failed:", error.message);
-      }
-    })();
+    gamblingPersistence.saveBalanceAndEvent(event);
     return;
   }
 
-  window.clearTimeout(balanceSaveTimer);
-  balanceSaveTimer = window.setTimeout(async () => {
-    try {
-      await persistPlayerBalance(state.username, state.credits);
-      await refreshStatsSection();
-    } catch (error) {
-      console.warn("Balance save failed:", error.message);
-    }
-  }, 250);
+  gamblingPersistence.saveBalance(state.credits);
 }
 
 function totalStateClass(hand, hidden = false, naturalBlackjack = true) {
@@ -1571,6 +2217,8 @@ function render() {
   autoRerollControlEl.hidden = !autoGame;
   autoRerollToggleEl.checked = state.autoReroll && autoGame;
   autoRerollToggleEl.disabled = balanceLoading || !autoGame;
+  soundToggleEl.checked = state.soundEnabled;
+  soundStateEl.textContent = state.soundEnabled ? "Effects on" : "Muted";
   chipButtons.forEach((button) => {
     button.disabled = balanceLoading || outOfCredits || lockedBet || state.bet >= maxBet();
   });
@@ -1606,6 +2254,7 @@ function supportsAutoReroll(game = state.game) {
 function setAutoReroll(enabled) {
   state.autoReroll = Boolean(enabled && supportsAutoReroll());
   clearAutoRerollTimer();
+  playSound(state.autoReroll ? "toggle_on" : "toggle_off");
   if (state.autoReroll) {
     showResult("Auto on", `${gameMeta[state.game].title} will repeat after each spin.`);
     scheduleAutoReroll(250);
@@ -1669,7 +2318,12 @@ function changeBet(amount) {
     return;
   }
 
-  state.bet = Math.max(5, Math.min(state.bet + amount, maxBet()));
+  const nextBet = Math.max(5, Math.min(state.bet + amount, maxBet()));
+  if (nextBet === state.bet) {
+    return;
+  }
+  state.bet = nextBet;
+  playSound("chip");
   render();
 }
 
@@ -1678,7 +2332,12 @@ function setBet(amount) {
     return;
   }
 
-  state.bet = Math.max(5, Math.min(amount, maxBet()));
+  const nextBet = Math.max(5, Math.min(amount, maxBet()));
+  if (nextBet === state.bet) {
+    return;
+  }
+  state.bet = nextBet;
+  playSound("chip");
   render();
 }
 
@@ -1714,13 +2373,11 @@ function settleWin(amount, title, copy, options = {}) {
   const balanceBefore = state.credits;
   const payoutAmount = Math.round(amount);
   state.credits += payoutAmount;
-  state.streak += 1;
-  state.wins += 1;
+  applyNetRecord(balanceBefore, state.credits);
   showResult(title, copy);
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   playOutcomeEffect("win", state.game === "blackjack" ? "player" : null);
   savePlayerBalance(buildEvent({
-    outcome: "win",
     betAmount: options.betAmount ?? state.bet,
     payoutAmount,
     balanceBefore,
@@ -1733,13 +2390,11 @@ function settleLoss(title, copy, options = {}) {
   const balanceBefore = state.credits;
   const betAmount = options.betAmount ?? state.bet;
   state.credits -= betAmount;
-  state.streak = 0;
-  state.losses += 1;
+  applyNetRecord(balanceBefore, state.credits);
   showResult(title, copy);
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
   playOutcomeEffect("loss", state.game === "blackjack" ? "dealer" : null);
   savePlayerBalance(buildEvent({
-    outcome: "loss",
     betAmount,
     payoutAmount: 0,
     balanceBefore,
@@ -1750,7 +2405,6 @@ function settleLoss(title, copy, options = {}) {
 
 function recordPush(details = {}) {
   recordGamblingEvent(buildEvent({
-    outcome: "push",
     payoutAmount: 0,
     balanceBefore: state.credits,
     balanceAfter: state.credits,
@@ -1767,7 +2421,6 @@ function recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, 
 
   savePlayerBalance(buildEvent({
     game: "blackjack",
-    outcome,
     betAmount: state.bet,
     payoutAmount,
     balanceBefore,
@@ -1784,15 +2437,10 @@ function settleSplitHand(index, outcome, title, details = {}) {
   if (outcome === "win") {
     payoutAmount = state.bet;
     state.credits += payoutAmount;
-    state.streak += 1;
-    state.wins += 1;
   } else if (outcome === "loss") {
     state.credits -= state.bet;
-    state.streak = 0;
-    state.losses += 1;
-  } else {
-    state.streak = 0;
   }
+  applyNetRecord(balanceBefore, state.credits);
 
   recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, state.credits, {
     player_total: handTotal(hand),
@@ -1986,6 +2634,7 @@ function splitBlackjack() {
   }
 
   resetEffects();
+  playSound("chip");
   state.blackjackSplitActive = true;
   state.blackjackSplitRound += 1;
   state.blackjackActiveHandIndex = 0;
@@ -2144,6 +2793,7 @@ function selectRouletteBet(type, value) {
 
   state.rouletteBetType = type;
   state.rouletteChoice = type === "number" ? Number(value) : value;
+  playSound("ui");
   showResult("Roulette", `Betting on ${rouletteBetLabel()}.`);
   render();
 }
@@ -2154,6 +2804,7 @@ function spinRoulette() {
   }
 
   resetEffects();
+  playSound("roulette_spin");
   state.rouletteActive = true;
   rouletteResultEl.textContent = "--";
   rouletteResultEl.className = "roulette-result";
@@ -2184,6 +2835,7 @@ function spinRoulette() {
     state.rouletteActive = false;
     rouletteResultEl.textContent = number;
     rouletteResultEl.className = `roulette-result ${color}`;
+    playSound("roulette_land");
     replayAnimation(rouletteResultEl, "pop");
 
     if (won) {
@@ -2208,7 +2860,7 @@ function spinRoulette() {
 
     render();
     scheduleAutoReroll();
-  }, 4550);
+  }, 3185);
 }
 
 function switchGame(game) {
@@ -2220,6 +2872,9 @@ function switchGame(game) {
     state.autoReroll = false;
     clearAutoRerollTimer();
   }
+  if (state.game !== game) {
+    playSound("ui");
+  }
   state.game = game;
   resetEffects();
   showResult(gameMeta[game].title);
@@ -2230,6 +2885,13 @@ initializeRouletteUi();
 initializeSlotLineExamples();
 renderSlotGrid(generateSlotGrid());
 updateSlotMeta();
+
+document.addEventListener("pointerdown", unlockAudio, { passive: true });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    unlockAudio();
+  }
+});
 
 tabs.forEach((tab) => {
   tab.addEventListener("click", () => switchGame(tab.dataset.game));
@@ -2277,8 +2939,10 @@ hitButton.addEventListener("click", hitBlackjack);
 standButton.addEventListener("click", standBlackjack);
 splitButton.addEventListener("click", splitBlackjack);
 autoRerollToggleEl.addEventListener("change", () => setAutoReroll(autoRerollToggleEl.checked));
+soundToggleEl.addEventListener("change", () => setSoundEnabled(soundToggleEl.checked));
 
 resetButton.addEventListener("click", () => {
+  playSound("reset");
   const balanceBefore = state.credits;
   state.credits = DEFAULT_BALANCE;
   state.bet = 5;
@@ -2300,8 +2964,15 @@ resetButton.addEventListener("click", () => {
   state.slotScatterCount = 0;
   state.slotBonusTotal = 0;
   state.slotRetriggerText = "";
+  state.slotCrazySticky = false;
   state.slotCrazyWilds = [];
+  state.slotCrazyDisplayedTotal = 0;
+  state.slotCrazyPrevMultiplier = 1;
+  state.slotBaseStreak = 0;
+  state.slotCrazyChain = 0;
+  state.slotCrazyPrevChain = 0;
   state.slotRound += 1;
+  stopCrazyAmbient();
   state.dealerHand = [];
   state.playerHand = [];
   state.hideDealerHole = false;
@@ -2325,7 +2996,6 @@ resetButton.addEventListener("click", () => {
   savePlayerBalance(buildEvent({
     game: "system",
     eventType: "bankroll_reset",
-    outcome: "reset",
     betAmount: 0,
     payoutAmount: 0,
     balanceBefore,

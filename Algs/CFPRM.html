@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Omnidirectional Blame Matrix</title>
+  <meta name="description" content="Interactive visualizer page for Max-Scale Cyclical Finger-Pointing with Randomized Topology." />
+  <link rel="stylesheet" href="algs.css" />
+  <style>
+    /* Styling for the Visualizer Modal Window - Dark Theme Mesh */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #1e1e24; 
+      color: #ffffff;      
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 750px;
+      width: 100%;
+      position: relative;
+      text-align: center;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #33333d;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-close {
+      position: absolute;
+      top: 10px; right: 15px;
+      font-size: 28px;
+      background: none; 
+      border: none; 
+      cursor: pointer;
+      color: #aaa;
+    }
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    /* Input Field & Controls */
+    .input-container {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .input-container input[type="number"] {
+      padding: 11px;
+      font-size: 1rem;
+      background-color: #111115;
+      border: 2px solid #44444f;
+      border-radius: 4px;
+      color: #ffffff;
+      outline: none;
+      width: 80px;
+      text-align: center;
+    }
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #9b59b6; 
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-btn:hover {
+      background-color: #8e44ad;
+    }
+    .action-btn:disabled {
+      background-color: #44444f;
+      color: #888888;
+      cursor: not-allowed;
+    }
+
+    /* Graph Map Visualizer Layout Container */
+    .chart-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 380px;
+      background: #111115; 
+      padding: 10px;
+      border-radius: 6px;
+      margin: 20px 0;
+      border: 1px solid #33333d;
+      position: relative;
+    }
+
+    /* SVG Elements Styling */
+    svg {
+      width: 100%;
+      height: 380px;
+    }
+    .edge-line {
+      stroke: #2c3d50;
+      stroke-width: 2;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+    .edge-line.active {
+      stroke: #3498db;
+      stroke-dasharray: 4;
+      animation: dash 1s linear infinite;
+    }
+    .edge-line.trapped {
+      stroke: #9b59b6;
+      stroke-width: 4;
+    }
+    .map-node {
+      fill: #1e272e;
+      stroke: #3d4e5e;
+      stroke-width: 2;
+      transition: all 0.2s;
+    }
+    .map-node.visiting {
+      fill: #3498db;
+      stroke: #2980b9;
+      r: 13;
+    }
+    .map-node.cartel-member {
+      fill: #9b59b6;
+      stroke: #8e44ad;
+      animation: pulse 1.5s infinite alternate;
+    }
+    .node-text {
+      fill: #ffffff;
+      font-family: sans-serif;
+      font-size: 10px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -20;
+      }
+    }
+    @keyframes pulse {
+      from { r: 9; stroke-width: 2; }
+      to { r: 12; stroke-width: 3.5; }
+    }
+
+    /* Live Progress Tracker Status Text */
+    .status-ticker {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #9b59b6;
+      margin: -10px 0 15px 0;
+      min-height: 36px;
+      line-height: 1.4;
+    }
+
+    /* Statistics Results Dashboard */
+    .stats-dashboard {
+      background: #221a2c; 
+      border-left: 5px solid #9b59b6;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: #dddddd;
+    }
+    
+    .visualizer-trigger-block {
+      margin: 20px 0;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="logo">GAMERTOWN<span>ALGORITHMS</span></div>
+      <nav class="nav-links">
+        <a href="../index.html">HOME</a>
+        <a href="advanced_algorithms.html">ALGORITHMS</a>
+        <a href="sorting.html">SORTING</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-content">
+        <h1>THE OMNIDIRECTIONAL BLAME MATRIX</h1>
+        <p>Inverting path isolation to maximize bidirectional deadlock zones and optimize total institutional gridlock.</p>
+        
+        <div class="visualizer-trigger-block">
+          <div class="gif-block" style="margin: 0; width: 100%;">
+            <img src="CFPRM_Max.png" alt="Omnidirectional Blame Matrix demonstration" class="demo-gif" />
+          </div>
+          <button id="openVisualizerButton" class="action-btn" type="button" style="font-size: 1.2rem; padding: 15px 30px;">
+            LAUNCH MAX-CYCLE VISUALIZER
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="container">
+      <h2 class="section-title">OVERVIEW</h2>
+      <div class="card">
+        <h3>Algorithm Summary</h3>
+        <p>Standard cycle routing models are historically bottlenecked by directional protocols—if a department returns a ticket to its sender, the loop ends prematurely. The <strong>Omnidirectional Blame Matrix</strong> breaks this operational limitation by enforcing bidirectional channels. By transforming the enterprise network into an undirected ecosystem of mutual liability, the packet can travel fluidly back and forth between any connected nodes.</p>
+        <p>Instead of discovering a single, isolated loop, the algorithm runs a comprehensive structural analysis optimized to isolate and lock down the **Maximum Trap Component**. The engine proactively maps out dense networks of non-accountability, ensuring that once a data payload drops into the ecosystem, it is mathematically barred from slipping out through unaligned endpoints. The ultimate goal is 100% corporate immersion: capturing every single department within a seamless safety blanket of permanent buck-passing.</p>
+      </div>
+
+      <div class="code-block">
+        <button id="showCodeButton" type="button">SHOW EXAMPLE CODE</button>
+      </div>
+    </section>
+
+    <div id="codeModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content" style="text-align: left; background: #1e1e24; color: #fff; border: 1px solid #33333d; max-width:650px;">
+        <button id="closeCodeButton" class="modal-close" type="button">×</button>
+        <h2>Omnidirectional Trap Code</h2>
+        <pre><code>// Bidirectional Maximizer Engine: Captures largest connected deadlock ring
+async function captureMaxCartel() {
+  let components = [];
+  const visited = new Array(n).fill(false);
+
+  for (let i = 0; i < n; i++) {
+    if (!visited[i]) {
+      let currentBag = [];
+      // Flood fill or DFS to gather all mutually non-cooperative silos
+      await clearSiloCluster(i, visited, currentBag);
+      components.push(currentBag);
+    }
+  }
+
+  // Isolate the largest cluster to maximize organizational trapping
+  components.sort((a, b) => b.length - a.length);
+  const maxCartel = components[0];
+  lockSystemicImmobilization(maxCartel);
+}</code></pre>
+      </div>
+    </div>
+
+    <div id="visualizerModal" class="modal" aria-hidden="true" tabindex="-1" style="display:none;">
+      <div class="modal-content">
+        <button id="closeVisualizerButton" class="modal-close" type="button">×</button>
+        <h2>THE OMNIDIRECTIONAL BLAME MATRIX</h2>
+        <p style="font-size: 0.9rem; color:#aaa;">Randomized layout architecture. Map out the maximum isolated community of non-accountability.</p>
+
+        <div class="input-container">
+          <label for="nodeCountInput" style="font-size: 0.9rem; color:#bbb;">Custom Silos Target: </label>
+          <input type="number" id="nodeCountInput" min="3" max="40" value="8" />
+          <button id="generateNetworkBtn" class="action-btn" type="button" style="background-color: #34495e;">RE-DRAFT MATRIX</button>
+          <button id="startFindButton" class="action-btn" type="button">MAXIMIZE TRAPPED SILOS</button>
+        </div>
+
+        <div id="statusTicker" class="status-ticker">Awaiting bidirectional handshake alignments...</div>
+
+        <div id="chartContainer" class="chart-container">
+          </div>
+
+        <div id="statsDashboard" class="stats-dashboard" style="display: none;">
+          <h3 style="margin-top: 0; color: #9b59b6; font-size: 1.1rem;">🔮 ULTIMATE ORGANIZATIONAL IMMOBILIZATION</h3>
+          <div class="stats-grid">
+            <div><strong>Bidirectional Routes Audited:</strong> <span id="statRelax">0</span></div>
+            <div><strong>Isolated Clusters Found:</strong> <span id="statUpdates">0</span></div>
+            <div><strong>Max Trapped Departments:</strong> <span id="statVisited">0</span> Silos</div>
+            <div><strong>Ecosystem Saturation Yield:</strong> <span id="statYield">0</span>%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      © 2026 GAMERTOWN SOLUTIONS / ARCHIVE
+    </div>
+  </footer>
+
+  <script>
+    const showCodeButton = document.getElementById('showCodeButton');
+    const closeCodeButton = document.getElementById('closeCodeButton');
+    const codeModal = document.getElementById('codeModal');
+
+    const openVisualizerButton = document.getElementById('openVisualizerButton');
+    const closeVisualizerButton = document.getElementById('closeVisualizerButton');
+    const visualizerModal = document.getElementById('visualizerModal');
+    
+    const startFindButton = document.getElementById('startFindButton');
+    const generateNetworkBtn = document.getElementById('generateNetworkBtn');
+    const nodeCountInput = document.getElementById('nodeCountInput');
+    const chartContainer = document.getElementById('chartContainer');
+    const statsDashboard = document.getElementById('statsDashboard');
+    const statusTicker = document.getElementById('statusTicker');
+
+    let activeRun = false;
+    let departments = [];
+    let adjMatrix = [];
+
+    const baseLexicon = [
+      "IT Support", "HR Strategy", "Operations", "Legal Counsel", 
+      "Middle Mgmt", "Finance Ops", "Compliance", "PR Disasters",
+      "Brand Sync", "Tax Avoidance", "Procurement", "Ex Mgmt"
+    ];
+
+    function toggleCodeModal(open) {
+      codeModal.style.display = open ? 'flex' : 'none';
+      codeModal.setAttribute('aria-hidden', !open);
+    }
+    showCodeButton.addEventListener('click', () => toggleCodeModal(true));
+    closeCodeButton.addEventListener('click', () => toggleCodeModal(false));
+
+    function toggleVisualizerModal(open) {
+      if (activeRun && !open) {
+        if (!confirm("Matrix maximization sequence active. Break the synergy?")) return;
+        activeRun = false; 
+      }
+      visualizerModal.style.display = open ? 'flex' : 'none';
+      visualizerModal.setAttribute('aria-hidden', !open);
+      
+      if(open) {
+        statsDashboard.style.display = 'none';
+        statusTicker.style.color = '#9b59b6';
+        startFindButton.disabled = false;
+        nodeCountInput.disabled = false;
+        generateNetworkBtn.disabled = false;
+        buildProceduralMatrix();
+      }
+    }
+    openVisualizerButton.addEventListener('click', () => toggleVisualizerModal(true));
+    closeVisualizerButton.addEventListener('click', () => toggleVisualizerModal(false));
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    function buildProceduralMatrix() {
+      let totalNodes = parseInt(nodeCountInput.value, 10);
+      if (isNaN(totalNodes) || totalNodes < 3) {
+        totalNodes = 3;
+        nodeCountInput.value = 3;
+      } else if (totalNodes > 40) {
+        totalNodes = 40;
+        nodeCountInput.value = 40;
+      }
+      
+      departments = [];
+      
+      // Canvas boundaries constraints mapping
+      const minX = 40, maxX = 660;
+      const minY = 40, maxY = 340;
+      const minDistance = 45; // Prevention cushion against stacked overlapping clusters
+
+      for (let i = 0; i < totalNodes; i++) {
+        let x, y, validPosition = false;
+        let protectionCycles = 0;
+
+        while (!validPosition && protectionCycles < 200) {
+          x = Math.floor(Math.random() * (maxX - minX)) + minX;
+          y = Math.floor(Math.random() * (maxY - minY)) + minY;
+          validPosition = true;
+          protectionCycles++;
+
+          // Compare coordinates against already verified nodes
+          for (let j = 0; j < departments.length; j++) {
+            let dist = Math.hypot(x - departments[j].x, y - departments[j].y);
+            if (dist < minDistance) {
+              validPosition = false;
+              break;
+            }
+          }
+        }
+
+        const textLabel = baseLexicon[i % baseLexicon.length] + (i >= baseLexicon.length ? `-${Math.floor(i/baseLexicon.length)}` : '');
+        departments.push({ id: i, label: textLabel, x: x, y: y });
+      }
+
+      adjMatrix = Array.from({ length: totalNodes }, () => Array(totalNodes).fill(0));
+      
+      // Procedural connection calculation system:
+      // Enforce random interconnectivity structures without locking into clean structural geometric arcs
+      for (let i = 0; i < totalNodes; i++) {
+        // Guarantee at least one connection per node to create active components
+        let targetsCount = Math.random() > 0.6 ? 2 : 1;
+        for (let t = 0; t < targetsCount; t++) {
+          let target = Math.floor(Math.random() * totalNodes);
+          if (target !== i) {
+            adjMatrix[i][target] = 1;
+            adjMatrix[target][i] = 1;
+          }
+        }
+      }
+
+      statusTicker.innerText = `Successfully deployed ${totalNodes} scattered departments with randomized handshake linking patterns.`;
+      generateMapLayout();
+    }
+
+    function generateMapLayout() {
+      let edgeElements = '';
+      let nodeElements = '';
+
+      for (let u = 0; u < departments.length; u++) {
+        for (let v = u + 1; v < departments.length; v++) {
+          if (adjMatrix[u][v] === 1) {
+            const from = departments[u];
+            const to = departments[v];
+            edgeElements += `
+              <line id="edge-${u}-${v}" class="edge-line" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" />
+            `;
+          }
+        }
+      }
+
+      departments.forEach(dept => {
+        // Suppress label visibility overhead automatically on highly chaotic charts
+        const labelStyle = departments.length > 14 ? 'display:none;' : '';
+        nodeElements += `
+          <g id="node-group-${dept.id}">
+            <circle id="node-${dept.id}" class="map-node" cx="${dept.x}" cy="${dept.y}" r="9" />
+            <text class="node-text" x="${dept.x}" y="${dept.y + 3}" text-anchor="middle">${dept.id}</text>
+            <text fill="#aaa" font-family="sans-serif" font-size="9" font-weight="bold" x="${dept.x}" y="${dept.y - 14}" text-anchor="middle" style="${labelStyle}">${dept.label}</text>
+            <text id="node-status-${dept.id}" fill="#555" font-family="monospace" font-size="8.5" x="${dept.x}" y="${dept.y + 22}" text-anchor="middle">Open</text>
+          </g>
+        `;
+      });
+
+      chartContainer.innerHTML = `<svg id="mapSvg">${edgeElements}${nodeElements}</svg>`;
+    }
+
+    async function executeBmpFind() {
+      if (activeRun) return;
+
+      activeRun = true;
+      startFindButton.disabled = true;
+      nodeCountInput.disabled = true;
+      generateNetworkBtn.disabled = true;
+      statsDashboard.style.display = 'none';
+      
+      generateMapLayout();
+
+      const n = departments.length;
+      let auditedRoutes = 0;
+      let clusterGroups = [];
+      const visited = new Array(n).fill(false);
+
+      for (let i = 0; i < n; i++) {
+        if (!activeRun) return;
+        
+        if (!visited[i]) {
+          let currentCluster = [];
+          let queue = [i];
+          visited[i] = true;
+
+          statusTicker.style.color = '#3498db';
+          statusTicker.innerText = `Deploying flood trace algorithm from Silo [${i}]...`;
+          await sleep(400);
+
+          while (queue.length > 0) {
+            let u = queue.shift();
+            currentCluster.push(u);
+
+            const activeNode = document.getElementById(`node-${u}`);
+            if (activeNode) activeNode.classList.add('visiting');
+            await sleep(200);
+
+            for (let v = 0; v < n; v++) {
+              if (adjMatrix[u][v] === 1) {
+                auditedRoutes++;
+                
+                const lineId = u < v ? `edge-${u}-${v}` : `edge-${v}-${u}`;
+                const edgeLine = document.getElementById(lineId);
+                if (edgeLine) edgeLine.classList.add('active');
+
+                if (!visited[v]) {
+                  visited[v] = true;
+                  queue.push(v);
+                  const neighborText = document.getElementById(`node-status-${v}`);
+                  if (neighborText) neighborText.textContent = "Linked";
+                  await sleep(100);
+                }
+                if (edgeLine) edgeLine.classList.remove('active');
+              }
+            }
+            if (activeNode) activeNode.classList.remove('visiting');
+          }
+          clusterGroups.push(currentCluster);
+        }
+      }
+
+      // Sort clusters to establish the maximum captured set
+      clusterGroups.sort((a, b) => b.length - a.length);
+      const maximumCartel = clusterGroups[0] || [];
+
+      statusTicker.style.color = '#9b59b6';
+      statusTicker.innerText = `Assembling the largest non-accountability network discovered across the grid...`;
+      await sleep(800);
+
+      maximumCartel.forEach(nodeId => {
+        const targetCircle = document.getElementById(`node-${nodeId}`);
+        const targetText = document.getElementById(`node-status-${nodeId}`);
+        if (targetCircle) targetCircle.className = 'map-node cartel-member';
+        if (targetText) {
+          targetText.textContent = "TRAPPED";
+          targetText.style.fill = "#9b59b6";
+        }
+      });
+
+      for (let i = 0; i < maximumCartel.length; i++) {
+        for (let j = i + 1; j < maximumCartel.length; j++) {
+          let u = maximumCartel[i];
+          let v = maximumCartel[j];
+          if (adjMatrix[u][v] === 1) {
+            const lineId = u < v ? `edge-${u}-${v}` : `edge-${v}-${u}`;
+            const targetLine = document.getElementById(lineId);
+            if (targetLine) targetLine.className = 'edge-line trapped';
+          }
+        }
+      }
+
+      document.getElementById('statRelax').innerText = Math.floor(auditedRoutes / 2);
+      document.getElementById('statUpdates').innerText = clusterGroups.length;
+      document.getElementById('statVisited').innerText = maximumCartel.length;
+      document.getElementById('statYield').innerText = Math.floor((maximumCartel.length / n) * 100);
+      statsDashboard.style.display = 'block';
+
+      statusTicker.innerText = "System saturation complete. Maximum available infrastructure parameters successfully gridlocked.";
+      activeRun = false;
+      startFindButton.disabled = false;
+      nodeCountInput.disabled = false;
+      generateNetworkBtn.disabled = false;
+    }
+
+    generateNetworkBtn.addEventListener('click', buildProceduralMatrix);
+    startFindButton.addEventListener('click', executeBmpFind);
+
+    window.addEventListener('click', event => {
+      if (event.target === codeModal) toggleCodeModal(false);
+      if (event.target === visualizerModal) toggleVisualizerModal(false);
+    });
+  </script>
+</body>
+</html>

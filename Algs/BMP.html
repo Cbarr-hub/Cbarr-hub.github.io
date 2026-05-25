@@ -503,7 +503,7 @@ async function executeBmpFind() {
       const visited = new Array(n).fill(false);
 
       document.getElementById(`node-dist-0`).textContent = "$0k";
-      await sleep(500);
+      await sleep(1200);
 
       for (let iter = 0; iter < n; iter++) {
         let u = -1; 
@@ -521,7 +521,7 @@ async function executeBmpFind() {
 
         statusTicker.style.color = '#f39c12';
         statusTicker.innerText = `Processing overhead via ${departments[u].label} (Current billable yield: $${dist[u]}k)`;
-        await sleep(800);
+        await sleep(1500);
 
         for (let v = 0; v < n; v++) {
           if (weights[u][v] > 0 && !visited[v]) {
@@ -531,7 +531,7 @@ async function executeBmpFind() {
             
             statusTicker.style.color = '#3498db';
             statusTicker.innerText = `Auditing routing channel ${departments[u].label} ➔ ${departments[v].label}...`;
-            await sleep(400);
+            await sleep(700);
 
             const candidate = dist[u] + weights[u][v];
             if (candidate > dist[v]) {
@@ -547,7 +547,7 @@ async function executeBmpFind() {
               
               statusTicker.style.color = '#e74c3c';
               statusTicker.innerText = `Max weight inflated at ${departments[v].label} to $${candidate}k!`;
-              await sleep(600);
+              await sleep(1000);
             }
             if (edgeLine) edgeLine.classList.remove('active');
           }
@@ -568,7 +568,9 @@ async function executeBmpFind() {
         const edgeLine = document.getElementById(`edge-${p}-${curr}`);
         if (edgeLine) edgeLine.classList.add('finalized');
         curr = p;
+        await sleep(600);
       }
+      await sleep(800);
 
       document.getElementById('statRelax').innerText = relaxations;
       document.getElementById('statUpdates').innerText = updates;

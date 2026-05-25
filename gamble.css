@@ -1766,7 +1766,7 @@ body.slots-crazy-active .primary {
 .slot-reel {
   position: relative;
   display: grid;
-  grid-template-rows: repeat(3, minmax(70px, 1fr));
+  grid-template-rows: repeat(3, var(--slot-cell-size));
   gap: var(--slot-gap);
   height: calc(var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-cell-size) + var(--slot-gap) + var(--slot-gap));
   min-width: 0;

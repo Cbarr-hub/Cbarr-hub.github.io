@@ -247,11 +247,20 @@ export function settleSlotMath({ result, bet = 1, bonus = null }) {
   const nextBonus = bonus ? { ...bonus } : null;
   let trigger = null;
   let retrigger = null;
+  let starBonusSpins = 0;
 
   if (inBonus) {
     nextBonus.freeSpins = Math.max(0, nextBonus.freeSpins - 1);
     nextBonus.totalWin += payout;
     nextBonus.stickyWilds = Boolean(nextBonus.stickyWilds);
+
+    if (result.scatterCount > 0) {
+      starBonusSpins = Math.min(
+        result.scatterCount,
+        Math.max(0, SLOT_SCATTER_RULES.freeSpinBankCap - nextBonus.freeSpins)
+      );
+      nextBonus.freeSpins += starBonusSpins;
+    }
 
     if (result.scatterTriggered) {
       const addedSpins = Math.min(
@@ -290,6 +299,7 @@ export function settleSlotMath({ result, bet = 1, bonus = null }) {
     trigger,
     retrigger,
     nextBonus,
-    tier: winTier(payout, bet)
+    tier: winTier(payout, bet),
+    starBonus: starBonusSpins > 0 ? { spins: starBonusSpins } : null
   };
 }

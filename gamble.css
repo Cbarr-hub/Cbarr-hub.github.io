@@ -1031,7 +1031,7 @@ main {
       #c0392b 340.55deg 350.28deg,
       #111827 350.28deg 360deg
     );
-  transition: transform 4.4s cubic-bezier(0.12, 0.7, 0.08, 1);
+  transition: transform 3.1s cubic-bezier(0.12, 0.7, 0.08, 1);
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
 }
 
@@ -1070,7 +1070,7 @@ main {
   position: absolute;
   inset: 24px;
   border-radius: 50%;
-  transition: transform 4.4s cubic-bezier(0.09, 0.78, 0.05, 1);
+  transition: transform 3.1s cubic-bezier(0.09, 0.78, 0.05, 1);
 }
 
 .roulette-ball {
@@ -2046,7 +2046,7 @@ button:disabled {
   gap: 0.55rem;
 }
 
-.auto-reroll {
+.toggle-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -2061,36 +2061,36 @@ button:disabled {
   cursor: pointer;
 }
 
-.auto-reroll[hidden] {
+.toggle-control[hidden] {
   display: none;
 }
 
-.auto-reroll strong,
-.auto-reroll em {
+.toggle-control strong,
+.toggle-control em {
   display: block;
 }
 
-.auto-reroll strong {
+.toggle-control strong {
   color: #fff;
   font-size: 0.9rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.auto-reroll em {
+.toggle-control em {
   margin-top: 0.16rem;
   color: var(--muted);
   font-size: 0.76rem;
   font-style: normal;
 }
 
-.auto-reroll input {
+.toggle-control input {
   position: absolute;
   opacity: 0;
   pointer-events: none;
 }
 
-.auto-reroll i {
+.toggle-control i {
   position: relative;
   display: block;
   width: 54px;
@@ -2101,7 +2101,7 @@ button:disabled {
   transition: background 160ms ease, box-shadow 160ms ease;
 }
 
-.auto-reroll i::after {
+.toggle-control i::after {
   content: "";
   position: absolute;
   top: 4px;
@@ -2114,16 +2114,16 @@ button:disabled {
   transition: transform 160ms ease;
 }
 
-.auto-reroll input:checked + i {
+.toggle-control input:checked + i {
   background: linear-gradient(90deg, #22d3ee, var(--gold));
   box-shadow: 0 0 20px rgba(242, 193, 78, 0.28);
 }
 
-.auto-reroll input:checked + i::after {
+.toggle-control input:checked + i::after {
   transform: translateX(24px);
 }
 
-.auto-reroll:focus-within {
+.toggle-control:focus-within {
   border-color: rgba(242, 193, 78, 0.72);
   box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.16);
 }

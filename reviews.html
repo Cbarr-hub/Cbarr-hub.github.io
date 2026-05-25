@@ -35,6 +35,7 @@
       display: flex;
       flex-direction: column;
       gap: 1.5rem;
+      margin-bottom: 2rem;
     }
 
     .review-item {
@@ -89,6 +90,10 @@
       padding: 1.5rem;
       margin-top: 2rem;
       border-top: 4px solid #00ff00;
+    }
+
+    .review-form h2 {
+      margin-top: 0;
     }
 
     .form-row {
@@ -148,6 +153,13 @@
       border-color: #ffff00;
     }
 
+    .submit-btn:disabled {
+      background: #666666;
+      border-color: #666666;
+      color: #333333;
+      cursor: not-allowed;
+    }
+
     .no-reviews {
       text-align: center;
       color: #00aa00;
@@ -173,6 +185,47 @@
       background: #00ff00;
       color: #000000;
     }
+
+    .aggregate-stats {
+      background: #000000;
+      border: 2px solid #ffff00;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    .aggregate-rating {
+      font-size: 2.5rem;
+      color: #ffff00;
+      margin: 0;
+      letter-spacing: 0.05em;
+    }
+
+    .aggregate-count {
+      color: #00aa00;
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+    }
+
+    .form-message {
+      padding: 0.8rem;
+      margin-bottom: 1rem;
+      border-left: 3px solid;
+      display: none;
+      font-size: 0.9rem;
+    }
+
+    .form-message.success {
+      background: rgba(0, 255, 0, 0.1);
+      border-color: #00ff00;
+      color: #00ff00;
+    }
+
+    .form-message.error {
+      background: rgba(255, 0, 0, 0.1);
+      border-color: #ff0000;
+      color: #ff0000;
+    }
   </style>
 </head>
 <body>
@@ -197,37 +250,19 @@
           <p>User Reports / Testimonials / Feedback Registry</p>
         </div>
 
+        <div class="aggregate-stats">
+          <p class="aggregate-rating" id="aggregateRating">★★★★★</p>
+          <p class="aggregate-count" id="aggregateCount">3 testimonies registered</p>
+        </div>
+
         <div class="review-container" id="reviewContainer">
-          <div class="review-item">
-            <div class="review-header">
-              <span class="review-author">System Administrator</span>
-              <span class="review-date">05.01.26</span>
-            </div>
-            <div class="review-rating">★★★★★ // OPERATIONAL / STABLE</div>
-            <p class="review-text">Infrastructure remains optimal. All systems nominal. Uptime registry verified. Status: PALE GREEN.</p>
-          </div>
-
-          <div class="review-item">
-            <div class="review-header">
-              <span class="review-author">Field Agent Designate 7</span>
-              <span class="review-date">04.28.26</span>
-            </div>
-            <div class="review-rating">★★★★☆ // FUNCTIONAL / RELIABLE</div>
-            <p class="review-text">Navigation protocols executed without incident. Dispatch sequences accurate. Minor latency on secondary nodes noted, but within tolerance parameters.</p>
-          </div>
-
-          <div class="review-item">
-            <div class="review-header">
-              <span class="review-author">Technical Service Unit</span>
-              <span class="review-date">04.15.26</span>
-            </div>
-            <div class="review-rating">★★★★★ // VERIFIED / ROBUST</div>
-            <p class="review-text">Comprehensive diagnostic sweep completed. Zero critical failures detected. Archive integrity confirmed. Recommend continued standard maintenance cycles.</p>
-          </div>
         </div>
 
         <div class="review-form">
           <h2>.: SUBMIT TESTIMONY :.</h2>
+          
+          <div id="formMessage" class="form-message"></div>
+
           <form id="reviewForm">
             <div class="form-row">
               <label for="reviewName">YOUR DESIGNATION</label>
@@ -271,6 +306,158 @@
     </aside>
   </main>
 
-  <script src="site.js"></script>
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+    // Initialize Supabase client
+    const supabase = createClient(
+      'https://iozvhlepkzdswdlbupkc.supabase.co',
+      'sb_publishable_o48gLOxzIatjda1ArxOV2g_WleBVQ0j'
+    );
+
+    // Format date as MM.DD.YY
+    function formatDate(date) {
+      const d = new Date(date);
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const year = String(d.getFullYear()).slice(-2);
+      return `${month}.${day}.${year}`;
+    }
+
+    // Convert rating number to star display
+    function ratingsToStars(rating) {
+      const full = '★';
+      const empty = '☆';
+      const stars = full.repeat(rating) + empty.repeat(5 - rating);
+      const labels = ['CRITICAL', 'MARGINAL', 'ADEQUATE', 'FUNCTIONAL', 'OPTIMAL'];
+      return `${stars} // ${labels[rating - 1]}`;
+    }
+
+    // Calculate and display aggregate rating
+    function updateAggregateRating(reviews) {
+      if (reviews.length === 0) {
+        document.getElementById('aggregateRating').textContent = '-- // NO DATA';
+        document.getElementById('aggregateCount').textContent = '0 testimonies registered';
+        return;
+      }
+
+      const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+      const roundedRating = Math.round(avgRating);
+      const stars = '★'.repeat(roundedRating) + '☆'.repeat(5 - roundedRating);
+      
+      document.getElementById('aggregateRating').textContent = stars;
+      document.getElementById('aggregateCount').textContent = `${reviews.length} ${reviews.length === 1 ? 'testimony' : 'testimonies'} registered`;
+    }
+
+    // Fetch and render all reviews
+    async function renderReviews() {
+      try {
+        const { data: reviews, error } = await supabase
+          .from('reviews')
+          .select('*')
+          .order('date', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching reviews:', error);
+          return;
+        }
+
+        const container = document.getElementById('reviewContainer');
+        container.innerHTML = '';
+
+        if (!reviews || reviews.length === 0) {
+          container.innerHTML = '<div class="no-reviews">No reviews yet. Be the first to register a testimony.</div>';
+          updateAggregateRating([]);
+        } else {
+          reviews.forEach(review => {
+            const reviewEl = document.createElement('div');
+            reviewEl.className = 'review-item';
+            reviewEl.innerHTML = `
+              <div class="review-header">
+                <span class="review-author">${review.name}</span>
+                <span class="review-date">${review.date}</span>
+              </div>
+              <div class="review-rating">${ratingsToStars(review.rating)}</div>
+              <p class="review-text">${review.message}</p>
+            `;
+            container.appendChild(reviewEl);
+          });
+          updateAggregateRating(reviews);
+        }
+      } catch (err) {
+        console.error('Error rendering reviews:', err);
+      }
+    }
+
+    // Handle form submission
+    document.getElementById('reviewForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const name = document.getElementById('reviewName').value.trim();
+      const rating = parseInt(document.getElementById('reviewRating').value);
+      const message = document.getElementById('reviewText').value.trim();
+      const formMessage = document.getElementById('formMessage');
+
+      // Validation
+      if (!name || !rating || !message) {
+        formMessage.textContent = 'ERROR: All fields required.';
+        formMessage.className = 'form-message error';
+        formMessage.style.display = 'block';
+        return;
+      }
+
+      if (message.length < 10) {
+        formMessage.textContent = 'ERROR: Testimony must be at least 10 characters.';
+        formMessage.className = 'form-message error';
+        formMessage.style.display = 'block';
+        return;
+      }
+
+      try {
+        // Create new review record
+        const newReview = {
+          name,
+          rating,
+          date: formatDate(new Date()),
+          message
+        };
+
+        // Insert into Supabase
+        const { data, error } = await supabase
+          .from('reviews')
+          .insert([newReview]);
+
+        if (error) {
+          throw error;
+        }
+
+        // Reset form
+        document.getElementById('reviewForm').reset();
+
+        // Show success message
+        formMessage.textContent = 'SUCCESS: Testimony registered in archive.';
+        formMessage.className = 'form-message success';
+        formMessage.style.display = 'block';
+
+        // Render updated reviews
+        await renderReviews();
+
+        // Clear message after 3 seconds
+        setTimeout(() => {
+          formMessage.style.display = 'none';
+        }, 3000);
+      } catch (err) {
+        console.error('Error submitting review:', err);
+        formMessage.textContent = 'ERROR: Failed to register testimony.';
+        formMessage.className = 'form-message error';
+        formMessage.style.display = 'block';
+      }
+    });
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+      await renderReviews();
+    });
+  </script>
 </body>
 </html>

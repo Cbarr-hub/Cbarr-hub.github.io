@@ -296,7 +296,7 @@
   </div>
 
   <script type="module">
-    import { supabase } from './supabase-client.js'
+    import { dbGetThreads, dbGetThread, dbInsertThread, dbGetThreadComments, dbInsertComment } from './db.js'
 
     const viewList   = document.getElementById('view-list')
     const viewThread = document.getElementById('view-thread')
@@ -318,18 +318,17 @@
 
     // ── thread list ──────────────────────────────────────────
     async function loadThreads() {
-      const { data, error } = await supabase
-        .from('threads')
-        .select('*, comments(count)')
-        .order('created_at', { ascending: false })
-
       const tbody = document.getElementById('thread-list')
       const count = document.getElementById('thread-count')
 
-      if (error) {
+      let data
+      try {
+        data = await dbGetThreads()
+      } catch (error) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="4">error: ${esc(error.message)}</td></tr>`
         return
       }
+
       if (!data.length) {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="4">no threads yet &mdash; be the first</td></tr>'
         count.textContent = ''
@@ -363,9 +362,14 @@
       const btn = document.getElementById('new-thread-btn')
       btn.disabled = true; btn.textContent = 'Posting...'
 
-      const { error } = await supabase.from('threads').insert({ author, title, body })
-      if (error) { alert('error: ' + error.message) }
-      else {
+      try {
+        await dbInsertThread(author, title, body)
+      } catch (error) {
+        alert('error: ' + error.message)
+        btn.disabled = false; btn.textContent = 'Post Thread'
+        return
+      }
+      {
         document.getElementById('new-author').value = ''
         document.getElementById('new-title').value  = ''
         document.getElementById('new-body').value   = ''
@@ -382,12 +386,16 @@
       document.getElementById('thread-detail').innerHTML = 'loading...'
       document.getElementById('comment-list').innerHTML  = ''
 
-      const [{ data: t, error: te }, { data: comments, error: ce }] = await Promise.all([
-        supabase.from('threads').select('*').eq('id', id).single(),
-        supabase.from('comments').select('*').eq('thread_id', id).order('created_at', { ascending: true })
-      ])
-
-      if (te) { document.getElementById('thread-detail').textContent = 'error loading thread'; return }
+      let t, comments, ce
+      try {
+        [t, comments] = await Promise.all([
+          dbGetThread(id),
+          dbGetThreadComments(id)
+        ])
+      } catch (te) {
+        document.getElementById('thread-detail').textContent = 'error loading thread'
+        return
+      }
 
       document.getElementById('thread-detail').innerHTML = `
         <div id="thread-op">
@@ -437,13 +445,14 @@
       const btn = document.getElementById('comment-btn')
       btn.disabled = true; btn.textContent = 'Posting...'
 
-      const { error } = await supabase.from('comments').insert({ thread_id: activeThreadId, author, body })
-      if (error) { alert('error: ' + error.message) }
-      else {
+      try {
+        await dbInsertComment(activeThreadId, author, body)
         document.getElementById('c-author').value = ''
         document.getElementById('c-body').value   = ''
-        const { data } = await supabase.from('comments').select('*').eq('thread_id', activeThreadId).order('created_at', { ascending: true })
-        renderComments(data ?? [], null)
+        const data = await dbGetThreadComments(activeThreadId)
+        renderComments(data, null)
+      } catch (error) {
+        alert('error: ' + error.message)
       }
       btn.disabled = false; btn.textContent = 'Post Comment'
     })

@@ -117,7 +117,7 @@ FILE: index.html
   </div>
 
   <script type="module">
-    import { supabase } from './supabase-client.js'
+    import { dbFindUser } from './db.js'
     import { setSession } from './auth.js'
 
     window.secretDotClick = async function(e) {
@@ -127,18 +127,16 @@ FILE: index.html
       const password = prompt('password')
       if (!password) return
 
-      const { data, error } = await supabase
-        .from('Users')
-        .select('Username')
-        .eq('Username', username)
-        .eq('Password', password)
-        .single()
-
-      if (data && !error) {
-        setSession(username)
-        window.location.href = 'final.html'
-      } else {
-        alert('access denied\n\n' + (error?.message ?? 'no rows returned'))
+      try {
+        const data = await dbFindUser(username, password)
+        if (data) {
+          setSession(username)
+          window.location.href = 'final.html'
+        } else {
+          alert('access denied\n\nno rows returned')
+        }
+      } catch (error) {
+        alert('access denied\n\n' + (error?.message ?? 'unknown error'))
       }
     }
   </script>

@@ -856,35 +856,32 @@
   </script>
 
   <script type="module">
-    import { supabase } from './supabase-client.js'
+    import { dbInsertScore, dbGetTopScores } from './db.js'
     import { getSession } from './auth.js'
 
     window.getLoggedInUser = function() { return getSession() }
 
     window.saveScore = async function(name, seconds) {
-      const { error } = await supabase
-        .from('leaderboard')
-        .insert([{ name, seconds }])
-      if (error) console.error('saveScore:', error)
+      try {
+        await dbInsertScore(name, seconds)
+      } catch (error) {
+        console.error('saveScore:', error)
+      }
     }
 
     window.loadLeaderboard = async function() {
       const tbl = document.getElementById('go-table')
       tbl.innerHTML = '<tr><th>#</th><th>NAME</th><th>TIME</th></tr>'
-      const { data, error } = await supabase
-        .from('leaderboard')
-        .select('name, seconds')
-        .order('seconds', { ascending: false })
-        .limit(10)
-      if (error || !data) {
+      try {
+        const data = await dbGetTopScores(10)
+        data.forEach((row, i) => {
+          const s = row.seconds
+          const time = s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`
+          tbl.innerHTML += `<tr><td>${i+1}</td><td>${row.name}</td><td>${time}</td></tr>`
+        })
+      } catch {
         tbl.innerHTML += '<tr><td colspan="3" style="color:#f66">Could not load scores</td></tr>'
-        return
       }
-      data.forEach((row, i) => {
-        const s = row.seconds
-        const time = s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`
-        tbl.innerHTML += `<tr><td>${i+1}</td><td>${row.name}</td><td>${time}</td></tr>`
-      })
     }
   </script>
 

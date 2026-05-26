@@ -366,7 +366,7 @@
 <script src="site.js"></script>
 
 <script type="module">
-  import { supabase } from './supabase-client.js';
+  import { dbFindUser, dbInsertUser } from './db.js';
   import { setSession, getSession, requireAuth, updateNavbar } from './auth.js';
   import { ensureBalance } from './gamble-data.js';
 
@@ -424,14 +424,8 @@
     setStatus(loginForm, 'Signing in...');
 
     try {
-      const { data, error } = await supabase
-        .from('Users')
-        .select('Username')
-        .eq('Username', username)
-        .eq('Password', password)
-        .single();
-
-      if (error || !data) {
+      const data = await dbFindUser(username, password);
+      if (!data) {
         setStatus(loginForm, 'Invalid username or password', true);
       } else {
         await ensureBalance(username);
@@ -452,18 +446,11 @@
     setStatus(registerForm, 'Creating account...');
 
     try {
-      const { error } = await supabase
-        .from('Users')
-        .insert([{ Username: username, Password: password }]);
-
-      if (error) {
-        setStatus(registerForm, 'Error: ' + (error.message || 'Username may already exist'), true);
-      } else {
-        await ensureBalance(username);
-        setStatus(registerForm, 'Account created! Signing in...');
-        setSession(username);
-        setTimeout(() => location.reload(), 500);
-      }
+      await dbInsertUser(username, password);
+      await ensureBalance(username);
+      setStatus(registerForm, 'Account created! Signing in...');
+      setSession(username);
+      setTimeout(() => location.reload(), 500);
     } catch (err) {
       setStatus(registerForm, 'Error: ' + (err.message || 'Unknown error'), true);
     }

@@ -193,7 +193,7 @@
   </div>
 
   <script type="module">
-    import { supabase } from './supabase-client.js'
+    import { dbGetAllUsers, dbFindUser, dbInsertUser } from './db.js'
     import { getSession, setSession } from './auth.js'
     import { ensureBalance } from './gamble-data.js'
 
@@ -215,24 +215,18 @@
       .replace(/"/g, '&quot;')
 
     async function loadUsers() {
-      const { data, error } = await supabase
-        .from('Users')
-        .select('Username')
-        .order('Username', { ascending: true })
-
-      if (error) {
+      try {
+        const data = await dbGetAllUsers()
+        loginUsernameSelect.innerHTML = '<option value="">Choose a user...</option>' +
+          (data ?? [])
+            .filter((user) => user.Username)
+            .map((user) => `<option value="${esc(user.Username)}">${esc(user.Username)}</option>`)
+            .join('')
+        setStatus('Ready to sign in or create an account.', false)
+      } catch (error) {
         loginUsernameSelect.innerHTML = '<option value="">Type username below</option>'
         setStatus(`Could not load users: ${error.message}`, true)
-        return
       }
-
-      loginUsernameSelect.innerHTML = '<option value="">Choose a user...</option>' +
-        (data ?? [])
-          .filter((user) => user.Username)
-          .map((user) => `<option value="${esc(user.Username)}">${esc(user.Username)}</option>`)
-          .join('')
-
-      setStatus('Ready to sign in or create an account.', false)
     }
 
     loginUsernameSelect.addEventListener('change', () => {
@@ -257,14 +251,15 @@
         return
       }
 
-      const { data, error } = await supabase
-        .from('Users')
-        .select('Username')
-        .eq('Username', username)
-        .eq('Password', password)
-        .single()
+      let userData
+      try {
+        userData = await dbFindUser(username, password)
+      } catch {
+        setStatus('Invalid username or password.', true)
+        return
+      }
 
-      if (error || !data) {
+      if (!userData) {
         setStatus('Invalid username or password.', true)
         return
       }
@@ -287,11 +282,9 @@
         return
       }
 
-      const { error } = await supabase
-        .from('Users')
-        .insert([{ Username: username, Password: password }])
-
-      if (error) {
+      try {
+        await dbInsertUser(username, password)
+      } catch (error) {
         setStatus(`Sign up failed: ${error.message}`, true)
         return
       }

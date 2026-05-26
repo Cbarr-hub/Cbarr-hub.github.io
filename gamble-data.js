@@ -1,4 +1,4 @@
-import { supabase } from './supabase-client.js';
+import { dbUpsertBalance, dbGetBalance, dbGetAllBalances, dbGetAllUsers, dbGetEvents, dbInsertEvent } from './db.js';
 import { normalizeGamblingEvent } from './gamble-events.mjs?v=money-events-2';
 
 export const DEFAULT_BALANCE = 5000;
@@ -8,28 +8,11 @@ export async function ensureBalance(username, defaultBalance = DEFAULT_BALANCE) 
     return;
   }
 
-  const { error } = await supabase
-    .from('Balance')
-    .upsert(
-      { Name: username, Dollers: defaultBalance },
-      { onConflict: 'Name', ignoreDuplicates: true }
-    );
-
-  if (error) {
-    throw error;
-  }
+  await dbUpsertBalance(username, defaultBalance, true);
 }
 
 export async function getPlayerBalance(username) {
-  const { data, error } = await supabase
-    .from('Balance')
-    .select('Dollers')
-    .eq('Name', username)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
+  const data = await dbGetBalance(username);
 
   if (!data) {
     await ensureBalance(username);
@@ -40,44 +23,18 @@ export async function getPlayerBalance(username) {
 }
 
 export async function savePlayerBalance(username, credits) {
-  const { error } = await supabase
-    .from('Balance')
-    .upsert(
-      { Name: username, Dollers: Math.round(credits) },
-      { onConflict: 'Name' }
-    );
-
-  if (error) {
-    throw error;
-  }
+  await dbUpsertBalance(username, Math.round(credits));
 }
 
 export async function getLeaderboardRows() {
-  const [{ data: users, error: usersError }, { data: balances, error: balancesError }, { data: events, error: eventsError }] = await Promise.all([
-    supabase
-      .from('Users')
-      .select('Username')
-      .order('Username', { ascending: true }),
-    supabase
-      .from('Balance')
-      .select('Name,Dollers'),
-    supabase
-      .from('gambling_events')
-      .select('created_at,username,outcome,event_type,bet_amount,net_change,payout_amount')
-      .order('created_at', { ascending: true })
+  const [users, balances, events] = await Promise.all([
+    dbGetAllUsers(),
+    dbGetAllBalances(),
+    dbGetEvents({
+      fields: 'created_at,username,outcome,event_type,bet_amount,net_change,payout_amount',
+      ascending: true
+    })
   ]);
-
-  if (usersError) {
-    throw usersError;
-  }
-
-  if (balancesError) {
-    throw balancesError;
-  }
-
-  if (eventsError) {
-    throw eventsError;
-  }
 
   const balancesByName = new Map((balances ?? []).map((row) => [row.Name, Number(row.Dollers ?? DEFAULT_BALANCE)]));
   const statsByName = new Map();
@@ -136,56 +93,25 @@ export async function getLeaderboardRows() {
 }
 
 export async function insertGamblingEvent(event) {
-  const { error } = await supabase
-    .from('gambling_events')
-    .insert([event]);
-
-  if (error) {
-    throw error;
-  }
+  await dbInsertEvent(event);
 }
 
 export async function getRecentGamblingEvents(limit = 12) {
-  const { data, error } = await supabase
-    .from('gambling_events')
-    .select('created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    throw error;
-  }
-
-  return data ?? [];
+  return dbGetEvents({
+    fields: 'created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details',
+    limit
+  });
 }
 
 export async function getGamblingDashboardData() {
-  const [{ data: users, error: usersError }, { data: balances, error: balancesError }, { data: events, error: eventsError }] = await Promise.all([
-    supabase
-      .from('Users')
-      .select('Username')
-      .order('Username', { ascending: true }),
-    supabase
-      .from('Balance')
-      .select('Name,Dollers'),
-    supabase
-      .from('gambling_events')
-      .select('created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details')
-      .order('created_at', { ascending: false })
-      .limit(5000)
+  const [users, balances, events] = await Promise.all([
+    dbGetAllUsers(),
+    dbGetAllBalances(),
+    dbGetEvents({
+      fields: 'created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details',
+      limit: 5000
+    })
   ]);
-
-  if (usersError) {
-    throw usersError;
-  }
-
-  if (balancesError) {
-    throw balancesError;
-  }
-
-  if (eventsError) {
-    throw eventsError;
-  }
 
   return {
     users: users ?? [],

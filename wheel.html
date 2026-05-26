@@ -108,7 +108,7 @@
   </div>
 
   <script type="module">
-    let supabase;
+    let dbGetAllGames, dbGetAllUsers;
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
       blue: '#007bff',
@@ -192,10 +192,11 @@
       }
 
       try {
-        const supabaseModule = await import('./supabase-client.js');
-        supabase = supabaseModule.supabase;
+        const dbModule = await import('./db.js');
+        dbGetAllGames = dbModule.dbGetAllGames;
+        dbGetAllUsers = dbModule.dbGetAllUsers;
       } catch (error) {
-        console.warn('Supabase import failed:', error);
+        console.warn('DB import failed:', error);
       }
 
       await loadGames();
@@ -234,23 +235,19 @@
       resultDisplay.textContent = 'Loading games...';
       setSlotMessage('Loading games...');
 
-      if (supabase) {
-        const { data, error } = await supabase
-          .from('games')
-          .select('id,name,players,minplayers,maxplayers,time_minutes')
-          .order('name', { ascending: true });
-
-        if (error) {
-          console.error('Unable to load games', error);
-          resultDisplay.textContent = 'Could not load games from database.';
-          setSlotMessage('Using built-in game list.');
-        } else {
+      if (dbGetAllGames) {
+        try {
+          const data = await dbGetAllGames();
           const loadedGames = (data || [])
             .map(normalizeGame)
             .filter(game => game.name);
           if (loadedGames.length > 0) {
             allGames = loadedGames;
           }
+        } catch (error) {
+          console.error('Unable to load games', error);
+          resultDisplay.textContent = 'Could not load games from database.';
+          setSlotMessage('Using built-in game list.');
         }
       }
 
@@ -399,19 +396,20 @@
       userWheelState.isLoading = true;
       renderUserWheel();
 
-      if (!supabase) {
+      if (!dbGetAllUsers) {
         userWheelState.isLoading = false;
         userWheelState.error = 'Could not connect to database.';
         renderUserWheel();
         return;
       }
 
-      const { data, error } = await supabase
-        .from('Users')
-        .select('Username')
-        .order('Username', { ascending: true });
-
-      if (error) {
+      let users;
+      try {
+        const data = await dbGetAllUsers();
+        users = (data || [])
+          .map(row => row.Username)
+          .filter(Boolean);
+      } catch (error) {
         console.error('Unable to load users', error);
         userWheelState.users = [];
         userWheelState.selected = new Set();
@@ -420,10 +418,6 @@
         renderUserWheel();
         return;
       }
-
-      const users = (data || [])
-        .map(row => row.Username)
-        .filter(Boolean);
 
       userWheelState.users = users;
       userWheelState.selected = new Set(users);

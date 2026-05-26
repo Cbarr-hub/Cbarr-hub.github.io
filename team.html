@@ -105,6 +105,26 @@
       object-fit: cover;
       border: 1px solid #1e2e1e;
       display: block;
+      cursor: zoom-in;
+    }
+
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.88);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img {
+      max-width: 90vw;
+      max-height: 90vh;
+      object-fit: contain;
+      border: 1px solid #1e2e1e;
+      box-shadow: 0 0 40px #00000088;
+      cursor: zoom-out;
     }
     .member-gallery img:only-child {
       width: 100%;
@@ -178,7 +198,7 @@
           <h4>// ABOUT</h4>
           <p>A little thing you gotta know about me is that the and the too for so can an though enought of the pee pee poo poo and but so the and for the why.</p>
           <p>:D</p>
-          <p>In a previous life Connor was a </p>
+          <p>There are a lot of true rumors about me </p>
         </div>
         <div class="member-gallery">
           <img src="MeetTheTeam/Connor/Connor1.jpg" alt="Connor photo 1" />
@@ -289,5 +309,28 @@
     </div>
 
   </div>
+
+  <div id="lightbox">
+    <img id="lightbox-img" src="" alt="" />
+  </div>
+
+  <script>
+    const lb    = document.getElementById('lightbox')
+    const lbImg = document.getElementById('lightbox-img')
+
+    document.querySelectorAll('.member-gallery img').forEach(img => {
+      img.addEventListener('click', () => {
+        lbImg.src = img.src
+        lbImg.alt = img.alt
+        lb.classList.add('open')
+      })
+    })
+
+    lb.addEventListener('click', () => lb.classList.remove('open'))
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') lb.classList.remove('open')
+    })
+  </script>
 </body>
 </html>

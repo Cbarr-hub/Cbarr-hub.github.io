@@ -22,7 +22,6 @@
 
 - 1.c.1 soying out  
 - 1.c.2 prosperity  
-- 1.c.3 inalienable right for there to be a jewish state  
 - 1.c.4 greed  
 - 1.c.5 hate  
 - 1.c.6 shame  

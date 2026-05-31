@@ -454,6 +454,9 @@
               secEl.querySelectorAll('[data-qs-key]').forEach(el => {
                 values[el.dataset.qsKey] = el.type === 'number' ? Number(el.value) : el.value
               })
+              if (sectionKey === 'saveAs') {
+                if (!confirm(`Save current world as "${values.saveName}"?\n\nIf a save with this name already exists it will be overwritten.`)) return
+              }
               setErr('')
               const btn = secEl.querySelector('[data-qs-save]')
               btn.disabled = true

@@ -76,9 +76,21 @@ export class FactorioConnector extends LinuxGsmConnector {
       });
       return (res.stdout || '').split('\n')
         .map(l => l.trim().replace(/^.*\//, '').replace(/\.zip$/, ''))
-        .filter(n => n.length > 0);
+        .filter(n => n.length > 0 && !n.startsWith('_')); // exclude _autosave* files
     } catch {
       return [];
+    }
+  }
+
+  async #latestAutosave() {
+    try {
+      const res = await this.runShell(
+        `ls -t "${SAVES_DIR}"/_autosave*.zip 2>/dev/null | head -1`,
+        { asUser: this.gsmUser, timeoutMs: 15_000 },
+      );
+      return res.stdout.trim() || null;
+    } catch {
+      return null;
     }
   }
 
@@ -108,8 +120,18 @@ export class FactorioConnector extends LinuxGsmConnector {
               label:   'World',
               type:    'select',
               value:   currentSave || saves[0] || '',
-              options: saveOpts.length ? saveOpts : [{ value: '', label: '(no saves found)' }],
+              options: saveOpts.length
+                ? saveOpts
+                : [{ value: '', label: '(no named saves — use Save Current World As first)' }],
             },
+          ],
+        },
+        {
+          key:       'saveAs',
+          title:     'Save Current World As',
+          saveLabel: 'Save As',
+          fields: [
+            { key: 'saveName', label: 'Save Name', type: 'text', value: '' },
           ],
         },
         {
@@ -142,6 +164,27 @@ export class FactorioConnector extends LinuxGsmConnector {
     const cleanName = saveName.trim();
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(cleanName)) {
       throw bad('save name may only contain letters, digits, underscores, and hyphens (max 64 chars)');
+    }
+
+    // ── Copy current world state to a named save ────────────────────────────
+    if (section === 'saveAs') {
+      // Source: latest autosave (most current state), or current savegame if no autosave exists.
+      const lgsmText = (await this.client.agentFileRead(this.vmid, LGSM_CFG)).content ?? '';
+      const rawSave  = getVar(lgsmText, 'savegame') || '';
+      const currName = rawSave.replace(/^.*\//, '').replace(/\.zip$/, '');
+
+      const source = await this.#latestAutosave()
+        ?? (currName ? `${SAVES_DIR}/${currName}.zip` : null);
+
+      if (!source) throw bad('no autosave or active save found to copy from');
+
+      const dest   = `${SAVES_DIR}/${cleanName}.zip`;
+      const cpRes  = await this.runShell(`cp "${source}" "${dest}"`, {
+        asUser: this.gsmUser, timeoutMs: 30_000,
+      });
+      if (cpRes.exitCode !== 0) throw bad(`copy failed: ${cpRes.stderr || cpRes.stdout}`);
+
+      return { ok: true, action: 'saveAs', saveName: cleanName, source };
     }
 
     // ── Load an existing save ────────────────────────────────────────────────

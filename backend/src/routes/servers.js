@@ -103,13 +103,25 @@ export default async function serversRoutes(app) {
       body: {
         type: 'object',
         properties: {
-          map: { type: 'string', maxLength: 80 },
+          // Counter-Strike
+          map:        { type: 'string', maxLength: 80 },
           workshopId: { type: 'string', maxLength: 20 },
-          gameMode: { type: 'string', maxLength: 32 },
+          gameMode:   { type: 'string', maxLength: 32 },
           maxPlayers: { type: 'integer', minimum: 1, maximum: 64 },
-          hostname: { type: 'string', maxLength: 64 },
+          hostname:   { type: 'string', maxLength: 64 },
+          // Factorio (shared by both sections)
+          section:     { type: 'string', maxLength: 32 },
+          saveName:    { type: 'string', maxLength: 64 },
+          // Factorio new-world generation
+          preset:       { type: 'string', maxLength: 32 },
+          seed:         { type: 'string', maxLength: 12 },
+          startingArea: { type: 'string', maxLength: 16 },
+          oreFrequency: { type: 'string', maxLength: 16 },
+          oreSize:      { type: 'string', maxLength: 16 },
+          oreRichness:  { type: 'string', maxLength: 16 },
+          enemies:      { type: 'string', maxLength: 16 },
         },
-        additionalProperties: false,
+        // connector validates game-specific fields; no additionalProperties restriction
       },
     },
   }, async (req, reply) => {

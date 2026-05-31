@@ -5,6 +5,7 @@ import { getServer, listServers } from '../src/servers/registry.js';
 import { normalizeStatus } from '../src/servers/connectors/base.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
 import { getVar, setVar, setVars } from '../src/servers/cfgvars.js';
+import { getCvar, setCvars } from '../src/servers/cvars.js';
 
 // A fake ProxmoxClient: records calls, returns canned data. No network.
 function fakeClient(overrides = {}) {
@@ -160,41 +161,70 @@ test('cfgvars reads, replaces, and appends shell-style assignments', () => {
   assert.equal(getVar(multi, 'maxplayers'), '12');
 });
 
-// ── CS quick settings ────────────────────────────────────────────────────────────
-const CS_CFG = 'gslt=""\nwsstartmap="3071005299"\nstartmap="de_anubis"\nmaxplayers="10"\n';
+// ── cvars helper (Source-engine cfg) ──────────────────────────────────────────────
+test('cvars reads/sets Source cfg cvars without matching prefix collisions', () => {
+  const cfg = 'map "de_anubis"\nmapcyclefile "mapcycle.txt"\nhost_workshop_map "3071005299"\ngame_alias "competitive"\n';
+  assert.equal(getCvar(cfg, 'map'), 'de_anubis');               // not "mapcyclefile"
+  assert.equal(getCvar(cfg, 'host_workshop_map'), '3071005299');
+  assert.equal(getCvar(cfg, 'absent'), undefined);
+  const out = setCvars(cfg, { map: 'de_nuke', host_workshop_map: '' });
+  assert.equal(getCvar(out, 'map'), 'de_nuke');
+  assert.equal(getCvar(out, 'host_workshop_map'), '');
+  assert.match(out, /mapcyclefile "mapcycle.txt"/);             // untouched
+});
+
+// ── CS quick settings (game-config based) ─────────────────────────────────────────
+const CS_GAME_CFG = 'hostname "LinuxGSM"\nmap "de_anubis"\nmapcyclefile "mapcycle.txt"\n' +
+  'game_alias "competitive"\nhost_workshop_collection \nhost_workshop_map "3071005299"\n';
+const CS_INSTANCE_CFG = 'gslt=""\nstartmap="de_anubis"\nmaxplayers="10"\n';
 
 function csClient(onWrite) {
+  const isGame = (f) => f.endsWith('/cfg/cs2server.cfg');
   return fakeClient({
-    agentFileRead: () => Promise.resolve({ content: CS_CFG, truncated: false }),
-    agentFileWrite: (_vmid, _file, content) => { if (onWrite) onWrite(content); return Promise.resolve(); },
-    // #listMaps → ls output
+    agentFileRead: (_vmid, file) => Promise.resolve({
+      content: isGame(file) ? CS_GAME_CFG : CS_INSTANCE_CFG, truncated: false,
+    }),
+    agentFileWrite: (_vmid, file, content) => { if (onWrite) onWrite(file, content); return Promise.resolve(); },
     agentExec: () => Promise.resolve({ pid: 1 }),
     agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 0,
       'out-data': '/maps/de_dust2.vpk\n/maps/de_anubis.vpk\n/maps/de_dust2_vanity.vpk\n/maps/lobby_mapveto.vpk\n' }),
   });
 }
 
-test('CS getSettings exposes map + gameMode + maxPlayers with current values', async () => {
+test('CS getSettings reflects the workshop map actually in effect', async () => {
   const svc = createServerService({ client: csClient() });
   const s = await svc.getSettings('counterstrike');
   const byKey = Object.fromEntries(s.fields.map((f) => [f.key, f]));
-  assert.equal(byKey.map.value, 'de_anubis');
+  // host_workshop_map overrides the stock `map`, so effective map is the workshop one
+  assert.equal(byKey.map.value, 'ws:3071005299');
+  assert.equal(byKey.gameMode.value, 'competitive');
   assert.equal(byKey.maxPlayers.value, 10);
-  assert.equal(byKey.gameMode.value, 'competitive'); // no +game_type yet → default
-  // _vanity / non-game maps filtered out, real maps present
+  // Assembly is offered as a labelled workshop option
+  assert.ok(byKey.map.options.some((o) => o.value === 'ws:3071005299' && /Assembly/.test(o.label)));
   const mapVals = byKey.map.options.map((o) => o.value);
-  assert.ok(mapVals.includes('de_dust2') && mapVals.includes('de_anubis'));
-  assert.ok(!mapVals.includes('de_dust2_vanity') && !mapVals.includes('lobby_mapveto'));
+  assert.ok(mapVals.includes('de_dust2') && !mapVals.includes('de_dust2_vanity'));
 });
 
-test('CS setSettings writes map/maxplayers and a managed startparameters with game mode', async () => {
-  let written = '';
-  const svc = createServerService({ client: csClient((c) => { written = c; }) });
+test('CS setSettings: stock map clears the workshop override', async () => {
+  const writes = {};
+  const svc = createServerService({ client: csClient((f, c) => { writes[f.endsWith('/cfg/cs2server.cfg') ? 'game' : 'inst'] = c; }) });
   await svc.setSettings('counterstrike', { map: 'de_nuke', gameMode: 'deathmatch', maxPlayers: 12 });
-  assert.equal(getVar(written, 'startmap'), 'de_nuke');
-  assert.equal(getVar(written, 'wsstartmap'), '');     // workshop cleared for stock map
-  assert.equal(getVar(written, 'maxplayers'), '12');
-  assert.match(getVar(written, 'startparameters'), /\+game_type 1 \+game_mode 2/); // deathmatch
+  assert.equal(getCvar(writes.game, 'map'), 'de_nuke');
+  assert.equal(getCvar(writes.game, 'host_workshop_map'), '');     // cleared
+  assert.equal(getCvar(writes.game, 'game_alias'), 'deathmatch');
+  assert.equal(getVar(writes.inst, 'maxplayers'), '12');
+});
+
+test('CS setSettings: workshop selection and ID override set host_workshop_map', async () => {
+  let game1 = '';
+  const svc1 = createServerService({ client: csClient((f, c) => { if (f.endsWith('/cfg/cs2server.cfg')) game1 = c; }) });
+  await svc1.setSettings('counterstrike', { map: 'ws:123456' });
+  assert.equal(getCvar(game1, 'host_workshop_map'), '123456');
+
+  let game2 = '';
+  const svc2 = createServerService({ client: csClient((f, c) => { if (f.endsWith('/cfg/cs2server.cfg')) game2 = c; }) });
+  await svc2.setSettings('counterstrike', { map: 'de_dust2', workshopId: '999' }); // override wins
+  assert.equal(getCvar(game2, 'host_workshop_map'), '999');
 });
 
 test('CS setSettings rejects bad values', async () => {
@@ -202,10 +232,22 @@ test('CS setSettings rejects bad values', async () => {
   await assert.rejects(() => svc.setSettings('counterstrike', { gameMode: 'bogus' }), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => svc.setSettings('counterstrike', { maxPlayers: 999 }), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => svc.setSettings('counterstrike', { map: 'de nuke; rm' }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => svc.setSettings('counterstrike', { workshopId: 'abc' }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => svc.setSettings('counterstrike', { hostname: 'a"b' }), (e) => e.code === 'BAD_SETTING');
 });
 
 test('servers without quick settings return empty fields', async () => {
   const svc = createServerService({ client: fakeClient() });
   const s = await svc.getSettings('minecraft');
   assert.deepEqual(s.fields, []);
+});
+
+// ── connection strings ────────────────────────────────────────────────────────────
+test('connect strings render per game from the registry + public host', async () => {
+  const svc = createServerService({ client: fakeClient(), publicHost: '1.2.3.4' });
+  const list = await svc.listServers();
+  const byId = Object.fromEntries(list.map((s) => [s.id, s.connect]));
+  assert.equal(byId.counterstrike.string, 'connect 1.2.3.4:27015');
+  assert.equal(byId.factorio.string, '1.2.3.4:34197');
+  assert.equal(byId.minecraft.string, '1.2.3.4:25565');
 });

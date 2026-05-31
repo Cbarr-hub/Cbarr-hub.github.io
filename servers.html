@@ -85,6 +85,17 @@
     .srv-body { padding: 8px; }
     .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
 
+    .connbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .connbar .clbl { color: #7bb85f; font-size: 11px; font-weight: bold; }
+    .connbar code {
+      flex: 1; min-width: 0; background: #141414; border: 1px solid #2a2a2a; color: #b8d4a0;
+      padding: 4px 6px; font-family: "Courier New", monospace; font-size: 12px;
+      white-space: nowrap; overflow: auto;
+    }
+    .copy-btn { background: #2a3a4a; border: 1px solid #5f8fb8; color: #d4d4b8; padding: 4px 10px;
+      font-size: 11px; font-weight: bold; cursor: pointer; font-family: Verdana, Arial, sans-serif; }
+    .copy-btn:hover { background: #3a5a7a; color: #9fd0ff; }
+
     button.retro-btn {
       background: #2a4a1a;
       color: #d4d4b8;
@@ -251,6 +262,12 @@
           </div>
         </div>
         <div class="srv-body">
+          ${s.connect?.string ? `
+          <div class="connbar">
+            <span class="clbl">Join</span>
+            <code data-conn>${esc(s.connect.string)}</code>
+            <button class="copy-btn" data-copy>Copy</button>
+          </div>` : ''}
           <div class="btn-row">
             <button class="retro-btn" data-act="start">Start</button>
             <button class="retro-btn" data-act="reboot">Restart</button>
@@ -310,6 +327,23 @@
           setErr(s?.error || '')
         } catch (e) { setErr(e.message) }
       }
+
+      // copy join string
+      const copyBtn = root.querySelector('[data-copy]')
+      if (copyBtn) copyBtn.addEventListener('click', async () => {
+        const txt = root.querySelector('[data-conn]').textContent
+        try {
+          await navigator.clipboard.writeText(txt)
+        } catch {
+          // clipboard API needs HTTPS/permission; fall back to a manual select
+          const r = document.createRange(); r.selectNode(root.querySelector('[data-conn]'))
+          const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r)
+          try { document.execCommand('copy') } catch {}
+          sel.removeAllRanges()
+        }
+        const old = copyBtn.textContent; copyBtn.textContent = 'Copied!'
+        setTimeout(() => { copyBtn.textContent = old }, 1200)
+      })
 
       // power actions
       root.querySelectorAll('[data-act]').forEach(btn => {

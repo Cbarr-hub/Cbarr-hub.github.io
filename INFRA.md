@@ -306,13 +306,28 @@ control the game.
 Manage them as root in-guest: `systemctl {start,stop,status} <unit>`. Disable
 auto-start with `systemctl disable <unit>`.
 
-**CS quick settings (map / game mode / max players):** `servers.html` shows a
-structured editor for CS backed by `GET/PUT /api/servers/counterstrike/settings`.
-It edits the LinuxGSM instance config `lgsm/config-lgsm/cs2server/cs2server.cfg`:
-`startmap` (map, clears `wsstartmap`), `maxplayers`, and a managed
-`startparameters` line carrying `+game_type/+game_mode` (Competitive / Wingman /
-Casual / Deathmatch / Arms Race / Demolition). **Changes apply on the next server
-restart.** Connector: `connectors/counterstrike.js`; var I/O: `servers/cfgvars.js`.
+**CS quick settings (map / workshop map / game mode / name / max players):**
+`servers.html` shows a structured editor backed by
+`GET/PUT /api/servers/counterstrike/settings`. The cs2 process launches with only
+`+exec cs2server.cfg`, so the real control surface is the **game config**
+`serverfiles/game/csgo/cfg/cs2server.cfg`:
+- `map "<stock>"` — stock map
+- `host_workshop_map "<id>"` — **Steam Workshop map; OVERRIDES `map`** (this is why
+  the server can run e.g. Assembly `3071005299` while `map` says `de_anubis`)
+- `game_alias "<alias>"` — game mode (competitive / casual / deathmatch / wingman)
+- `hostname "<name>"` — server name
+
+`maxplayers` lives in the LGSM instance cfg (`-maxplayers`). The editor offers
+stock maps (listed from installed `.vpk`s) plus a curated workshop-map catalog
+(`WORKSHOP_MAPS` in `connectors/counterstrike.js`) and an arbitrary Workshop-ID
+override. **Changes apply on the next restart.** Cvar I/O: `servers/cvars.js`
+(Source cfg) and `servers/cfgvars.js` (shell vars).
+
+**Join strings:** each server's `connect` info comes from the registry
+(`port` + `connect` style) and `PUBLIC_HOST` (env, default `104.177.95.216` —
+update if the dynamic WAN IP changes). The panel shows a copy button:
+CS `connect 104.177.95.216:27015`, Factorio `104.177.95.216:34197`,
+Minecraft `104.177.95.216:25565`.
 
 **Notes / known gaps:**
 - The QEMU guest agent executes as **root**; LinuxGSM refuses to run as root, so the

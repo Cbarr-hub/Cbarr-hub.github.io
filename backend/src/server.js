@@ -69,7 +69,7 @@ export async function buildApp(env = loadEnv()) {
       })
     : null;
   if (!proxmox) app.log.warn('PVE token not configured — /api/servers will return 503');
-  app.decorate('serverService', createServerService({ client: proxmox }));
+  app.decorate('serverService', createServerService({ client: proxmox, publicHost: env.PUBLIC_HOST }));
 
   app.get('/api/health', async () => ({ ok: true }));
 

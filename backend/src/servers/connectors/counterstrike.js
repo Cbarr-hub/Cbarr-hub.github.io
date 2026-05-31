@@ -4,44 +4,43 @@
 //   install dir : /home/miles/csserver   (owned by user `miles`)
 //   control     : ./cs2server start|stop|restart|update   (run as miles)
 //
-// Quick settings (map + game mode + max players) are stored in the LinuxGSM
-// instance config and applied to the launch command. They take effect on the
-// next server restart.
+// Map + game mode actually come from the exec'd game config (the cs2 process
+// launches with just `+exec cs2server.cfg`), NOT from LinuxGSM start params:
+//   game cfg : serverfiles/game/csgo/cfg/cs2server.cfg
+//     map "<stock>"                 stock map (used when no workshop map set)
+//     host_workshop_map "<id>"      Steam Workshop map — OVERRIDES `map`
+//     game_alias "<alias>"          game mode (competitive/casual/deathmatch/wingman)
+//     hostname "<name>"             server name in the browser
+//   maxplayers lives in the LGSM instance cfg (flows to -maxplayers).
+// Changes apply on the next server restart.
 
 import { LinuxGsmConnector } from './linuxgsm.js';
-import { getVar, setVars } from '../cfgvars.js';
+import { getVar, setVar } from '../cfgvars.js';
+import { getCvar, setCvars } from '../cvars.js';
 
 const DIR = '/home/miles/csserver';
+const GAME_CFG = `${DIR}/serverfiles/game/csgo/cfg/cs2server.cfg`;
 const INSTANCE_CFG = `${DIR}/lgsm/config-lgsm/cs2server/cs2server.cfg`;
 const MAPS_DIR = `${DIR}/serverfiles/game/csgo/maps`;
 
-// CS2 game modes are the (game_type, game_mode) launch cvar pair.
-const MODES = {
-  competitive: { type: 0, mode: 1, label: 'Competitive' },
-  wingman:     { type: 0, mode: 2, label: 'Wingman (2v2)' },
-  casual:      { type: 0, mode: 0, label: 'Casual' },
-  deathmatch:  { type: 1, mode: 2, label: 'Deathmatch' },
-  armsrace:    { type: 1, mode: 0, label: 'Arms Race' },
-  demolition:  { type: 1, mode: 1, label: 'Demolition' },
-};
-const MODE_KEYS = Object.keys(MODES);
+// Curated Steam Workshop maps the panel offers. Add { id, name } entries to
+// extend the dropdown; arbitrary IDs can still be entered in the override field.
+const WORKSHOP_MAPS = [
+  { id: '3071005299', name: 'Assembly' },
+];
 
-// Reasonable fallback if the maps directory can't be listed.
-const STOCK_MAPS = [
+// CS2 game-mode aliases (game_alias sets game_type+game_mode under the hood).
+const GAME_ALIASES = {
+  competitive: 'Competitive',
+  casual: 'Casual',
+  deathmatch: 'Deathmatch',
+  wingman: 'Wingman (2v2)',
+};
+
+const STOCK_FALLBACK = [
   'de_ancient', 'de_anubis', 'de_dust2', 'de_inferno', 'de_mirage',
   'de_nuke', 'de_overpass', 'de_train', 'de_vertigo', 'cs_italy', 'cs_office',
 ];
-
-// The launch line we manage. LGSM expands the ${...} refs itself, so they stay
-// literal in the file. Only +game_type / +game_mode change per game mode.
-function startParameters(type, mode) {
-  return `-dedicated -ip \${ip} -port \${port} -maxplayers \${maxplayers} ` +
-    `-authkey \${wsapikey} +game_type ${type} +game_mode ${mode} +exec \${selfname}.cfg`;
-}
-
-function modeKeyFromTypeMode(type, mode) {
-  return MODE_KEYS.find((k) => MODES[k].type === Number(type) && MODES[k].mode === Number(mode));
-}
 
 export class CounterStrikeConnector extends LinuxGsmConnector {
   gsmUser = 'miles';
@@ -49,78 +48,105 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
   gsmScript = 'cs2server';
 
   configFiles = {
-    'server.cfg': `${DIR}/serverfiles/game/csgo/cfg/cs2server.cfg`,
+    'server.cfg': GAME_CFG,
     'lgsm.cfg': INSTANCE_CFG,
     'lgsm-common.cfg': `${DIR}/lgsm/config-lgsm/cs2server/common.cfg`,
   };
 
-  // List installed, playable maps (drop _vanity duplicates and non-game vpks).
   async #listMaps() {
     try {
       const res = await this.runShell(`ls -1 ${MAPS_DIR}/*.vpk 2>/dev/null`, { asUser: this.gsmUser, timeoutMs: 15_000 });
-      const names = (res.stdout || '')
-        .split('\n')
+      const names = (res.stdout || '').split('\n')
         .map((l) => l.trim().replace(/^.*\//, '').replace(/\.vpk$/, ''))
         .filter((n) => /^(de|cs|ar|dz|gd|coop)_/.test(n) && !n.endsWith('_vanity'));
       const uniq = [...new Set(names)].sort();
-      return uniq.length ? uniq : STOCK_MAPS;
+      return uniq.length ? uniq : STOCK_FALLBACK;
     } catch {
-      return STOCK_MAPS;
+      return STOCK_FALLBACK;
     }
   }
 
   async getSettings() {
-    const { content } = await this.client.agentFileRead(this.vmid, INSTANCE_CFG)
-      .then((r) => ({ content: r.content ?? '' }))
-      .catch(() => ({ content: '' }));
+    const game = await this.client.agentFileRead(this.vmid, GAME_CFG)
+      .then((r) => r.content ?? '').catch(() => '');
+    const inst = await this.client.agentFileRead(this.vmid, INSTANCE_CFG)
+      .then((r) => r.content ?? '').catch(() => '');
 
-    const startmap = getVar(content, 'startmap') || 'de_dust2';
-    const wsstartmap = getVar(content, 'wsstartmap') || '';
-    const maxplayers = Number(getVar(content, 'maxplayers') || 10);
-    const sp = getVar(content, 'startparameters') || '';
-    const mm = sp.match(/\+game_type\s+(\d+)\s+\+game_mode\s+(\d+)/);
-    const modeKey = (mm && modeKeyFromTypeMode(mm[1], mm[2])) || 'competitive';
+    const hwm = (getCvar(game, 'host_workshop_map') || '').trim();
+    const stockMap = getCvar(game, 'map') || 'de_dust2';
+    const alias = (getCvar(game, 'game_alias') || 'competitive').trim();
+    const hostname = getCvar(game, 'hostname') ?? '';
+    const maxplayers = Number(getVar(inst, 'maxplayers') || 10);
 
-    const maps = await this.#listMaps();
-    // Ensure the current map is selectable even if not in the listed set.
-    const mapOptions = [...new Set([startmap, ...maps])].map((m) => ({ value: m, label: m }));
+    const stock = await this.#listMaps();
+    // Build the map dropdown: stock maps + curated workshop maps.
+    const options = [
+      ...stock.map((m) => ({ value: m, label: m })),
+      ...WORKSHOP_MAPS.map((w) => ({ value: `ws:${w.id}`, label: `${w.name} (Workshop)` })),
+    ];
+    const current = hwm ? `ws:${hwm}` : stockMap;
+    // Make sure the current selection is always present, even an unknown workshop id.
+    if (!options.some((o) => o.value === current)) {
+      options.unshift({ value: current, label: hwm ? `Workshop ${hwm}` : stockMap });
+    }
 
     return {
       fields: [
-        { key: 'map', label: 'Starting Map', type: 'select', value: startmap, options: mapOptions },
-        { key: 'gameMode', label: 'Game Mode', type: 'select', value: modeKey,
-          options: MODE_KEYS.map((k) => ({ value: k, label: MODES[k].label })) },
+        { key: 'map', label: 'Map', type: 'select', value: current, options },
+        { key: 'workshopId', label: 'Workshop ID', type: 'text', value: '',
+          placeholder: 'advanced: overrides Map with this Workshop id' },
+        { key: 'gameMode', label: 'Game Mode', type: 'select',
+          value: GAME_ALIASES[alias] ? alias : 'competitive',
+          options: Object.entries(GAME_ALIASES).map(([v, l]) => ({ value: v, label: l })) },
         { key: 'maxPlayers', label: 'Max Players', type: 'number', value: maxplayers, min: 1, max: 64 },
+        { key: 'hostname', label: 'Server Name', type: 'text', value: hostname },
       ],
-      note: wsstartmap
-        ? 'A Workshop start-map is currently set; choosing a stock map here clears it. Changes apply on restart.'
-        : 'Changes apply on the next server restart.',
+      note: 'Workshop map (or Workshop ID override) takes precedence over a stock map. Changes apply on the next server restart.',
     };
   }
 
   async setSettings(values = {}) {
-    const { map, gameMode, maxPlayers } = values;
-    if (gameMode !== undefined && !MODES[gameMode]) {
-      const e = new Error(`invalid game mode: ${gameMode}`); e.code = 'BAD_SETTING'; throw e;
-    }
+    const { map, workshopId, gameMode, maxPlayers, hostname } = values;
+    const bad = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
+
+    if (gameMode !== undefined && !GAME_ALIASES[gameMode]) throw bad(`invalid game mode: ${gameMode}`);
     const mp = maxPlayers === undefined ? undefined : Number(maxPlayers);
-    if (mp !== undefined && (!Number.isInteger(mp) || mp < 1 || mp > 64)) {
-      const e = new Error('maxPlayers must be an integer 1–64'); e.code = 'BAD_SETTING'; throw e;
+    if (mp !== undefined && (!Number.isInteger(mp) || mp < 1 || mp > 64)) throw bad('maxPlayers must be 1–64');
+    if (workshopId !== undefined && workshopId !== '' && !/^\d{1,20}$/.test(workshopId)) throw bad(`invalid workshop id: ${workshopId}`);
+    if (hostname !== undefined && /["\n\r]/.test(hostname)) throw bad('server name may not contain quotes or newlines');
+
+    // Resolve the desired map source.
+    let wsId, stock;
+    if (workshopId) wsId = workshopId;
+    else if (typeof map === 'string' && map.startsWith('ws:')) wsId = map.slice(3);
+    else if (typeof map === 'string' && map) {
+      if (!/^[a-z0-9_]{1,64}$/.test(map)) throw bad(`invalid map name: ${map}`);
+      stock = map;
     }
-    if (map !== undefined && !/^[a-z0-9_]{1,64}$/.test(map)) {
-      const e = new Error(`invalid map name: ${map}`); e.code = 'BAD_SETTING'; throw e;
+    if (wsId !== undefined && !/^\d{1,20}$/.test(wsId)) throw bad(`invalid workshop id: ${wsId}`);
+
+    // ── game cfg (map / workshop / alias / hostname) ──
+    const game = (await this.client.agentFileRead(this.vmid, GAME_CFG)).content ?? '';
+    const cvars = {};
+    if (wsId !== undefined) {
+      cvars.host_workshop_map = wsId;                 // overrides stock map
+    } else if (stock !== undefined) {
+      cvars.map = stock;
+      cvars.host_workshop_map = '';                   // clear workshop so stock map loads
+      cvars.host_workshop_collection = '';
+    }
+    if (gameMode !== undefined) cvars.game_alias = gameMode;
+    if (hostname !== undefined) cvars.hostname = hostname;
+    if (Object.keys(cvars).length) {
+      await this.client.agentFileWrite(this.vmid, GAME_CFG, setCvars(game, cvars));
     }
 
-    const { content } = await this.client.agentFileRead(this.vmid, INSTANCE_CFG);
-    const updates = {};
-    if (map !== undefined) { updates.startmap = map; updates.wsstartmap = ''; } // stock map → clear workshop
-    if (mp !== undefined) updates.maxplayers = String(mp);
-    if (gameMode !== undefined) {
-      const { type, mode } = MODES[gameMode];
-      updates.startparameters = startParameters(type, mode);
+    // ── instance cfg (maxplayers) ──
+    if (mp !== undefined) {
+      const inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
+      await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, setVar(inst, 'maxplayers', String(mp)));
     }
-    const next = setVars(content, updates);
-    await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, next);
-    return { ok: true, applied: { map, gameMode, maxPlayers: mp } };
+
+    return { ok: true, applied: { map: stock, workshopMap: wsId, gameMode, maxPlayers: mp, hostname } };
   }
 }

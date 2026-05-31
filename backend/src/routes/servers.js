@@ -103,9 +103,11 @@ export default async function serversRoutes(app) {
       body: {
         type: 'object',
         properties: {
-          map: { type: 'string', maxLength: 64 },
+          map: { type: 'string', maxLength: 80 },
+          workshopId: { type: 'string', maxLength: 20 },
           gameMode: { type: 'string', maxLength: 32 },
           maxPlayers: { type: 'integer', minimum: 1, maximum: 64 },
+          hostname: { type: 'string', maxLength: 64 },
         },
         additionalProperties: false,
       },

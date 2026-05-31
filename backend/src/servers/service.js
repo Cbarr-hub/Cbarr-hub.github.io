@@ -6,7 +6,7 @@
 //   - normalize results and raise typed errors the route layer maps to HTTP
 // It knows nothing about Fastify, requests, auth, or Proxmox HTTP details.
 
-import { listServers, getServer } from './registry.js';
+import { listServers, getServer, connectString } from './registry.js';
 import { buildConnectors } from './connectors/index.js';
 
 export class ServerControlError extends Error {
@@ -24,7 +24,7 @@ const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop']);
  * @param {import('../proxmox/client.js').ProxmoxClient|null} deps.client
  *        null when PVE isn't configured — every call then throws NOT_CONFIGURED.
  */
-export function createServerService({ client }) {
+export function createServerService({ client, publicHost = '' }) {
   const connectors = client ? buildConnectors(client) : null;
 
   function connectorFor(id) {
@@ -38,7 +38,12 @@ export function createServerService({ client }) {
 
   // Shape a registry entry for the API (never leak internal-only fields beyond vmid).
   function publicMeta(server) {
-    return { id: server.id, name: server.name, vmid: server.vmid };
+    return {
+      id: server.id,
+      name: server.name,
+      vmid: server.vmid,
+      connect: { host: publicHost, port: server.port, string: connectString(server, publicHost) },
+    };
   }
 
   return {

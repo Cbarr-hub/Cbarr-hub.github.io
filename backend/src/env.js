@@ -44,5 +44,10 @@ export function loadEnv(path = '.env') {
     // Proxmox uses a self-signed cert by default, so verification is off unless
     // explicitly enabled. Set to "true" once a trusted cert is in place.
     PVE_TLS_REJECT_UNAUTHORIZED: (process.env.PVE_TLS_REJECT_UNAUTHORIZED ?? 'false') === 'true',
+
+    // Public address players use to reach the game servers (the port-forwarded
+    // WAN IP or a domain). Dynamic on AT&T — update if it changes. Used only to
+    // render the copy-pastable join strings on the control panel.
+    PUBLIC_HOST: process.env.PUBLIC_HOST ?? '104.177.95.216',
   };
 }

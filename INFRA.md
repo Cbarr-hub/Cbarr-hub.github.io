@@ -377,8 +377,8 @@ Minecraft `104.177.95.216:25565`.
   connectors drop to `miles` via `runuser` (see `connectors/base.js` `runShell`).
   Files written by `agentFileWrite` are root-owned 644 — readable by `miles`. ✓
 - **Updates:** CS2 + Factorio use LinuxGSM `update` (SteamCMD + restart). Minecraft
-  has **no automated updater** (manual `server.jar` swap) → its `update` endpoint
-  returns 501.
+  pulls the latest stable `server.jar` from Mojang's version manifest, backs up the
+  old jar, and restarts (see `connectors/minecraft.js` `update()`).
 - **Live commands** (changemap, etc. without a restart) are not wired yet — RCON is
   available in-guest (Factorio rcon-port 34198; CS2 rcon) as a future stretch goal.
 - **Factorio 2.0 / Space Age** (v2.0.76 build 84451): mods `elevated-rails`,

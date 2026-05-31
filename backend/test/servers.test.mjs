@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { getServer, listServers } from '../src/servers/registry.js';
-import { normalizeStatus } from '../src/servers/connectors/base.js';
+import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
 import { getVar, setVar, setVars } from '../src/servers/cfgvars.js';
 import { getCvar, setCvars } from '../src/servers/cvars.js';
@@ -137,9 +137,26 @@ test('LinuxGSM update drops to the owning user via runuser and calls the instanc
   assert.match(execCmds[1].at(-1), /\.\/cs2server restart/);
 });
 
-test('Minecraft has no automated updater', async () => {
-  const svc = createServerService({ client: fakeClient() });
-  await assert.rejects(() => svc.runUpdate('minecraft'), (e) => e.code === 'NO_UPDATE_RECIPE');
+test('Minecraft update runs the Mojang jar-swap recipe', async () => {
+  const manifest = {
+    latest: { release: '1.21' },
+    versions: [{ id: '1.21', type: 'release', url: 'https://example.test/ver.json' }],
+  };
+  const versionData = { downloads: { server: { url: 'https://example.test/server.jar' } } };
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    json: async () => (String(url).includes('version_manifest') ? manifest : versionData),
+  });
+  try {
+    const svc = createServerService({ client: fakeClient() });
+    const res = await svc.runUpdate('minecraft');
+    assert.equal(res.ok, true);
+    assert.equal(res.version, '1.21');
+    assert.ok(res.steps.length >= 2); // stop + download(+replace) + start
+  } finally {
+    globalThis.fetch = origFetch;
+  }
 });
 
 // ── cfgvars helper ──────────────────────────────────────────────────────────────
@@ -236,10 +253,16 @@ test('CS setSettings rejects bad values', async () => {
   await assert.rejects(() => svc.setSettings('counterstrike', { hostname: 'a"b' }), (e) => e.code === 'BAD_SETTING');
 });
 
-test('servers without quick settings return empty fields', async () => {
+test('a connector with no quick settings returns empty fields by default', async () => {
+  const base = new BaseConnector({ id: 'x', name: 'X', vmid: 1 }, fakeClient());
+  assert.deepEqual(await base.getSettings(), { fields: [] });
+});
+
+test('Minecraft exposes world-management sections', async () => {
   const svc = createServerService({ client: fakeClient() });
   const s = await svc.getSettings('minecraft');
-  assert.deepEqual(s.fields, []);
+  assert.ok(Array.isArray(s.sections) && s.sections.length > 0);
+  assert.ok(s.sections.some((sec) => sec.key === 'loadWorld'));
 });
 
 // ── connection strings ────────────────────────────────────────────────────────────

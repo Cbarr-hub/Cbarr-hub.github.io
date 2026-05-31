@@ -35,6 +35,16 @@ export class BaseConnector {
   stop()     { return this.client.stop(this.vmid); }     // hard power-off (force)
 
   // ── in-VM command execution (Phase 2) ──────────────────────────────────────
+  // Run a /bin/bash login-shell command line inside the guest. The QEMU guest
+  // agent executes as ROOT; pass `asUser` to drop privileges with runuser
+  // (LinuxGSM and most game servers refuse to run as root).
+  runShell(shellCommand, { asUser, ...opts } = {}) {
+    const command = asUser
+      ? ['/usr/sbin/runuser', '-u', asUser, '--', '/bin/bash', '-lc', shellCommand]
+      : ['/bin/bash', '-lc', shellCommand];
+    return this.runCommand(command, opts);
+  }
+
   // Runs a command via the guest agent and polls until it exits (or times out).
   // `command` is an argv array, e.g. ['/bin/systemctl', 'restart', 'factorio'].
   async runCommand(command, { input, timeoutMs = 120_000, pollMs = 1000 } = {}) {

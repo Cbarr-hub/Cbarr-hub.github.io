@@ -116,3 +116,26 @@ test('runUpdate runs the connector recipe and returns step output', async () => 
   assert.ok(Array.isArray(res.steps));
   assert.equal(res.steps[0].exitCode, 0);
 });
+
+test('LinuxGSM update drops to the owning user via runuser and calls the instance script', async () => {
+  const execCmds = [];
+  const client = fakeClient({
+    agentExec: (_vmid, { command }) => { execCmds.push(command); return Promise.resolve({ pid: 1 }); },
+  });
+  const svc = createServerService({ client });
+  await svc.runUpdate('counterstrike');
+
+  // first step = update, second = restart; both run as miles via runuser
+  assert.equal(execCmds.length, 2);
+  for (const cmd of execCmds) {
+    assert.equal(cmd[0], '/usr/sbin/runuser');
+    assert.deepEqual(cmd.slice(1, 4), ['-u', 'miles', '--']);
+  }
+  assert.match(execCmds[0].at(-1), /cd \/home\/miles\/csserver && \.\/cs2server update/);
+  assert.match(execCmds[1].at(-1), /\.\/cs2server restart/);
+});
+
+test('Minecraft has no automated updater', async () => {
+  const svc = createServerService({ client: fakeClient() });
+  await assert.rejects(() => svc.runUpdate('minecraft'), (e) => e.code === 'NO_UPDATE_RECIPE');
+});

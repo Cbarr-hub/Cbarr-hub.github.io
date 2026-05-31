@@ -236,47 +236,72 @@ VMIDs only ever come from the registry — the API can never be aimed at another
 power-off (force, confirm-gated in the UI). If the PVE token is unset, every
 endpoint returns **503 "not configured"** — the backend still boots.
 
-### One-time Proxmox setup
+### Proxmox setup (as built — already done)
 
-1. **Create an API token** — Proxmox UI → Datacenter → Permissions → API Tokens →
-   Add. Suggested id `gamertown@pve!serverctl`. Copy the secret (shown once).
-2. **Role + ACL** — Datacenter → Permissions → Roles → create e.g. `ServerCtl`
-   with privileges:
-   - Power + status: `VM.Audit`, `VM.PowerMgmt`
-   - In-VM update/config (guest agent): `VM.GuestAgent.Audit`,
-     `VM.GuestAgent.FileSystemRead`, `VM.GuestAgent.FileSystemWrite`, `VM.Monitor`
-     (names vary by PVE version; on older 7.x use `VM.Monitor` alone).
+Reproduced here for reference / rebuild. All commands run on the `pve` host.
 
-   Then Permissions → Add → API Token Permission: path `/vms/100` (repeat 101, 102,
-   or use a pool), the token, role `ServerCtl`. If the token has *Privilege
-   Separation* enabled, the token itself must be granted the role (not just the user).
-3. **Guest agent in each VM** (needed for update + config editing, not basic power):
+1. **Role** `ServerCtl` with exactly these privileges (PVE 9 names):
    ```bash
-   # inside each game VM:
-   apt install -y qemu-guest-agent && systemctl enable --now qemu-guest-agent
-   # then on the Proxmox host:
-   qm set 100 --agent enabled=1   # repeat for 101, 102
-   # reboot the VM once so the agent channel attaches
+   pveum role add ServerCtl --privs "VM.Audit,VM.PowerMgmt,\
+   VM.GuestAgent.Audit,VM.GuestAgent.FileRead,VM.GuestAgent.FileWrite,VM.GuestAgent.Unrestricted"
    ```
-4. **Backend config** — add to `/srv/gamertown/backend/.env` (see `.env.example`):
+   `VM.GuestAgent.Unrestricted` is what permits `agent exec` (updates);
+   `FileRead`/`FileWrite` permit config editing; `VM.Audit`/`VM.PowerMgmt` cover
+   status + power.
+2. **Token-only user + token** (privilege separation on):
+   ```bash
+   pveum user add gamertown@pve --comment "Gamertown game-server control (token only)"
+   pveum user token add gamertown@pve serverctl --privsep 1   # prints the secret ONCE
+   ```
+3. **ACLs — grant on VMs 100/101/102 only.** ⚠️ With privsep on, a token's
+   effective rights are the **intersection of the token's ACLs and the owning
+   user's ACLs**, so BOTH must be granted:
+   ```bash
+   for v in 100 101 102; do
+     pveum acl modify /vms/$v --users  'gamertown@pve'            --roles ServerCtl
+     pveum acl modify /vms/$v --tokens 'gamertown@pve!serverctl'  --roles ServerCtl
+   done
+   ```
+4. **Guest-agent channel** on each VM (host side): `qm set 100 --agent enabled=1`
+   (repeat 101, 102). Takes effect on the VM's next boot.
+5. **Backend config** — `/srv/gamertown/backend/.env` (see `.env.example`):
    ```
    PVE_API_URL=https://192.168.1.109:8006
    PVE_NODE=pve
    PVE_TOKEN_ID=gamertown@pve!serverctl
-   PVE_TOKEN_SECRET=<the secret from step 1>
+   PVE_TOKEN_SECRET=<the secret from step 2>
    PVE_TLS_REJECT_UNAUTHORIZED=false   # PVE self-signed cert
    ```
-   Then `npm install --omit=dev` (adds `undici`) and
-   `systemctl restart gamertown`.
+   Then `npm install --omit=dev` (adds `undici`) + `systemctl restart gamertown`.
 
-### Per-game paths to verify
+Verify a token end-to-end: `qm agent 101 ping` (guest side) and
+`curl -sk -H "Authorization: PVEAPIToken=gamertown@pve!serverctl=<secret>" \
+https://192.168.1.109:8006/api2/json/nodes/pve/qemu/101/status/current`.
 
-The update recipes and config whitelists in `backend/src/servers/connectors/`
-(`factorio.js`, `minecraft.js`, `counterstrike.js`) use **assumed** in-VM paths
-and systemd unit names (e.g. Factorio `/opt/factorio/data/server-settings.json`,
-Minecraft `/srv/minecraft/server.properties`, CS `/home/steam/cs/...`). These are
-the only game-specific knowledge in the system — adjust the constants at the top
-of each connector to match the real layout inside each VM.
+### Game Server VMs — in-guest layout (verified)
+
+All three guests are **Ubuntu 24.04**, login user **`miles`**, on the LAN via DHCP.
+`qemu-guest-agent` is installed + active in all three. The connector constants in
+`backend/src/servers/connectors/*` match these paths.
+
+| VM | Host / IP | Mgmt | Install dir | Control (run as `miles`) | Editable config files |
+|---|---|---|---|---|---|
+| 100 CS2 | `counter-strike-ubuntu` / .75 | LinuxGSM `cs2server` | `/home/miles/csserver` | `./cs2server start\|stop\|restart\|update` | `serverfiles/game/csgo/cfg/cs2server.cfg`, `lgsm/config-lgsm/cs2server/{cs2server,common}.cfg` |
+| 101 Factorio | `factorio-ubuntu` / .74 | LinuxGSM `fctrserver` | `/home/miles/fctrserver` | `./fctrserver start\|stop\|restart\|update` | `serverfiles/data/server-settings.json`, `lgsm/config-lgsm/fctrserver/{fctrserver,common}.cfg` |
+| 102 Minecraft | `minecraft-server` / .68 | plain + tmux | `/home/miles/MinecraftServer` | `tmux` session `minecraft` + `./start.sh` | `server.properties`, `whitelist.json`, `ops.json`, `banned-{players,ips}.json` |
+
+(IPs are DHCP — `.68/.74/.75` at time of writing; match by MAC if they change:
+CS `BC:24:11:4B:15:79`, Factorio `BC:24:11:40:DF:F9`, Minecraft `BC:24:11:DD:8D:81`.)
+
+**Notes / known gaps:**
+- The QEMU guest agent executes as **root**; LinuxGSM refuses to run as root, so the
+  connectors drop to `miles` via `runuser` (see `connectors/base.js` `runShell`).
+- **Updates:** CS2 + Factorio use LinuxGSM `update`. Minecraft has **no automated
+  updater** (manual `server.jar` swap) → its `update` endpoint returns 501.
+- **Power model:** the panel's Start/Restart/Shut Down act on the **VM**, not the
+  game process. None of the games auto-start on boot (no systemd units; they're
+  launched manually via LinuxGSM/tmux). To make "VM up = game up", add a systemd
+  unit per game (future work).
 
 ### Smoke test
 

@@ -891,8 +891,9 @@
 
   <script type="module">
     import { dbInsertScore, dbGetTopScores } from './db.js'
-    import { getSession } from './auth.js'
+    import { loadSession, getSession } from './auth.js'
 
+    await loadSession()
     window.getLoggedInUser = function() { return getSession() }
 
     window.saveScore = async function(name, seconds) {

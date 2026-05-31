@@ -18,28 +18,16 @@
     }
 
     .auth-shell {
-      width: min(820px, 100%);
+      width: min(560px, 100%);
       background: rgba(18, 24, 35, 0.96);
       border: 2px solid rgba(123, 184, 95, 0.25);
       border-radius: 24px;
       box-shadow: 0 0 60px rgba(0, 255, 0, 0.08);
       overflow: hidden;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0;
-    }
-
-    .auth-panel {
       padding: 2rem;
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
-      min-height: 420px;
-    }
-
-    .auth-panel:first-child {
-      background: rgba(10, 14, 18, 0.92);
-      border-right: 1px solid rgba(123, 184, 95, 0.15);
     }
 
     .auth-title {
@@ -66,8 +54,7 @@
       color: #d4d4b8;
     }
 
-    .auth-form input,
-    .auth-form select {
+    .auth-form input {
       width: 100%;
       background: #242424;
       border: 2px solid #3a3a3a;
@@ -123,15 +110,10 @@
       text-decoration: underline;
     }
 
-    .back-link {
-      margin-top: 1rem;
-      border-color: rgba(123, 184, 95, 0.3);
-    }
-
-    @media (max-width: 850px) {
-      .auth-shell {
-        grid-template-columns: 1fr;
-      }
+    .auth-note {
+      font-size: 0.85rem;
+      color: #8aa888;
+      line-height: 1.5;
     }
   </style>
   <link rel="stylesheet" href="site-tabs.css" />
@@ -139,111 +121,60 @@
 </head>
 <body>
   <div class="auth-shell">
-    <section class="auth-panel">
-      <div>
-        <h1 class="auth-title">Gamertown auth center</h1>
-        <p class="auth-copy">
-          Create an account or sign in with an existing Gamertown username. Accounts and balances are loaded from Supabase.
-        </p>
-      </div>
+    <div>
+      <h1 class="auth-title">Gamertown auth center</h1>
+      <p class="auth-copy">
+        Sign in with your Gamertown account. Accounts are issued by an administrator —
+        there is no public sign-up.
+      </p>
+    </div>
 
-      <div class="auth-status" id="authStatus">
-        Loading users...
-      </div>
+    <div class="auth-status" id="authStatus">Ready to sign in.</div>
 
-      <div class="auth-links">
-        <a href="index.html">Return to homepage</a>
-        <a href="final.html">Final page (auth only)</a>
-      </div>
-    </section>
+    <form class="auth-form" id="signInForm">
+      <label>
+        Username
+        <input type="text" id="loginUsername" autocomplete="username" required maxlength="64" />
+      </label>
+      <label>
+        Password
+        <input type="password" id="loginPassword" autocomplete="current-password" required />
+      </label>
+      <button type="submit">Sign In</button>
+    </form>
 
-    <section class="auth-panel">
-      <form class="auth-form" id="signInForm">
-        <h2>Log in</h2>
-        <label>
-          Existing user
-          <select id="loginUsernameSelect" autocomplete="username">
-            <option value="">Loading users...</option>
-          </select>
-        </label>
-        <label>
-          Username
-          <input type="text" id="loginUsername" autocomplete="username" placeholder="or type username" />
-        </label>
-        <label>
-          Password
-          <input type="password" id="loginPassword" autocomplete="current-password" placeholder="********" required />
-        </label>
-        <button type="submit">Sign In</button>
-      </form>
+    <p class="auth-note">
+      Need an account? Contact an administrator.
+    </p>
 
-      <form class="auth-form" id="signUpForm">
-        <h2>Create account</h2>
-        <label>
-          Username
-          <input type="text" id="signupUsername" autocomplete="username" placeholder="new username" required />
-        </label>
-        <label>
-          Password
-          <input type="password" id="signupPassword" autocomplete="new-password" placeholder="New password" required minlength="8" />
-        </label>
-        <button type="submit">Sign Up</button>
-      </form>
-    </section>
+    <div class="auth-links">
+      <a href="index.html">Return to homepage</a>
+      <a href="final.html">Final page (auth only)</a>
+    </div>
   </div>
 
   <script type="module">
-    import { dbGetAllUsers, dbFindUser, dbInsertUser } from './db.js'
-    import { getSession, setSession } from './auth.js'
-    import { ensureBalance } from './gamble-data.js'
+    import { dbFindUser } from './db.js'
+    import { loadSession } from './auth.js'
 
     const authStatus = document.getElementById('authStatus')
     const signInForm = document.getElementById('signInForm')
-    const signUpForm = document.getElementById('signUpForm')
-    const loginUsernameSelect = document.getElementById('loginUsernameSelect')
-    const loginUsername = document.getElementById('loginUsername')
 
     const setStatus = (text, isError = false) => {
       authStatus.textContent = text
       authStatus.classList.toggle('error', isError)
     }
 
-    const esc = (value) => String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-
-    async function loadUsers() {
-      try {
-        const data = await dbGetAllUsers()
-        loginUsernameSelect.innerHTML = '<option value="">Choose a user...</option>' +
-          (data ?? [])
-            .filter((user) => user.Username)
-            .map((user) => `<option value="${esc(user.Username)}">${esc(user.Username)}</option>`)
-            .join('')
-        setStatus('Ready to sign in or create an account.', false)
-      } catch (error) {
-        loginUsernameSelect.innerHTML = '<option value="">Type username below</option>'
-        setStatus(`Could not load users: ${error.message}`, true)
-      }
-    }
-
-    loginUsernameSelect.addEventListener('change', () => {
-      loginUsername.value = loginUsernameSelect.value
-    })
-
-    if (getSession()) {
+    const existing = await loadSession()
+    if (existing) {
       window.location.href = 'final.html'
     }
-
-    loadUsers()
 
     signInForm.addEventListener('submit', async (event) => {
       event.preventDefault()
       setStatus('Signing in...', false)
 
-      const username = (loginUsername.value || loginUsernameSelect.value).trim()
+      const username = document.getElementById('loginUsername').value.trim()
       const password = document.getElementById('loginPassword').value
 
       if (!username || !password) {
@@ -251,47 +182,14 @@
         return
       }
 
-      let userData
       try {
-        userData = await dbFindUser(username, password)
-      } catch {
-        setStatus('Invalid username or password.', true)
+        await dbFindUser(username, password)
+      } catch (err) {
+        setStatus(err.message || 'Invalid username or password.', true)
         return
       }
 
-      if (!userData) {
-        setStatus('Invalid username or password.', true)
-        return
-      }
-
-      await ensureBalance(username)
-      setSession(username)
-      setStatus(`Signed in successfully as ${username}. Redirecting...`, false)
-      window.location.href = 'final.html'
-    })
-
-    signUpForm.addEventListener('submit', async (event) => {
-      event.preventDefault()
-      setStatus('Creating account...', false)
-
-      const username = document.getElementById('signupUsername').value.trim()
-      const password = document.getElementById('signupPassword').value
-
-      if (!username || !password) {
-        setStatus('Username and password are required.', true)
-        return
-      }
-
-      try {
-        await dbInsertUser(username, password)
-      } catch (error) {
-        setStatus(`Sign up failed: ${error.message}`, true)
-        return
-      }
-
-      await ensureBalance(username)
-      setSession(username)
-      setStatus(`Account created as ${username}. Redirecting...`, false)
+      setStatus('Signed in. Redirecting...', false)
       window.location.href = 'final.html'
     })
   </script>

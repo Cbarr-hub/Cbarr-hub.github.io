@@ -1,49 +1,61 @@
-import { dbUpsertBalance, dbGetBalance, dbGetAllBalances, dbGetAllUsers, dbGetEvents, dbInsertEvent } from './db.js';
+// Gambling dashboard data layer. Everything routes through db.js → /api/*.
+// No direct database calls live here; this file only shapes responses.
+
+import {
+  dbUpsertBalance,
+  dbGetBalance,
+  dbGetMyBalance,
+  dbGetAllBalances,
+  dbGetEvents,
+  dbInsertEvent,
+} from './db.js';
+import { getSession } from './auth.js';
 import { normalizeGamblingEvent } from './gamble-events.mjs?v=money-events-2';
 
 export const DEFAULT_BALANCE = 5000;
 
-export async function ensureBalance(username, defaultBalance = DEFAULT_BALANCE) {
-  if (!username) {
-    return;
-  }
-
-  await dbUpsertBalance(username, defaultBalance, true);
+// Kept as an export for back-compat — the backend now seeds the starting
+// balance when an admin creates the account, so callers don't need to.
+export async function ensureBalance(_username, _defaultBalance = DEFAULT_BALANCE) {
+  return;
 }
 
 export async function getPlayerBalance(username) {
-  const data = await dbGetBalance(username);
-
-  if (!data) {
-    await ensureBalance(username);
-    return DEFAULT_BALANCE;
+  // Fast path: the signed-in user reads their own balance via /me.
+  if (username && username === getSession()) {
+    const dollars = await dbGetMyBalance();
+    return dollars ?? DEFAULT_BALANCE;
   }
 
-  return Number(data.Dollers ?? DEFAULT_BALANCE);
+  const data = await dbGetBalance(username);
+  return data ? Number(data.Dollers ?? DEFAULT_BALANCE) : DEFAULT_BALANCE;
 }
 
 export async function savePlayerBalance(username, credits) {
   await dbUpsertBalance(username, Math.round(credits));
 }
 
+function usernamesFromBalances(balances) {
+  return (balances ?? []).map((row) => row.Name).filter(Boolean);
+}
+
 export async function getLeaderboardRows() {
-  const [users, balances, events] = await Promise.all([
-    dbGetAllUsers(),
+  const [balances, events] = await Promise.all([
     dbGetAllBalances(),
     dbGetEvents({
       fields: 'created_at,username,outcome,event_type,bet_amount,net_change,payout_amount',
-      ascending: true
-    })
+      ascending: true,
+    }),
   ]);
 
-  const balancesByName = new Map((balances ?? []).map((row) => [row.Name, Number(row.Dollers ?? DEFAULT_BALANCE)]));
+  const balancesByName = new Map(
+    (balances ?? []).map((row) => [row.Name, Number(row.Dollers ?? DEFAULT_BALANCE)])
+  );
   const statsByName = new Map();
 
   for (const rawEvent of events ?? []) {
     const event = normalizeGamblingEvent(rawEvent);
-    if (!event.isMoneyEvent) {
-      continue;
-    }
+    if (!event.isMoneyEvent) continue;
 
     const stats = statsByName.get(event.username) ?? {
       wins: 0,
@@ -52,7 +64,7 @@ export async function getLeaderboardRows() {
       net: 0,
       biggestWin: 0,
       currentWinStreak: 0,
-      bestWinStreak: 0
+      bestWinStreak: 0,
     };
 
     stats.games += 1;
@@ -70,23 +82,22 @@ export async function getLeaderboardRows() {
     statsByName.set(event.username, stats);
   }
 
-  return (users ?? [])
-    .filter((user) => user.Username)
-    .map((user) => {
-      const stats = statsByName.get(user.Username) ?? {
+  return usernamesFromBalances(balances)
+    .map((username) => {
+      const stats = statsByName.get(username) ?? {
         wins: 0,
         losses: 0,
         games: 0,
         net: 0,
         biggestWin: 0,
         currentWinStreak: 0,
-        bestWinStreak: 0
+        bestWinStreak: 0,
       };
 
       return {
-        username: user.Username,
-        balance: balancesByName.get(user.Username) ?? DEFAULT_BALANCE,
-        ...stats
+        username,
+        balance: balancesByName.get(username) ?? DEFAULT_BALANCE,
+        ...stats,
       };
     })
     .sort((a, b) => b.balance - a.balance || b.net - a.net || a.username.localeCompare(b.username));
@@ -99,23 +110,24 @@ export async function insertGamblingEvent(event) {
 export async function getRecentGamblingEvents(limit = 12) {
   return dbGetEvents({
     fields: 'created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details',
-    limit
+    limit,
   });
 }
 
 export async function getGamblingDashboardData() {
-  const [users, balances, events] = await Promise.all([
-    dbGetAllUsers(),
+  const [balances, events] = await Promise.all([
     dbGetAllBalances(),
     dbGetEvents({
       fields: 'created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details',
-      limit: 5000
-    })
+      limit: 5000,
+    }),
   ]);
 
+  const users = usernamesFromBalances(balances).map((Username) => ({ Username }));
+
   return {
-    users: users ?? [],
+    users,
     balances: balances ?? [],
-    events: events ?? []
+    events: events ?? [],
   };
 }

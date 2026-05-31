@@ -87,9 +87,8 @@ node src/cli.js delete-user
 
 ## What's not here yet
 
-- Game-server control endpoints (`/api/servers/*`) — designed but not built.
-  Will be admin-gated, with fixed verbs (start/stop/restart/update) per
-  known server ID. Never raw shell.
 - Seed data for the `games` table (wheel page). The old Supabase rows need
   to be re-entered or imported.
 - Display-name editing UI.
+- Live in-game RCON commands (Factorio port 34198, CS2 rcon) — power/update/config
+  are wired; changemap-without-restart and similar are not.

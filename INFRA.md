@@ -315,13 +315,56 @@ auto-start with `systemctl disable <unit>`.
 - `host_workshop_map "<id>"` — **Steam Workshop map; OVERRIDES `map`** (this is why
   the server can run e.g. Assembly `3071005299` while `map` says `de_anubis`)
 - `game_alias "<alias>"` — game mode (competitive / casual / deathmatch / wingman)
-- `hostname "<name>"` — server name
+- `hostname "<name>"` — server display name (shown in CS2 server browser)
 
 `maxplayers` lives in the LGSM instance cfg (`-maxplayers`). The editor offers
 stock maps (listed from installed `.vpk`s) plus a curated workshop-map catalog
 (`WORKSHOP_MAPS` in `connectors/counterstrike.js`) and an arbitrary Workshop-ID
 override. **Changes apply on the next restart.** Cvar I/O: `servers/cvars.js`
 (Source cfg) and `servers/cfgvars.js` (shell vars).
+
+**Factorio quick settings (save management / world generation):**
+`servers.html` shows a three-section editor backed by
+`GET/PUT /api/servers/factorio/settings`.
+
+*Save file layout (verified):*
+| Path | Contents |
+|---|---|
+| `serverfiles/saves/<name>.zip` | Named (panel-managed) saves |
+| `serverfiles/saves/_autosave1-5.zip` | Factorio autosaves (overwritten each cycle) |
+| `serverfiles/save1.zip` | Legacy original world — outside `saves/`, not panel-managed |
+
+*Active world — `startparameters` override required:*
+LinuxGSM's `_default.cfg` hardcodes the save path and does **not** expand `savename`
+into it:
+```
+startparameters="--bind ${ip} --start-server ${serverfiles}/save1.zip ..."
+```
+To change the active world the panel overrides `startparameters` (and `savename` for
+bookkeeping) in `lgsm/config-lgsm/fctrserver/fctrserver.cfg`, e.g.:
+```
+savename="WileyWorld"
+startparameters="--bind ${ip} --start-server ${serverfiles}/saves/WileyWorld.zip --server-settings ${servercfgfullpath} --port ${port} --rcon-port ${rconport} --rcon-password ${rconpassword}"
+```
+`${ip}`, `${serverfiles}`, etc. are shell variables expanded by bash when LinuxGSM
+sources the config — they must appear as **literal text** in the file.
+
+*Save As:* copies the most recent `_autosave*.zip` (= current game state) to
+`saves/<name>.zip`. Does not restart the server.
+
+*Generate New World:* runs `serverfiles/bin/x64/factorio --create saves/<name>.zip
+--map-gen-settings <json> [--preset <preset>]`.
+- **Requires exclusive lock** — LinuxGSM process must be stopped first; lock file is
+  `serverfiles/.lock`. The connector stops the game, creates the world, then restarts.
+- **Factorio 2.0 MapGenSize valid strings:** `none`, `very-low`, `low`, `normal`,
+  `high`, `very-high` (aliases `big`/`very-big` also work). `large` and `very-large`
+  were **removed in 2.0** and cause `Error Util.cpp:81: large isn't valid size value`.
+- Presets (`--preset <name>`) affect non-resource settings (tech costs for `marathon`,
+  enemy density for `death-world`, etc.). The `--map-gen-settings` JSON overrides
+  individual resource settings on top of the preset.
+
+*RCON:* default password `CHANGE_ME` on port 34198 — live in-game commands not wired
+in the panel yet.
 
 **Join strings:** each server's `connect` info comes from the registry
 (`port` + `connect` style) and `PUBLIC_HOST` (env, default `104.177.95.216` —
@@ -332,10 +375,15 @@ Minecraft `104.177.95.216:25565`.
 **Notes / known gaps:**
 - The QEMU guest agent executes as **root**; LinuxGSM refuses to run as root, so the
   connectors drop to `miles` via `runuser` (see `connectors/base.js` `runShell`).
-- **Updates:** CS2 + Factorio use LinuxGSM `update`. Minecraft has **no automated
-  updater** (manual `server.jar` swap) → its `update` endpoint returns 501.
+  Files written by `agentFileWrite` are root-owned 644 — readable by `miles`. ✓
+- **Updates:** CS2 + Factorio use LinuxGSM `update` (SteamCMD + restart). Minecraft
+  has **no automated updater** (manual `server.jar` swap) → its `update` endpoint
+  returns 501.
 - **Live commands** (changemap, etc. without a restart) are not wired yet — RCON is
   available in-guest (Factorio rcon-port 34198; CS2 rcon) as a future stretch goal.
+- **Factorio 2.0 / Space Age** (v2.0.76 build 84451): mods `elevated-rails`,
+  `quality`, `space-age` are always active. Map gen settings must use Factorio 2.0
+  MapGenSize enum — see above.
 
 ### Smoke test
 

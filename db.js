@@ -173,6 +173,14 @@ export async function dbUpdateServer(id) {
   return api(`/servers/${encodeURIComponent(id)}/update`, { method: 'POST' });
 }
 
+export async function dbGetServerSettings(id) {
+  return api(`/servers/${encodeURIComponent(id)}/settings`);
+}
+
+export async function dbSaveServerSettings(id, values) {
+  return api(`/servers/${encodeURIComponent(id)}/settings`, { method: 'PUT', body: values });
+}
+
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────
 
 export async function dbInsertScore(_name, seconds) {

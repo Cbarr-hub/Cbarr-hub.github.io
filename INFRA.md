@@ -293,15 +293,34 @@ All three guests are **Ubuntu 24.04**, login user **`miles`**, on the LAN via DH
 (IPs are DHCP — `.68/.74/.75` at time of writing; match by MAC if they change:
 CS `BC:24:11:4B:15:79`, Factorio `BC:24:11:40:DF:F9`, Minecraft `BC:24:11:DD:8D:81`.)
 
+**Auto-start on boot (systemd):** each game now has a systemd unit (enabled), so
+booting the VM brings the game up — the panel's VM power buttons effectively
+control the game.
+
+| VM | Unit | Type | Notes |
+|---|---|---|---|
+| 100 | `cs2server.service` | oneshot + `RemainAfterExit` | `ExecStart=/bin/bash -lc '… cs2server start'` — the **login shell is required** so CS2's Steam runtime env loads; `KillMode=process` so the detached game survives the start script exiting |
+| 101 | `fctrserver.service` | oneshot + `RemainAfterExit` | LinuxGSM `fctrserver start/stop`; `KillMode=process` |
+| 102 | `minecraft.service` | simple | runs `start.sh` (java) directly as the main process; SIGTERM = graceful save |
+
+Manage them as root in-guest: `systemctl {start,stop,status} <unit>`. Disable
+auto-start with `systemctl disable <unit>`.
+
+**CS quick settings (map / game mode / max players):** `servers.html` shows a
+structured editor for CS backed by `GET/PUT /api/servers/counterstrike/settings`.
+It edits the LinuxGSM instance config `lgsm/config-lgsm/cs2server/cs2server.cfg`:
+`startmap` (map, clears `wsstartmap`), `maxplayers`, and a managed
+`startparameters` line carrying `+game_type/+game_mode` (Competitive / Wingman /
+Casual / Deathmatch / Arms Race / Demolition). **Changes apply on the next server
+restart.** Connector: `connectors/counterstrike.js`; var I/O: `servers/cfgvars.js`.
+
 **Notes / known gaps:**
 - The QEMU guest agent executes as **root**; LinuxGSM refuses to run as root, so the
   connectors drop to `miles` via `runuser` (see `connectors/base.js` `runShell`).
 - **Updates:** CS2 + Factorio use LinuxGSM `update`. Minecraft has **no automated
   updater** (manual `server.jar` swap) → its `update` endpoint returns 501.
-- **Power model:** the panel's Start/Restart/Shut Down act on the **VM**, not the
-  game process. None of the games auto-start on boot (no systemd units; they're
-  launched manually via LinuxGSM/tmux). To make "VM up = game up", add a systemd
-  unit per game (future work).
+- **Live commands** (changemap, etc. without a restart) are not wired yet — RCON is
+  available in-guest (Factorio rcon-port 34198; CS2 rcon) as a future stretch goal.
 
 ### Smoke test
 

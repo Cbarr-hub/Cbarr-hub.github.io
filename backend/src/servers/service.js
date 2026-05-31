@@ -92,5 +92,13 @@ export function createServerService({ client }) {
     runUpdate(id) {
       return connectorFor(id).update();
     },
+
+    // ── structured quick settings ────────────────────────────────────────────
+    getSettings(id) {
+      return connectorFor(id).getSettings();
+    },
+    setSettings(id, values) {
+      return connectorFor(id).setSettings(values);
+    },
   };
 }

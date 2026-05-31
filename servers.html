@@ -104,6 +104,11 @@
 
     /* ── config / update panel (Phase 3) ── */
     .panel { border-top: 1px dashed #3a3a3a; margin-top: 8px; padding-top: 8px; }
+    .panel-title { color: #42F527; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .qs-fields { display: grid; grid-template-columns: 120px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 8px; max-width: 420px; }
+    .qs-fields label { color: #7bb85f; font-size: 11px; font-weight: bold; }
+    .qs-fields select, .qs-fields input { width: 100%; }
+    .qs-note { color: #999; font-size: 10px; font-style: italic; margin-left: 8px; }
     .panel-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
     .panel label { color: #7bb85f; font-size: 11px; font-weight: bold; }
     select, input[type=text] {
@@ -169,6 +174,7 @@
     import {
       dbGetServers, dbServerAction,
       dbListServerConfig, dbReadServerConfig, dbWriteServerConfig, dbUpdateServer,
+      dbGetServerSettings, dbSaveServerSettings,
     } from './db.js'
     import { loadSession } from './auth.js'
 
@@ -254,9 +260,18 @@
           </div>
           <div class="srv-err" data-err></div>
 
+          <div class="panel quickset" data-quickset style="display:none">
+            <div class="panel-title">Quick Settings</div>
+            <div class="qs-fields" data-qs-fields></div>
+            <div class="panel-row">
+              <button class="retro-btn" data-qs-save>Save Settings</button>
+              <span class="qs-note" data-qs-note></span>
+            </div>
+          </div>
+
           <div class="panel">
             <div class="panel-row">
-              <label>Config</label>
+              <label>Config (raw)</label>
               <select data-cfg-select><option value="">— list files —</option></select>
               <button class="retro-btn" data-cfg-load>List Files</button>
               <button class="retro-btn" data-cfg-save disabled>Save</button>
@@ -350,6 +365,46 @@
           showOut(`saved ${file} ✓`)
         } catch (e) { setErr(e.message) } finally { saveBtn.disabled = false }
       })
+
+      // ── quick settings (structured map / game mode / …) ───────────────────
+      const qs = root.querySelector('[data-quickset]')
+      const qsFields = root.querySelector('[data-qs-fields]')
+      const qsNote = root.querySelector('[data-qs-note]')
+      const qsSave = root.querySelector('[data-qs-save]')
+
+      async function loadSettings() {
+        let data
+        try {
+          data = await dbGetServerSettings(id)
+        } catch { return }                       // not configured / no settings → leave hidden
+        if (!data?.fields?.length) return
+        qs.style.display = 'block'
+        qsNote.textContent = data.note || ''
+        qsFields.innerHTML = data.fields.map(f => {
+          const lbl = `<label for="qs-${id}-${f.key}">${esc(f.label)}</label>`
+          if (f.type === 'select') {
+            const opts = f.options.map(o =>
+              `<option value="${esc(o.value)}"${o.value === f.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
+            return `${lbl}<select id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}">${opts}</select>`
+          }
+          const attrs = `${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''}`
+          return `${lbl}<input id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}" type="${f.type === 'number' ? 'number' : 'text'}" value="${esc(f.value)}" ${attrs} />`
+        }).join('')
+      }
+
+      qsSave.addEventListener('click', async () => {
+        const values = {}
+        qsFields.querySelectorAll('[data-qs-key]').forEach(el => {
+          values[el.dataset.qsKey] = el.type === 'number' ? Number(el.value) : el.value
+        })
+        setErr(''); qsSave.disabled = true
+        try {
+          await dbSaveServerSettings(id, values)
+          showOut('settings saved ✓ — restart the server to apply')
+        } catch (e) { setErr(e.message) } finally { qsSave.disabled = false }
+      })
+
+      loadSettings()
 
       // update recipe
       root.querySelector('[data-update]').addEventListener('click', async () => {

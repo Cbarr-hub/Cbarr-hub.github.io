@@ -82,6 +82,49 @@ export default async function serversRoutes(app) {
     }
   });
 
+  // ── structured quick settings (map / game mode / …) ──────────────────────────
+  app.get('/:id/settings', {
+    preHandler: requireAdmin,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },
+  }, async (req, reply) => {
+    try {
+      return await svc.getSettings(req.params.id);
+    } catch (err) {
+      if (handleError(err, reply)) return;
+      throw err;
+    }
+  });
+
+  app.put('/:id/settings', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: {
+      params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] },
+      body: {
+        type: 'object',
+        properties: {
+          map: { type: 'string', maxLength: 64 },
+          gameMode: { type: 'string', maxLength: 32 },
+          maxPlayers: { type: 'integer', minimum: 1, maximum: 64 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    try {
+      return await svc.setSettings(req.params.id, req.body);
+    } catch (err) {
+      if (err?.code === 'BAD_SETTING') {
+        return reply.code(400).send({ error: err.message, code: 'BAD_SETTING' });
+      }
+      if (err?.code === 'NO_SETTINGS') {
+        return reply.code(404).send({ error: err.message, code: 'NO_SETTINGS' });
+      }
+      if (handleError(err, reply)) return;
+      throw err;
+    }
+  });
+
   // ── config files (Phase 3) ────────────────────────────────────────────────────
   app.get('/:id/config', {
     preHandler: requireAdmin,

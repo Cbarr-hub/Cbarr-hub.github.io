@@ -95,6 +95,20 @@ export class BaseConnector {
     return { name, ok: true };
   }
 
+  // ── structured "quick settings" ─────────────────────────────────────────────
+  // A connector may expose a small set of high-value, validated settings (e.g.
+  // map + game mode) as a generic field schema the UI renders without knowing
+  // the game. Default: none. Returns { fields: [...], note? }.
+  async getSettings() {
+    return { fields: [] };
+  }
+
+  async setSettings() {
+    const err = new Error('this server has no quick settings');
+    err.code = 'NO_SETTINGS';
+    throw err;
+  }
+
   // ── update recipe (Phase 3) ─────────────────────────────────────────────────
   // Default: no-op that reports the game has no automated updater. Subclasses
   // override with a real recipe (usually one or more runCommand calls).

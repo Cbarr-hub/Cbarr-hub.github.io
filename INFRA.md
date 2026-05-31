@@ -298,6 +298,13 @@ All three guests are **Ubuntu 24.04**, login user **`miles`**, on the LAN via DH
 (IPs are DHCP — `.68/.74/.75` at time of writing; match by MAC if they change:
 CS `BC:24:11:4B:15:79`, Factorio `BC:24:11:40:DF:F9`, Minecraft `BC:24:11:DD:8D:81`.)
 
+**SSH access (live, in-guest work):** log in as `miles` on any guest, e.g.
+`ssh miles@192.168.1.75` (CS2); same `miles` account on .74 (Factorio) and .68
+(Minecraft). The password is **deliberately not in this file** — this is a
+public `*.github.io` repo, so credentials must never be committed. It lives in
+the gitignored `SECRETS.local.md` at the repo root. Prefer setting up a key
+(`ssh-copy-id miles@<ip>`) and disabling password auth.
+
 **Auto-start on boot (systemd):** each game now has a systemd unit (enabled), so
 booting the VM brings the game up — the panel's VM power buttons effectively
 control the game.

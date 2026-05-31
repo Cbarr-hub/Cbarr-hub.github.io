@@ -119,7 +119,6 @@ export async function getGamblingDashboardData() {
     dbGetAllBalances(),
     dbGetEvents({
       fields: 'created_at,username,game,event_type,outcome,bet_amount,payout_amount,net_change,balance_before,balance_after,details',
-      limit: 5000,
     }),
   ]);
 

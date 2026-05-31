@@ -115,9 +115,9 @@ export async function dbWhoAmI() {
 export async function dbGetEvents({ fields: _fields = '*', ascending = false, limit } = {}) {
   const rows = await api('/events', { query: { ascending, limit } });
   return (rows ?? []).map(r => ({
+    ...r.payload,
     id: r.id,
     type: r.type,
-    payload: r.payload,
     created_at: r.created_at,
     author: r.author,
   }));

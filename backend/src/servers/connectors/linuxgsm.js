@@ -23,7 +23,9 @@ export class LinuxGsmConnector extends BaseConnector {
 
   async gameRunning() {
     const res = await this.#gsm('status', 15_000);
-    return res.stdout.includes('[ ONLINE ]');
+    if (/offline/i.test(res.stdout)) return false;
+    if (/online/i.test(res.stdout)) return true;
+    return res.exitCode === 0;
   }
 
   async startGame() {

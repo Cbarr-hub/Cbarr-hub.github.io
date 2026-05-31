@@ -409,7 +409,6 @@
           data = await dbGetServerSettings(id)
         } catch { return }
         if (!data?.fields?.length && !data?.sections?.length) return
-        qs.style.display = 'block'
 
         if (data.sections?.length) {
           // Multi-section layout (e.g. Factorio): replace panel content dynamically.
@@ -425,6 +424,10 @@
               </div>`
             ).join('') +
             (data.note ? `<div class="qs-note-block">${esc(data.note)}</div>` : '')
+
+          qs.dataset.loaded = '1'
+          const current = servers.find(x => x.id === id)
+          if (current) updateStatus(root, current)
 
           qs.querySelectorAll('[data-qs-section]').forEach(secEl => {
             const sectionKey = secEl.dataset.qsSection
@@ -453,6 +456,11 @@
         // Single-section path (Counter-Strike)
         qsNote.textContent = data.note || ''
         qsFields.innerHTML = data.fields.map(f => renderField(id, f)).join('')
+
+        // mark loaded and let updateStatus decide visibility
+        qs.dataset.loaded = '1'
+        const current = servers.find(x => x.id === id)
+        if (current) updateStatus(root, current)
       }
 
       qsSave.addEventListener('click', async () => {
@@ -489,10 +497,27 @@
       root.querySelector('.dot').className = `dot ${cls}`
       root.querySelector('.status .label').textContent = label
       root.querySelector('.status .meta').innerHTML = meta
-      // game buttons only work when the VM is up
-      const vmUp = s.status === 'running'
-      root.querySelector('[data-act="startGame"]').disabled = !vmUp
-      root.querySelector('[data-act="stopGame"]').disabled = !vmUp
+
+      const gs = s.gameStatus
+      const show = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = '' })
+      const hide = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = 'none' })
+
+      if (gs === 'down') {
+        show('start', 'refresh')
+        hide('reboot', 'shutdown', 'stop', 'startGame', 'stopGame')
+      } else if (gs === 'idle') {
+        show('startGame', 'shutdown', 'stop', 'refresh')
+        hide('start', 'reboot', 'stopGame')
+      } else if (gs === 'hosting') {
+        show('stopGame', 'shutdown', 'stop', 'refresh')
+        hide('start', 'reboot', 'startGame')
+      } else {
+        show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'refresh')
+      }
+
+      // settings panel only when hosting and populated
+      const qs = root.querySelector('[data-quickset]')
+      if (qs) qs.style.display = (gs === 'hosting' && qs.dataset.loaded === '1') ? 'block' : 'none'
     }
 
     function formatUpdate(res) {

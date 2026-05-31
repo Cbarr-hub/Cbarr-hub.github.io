@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GAMERTOWN.SOLUTIONS :: SERVER CONTROL</title>
+  <style>
+    body {
+      background: #2a2a2a;
+      color: #d4d4b8;
+      font-family: Verdana, Arial, sans-serif;
+      font-size: 12px;
+      margin: 0;
+    }
+
+    a { color: #7bb85f; }
+    a:visited { color: #7bb85f; }
+    a:hover { color: #42F527; }
+
+    #banner {
+      background: #1a1a1a;
+      border-bottom: 2px solid #42F527;
+      padding: 6px 8px;
+    }
+    #banner h1 {
+      color: #42F527;
+      font-size: 20px;
+      margin: 0 0 2px 0;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    #banner p { margin: 0; color: #999999; font-size: 11px; }
+
+    #topnav {
+      background: #222222;
+      border-bottom: 1px solid #3a3a3a;
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+    #topnav a { margin-right: 10px; color: #7bb85f; text-decoration: none; }
+    #topnav a:hover { color: #42F527; text-decoration: underline; }
+    #topnav a.active { color: #42F527; font-weight: bold; }
+
+    #wrap { padding: 8px; max-width: 760px; }
+
+    .sec-head {
+      background: #1e2e1e;
+      border: 1px solid #7bb85f;
+      border-bottom: none;
+      padding: 4px 6px;
+      color: #d4d4b8;
+      font-weight: bold;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* ── server card ── */
+    .srv {
+      border: 1px solid #3a3a3a;
+      background: #222222;
+      margin-bottom: 14px;
+    }
+    .srv-head {
+      background: #1a1a1a;
+      border-bottom: 1px solid #3a3a3a;
+      padding: 6px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .srv-name { color: #d4d4b8; font-weight: bold; font-size: 13px; }
+    .srv-vmid { color: #666666; font-size: 10px; margin-left: 6px; }
+
+    .status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #555555; display: inline-block; }
+    .dot.running { background: #42F527; box-shadow: 0 0 4px #42F527; }
+    .dot.stopped { background: #888888; }
+    .dot.unknown { background: #c2a13a; }
+    .dot.busy { background: #c2a13a; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .status .label { color: #999999; text-transform: uppercase; letter-spacing: 1px; }
+    .status .meta { color: #666666; }
+
+    .srv-body { padding: 8px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    button.retro-btn {
+      background: #2a4a1a;
+      color: #d4d4b8;
+      border: 1px solid #7bb85f;
+      padding: 4px 12px;
+      font-family: Verdana, Arial, sans-serif;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button.retro-btn:hover { background: #3a6a2a; color: #42F527; }
+    button.retro-btn:disabled { background: #333333; color: #555555; border-color: #3a3a3a; cursor: default; }
+    button.retro-btn.danger { background: #4a1a1a; border-color: #b85f5f; }
+    button.retro-btn.danger:hover { background: #6a2a2a; color: #ff7777; }
+
+    .srv-err { color: #ff6666; font-size: 11px; margin-top: 6px; min-height: 14px; }
+
+    /* ── config / update panel (Phase 3) ── */
+    .panel { border-top: 1px dashed #3a3a3a; margin-top: 8px; padding-top: 8px; }
+    .panel-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+    .panel label { color: #7bb85f; font-size: 11px; font-weight: bold; }
+    select, input[type=text] {
+      background: #1a1a1a; border: 1px solid #3a3a3a; color: #d4d4b8;
+      padding: 3px 4px; font-family: Verdana, Arial, sans-serif; font-size: 11px;
+    }
+    textarea.cfg {
+      width: 100%; box-sizing: border-box; height: 160px; resize: vertical;
+      background: #1a1a1a; border: 1px solid #3a3a3a; color: #d4d4b8;
+      padding: 4px; font-family: "Courier New", monospace; font-size: 12px;
+    }
+    pre.out {
+      background: #141414; border: 1px solid #2a2a2a; color: #b8d4a0;
+      padding: 6px; font-family: "Courier New", monospace; font-size: 11px;
+      white-space: pre-wrap; max-height: 200px; overflow: auto; margin: 6px 0 0;
+    }
+
+    #gate { padding: 24px 8px; color: #ff6666; font-size: 13px; }
+    #gate a { font-weight: bold; }
+
+    #footer-bar {
+      border-top: 1px solid #3a3a3a;
+      background: #1f1f1f;
+      padding: 6px 8px;
+      color: #999999;
+      font-size: 10px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="banner">
+    <h1>Gamertown.Solutions &mdash; Server Control</h1>
+    <p>power :: status :: config :: updates &mdash; admins only</p>
+  </div>
+
+  <div id="topnav">
+    <a href="index.html">Home</a>
+    <a href="forum.html">Forum</a>
+    <a href="wheel.html">Name Spinner</a>
+    <a href="map.html">Cyber Barn</a>
+    <a href="kpi.html">KPI</a>
+    <a href="servers.html" class="active">Server Control</a>
+  </div>
+
+  <div id="wrap">
+    <div id="gate" style="display:none"></div>
+
+    <div id="panel" style="display:none">
+      <div class="sec-head">Game Servers</div>
+      <div id="server-list">
+        <div style="padding:12px;color:#999;font-style:italic">loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer-bar">
+    &copy; 2026 GAMERTOWN.SOLUTIONS &mdash; all realities reserved
+  </div>
+
+  <script type="module">
+    import {
+      dbGetServers, dbServerAction,
+      dbListServerConfig, dbReadServerConfig, dbWriteServerConfig, dbUpdateServer,
+    } from './db.js'
+    import { loadSession } from './auth.js'
+
+    const gate  = document.getElementById('gate')
+    const panel = document.getElementById('panel')
+
+    // ── admin gate ─────────────────────────────────────────────
+    const session = await loadSession()
+    if (!session) {
+      gate.style.display = 'block'
+      gate.innerHTML = 'You must <a href="signin.html">sign in</a> as an admin to control servers.'
+    } else if (!session.isAdmin) {
+      gate.style.display = 'block'
+      gate.textContent = 'Admins only. Your account does not have server-control access.'
+    } else {
+      panel.style.display = 'block'
+      boot()
+    }
+
+    // ── helpers ────────────────────────────────────────────────
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    }
+    function fmtUptime(sec) {
+      sec = Math.floor(sec || 0)
+      if (sec <= 0) return ''
+      const d = Math.floor(sec/86400), h = Math.floor(sec%86400/3600), m = Math.floor(sec%3600/60)
+      if (d) return `up ${d}d ${h}h`
+      if (h) return `up ${h}h ${m}m`
+      return `up ${m}m`
+    }
+
+    let servers = []
+
+    async function boot() {
+      try {
+        servers = await dbGetServers()
+      } catch (e) {
+        document.getElementById('server-list').innerHTML =
+          `<div style="padding:12px;color:#ff6666">error: ${esc(e.message)}</div>`
+        return
+      }
+      render()
+    }
+
+    function render() {
+      const host = document.getElementById('server-list')
+      if (!servers.length) {
+        host.innerHTML = '<div style="padding:12px;color:#999">no servers configured</div>'
+        return
+      }
+      host.innerHTML = servers.map(cardHtml).join('')
+      servers.forEach(s => wireCard(s.id))
+    }
+
+    function statusBits(s) {
+      const cls = s.status === 'running' ? 'running' : s.status === 'stopped' ? 'stopped' : 'unknown'
+      const meta = s.status === 'running' && s.uptime ? `&mdash; ${esc(fmtUptime(s.uptime))}` : ''
+      return { cls, meta }
+    }
+
+    function cardHtml(s) {
+      const { cls, meta } = statusBits(s)
+      return `
+      <div class="srv" id="srv-${esc(s.id)}">
+        <div class="srv-head">
+          <div><span class="srv-name">${esc(s.name)}</span><span class="srv-vmid">VMID ${esc(s.vmid)}</span></div>
+          <div class="status" data-status>
+            <span class="dot ${cls}"></span>
+            <span class="label">${esc(s.status)}</span>
+            <span class="meta">${meta}</span>
+          </div>
+        </div>
+        <div class="srv-body">
+          <div class="btn-row">
+            <button class="retro-btn" data-act="start">Start</button>
+            <button class="retro-btn" data-act="reboot">Restart</button>
+            <button class="retro-btn" data-act="shutdown">Shut Down</button>
+            <button class="retro-btn danger" data-act="stop">Force Stop</button>
+            <button class="retro-btn" data-act="refresh">Refresh</button>
+          </div>
+          <div class="srv-err" data-err></div>
+
+          <div class="panel">
+            <div class="panel-row">
+              <label>Config</label>
+              <select data-cfg-select><option value="">— list files —</option></select>
+              <button class="retro-btn" data-cfg-load>List Files</button>
+              <button class="retro-btn" data-cfg-save disabled>Save</button>
+              <span style="flex:1"></span>
+              <button class="retro-btn" data-update>Run Update</button>
+            </div>
+            <textarea class="cfg" data-cfg-text placeholder="select a config file and click Open" disabled></textarea>
+            <pre class="out" data-out style="display:none"></pre>
+          </div>
+        </div>
+      </div>`
+    }
+
+    function wireCard(id) {
+      const root = document.getElementById(`srv-${id}`)
+      const errEl = root.querySelector('[data-err]')
+      const out   = root.querySelector('[data-out]')
+      const sel   = root.querySelector('[data-cfg-select]')
+      const text  = root.querySelector('[data-cfg-text]')
+      const saveBtn = root.querySelector('[data-cfg-save]')
+
+      const setErr = (m) => { errEl.textContent = m || '' }
+      const setBusy = (busy) => {
+        root.querySelectorAll('.btn-row button').forEach(b => b.disabled = busy)
+        const dot = root.querySelector('.dot')
+        if (busy) { dot.className = 'dot busy' }
+      }
+      const showOut = (txt) => { out.style.display = 'block'; out.textContent = txt }
+
+      async function refresh() {
+        try {
+          const all = await dbGetServers()
+          servers = all
+          const s = all.find(x => x.id === id)
+          if (s) updateStatus(root, s)
+          setErr(s?.error || '')
+        } catch (e) { setErr(e.message) }
+      }
+
+      // power actions
+      root.querySelectorAll('[data-act]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const act = btn.dataset.act
+          if (act === 'refresh') return refresh()
+          if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
+          setErr(''); setBusy(true)
+          try {
+            await dbServerAction(id, act)
+            // give Proxmox a moment, then refresh status
+            await new Promise(r => setTimeout(r, 1500))
+            await refresh()
+          } catch (e) {
+            setErr(e.message)
+          } finally {
+            setBusy(false)
+          }
+        })
+      })
+
+      // config: list
+      root.querySelector('[data-cfg-load]').addEventListener('click', async () => {
+        setErr('')
+        try {
+          const { files } = await dbListServerConfig(id)
+          sel.innerHTML = (files.length ? files : []).map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')
+            || '<option value="">(no editable files)</option>'
+        } catch (e) { setErr(e.message) }
+      })
+
+      // config: read the file selected in the dropdown
+      sel.addEventListener('change', async () => {
+        const file = sel.value
+        if (!file) return
+        setErr('')
+        try {
+          const { content, truncated } = await dbReadServerConfig(id, file)
+          text.value = content
+          text.disabled = false
+          saveBtn.disabled = false
+          if (truncated) setErr('note: file was truncated by Proxmox (very large file)')
+        } catch (e) { setErr(e.message); text.disabled = true; saveBtn.disabled = true }
+      })
+
+      // config: save
+      saveBtn.addEventListener('click', async () => {
+        const file = sel.value
+        if (!file) return
+        setErr(''); saveBtn.disabled = true
+        try {
+          await dbWriteServerConfig(id, file, text.value)
+          showOut(`saved ${file} ✓`)
+        } catch (e) { setErr(e.message) } finally { saveBtn.disabled = false }
+      })
+
+      // update recipe
+      root.querySelector('[data-update]').addEventListener('click', async () => {
+        if (!confirm('Run the update recipe? This may stop and restart the server.')) return
+        setErr(''); setBusy(true); showOut('running update…')
+        try {
+          const res = await dbUpdateServer(id)
+          showOut(formatUpdate(res))
+          await refresh()
+        } catch (e) {
+          setErr(e.message)
+          out.style.display = 'none'
+        } finally { setBusy(false) }
+      })
+    }
+
+    function updateStatus(root, s) {
+      const { cls, meta } = statusBits(s)
+      root.querySelector('.dot').className = `dot ${cls}`
+      root.querySelector('.status .label').textContent = s.status
+      root.querySelector('.status .meta').innerHTML = meta
+    }
+
+    function formatUpdate(res) {
+      if (!res?.steps) return JSON.stringify(res, null, 2)
+      return res.steps.map(st => {
+        const head = `── ${st.name} (exit ${st.exitCode}) ──`
+        return [head, st.stdout, st.stderr && `[stderr]\n${st.stderr}`].filter(Boolean).join('\n')
+      }).join('\n\n')
+    }
+  </script>
+
+</body>
+</html>

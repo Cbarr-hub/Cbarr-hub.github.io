@@ -137,6 +137,42 @@ export async function dbGetAllGames() {
   return (await api('/games')) ?? [];
 }
 
+// ── game-server control (servers page, admin-only) ────────────────────────────
+
+export async function dbGetServers() {
+  return (await api('/servers')) ?? [];
+}
+
+export async function dbGetServerStatus(id) {
+  return api(`/servers/${encodeURIComponent(id)}`);
+}
+
+// action ∈ start | shutdown | reboot | stop
+export async function dbServerAction(id, action) {
+  return api(`/servers/${encodeURIComponent(id)}/actions/${encodeURIComponent(action)}`, {
+    method: 'POST',
+  });
+}
+
+export async function dbListServerConfig(id) {
+  return api(`/servers/${encodeURIComponent(id)}/config`);
+}
+
+export async function dbReadServerConfig(id, file) {
+  return api(`/servers/${encodeURIComponent(id)}/config/${encodeURIComponent(file)}`);
+}
+
+export async function dbWriteServerConfig(id, file, content) {
+  return api(`/servers/${encodeURIComponent(id)}/config/${encodeURIComponent(file)}`, {
+    method: 'PUT',
+    body: { content },
+  });
+}
+
+export async function dbUpdateServer(id) {
+  return api(`/servers/${encodeURIComponent(id)}/update`, { method: 'POST' });
+}
+
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────
 
 export async function dbInsertScore(_name, seconds) {

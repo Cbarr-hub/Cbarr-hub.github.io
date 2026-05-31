@@ -7,6 +7,8 @@ import { loadEnv } from './env.js';
 import { openDb, runMigrations, purgeExpiredSessions } from './db.js';
 import { loadOrCreateSessionKey, SESSION_TTL_SECONDS } from './session.js';
 import { attachSession } from './middleware/auth.js';
+import { ProxmoxClient } from './proxmox/client.js';
+import { createServerService } from './servers/service.js';
 
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
@@ -16,6 +18,7 @@ import leaderboardRoutes from './routes/leaderboard.js';
 import eventsRoutes from './routes/events.js';
 import gamesRoutes from './routes/games.js';
 import adminRoutes from './routes/admin.js';
+import serversRoutes from './routes/servers.js';
 
 export async function buildApp(env = loadEnv()) {
   const app = Fastify({
@@ -54,6 +57,20 @@ export async function buildApp(env = loadEnv()) {
 
   attachSession(app);
 
+  // Game-server control: build a Proxmox client only if a token is configured,
+  // otherwise pass null so /api/servers degrades to 503 instead of crashing.
+  const proxmox = env.PVE_API_URL && env.PVE_TOKEN_ID && env.PVE_TOKEN_SECRET
+    ? new ProxmoxClient({
+        apiUrl: env.PVE_API_URL,
+        node: env.PVE_NODE,
+        tokenId: env.PVE_TOKEN_ID,
+        tokenSecret: env.PVE_TOKEN_SECRET,
+        rejectUnauthorized: env.PVE_TLS_REJECT_UNAUTHORIZED,
+      })
+    : null;
+  if (!proxmox) app.log.warn('PVE token not configured — /api/servers will return 503');
+  app.decorate('serverService', createServerService({ client: proxmox }));
+
   app.get('/api/health', async () => ({ ok: true }));
 
   app.get('/api/csrf', async (req, reply) => {
@@ -68,6 +85,7 @@ export async function buildApp(env = loadEnv()) {
   await app.register(eventsRoutes,     { prefix: '/api/events' });
   await app.register(gamesRoutes,      { prefix: '/api/games' });
   await app.register(adminRoutes,      { prefix: '/api/admin' });
+  await app.register(serversRoutes,    { prefix: '/api/servers' });
 
   return app;
 }

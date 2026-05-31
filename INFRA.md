@@ -197,6 +197,100 @@ curl -sk https://192.168.1.200/api/me -b /tmp/c.txt
 
 ---
 
+## Game Server Control Panel (`/servers.html` + `/api/servers`)
+
+Admins can power-cycle, update, and edit the config of the three game VMs from the
+browser at `https://192.168.1.200/servers.html`. The Fastify backend (in CT 103)
+reaches the VMs through the **Proxmox VE API** with a scoped **API token** — it
+never runs `qm` and never needs root on the host.
+
+### Architecture (layers, infra → UI)
+
+```
+servers.html → db.js → /api/servers routes → service → connector → ProxmoxClient → PVE API
+```
+
+| Layer | File | Responsibility |
+|---|---|---|
+| Transport | `backend/src/proxmox/client.js` | Raw PVE HTTP + token auth only |
+| Registry | `backend/src/servers/registry.js` | id → VMID (CS 100, Factorio 101, Minecraft 102) |
+| Connectors | `backend/src/servers/connectors/*` | Per-game config paths + update recipes |
+| Service | `backend/src/servers/service.js` | Validate id/action, dispatch, normalize |
+| Routes | `backend/src/routes/servers.js` | `requireAdmin` + CSRF, error→HTTP mapping |
+
+VMIDs only ever come from the registry — the API can never be aimed at another VM.
+
+### API endpoints (all admin-only)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/servers` | list + live status/uptime |
+| GET | `/api/servers/:id` | one server's status |
+| POST | `/api/servers/:id/actions/:action` | action ∈ `start,shutdown,reboot,stop` |
+| GET | `/api/servers/:id/config` | list whitelisted config files |
+| GET | `/api/servers/:id/config/:file` | read a config file |
+| PUT | `/api/servers/:id/config/:file` | write a config file |
+| POST | `/api/servers/:id/update` | run the game's update recipe |
+
+`shutdown`/`reboot` are graceful (ACPI, needs guest agent); `stop` is a hard
+power-off (force, confirm-gated in the UI). If the PVE token is unset, every
+endpoint returns **503 "not configured"** — the backend still boots.
+
+### One-time Proxmox setup
+
+1. **Create an API token** — Proxmox UI → Datacenter → Permissions → API Tokens →
+   Add. Suggested id `gamertown@pve!serverctl`. Copy the secret (shown once).
+2. **Role + ACL** — Datacenter → Permissions → Roles → create e.g. `ServerCtl`
+   with privileges:
+   - Power + status: `VM.Audit`, `VM.PowerMgmt`
+   - In-VM update/config (guest agent): `VM.GuestAgent.Audit`,
+     `VM.GuestAgent.FileSystemRead`, `VM.GuestAgent.FileSystemWrite`, `VM.Monitor`
+     (names vary by PVE version; on older 7.x use `VM.Monitor` alone).
+
+   Then Permissions → Add → API Token Permission: path `/vms/100` (repeat 101, 102,
+   or use a pool), the token, role `ServerCtl`. If the token has *Privilege
+   Separation* enabled, the token itself must be granted the role (not just the user).
+3. **Guest agent in each VM** (needed for update + config editing, not basic power):
+   ```bash
+   # inside each game VM:
+   apt install -y qemu-guest-agent && systemctl enable --now qemu-guest-agent
+   # then on the Proxmox host:
+   qm set 100 --agent enabled=1   # repeat for 101, 102
+   # reboot the VM once so the agent channel attaches
+   ```
+4. **Backend config** — add to `/srv/gamertown/backend/.env` (see `.env.example`):
+   ```
+   PVE_API_URL=https://192.168.1.109:8006
+   PVE_NODE=pve
+   PVE_TOKEN_ID=gamertown@pve!serverctl
+   PVE_TOKEN_SECRET=<the secret from step 1>
+   PVE_TLS_REJECT_UNAUTHORIZED=false   # PVE self-signed cert
+   ```
+   Then `npm install --omit=dev` (adds `undici`) and
+   `systemctl restart gamertown`.
+
+### Per-game paths to verify
+
+The update recipes and config whitelists in `backend/src/servers/connectors/`
+(`factorio.js`, `minecraft.js`, `counterstrike.js`) use **assumed** in-VM paths
+and systemd unit names (e.g. Factorio `/opt/factorio/data/server-settings.json`,
+Minecraft `/srv/minecraft/server.properties`, CS `/home/steam/cs/...`). These are
+the only game-specific knowledge in the system — adjust the constants at the top
+of each connector to match the real layout inside each VM.
+
+### Smoke test
+
+```bash
+# unconfigured / wrong-role → clear errors, backend stays up
+curl -sk https://192.168.1.200/api/servers          # 401 (not signed in)
+# signed-in admin (reuse the cookie jar from the login flow above):
+curl -sk https://192.168.1.200/api/servers -b /tmp/c.txt          # list + status
+curl -sk -X POST https://192.168.1.200/api/servers/factorio/actions/start \
+  -H "x-csrf-token: $CSRF" -b /tmp/c.txt -c /tmp/c.txt            # start Factorio
+```
+
+---
+
 ## Future: Adding a Domain + Real TLS
 
 1. Buy a domain (e.g. `gamertown.online`) and point DNS A record at `104.177.95.216`

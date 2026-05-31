@@ -11,7 +11,8 @@
     "dev": "node --watch src/server.js",
     "cli": "node src/cli.js",
     "migrate": "node src/migrate.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@fastify/csrf-protection": "^6.4.1",
@@ -20,6 +21,7 @@
     "@fastify/static": "^7.0.4",
     "argon2": "^0.40.3",
     "better-sqlite3": "^11.3.0",
-    "fastify": "^4.28.1"
+    "fastify": "^4.28.1",
+    "undici": "^6.19.8"
   }
 }

@@ -281,6 +281,21 @@ time_minutes INTEGER
 - **POST /api/admin/users** — create user (body: `{ username, displayName, password, isAdmin }`)
 - **DELETE /api/admin/users/:id** — delete user
 
+### Game Server Control (requires is_admin=1)
+Controls the Proxmox game VMs via the PVE API token (see INFRA.md → "Game Server
+Control Panel" for setup). Returns 503 if `PVE_TOKEN_*` is unconfigured.
+- **GET /api/servers** — list servers + live status/uptime
+- **GET /api/servers/:id** — one server's status
+- **POST /api/servers/:id/actions/:action** — `action ∈ {start,shutdown,reboot,stop}`
+- **GET /api/servers/:id/config** — list whitelisted config files
+- **GET /api/servers/:id/config/:file** — read a config file (guest agent)
+- **PUT /api/servers/:id/config/:file** — write a config file (guest agent)
+- **POST /api/servers/:id/update** — run the game's update recipe (guest agent)
+
+Source: `src/proxmox/client.js` (transport), `src/servers/{registry,service}.js`,
+`src/servers/connectors/*` (per-game), `src/routes/servers.js` (HTTP).
+Frontend: `servers.html` + `db.js` helpers.
+
 ---
 
 ## Common Operations
@@ -407,7 +422,6 @@ sudo journalctl -u gamertown -n 50
 
 ## What's NOT Implemented Yet
 
-- Game-server control endpoints (`/api/servers/*`) — designed but code not written
 - Display-name editing UI — users can't change their display_name after account creation
 - Password reset flow — users can't self-service reset; admin must delete and recreate user via CLI
 

@@ -77,6 +77,7 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     const alias = (getCvar(game, 'game_alias') || 'competitive').trim();
     const hostname = getCvar(game, 'hostname') ?? '';
     const maxplayers = Number(getVar(inst, 'maxplayers') || 10);
+    const storedName = getVar(inst, 'gt_workshop_name') || '';
 
     const stock = await this.#listMaps();
     // Build the map dropdown: stock maps + curated workshop maps.
@@ -87,14 +88,23 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     const current = hwm ? `ws:${hwm}` : stockMap;
     // Make sure the current selection is always present, even an unknown workshop id.
     if (!options.some((o) => o.value === current)) {
-      options.unshift({ value: current, label: hwm ? `Workshop ${hwm}` : stockMap });
+      const label = hwm
+        ? `${storedName || `Workshop ${hwm}`} (Workshop)`
+        : stockMap;
+      options.unshift({ value: current, label });
     }
+
+    // Pre-fill the Map Name field: use the curated name if known, stored name otherwise.
+    const curatedEntry = WORKSHOP_MAPS.find((w) => w.id === hwm);
+    const workshopNameValue = hwm ? (curatedEntry?.name ?? storedName) : '';
 
     return {
       fields: [
         { key: 'map', label: 'Map', type: 'select', value: current, options },
         { key: 'workshopId', label: 'Workshop ID', type: 'text', value: '',
-          placeholder: 'advanced: overrides Map with this Workshop id' },
+          placeholder: 'overrides Map with this Workshop ID' },
+        { key: 'workshopName', label: 'Map Name', type: 'text', value: workshopNameValue,
+          placeholder: 'display name for Workshop ID above (e.g. Cobblestone)' },
         { key: 'gameMode', label: 'Game Mode', type: 'select',
           value: GAME_ALIASES[alias] ? alias : 'competitive',
           options: Object.entries(GAME_ALIASES).map(([v, l]) => ({ value: v, label: l })) },
@@ -106,13 +116,14 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
   }
 
   async setSettings(values = {}) {
-    const { map, workshopId, gameMode, maxPlayers, hostname } = values;
+    const { map, workshopId, workshopName, gameMode, maxPlayers, hostname } = values;
     const bad = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
 
     if (gameMode !== undefined && !GAME_ALIASES[gameMode]) throw bad(`invalid game mode: ${gameMode}`);
     const mp = maxPlayers === undefined ? undefined : Number(maxPlayers);
     if (mp !== undefined && (!Number.isInteger(mp) || mp < 1 || mp > 64)) throw bad('maxPlayers must be 1–64');
     if (workshopId !== undefined && workshopId !== '' && !/^\d{1,20}$/.test(workshopId)) throw bad(`invalid workshop id: ${workshopId}`);
+    if (workshopName !== undefined && /["\n\r]/.test(workshopName)) throw bad('map name may not contain quotes or newlines');
     if (hostname !== undefined && /["\n\r]/.test(hostname)) throw bad('server name may not contain quotes or newlines');
 
     // Resolve the desired map source.
@@ -141,12 +152,18 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
       await this.client.agentFileWrite(this.vmid, GAME_CFG, setCvars(game, cvars));
     }
 
-    // ── instance cfg (maxplayers) ──
-    if (mp !== undefined) {
+    // ── instance cfg (maxplayers + workshop display name) ──
+    const needsInstWrite = mp !== undefined || wsId !== undefined || stock !== undefined;
+    if (needsInstWrite) {
       const inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
-      await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, setVar(inst, 'maxplayers', String(mp)));
+      let newInst = inst;
+      if (mp !== undefined) newInst = setVar(newInst, 'maxplayers', String(mp));
+      // Store the human-readable name for workshop maps; clear it when switching to stock.
+      if (wsId !== undefined) newInst = setVar(newInst, 'gt_workshop_name', workshopName ?? '');
+      else if (stock !== undefined) newInst = setVar(newInst, 'gt_workshop_name', '');
+      await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, newInst);
     }
 
-    return { ok: true, applied: { map: stock, workshopMap: wsId, gameMode, maxPlayers: mp, hostname } };
+    return { ok: true, applied: { map: stock, workshopMap: wsId, workshopName, gameMode, maxPlayers: mp, hostname } };
   }
 }

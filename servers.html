@@ -162,10 +162,12 @@
 
   <div id="topnav">
     <a href="index.html">Home</a>
-    <a href="forum.html">Forum</a>
+    <a href="index2.html">Index 2</a>
+    <a href="tablets.html">The Tablets</a>
     <a href="wheel.html">Name Spinner</a>
     <a href="map.html">Cyber Barn</a>
     <a href="kpi.html">KPI</a>
+    <a href="forum.html">Forum</a>
     <a href="servers.html" class="active">Server Control</a>
   </div>
 
@@ -258,10 +260,13 @@
       <div class="srv" id="srv-${esc(s.id)}">
         <div class="srv-head">
           <div><span class="srv-name">${esc(s.name)}</span><span class="srv-vmid">VMID ${esc(s.vmid)}</span></div>
-          <div class="status" data-status>
-            <span class="dot ${cls}"></span>
-            <span class="label">${esc(s.status)}</span>
-            <span class="meta">${meta}</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="retro-btn" data-update>Update</button>
+            <div class="status" data-status>
+              <span class="dot ${cls}"></span>
+              <span class="label">${esc(s.status)}</span>
+              <span class="meta">${meta}</span>
+            </div>
           </div>
         </div>
         <div class="srv-body">
@@ -292,11 +297,8 @@
           <div class="panel">
             <div class="panel-row">
               <label>Config (raw)</label>
-              <select data-cfg-select><option value="">— list files —</option></select>
-              <button class="retro-btn" data-cfg-load>List Files</button>
+              <select data-cfg-select><option value="">— loading… —</option></select>
               <button class="retro-btn" data-cfg-save disabled>Save</button>
-              <span style="flex:1"></span>
-              <button class="retro-btn" data-update>Run Update</button>
             </div>
             <textarea class="cfg" data-cfg-text placeholder="select a config file and click Open" disabled></textarea>
             <pre class="out" data-out style="display:none"></pre>
@@ -368,15 +370,15 @@
         })
       })
 
-      // config: list
-      root.querySelector('[data-cfg-load]').addEventListener('click', async () => {
-        setErr('')
+      // config: auto-load file list on page load
+      async function loadConfigList() {
         try {
           const { files } = await dbListServerConfig(id)
           sel.innerHTML = (files.length ? files : []).map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')
             || '<option value="">(no editable files)</option>'
         } catch (e) { setErr(e.message) }
-      })
+      }
+      loadConfigList()
 
       // config: read the file selected in the dropdown
       sel.addEventListener('change', async () => {

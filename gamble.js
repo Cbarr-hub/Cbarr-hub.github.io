@@ -25,7 +25,7 @@ import {
   winTierTitle
 } from './slot-rules.mjs?v=cascade-1';
 
-const activeUsername = requireAuth('signin.html');
+const activeUsername = await requireAuth('signin.html');
 updateNavbar(activeUsername);
 
 const SOUND_STORAGE_KEY = "gambleSoundEnabled";

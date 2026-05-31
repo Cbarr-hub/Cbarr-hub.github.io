@@ -213,19 +213,18 @@
     }
 
     function normalizeGame(row) {
-      const players = Number(row.players);
-      const minplayers = Number(row.minplayers);
-      const maxplayers = Number(row.maxplayers);
-      const timeMinutes = Number(row.time_minutes);
+      // Use NaN for null/missing so isFinite rejects them (Number(null) = 0 which isFinite passes)
+      const players = row.players != null ? Number(row.players) : NaN;
+      const minplayers = row.minplayers != null ? Number(row.minplayers) : NaN;
+      const maxplayers = row.maxplayers != null ? Number(row.maxplayers) : NaN;
+      const timeMinutes = row.time_minutes != null ? Number(row.time_minutes) : NaN;
       return {
         id: row.id,
         name: row.name,
         players: Number.isFinite(players) ? players : null,
         minplayers: Number.isFinite(minplayers) ? minplayers : null,
         maxplayers: Number.isFinite(maxplayers) ? maxplayers : null,
-        timeMinutes: row.time_minutes === null || row.time_minutes === undefined || row.time_minutes === ''
-          ? null
-          : Number.isFinite(timeMinutes) ? timeMinutes : null
+        timeMinutes: Number.isFinite(timeMinutes) ? timeMinutes : null
       };
     }
 

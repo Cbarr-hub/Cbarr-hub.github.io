@@ -462,7 +462,9 @@
               btn.disabled = true
               try {
                 const res = await dbSaveServerSettings(id, values)
-                showOut(res?.steps ? formatUpdate(res) : 'settings saved ✓ — restart the server to apply')
+                if (res?.steps) showOut(formatUpdate(res))
+                if (res?.ok === false) setErr('operation failed — see output below')
+                else if (!res?.steps) showOut('settings saved ✓ — restart the server to apply')
               } catch (e) { setErr(e.message) } finally { btn.disabled = false }
             })
           })

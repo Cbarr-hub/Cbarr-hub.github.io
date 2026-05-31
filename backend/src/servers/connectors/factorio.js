@@ -262,6 +262,8 @@ export class FactorioConnector extends LinuxGsmConnector {
       if (wasActive) {
         const stopRes = await lgsm('stop');
         steps.push({ name: 'stop', ...stopRes });
+        // Give the OS a moment to release the exclusive lock after the process exits.
+        await new Promise(r => setTimeout(r, 3_000));
       }
 
       // Write map-gen-settings to the home dir (readable by miles; root writes 644).
@@ -281,12 +283,14 @@ export class FactorioConnector extends LinuxGsmConnector {
       steps.push({ name: 'create', ...createResult });
 
       if (createResult.exitCode !== 0) {
-        // Restart the previous world so the server isn't left stopped.
+        // Recovery-restart the previous world so the server isn't left stopped.
         if (wasActive) {
           const restartRes = await lgsm('start').catch(e => ({ exitCode: 1, stdout: '', stderr: e.message }));
           steps.push({ name: 'start (recovery)', ...restartRes });
         }
-        throw bad(`world generation failed: ${(createResult.stderr || createResult.stdout).slice(0, 300)}`);
+        // Return steps rather than throwing so the full Factorio output is visible
+        // in the UI output panel instead of being truncated in the error bar.
+        return { ok: false, action: 'generate', saveName: cleanName, steps };
       }
 
       // Set the new save as active then bring the server back up.

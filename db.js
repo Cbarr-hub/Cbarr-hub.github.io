@@ -125,8 +125,10 @@ export async function dbGetEvents({ fields: _fields = '*', ascending = false, li
 
 export async function dbInsertEvent(event) {
   const { type, ...payload } = event ?? {};
-  if (!type) throw new Error('event.type is required');
-  await api('/events', { method: 'POST', body: { type, payload } });
+  // buildGamblingEvent uses event_type, not type — fall back so both work
+  const eventType = type ?? payload.event_type;
+  if (!eventType) throw new Error('event type is required');
+  await api('/events', { method: 'POST', body: { type: eventType, payload } });
 }
 
 // ── games (wheel page) ────────────────────────────────────────────────────────

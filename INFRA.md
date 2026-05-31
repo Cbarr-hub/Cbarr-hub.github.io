@@ -231,6 +231,11 @@ VMIDs only ever come from the registry — the API can never be aimed at another
 | GET | `/api/servers/:id/config/:file` | read a config file |
 | PUT | `/api/servers/:id/config/:file` | write a config file |
 | POST | `/api/servers/:id/update` | run the game's update recipe |
+| GET / PUT | `/api/servers/:id/settings` | structured quick settings (read / apply) |
+| GET / POST | `/api/servers/:id/maps` | CS workshop-map catalog (list / add) |
+| PATCH / DELETE | `/api/servers/:id/maps/:workshopId` | rename / remove a catalog map |
+| GET / POST | `/api/servers/:id/configs` | CS saved-config library (list / create) |
+| GET / PUT / DELETE | `/api/servers/:id/configs/:configId` | read / update / delete a saved config |
 
 `shutdown`/`reboot` are graceful (ACPI, needs guest agent); `stop` is a hard
 power-off (force, confirm-gated in the UI). If the PVE token is unset, every
@@ -318,10 +323,21 @@ auto-start with `systemctl disable <unit>`.
 - `hostname "<name>"` — server display name (shown in CS2 server browser)
 
 `maxplayers` lives in the LGSM instance cfg (`-maxplayers`). The editor offers
-stock maps (listed from installed `.vpk`s) plus a curated workshop-map catalog
-(`WORKSHOP_MAPS` in `connectors/counterstrike.js`) and an arbitrary Workshop-ID
-override. **Changes apply on the next restart.** Cvar I/O: `servers/cvars.js`
-(Source cfg) and `servers/cfgvars.js` (shell vars).
+stock maps (listed from installed `.vpk`s) plus a **persisted workshop-map
+catalog** and a **saved-config library**, both in SQLite (`backend/src/servers/
+store.js`, tables `server_workshop_maps` + `server_configs`, migration `002`):
+
+- **Workshop maps** are added/renamed/removed via the `/maps` endpoints; the
+  panel only shows the Map-Name field while adding a new ID. The active map is
+  still the `host_workshop_map` cvar.
+- **Saved configs** (e.g. bunnyhop) are edited via the `/configs` endpoints. The
+  selected config is "deployed" by writing its body to
+  `serverfiles/game/csgo/cfg/gamertown/active.cfg` and ensuring `cs2server.cfg`
+  ends with `exec gamertown/active`; the instance cfg records the choice in
+  `gt_active_config`. So map **and** config both apply on the next restart.
+
+**Changes apply on the next restart.** Cvar I/O: `servers/cvars.js` (Source cfg)
+and `servers/cfgvars.js` (shell vars).
 
 **Factorio quick settings (save management / world generation):**
 `servers.html` shows a three-section editor backed by

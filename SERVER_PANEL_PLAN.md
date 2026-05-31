@@ -1,7 +1,7 @@
 # Server Control Panel — Expansion Plan
 
-Status: **planned, not yet implemented**. This document is the implementation
-spec for the next round of work on `/servers.html` + `/api/servers`. Read it
+Status: **Phase 1 + Phase 2 implemented; Phases 3–6 pending.** This document is
+the implementation spec for the work on `/servers.html` + `/api/servers`. Read it
 alongside [`INFRA.md`](INFRA.md) ("Game Server Control Panel") and
 [`backend/README.md`](backend/README.md).
 
@@ -98,7 +98,7 @@ These are guest/host setup steps the connectors assume. Document them in
 
 ---
 
-## 5. Phase 1 — Persistence layer (SQLite)
+## 5. Phase 1 — Persistence layer (SQLite) — ✅ implemented
 
 **New migration** `backend/src/migrations/002_server_panel.sql`:
 
@@ -142,7 +142,7 @@ Seed the existing hardcoded `WORKSHOP_MAPS` entry (Assembly `3071005299`) for
 
 ---
 
-## 6. Phase 2 — Counter-Strike startup overhaul
+## 6. Phase 2 — Counter-Strike startup overhaul — ✅ implemented
 
 ### 6.1 Backend (`connectors/counterstrike.js`)
 

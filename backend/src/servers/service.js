@@ -17,7 +17,7 @@ export class ServerControlError extends Error {
   }
 }
 
-const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop']);
+const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame']);
 
 /**
  * @param {object} deps

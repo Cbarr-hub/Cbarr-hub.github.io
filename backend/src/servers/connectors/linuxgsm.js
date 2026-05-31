@@ -21,6 +21,21 @@ export class LinuxGsmConnector extends BaseConnector {
     });
   }
 
+  async gameRunning() {
+    const res = await this.#gsm('status', 15_000);
+    return res.stdout.includes('[ ONLINE ]');
+  }
+
+  async startGame() {
+    await this.#gsm('start', 120_000);
+    return { ok: true };
+  }
+
+  async stopGame() {
+    await this.#gsm('stop', 120_000);
+    return { ok: true };
+  }
+
   // LinuxGSM `update` validates/updates server files via SteamCMD, then we
   // restart the instance so the new build is live.
   async update() {

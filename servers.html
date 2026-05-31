@@ -52,9 +52,10 @@
 
     .status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
     .dot { width: 9px; height: 9px; border-radius: 50%; background: #555555; display: inline-block; }
-    .dot.running { background: #42F527; box-shadow: 0 0 4px #42F527; }
-    .dot.stopped { background: #888888; }
-    .dot.unknown { background: #c2a13a; }
+    .dot.hosting { background: #42F527; box-shadow: 0 0 4px #42F527; }
+    .dot.idle    { background: #c2a13a; box-shadow: 0 0 4px #c2a13a; }
+    .dot.down    { background: #888888; }
+    .dot.unknown { background: #555555; }
     .dot.busy { background: #c2a13a; animation: pulse 1s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
     .status .label { color: #999999; text-transform: uppercase; letter-spacing: 1px; }
@@ -211,13 +212,18 @@
     }
 
     function statusBits(s) {
-      const cls = s.status === 'running' ? 'running' : s.status === 'stopped' ? 'stopped' : 'unknown'
+      const gs = s.gameStatus
+      let cls, label
+      if      (gs === 'hosting') { cls = 'hosting'; label = 'HOSTING' }
+      else if (gs === 'idle')    { cls = 'idle';    label = 'IDLE' }
+      else if (gs === 'down')    { cls = 'down';    label = 'DOWN' }
+      else                       { cls = 'unknown'; label = s.status ?? 'UNKNOWN' }
       const meta = s.status === 'running' && s.uptime ? `&mdash; ${esc(fmtUptime(s.uptime))}` : ''
-      return { cls, meta }
+      return { cls, label, meta }
     }
 
     function cardHtml(s) {
-      const { cls, meta } = statusBits(s)
+      const { cls, label, meta } = statusBits(s)
       return `
       <div class="srv" id="srv-${esc(s.id)}">
         <div class="srv-head">
@@ -226,7 +232,7 @@
             <button class="retro-btn" data-update>Update</button>
             <div class="status" data-status>
               <span class="dot ${cls}"></span>
-              <span class="label">${esc(s.status)}</span>
+              <span class="label">${esc(label)}</span>
               <span class="meta">${meta}</span>
             </div>
           </div>
@@ -239,10 +245,14 @@
             <button class="copy-btn" data-copy>Copy</button>
           </div>` : ''}
           <div class="btn-row">
-            <button class="retro-btn" data-act="start">Start</button>
-            <button class="retro-btn" data-act="reboot">Restart</button>
+            <button class="retro-btn" data-act="start">Start VM</button>
+            <button class="retro-btn" data-act="reboot">Restart VM</button>
             <button class="retro-btn" data-act="shutdown">Shut Down</button>
             <button class="retro-btn danger" data-act="stop">Force Stop</button>
+          </div>
+          <div class="btn-row" style="margin-top:4px">
+            <button class="retro-btn" data-act="startGame">Start Hosting</button>
+            <button class="retro-btn danger" data-act="stopGame">Stop Hosting</button>
             <button class="retro-btn" data-act="refresh">Refresh</button>
           </div>
           <div class="srv-err" data-err></div>
@@ -285,6 +295,10 @@
       }
       const showOut = (txt) => { out.style.display = 'block'; out.textContent = txt }
 
+      // apply initial game-button state from the server data already in `servers`
+      const initData = servers.find(x => x.id === id)
+      if (initData) updateStatus(root, initData)
+
       async function refresh() {
         try {
           const all = await dbGetServers()
@@ -318,6 +332,7 @@
           const act = btn.dataset.act
           if (act === 'refresh') return refresh()
           if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
+          if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
           setErr(''); setBusy(true)
           try {
             await dbServerAction(id, act)
@@ -470,10 +485,14 @@
     }
 
     function updateStatus(root, s) {
-      const { cls, meta } = statusBits(s)
+      const { cls, label, meta } = statusBits(s)
       root.querySelector('.dot').className = `dot ${cls}`
-      root.querySelector('.status .label').textContent = s.status
+      root.querySelector('.status .label').textContent = label
       root.querySelector('.status .meta').innerHTML = meta
+      // game buttons only work when the VM is up
+      const vmUp = s.status === 'running'
+      root.querySelector('[data-act="startGame"]').disabled = !vmUp
+      root.querySelector('[data-act="stopGame"]').disabled = !vmUp
     }
 
     function formatUpdate(res) {

@@ -25,14 +25,32 @@ export class BaseConnector {
   // ── status ─────────────────────────────────────────────────────────────────
   async status() {
     const data = await this.client.statusCurrent(this.vmid);
-    return normalizeStatus(data);
+    const base = normalizeStatus(data);
+    if (base.status === 'running') {
+      try {
+        base.gameStatus = (await this.gameRunning()) ? 'hosting' : 'idle';
+      } catch {
+        base.gameStatus = 'unknown';
+      }
+    } else {
+      base.gameStatus = 'down';
+    }
+    return base;
   }
 
-  // ── power ───────────────────────────────────────────────────────────────────
+  // Subclasses override: return true when the game server process is running.
+  async gameRunning() { return false; }
+
+  // ── power (VM-level) ─────────────────────────────────────────────────────────
   start()    { return this.client.start(this.vmid); }
   shutdown() { return this.client.shutdown(this.vmid); } // graceful ACPI
   reboot()   { return this.client.reboot(this.vmid); }   // graceful reboot
   stop()     { return this.client.stop(this.vmid); }     // hard power-off (force)
+
+  // ── game process (in-VM) ─────────────────────────────────────────────────────
+  // Subclasses override to start/stop the game server process inside the VM.
+  startGame() { const e = new Error('startGame not implemented'); e.code = 'BAD_ACTION'; throw e; }
+  stopGame()  { const e = new Error('stopGame not implemented');  e.code = 'BAD_ACTION'; throw e; }
 
   // ── in-VM command execution (Phase 2) ──────────────────────────────────────
   // Run a /bin/bash login-shell command line inside the guest. The QEMU guest

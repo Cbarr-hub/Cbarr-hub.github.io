@@ -43,6 +43,23 @@ export class MinecraftConnector extends BaseConnector {
     }
   }
 
+  // ── game process ────────────────────────────────────────────────────────────
+
+  async gameRunning() {
+    const res = await this.runShell('systemctl is-active minecraft', { timeoutMs: 10_000 });
+    return res.stdout.trim() === 'active';
+  }
+
+  async startGame() {
+    await this.runShell('systemctl start minecraft', { timeoutMs: 30_000 });
+    return { ok: true };
+  }
+
+  async stopGame() {
+    await this.runShell('systemctl stop minecraft', { timeoutMs: 60_000 });
+    return { ok: true };
+  }
+
   // ── update (jar upgrade) ─────────────────────────────────────────────────────
 
   async update() {

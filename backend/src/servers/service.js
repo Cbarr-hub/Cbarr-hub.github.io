@@ -109,5 +109,36 @@ export function createServerService({ client, publicHost = '', db = null }) {
     setSettings(id, values) {
       return connectorFor(id).setSettings(values);
     },
+
+    // ── workshop map catalog (Phase 2; CS) ───────────────────────────────────
+    listMaps(id) {
+      return connectorFor(id).listMaps();
+    },
+    addMap(id, body) {
+      return connectorFor(id).addMap(body);
+    },
+    renameMap(id, workshopId, name) {
+      return connectorFor(id).renameMap(workshopId, name);
+    },
+    deleteMap(id, workshopId) {
+      return connectorFor(id).deleteMap(workshopId);
+    },
+
+    // ── config library (Phase 2; CS) ─────────────────────────────────────────
+    listConfigs(id) {
+      return connectorFor(id).listConfigs();
+    },
+    getConfig(id, configId) {
+      return connectorFor(id).getConfig(configId);
+    },
+    createConfig(id, body) {
+      return connectorFor(id).createConfig(body);
+    },
+    updateConfig(id, configId, body) {
+      return connectorFor(id).updateConfig(configId, body);
+    },
+    deleteConfig(id, configId) {
+      return connectorFor(id).deleteConfig(configId);
+    },
   };
 }

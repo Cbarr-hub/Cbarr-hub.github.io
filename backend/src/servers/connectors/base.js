@@ -120,6 +120,25 @@ export class BaseConnector {
     err.code = 'NO_UPDATE_RECIPE';
     throw err;
   }
+
+  // ── persisted catalog + config library (Phase 2; Counter-Strike only today) ──
+  // DB-backed lists a connector may expose via this.store. Default: unsupported,
+  // so non-CS servers reject these cleanly instead of NPE-ing on a null store.
+  listMaps()     { throw unsupportedCapability('a workshop map catalog'); }
+  addMap()       { throw unsupportedCapability('a workshop map catalog'); }
+  renameMap()    { throw unsupportedCapability('a workshop map catalog'); }
+  deleteMap()    { throw unsupportedCapability('a workshop map catalog'); }
+  listConfigs()  { throw unsupportedCapability('a config library'); }
+  getConfig()    { throw unsupportedCapability('a config library'); }
+  createConfig() { throw unsupportedCapability('a config library'); }
+  updateConfig() { throw unsupportedCapability('a config library'); }
+  deleteConfig() { throw unsupportedCapability('a config library'); }
+}
+
+function unsupportedCapability(what) {
+  const err = new Error(`this server has no ${what}`);
+  err.code = 'NOT_SUPPORTED';
+  return err;
 }
 
 // Map Proxmox's qemu status payload to our normalized shape.

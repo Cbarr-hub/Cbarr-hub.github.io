@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import Database from 'better-sqlite3';
 
+import { runMigrations } from '../src/db.js';
 import { getServer, listServers } from '../src/servers/registry.js';
 import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
@@ -28,6 +30,16 @@ function fakeClient(overrides = {}) {
       ?? (() => Promise.resolve({ content: 'hello=world\n', truncated: false })),
     agentFileWrite: overrides.agentFileWrite ?? rec('agentFileWrite'),
   };
+}
+
+// In-memory DB with all migrations applied (backs the connector store).
+function testDb() {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );`);
+  runMigrations(db);
+  return db;
 }
 
 // ── registry ──────────────────────────────────────────────────────────────────
@@ -208,18 +220,19 @@ function csClient(onWrite) {
   });
 }
 
-test('CS getSettings reflects the workshop map actually in effect', async () => {
-  const svc = createServerService({ client: csClient() });
+test('CS getSettings reflects the workshop map in effect, with catalog names', async () => {
+  const svc = createServerService({ client: csClient(), db: testDb() });
   const s = await svc.getSettings('counterstrike');
-  const byKey = Object.fromEntries(s.fields.map((f) => [f.key, f]));
-  // host_workshop_map overrides the stock `map`, so effective map is the workshop one
-  assert.equal(byKey.map.value, 'ws:3071005299');
-  assert.equal(byKey.gameMode.value, 'competitive');
-  assert.equal(byKey.maxPlayers.value, 10);
-  // Assembly is offered as a labelled workshop option
-  assert.ok(byKey.map.options.some((o) => o.value === 'ws:3071005299' && /Assembly/.test(o.label)));
-  const mapVals = byKey.map.options.map((o) => o.value);
-  assert.ok(mapVals.includes('de_dust2') && !mapVals.includes('de_dust2_vanity'));
+  assert.equal(s.game, 'counterstrike');
+  // host_workshop_map overrides the stock `map`, so the effective map is the workshop one
+  assert.equal(s.map.current, 'ws:3071005299');
+  assert.equal(s.gameMode.value, 'competitive');
+  assert.equal(s.maxPlayers, 10);
+  // Assembly comes from the seeded catalog
+  assert.ok(s.map.workshop.some((w) => w.id === '3071005299' && w.name === 'Assembly'));
+  // stock list comes from installed vpks, minus the _vanity entry
+  assert.ok(s.map.stock.includes('de_dust2') && !s.map.stock.includes('de_dust2_vanity'));
+  assert.equal(s.configs.selectedId, null); // none selected by default
 });
 
 test('CS setSettings: stock map clears the workshop override', async () => {
@@ -251,6 +264,71 @@ test('CS setSettings rejects bad values', async () => {
   await assert.rejects(() => svc.setSettings('counterstrike', { map: 'de nuke; rm' }), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => svc.setSettings('counterstrike', { workshopId: 'abc' }), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => svc.setSettings('counterstrike', { hostname: 'a"b' }), (e) => e.code === 'BAD_SETTING');
+});
+
+// ── CS catalog + config library (Phase 2) ─────────────────────────────────────────
+test('CS map catalog: add, rename, delete via the service', async () => {
+  const svc = createServerService({ client: csClient(), db: testDb() });
+  assert.ok((await svc.listMaps('counterstrike')).some((m) => m.workshopId === '3071005299')); // seed
+
+  const added = await svc.addMap('counterstrike', { workshopId: '555', name: 'Mirage WS' });
+  assert.equal(added.name, 'Mirage WS');
+  const renamed = await svc.renameMap('counterstrike', '555', 'Mirage WS2');
+  assert.equal(renamed.name, 'Mirage WS2');
+  await svc.deleteMap('counterstrike', '555');
+  assert.equal((await svc.listMaps('counterstrike')).some((m) => m.workshopId === '555'), false);
+
+  await assert.rejects(async () => svc.addMap('counterstrike', { workshopId: 'abc', name: 'x' }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(async () => svc.renameMap('counterstrike', 'nope', 'x'), (e) => e.code === 'NOT_FOUND');
+});
+
+test('CS config library: CRUD + unique name + validation', async () => {
+  const svc = createServerService({ client: csClient(), db: testDb() });
+  const c = await svc.createConfig('counterstrike', { name: 'bunnyhop', body: 'sv_autobunnyhopping 1\n' });
+  assert.ok(c.id > 0);
+  assert.equal((await svc.getConfig('counterstrike', c.id)).body, 'sv_autobunnyhopping 1\n');
+
+  const u = await svc.updateConfig('counterstrike', c.id, { body: 'sv_autobunnyhopping 0\n' });
+  assert.equal(u.name, 'bunnyhop');            // unchanged
+  assert.equal(u.body, 'sv_autobunnyhopping 0\n');
+  assert.ok((await svc.listConfigs('counterstrike')).some((x) => x.name === 'bunnyhop'));
+
+  await assert.rejects(async () => svc.createConfig('counterstrike', { name: 'bunnyhop', body: '' }), (e) => e.code === 'BAD_SETTING'); // dup
+  await assert.rejects(async () => svc.createConfig('counterstrike', { name: 'bad name!', body: '' }), (e) => e.code === 'BAD_SETTING'); // chars
+
+  await svc.deleteConfig('counterstrike', c.id);
+  await assert.rejects(async () => svc.getConfig('counterstrike', c.id), (e) => e.code === 'NOT_FOUND');
+});
+
+test('CS setSettings deploys the selected config to active.cfg and execs it', async () => {
+  const writes = {};
+  const svc = createServerService({ client: csClient((f, c) => { writes[f] = c; }), db: testDb() });
+  const cfg = await svc.createConfig('counterstrike', { name: 'bhop', body: 'sv_autobunnyhopping 1\n' });
+
+  await svc.setSettings('counterstrike', { map: 'de_dust2', configId: cfg.id });
+
+  const activeKey = Object.keys(writes).find((k) => k.endsWith('/cfg/gamertown/active.cfg'));
+  assert.equal(writes[activeKey], 'sv_autobunnyhopping 1\n');             // body deployed
+  const gameKey = Object.keys(writes).find((k) => k.endsWith('/cfg/cs2server.cfg'));
+  assert.match(writes[gameKey], /^[ \t]*exec gamertown\/active[ \t]*$/m);  // exec line added
+  const instKey = Object.keys(writes).find((k) => k.endsWith('/cs2server/cs2server.cfg'));
+  assert.equal(getVar(writes[instKey], 'gt_active_config'), String(cfg.id)); // selection recorded
+});
+
+test('CS setSettings with configId="" clears the active config', async () => {
+  const writes = {};
+  const svc = createServerService({ client: csClient((f, c) => { writes[f] = c; }), db: testDb() });
+  await svc.setSettings('counterstrike', { configId: '' });
+  const activeKey = Object.keys(writes).find((k) => k.endsWith('/cfg/gamertown/active.cfg'));
+  assert.equal(writes[activeKey], '');
+  const instKey = Object.keys(writes).find((k) => k.endsWith('/cs2server/cs2server.cfg'));
+  assert.equal(getVar(writes[instKey], 'gt_active_config'), '');
+});
+
+test('non-CS servers reject catalog + config ops as unsupported', async () => {
+  const svc = createServerService({ client: fakeClient(), db: testDb() });
+  await assert.rejects(async () => svc.listMaps('factorio'), (e) => e.code === 'NOT_SUPPORTED');
+  await assert.rejects(async () => svc.listConfigs('minecraft'), (e) => e.code === 'NOT_SUPPORTED');
 });
 
 test('a connector with no quick settings returns empty fields by default', async () => {

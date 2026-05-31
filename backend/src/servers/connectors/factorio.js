@@ -5,12 +5,15 @@
 //   control     : ./fctrserver start|stop|restart|update   (run as miles)
 //
 // Save management:
-//   saves live at : serverfiles/saves/*.zip
-//   active save   : `savegame` var in lgsm/config-lgsm/fctrserver/fctrserver.cfg
-//                   LinuxGSM uses --start-server "saves/<name>.zip"; set just the
-//                   base name (no path, no .zip extension).
+//   saves live at : serverfiles/saves/*.zip  (autosaves: _autosave*.zip here too)
+//   active save   : controlled via `startparameters` in fctrserver.cfg — the
+//                   _default.cfg hardcodes save1.zip, so we must override
+//                   `startparameters` (and `savename` for bookkeeping) whenever
+//                   changing worlds. Template: --bind ${ip} --start-server
+//                   ${serverfiles}/saves/<name>.zip --server-settings ...
 //   new worlds    : factorio --create "saves/<name>.zip" --map-gen-settings <json>
 //                   [--preset <preset>]   (preset tweaks non-resource settings)
+//                   Requires exclusive lock → stop game process first.
 
 import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVar } from '../cfgvars.js';
@@ -19,6 +22,14 @@ const DIR       = '/home/miles/fctrserver';
 const SAVES_DIR = `${DIR}/serverfiles/saves`;
 const LGSM_CFG  = `${DIR}/lgsm/config-lgsm/fctrserver/fctrserver.cfg`;
 const FACTORIO  = `${DIR}/serverfiles/bin/x64/factorio`;
+
+// Shell-variable template written into fctrserver.cfg to override the hardcoded
+// save1.zip in _default.cfg. ${ip}, ${serverfiles}, etc. are expanded by bash
+// when LinuxGSM sources the config — they must appear as literal text here.
+const buildStartParams = (saveName) =>
+  '--bind ${ip} --start-server ${serverfiles}/saves/' + saveName +
+  '.zip --server-settings ${servercfgfullpath} --port ${port}' +
+  ' --rcon-port ${rconport} --rcon-password ${rconpassword}';
 
 const PRESETS = [
   { value: 'default',        label: 'Default' },
@@ -100,8 +111,10 @@ export class FactorioConnector extends LinuxGsmConnector {
       this.client.agentFileRead(this.vmid, LGSM_CFG).then(r => r.content ?? '').catch(() => ''),
     ]);
 
-    const rawSave    = getVar(lgsmText, 'savegame') || '';
-    const currentSave = rawSave.replace(/^.*\//, '').replace(/\.zip$/, '');
+    // Derive current save from startparameters (authoritative) or savename fallback.
+    const rawParams  = getVar(lgsmText, 'startparameters') || '';
+    const paramMatch = rawParams.match(/--start-server\s+\S*\/([^/"\s]+)\.zip/);
+    const currentSave = paramMatch?.[1] || getVar(lgsmText, 'savename') || '';
 
     const saveOpts = saves.map(s => ({ value: s, label: s }));
     if (currentSave && !saveOpts.some(o => o.value === currentSave)) {
@@ -190,7 +203,9 @@ export class FactorioConnector extends LinuxGsmConnector {
     // ── Load an existing save ────────────────────────────────────────────────
     if (section === 'loadWorld') {
       const lgsmText = (await this.client.agentFileRead(this.vmid, LGSM_CFG)).content ?? '';
-      await this.client.agentFileWrite(this.vmid, LGSM_CFG, setVar(lgsmText, 'savegame', cleanName));
+      let updated = setVar(lgsmText, 'savename', cleanName);
+      updated = setVar(updated, 'startparameters', buildStartParams(cleanName));
+      await this.client.agentFileWrite(this.vmid, LGSM_CFG, updated);
       return { ok: true, action: 'load', saveName: cleanName };
     }
 
@@ -276,7 +291,9 @@ export class FactorioConnector extends LinuxGsmConnector {
 
       // Set the new save as active then bring the server back up.
       const lgsmText = (await this.client.agentFileRead(this.vmid, LGSM_CFG)).content ?? '';
-      await this.client.agentFileWrite(this.vmid, LGSM_CFG, setVar(lgsmText, 'savegame', cleanName));
+      let updatedCfg = setVar(lgsmText, 'savename', cleanName);
+      updatedCfg = setVar(updatedCfg, 'startparameters', buildStartParams(cleanName));
+      await this.client.agentFileWrite(this.vmid, LGSM_CFG, updatedCfg);
 
       if (wasActive) {
         const startRes = await lgsm('start');

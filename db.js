@@ -181,6 +181,44 @@ export async function dbSaveServerSettings(id, values) {
   return api(`/servers/${encodeURIComponent(id)}/settings`, { method: 'PUT', body: values });
 }
 
+// ── CS workshop-map catalog ───────────────────────────────────────────────────
+export async function dbListServerMaps(id) {
+  return (await api(`/servers/${encodeURIComponent(id)}/maps`)) ?? [];
+}
+
+export async function dbAddServerMap(id, workshopId, name) {
+  return api(`/servers/${encodeURIComponent(id)}/maps`, { method: 'POST', body: { workshopId, name } });
+}
+
+export async function dbRenameServerMap(id, workshopId, name) {
+  return api(`/servers/${encodeURIComponent(id)}/maps/${encodeURIComponent(workshopId)}`, { method: 'PATCH', body: { name } });
+}
+
+export async function dbDeleteServerMap(id, workshopId) {
+  return api(`/servers/${encodeURIComponent(id)}/maps/${encodeURIComponent(workshopId)}`, { method: 'DELETE' });
+}
+
+// ── CS saved game-state config library ────────────────────────────────────────
+export async function dbListServerConfigs(id) {
+  return (await api(`/servers/${encodeURIComponent(id)}/configs`)) ?? [];
+}
+
+export async function dbGetServerConfigBody(id, configId) {
+  return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`);
+}
+
+export async function dbCreateServerConfig(id, name, body) {
+  return api(`/servers/${encodeURIComponent(id)}/configs`, { method: 'POST', body: { name, body } });
+}
+
+export async function dbUpdateServerConfig(id, configId, patch) {
+  return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`, { method: 'PUT', body: patch });
+}
+
+export async function dbDeleteServerConfig(id, configId) {
+  return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`, { method: 'DELETE' });
+}
+
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────
 
 export async function dbInsertScore(_name, seconds) {

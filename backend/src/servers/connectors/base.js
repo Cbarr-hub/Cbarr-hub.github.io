@@ -10,10 +10,13 @@ export class BaseConnector {
   /**
    * @param {object} server  registry entry { id, name, vmid }
    * @param {import('../../proxmox/client.js').ProxmoxClient} client
+   * @param {import('../store.js').createServerStore|null} [store]
+   *        persisted catalog/config store; null when no DB is wired (e.g. tests).
    */
-  constructor(server, client) {
+  constructor(server, client, store = null) {
     this.server = server;
     this.client = client;
+    this.store = store;
   }
 
   get vmid() { return this.server.vmid; }

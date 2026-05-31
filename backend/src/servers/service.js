@@ -8,6 +8,7 @@
 
 import { listServers, getServer, connectString } from './registry.js';
 import { buildConnectors } from './connectors/index.js';
+import { createServerStore } from './store.js';
 
 export class ServerControlError extends Error {
   constructor(message, code) {
@@ -23,9 +24,12 @@ const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop']);
  * @param {object} deps
  * @param {import('../proxmox/client.js').ProxmoxClient|null} deps.client
  *        null when PVE isn't configured — every call then throws NOT_CONFIGURED.
+ * @param {import('better-sqlite3').Database|null} [deps.db]
+ *        shared DB; backs the connectors' persisted catalog/config store.
  */
-export function createServerService({ client, publicHost = '' }) {
-  const connectors = client ? buildConnectors(client) : null;
+export function createServerService({ client, publicHost = '', db = null }) {
+  const store = db ? createServerStore(db) : null;
+  const connectors = client ? buildConnectors(client, store) : null;
 
   function connectorFor(id) {
     if (!connectors) {

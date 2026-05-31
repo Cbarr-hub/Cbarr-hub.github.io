@@ -16,13 +16,15 @@ const CONNECTOR_CLASSES = {
 
 /**
  * @param {import('../../proxmox/client.js').ProxmoxClient} client
+ * @param {import('../store.js').createServerStore|null} [store]
+ *        shared persistence store (workshop catalog + config library), or null.
  * @returns {Map<string, BaseConnector>} keyed by server id
  */
-export function buildConnectors(client) {
+export function buildConnectors(client, store = null) {
   const map = new Map();
   for (const server of listServers()) {
     const Cls = CONNECTOR_CLASSES[server.connector] ?? BaseConnector;
-    map.set(server.id, new Cls(server, client));
+    map.set(server.id, new Cls(server, client, store));
   }
   return map;
 }

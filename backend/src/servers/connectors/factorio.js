@@ -233,7 +233,23 @@ export class FactorioConnector extends LinuxGsmConnector {
       };
       if (seed) mapGenSettings.seed = Number(seed);
 
-      // Write map-gen-settings to the home dir (readable by miles as root writes 644).
+      // factorio --create requires an exclusive lock on the install dir.
+      // Stop the game process first if the VM is running, then restart after.
+      const vmStatus  = await this.status();
+      const wasActive = vmStatus.status === 'running';
+      const steps     = [];
+
+      const lgsm = (action, ms = 120_000) =>
+        this.runShell(`cd "${DIR}" && ./${this.gsmScript} ${action}`, {
+          asUser: this.gsmUser, timeoutMs: ms,
+        });
+
+      if (wasActive) {
+        const stopRes = await lgsm('stop');
+        steps.push({ name: 'stop', ...stopRes });
+      }
+
+      // Write map-gen-settings to the home dir (readable by miles; root writes 644).
       const settingsPath = `/home/miles/factorio-map-gen-settings.json`;
       await this.client.agentFileWrite(this.vmid, settingsPath, JSON.stringify(mapGenSettings, null, 2));
 
@@ -247,21 +263,27 @@ export class FactorioConnector extends LinuxGsmConnector {
       } finally {
         await this.runShell(`rm -f "${settingsPath}"`, { asUser: this.gsmUser, timeoutMs: 10_000 }).catch(() => {});
       }
+      steps.push({ name: 'create', ...createResult });
 
       if (createResult.exitCode !== 0) {
+        // Restart the previous world so the server isn't left stopped.
+        if (wasActive) {
+          const restartRes = await lgsm('start').catch(e => ({ exitCode: 1, stdout: '', stderr: e.message }));
+          steps.push({ name: 'start (recovery)', ...restartRes });
+        }
         throw bad(`world generation failed: ${(createResult.stderr || createResult.stdout).slice(0, 300)}`);
       }
 
-      // Set the new save as active.
+      // Set the new save as active then bring the server back up.
       const lgsmText = (await this.client.agentFileRead(this.vmid, LGSM_CFG)).content ?? '';
       await this.client.agentFileWrite(this.vmid, LGSM_CFG, setVar(lgsmText, 'savegame', cleanName));
 
-      return {
-        ok:       true,
-        action:   'generate',
-        saveName: cleanName,
-        steps:    [{ name: 'create', ...createResult }],
-      };
+      if (wasActive) {
+        const startRes = await lgsm('start');
+        steps.push({ name: 'start', ...startRes });
+      }
+
+      return { ok: true, action: 'generate', saveName: cleanName, steps };
     }
 
     throw bad(`unknown section: ${section}`);

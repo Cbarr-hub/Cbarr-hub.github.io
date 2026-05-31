@@ -11,7 +11,8 @@
     { label: "Faith", path: "faith.html" },
     { label: "KPI", path: "kpi.html" },
     { label: "Support", path: "support.html" },
-    { label: "Fish Tank", path: "fishtank.html" }
+    { label: "Fish Tank", path: "fishtank.html" },
+    { label: "Servers", path: "servers.html" }
   ];
 
   function getBasePath() {

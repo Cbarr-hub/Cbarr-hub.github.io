@@ -57,9 +57,8 @@
   </footer>
 
   <script type="module">
-    import { requireAuth, updateNavbar, getSession } from './auth.js';
-    requireAuth();
-    updateNavbar(getSession());
+    import { requireAuth } from './auth.js';
+    await requireAuth();
   </script>
 </body>
 </html>

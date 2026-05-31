@@ -1,0 +1,25 @@
+# Example Caddyfile for serving the Gamertown static site at /
+# and proxying /api/* to the Fastify backend on 127.0.0.1:3000.
+#
+# Replace gamertown.example with your real domain. Caddy will obtain a
+# TLS certificate from Let's Encrypt automatically when run on a public
+# host with the domain pointed at it.
+
+gamertown.example {
+    encode gzip
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+    handle {
+        root * /var/www/gamertown
+        try_files {path} {path}.html /index.html
+        file_server
+    }
+
+    log {
+        output file /var/log/caddy/gamertown.log
+        format console
+    }
+}

@@ -108,7 +108,7 @@
   </div>
 
   <script type="module">
-    let dbGetAllGames, dbGetAllUsers;
+    let dbGetAllGames, dbGetAllBalances;
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
       blue: '#007bff',
@@ -185,8 +185,7 @@
     async function initPage() {
       try {
         const authModule = await import('./auth.js');
-        authModule.requireAuth();
-        authModule.updateNavbar(authModule.getSession());
+        await authModule.requireAuth();
       } catch (error) {
         console.warn('Auth import failed:', error);
       }
@@ -194,7 +193,7 @@
       try {
         const dbModule = await import('./db.js');
         dbGetAllGames = dbModule.dbGetAllGames;
-        dbGetAllUsers = dbModule.dbGetAllUsers;
+        dbGetAllBalances = dbModule.dbGetAllBalances;
       } catch (error) {
         console.warn('DB import failed:', error);
       }
@@ -396,7 +395,7 @@
       userWheelState.isLoading = true;
       renderUserWheel();
 
-      if (!dbGetAllUsers) {
+      if (!dbGetAllBalances) {
         userWheelState.isLoading = false;
         userWheelState.error = 'Could not connect to database.';
         renderUserWheel();
@@ -405,9 +404,9 @@
 
       let users;
       try {
-        const data = await dbGetAllUsers();
+        const data = await dbGetAllBalances();
         users = (data || [])
-          .map(row => row.Username)
+          .map(row => row.Name)
           .filter(Boolean);
       } catch (error) {
         console.error('Unable to load users', error);

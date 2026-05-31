@@ -1,0 +1,25 @@
+[Unit]
+Description=Gamertown backend (Fastify)
+After=network.target
+
+[Service]
+Type=simple
+User=gamertown
+Group=gamertown
+WorkingDirectory=/srv/gamertown/backend
+EnvironmentFile=/srv/gamertown/backend/.env
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Sandboxing
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/gamertown/backend/data
+
+[Install]
+WantedBy=multi-user.target

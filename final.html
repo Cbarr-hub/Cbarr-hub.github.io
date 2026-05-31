@@ -161,12 +161,12 @@
   </div>
 
   <script type="module">
-    import { clearSession, requireAuth } from './auth.js'
+    import { requireAuth, logout } from './auth.js'
 
-    requireAuth('signin.html')
+    await requireAuth('signin.html')
 
-    document.getElementById('sign-out').addEventListener('click', () => {
-      clearSession()
+    document.getElementById('sign-out').addEventListener('click', async () => {
+      await logout()
       window.location.href = 'signin.html'
     })
 

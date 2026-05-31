@@ -302,10 +302,7 @@
 <div id="auth-overlay" class="auth-overlay hidden">
   <div class="auth-modal">
     <button class="auth-close" id="authClose">X</button>
-    <div class="auth-tabs">
-      <button class="auth-tab active" data-tab="login">Sign In</button>
-      <button class="auth-tab" data-tab="register">Register</button>
-    </div>
+    <h2 class="auth-title">SIGN IN</h2>
 
     <form id="loginForm" class="auth-form">
       <div class="form-group">
@@ -320,18 +317,7 @@
       <p id="loginStatus" class="auth-status"></p>
     </form>
 
-    <form id="registerForm" class="auth-form hidden">
-      <div class="form-group">
-        <label for="regUsername">USERNAME</label>
-        <input type="text" id="regUsername" required autocomplete="username">
-      </div>
-      <div class="form-group">
-        <label for="regPassword">PASSWORD</label>
-        <input type="password" id="regPassword" required minlength="8" autocomplete="new-password">
-      </div>
-      <button type="submit" class="cta-btn primary-btn">CREATE ACCOUNT</button>
-      <p id="registerStatus" class="auth-status"></p>
-    </form>
+    <p class="auth-note">Accounts are admin-issued. Contact an administrator if you need one.</p>
   </div>
 </div>
 
@@ -366,44 +352,22 @@
 <script src="site.js"></script>
 
 <script type="module">
-  import { dbFindUser, dbInsertUser } from './db.js';
-  import { setSession, getSession, requireAuth, updateNavbar } from './auth.js';
-  import { ensureBalance } from './gamble-data.js';
+  import { dbFindUser } from './db.js';
+  import { loadSession } from './auth.js';
 
   const authOverlay = document.getElementById('auth-overlay');
   const authClose = document.getElementById('authClose');
   const openSignIn = document.getElementById('openSignIn');
   const openSignInSide = document.getElementById('openSignInSide');
   const loginForm = document.getElementById('loginForm');
-  const registerForm = document.getElementById('registerForm');
   const loginStatus = document.getElementById('loginStatus');
-  const registerStatus = document.getElementById('registerStatus');
-  const authTabs = document.querySelectorAll('.auth-tab');
 
-  function showModal() {
-    authOverlay.classList.remove('hidden');
-  }
-
-  function hideModal() {
-    authOverlay.classList.add('hidden');
-  }
-
-  function setStatus(form, message, isError = false) {
-    const status = form === loginForm ? loginStatus : registerStatus;
-    status.textContent = message;
-    status.className = 'auth-status' + (isError ? ' error' : ' success');
-  }
-
-  function switchTab(tabName) {
-    authTabs.forEach(tab => tab.classList.remove('active'));
-    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    loginForm.classList.toggle('hidden', tabName !== 'login');
-    registerForm.classList.toggle('hidden', tabName !== 'register');
-  }
-
-  authTabs.forEach(tab => {
-    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-  });
+  const showModal = () => authOverlay.classList.remove('hidden');
+  const hideModal = () => authOverlay.classList.add('hidden');
+  const setStatus = (message, isError = false) => {
+    loginStatus.textContent = message;
+    loginStatus.className = 'auth-status' + (isError ? ' error' : ' success');
+  };
 
   [openSignIn, openSignInSide].forEach(link => {
     if (link) {
@@ -421,42 +385,18 @@
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
 
-    setStatus(loginForm, 'Signing in...');
+    setStatus('Signing in...');
 
     try {
-      const data = await dbFindUser(username, password);
-      if (!data) {
-        setStatus(loginForm, 'Invalid username or password', true);
-      } else {
-        await ensureBalance(username);
-        setStatus(loginForm, 'Signed in successfully');
-        setSession(username);
-        setTimeout(() => location.reload(), 500);
-      }
+      await dbFindUser(username, password);
+      setStatus('Signed in successfully');
+      setTimeout(() => location.reload(), 300);
     } catch (err) {
-      setStatus(loginForm, 'Error: ' + (err.message || 'Unknown error'), true);
+      setStatus(err.message || 'Invalid username or password', true);
     }
   });
 
-  registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('regUsername').value;
-    const password = document.getElementById('regPassword').value;
-
-    setStatus(registerForm, 'Creating account...');
-
-    try {
-      await dbInsertUser(username, password);
-      await ensureBalance(username);
-      setStatus(registerForm, 'Account created! Signing in...');
-      setSession(username);
-      setTimeout(() => location.reload(), 500);
-    } catch (err) {
-      setStatus(registerForm, 'Error: ' + (err.message || 'Unknown error'), true);
-    }
-  });
-
-  if (!getSession()) {
+  if (!(await loadSession())) {
     showModal();
   }
 </script>

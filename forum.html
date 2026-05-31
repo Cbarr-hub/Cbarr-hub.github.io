@@ -235,10 +235,6 @@
       <div class="form-box">
         <table>
           <tr>
-            <td class="lbl">Your Name</td>
-            <td><input type="text" id="new-author" maxlength="60" /></td>
-          </tr>
-          <tr>
             <td class="lbl">Title</td>
             <td><input type="text" id="new-title" maxlength="120" /></td>
           </tr>
@@ -251,6 +247,7 @@
             <td><button class="retro-btn" id="new-thread-btn">Post Thread</button></td>
           </tr>
         </table>
+        <div id="post-thread-note" style="font-size:12px;color:#666;margin-top:6px"></div>
       </div>
 
     </div>
@@ -273,10 +270,6 @@
       <div class="form-box">
         <table>
           <tr>
-            <td class="lbl">Your Name</td>
-            <td><input type="text" id="c-author" maxlength="60" /></td>
-          </tr>
-          <tr>
             <td class="lbl">Comment</td>
             <td><textarea id="c-body"></textarea></td>
           </tr>
@@ -285,6 +278,7 @@
             <td><button class="retro-btn" id="comment-btn">Post Comment</button></td>
           </tr>
         </table>
+        <div id="post-comment-note" style="font-size:12px;color:#666;margin-top:6px"></div>
       </div>
 
     </div>
@@ -297,6 +291,14 @@
 
   <script type="module">
     import { dbGetThreads, dbGetThread, dbInsertThread, dbGetThreadComments, dbInsertComment } from './db.js'
+    import { loadSession } from './auth.js'
+
+    const session = await loadSession()
+    const signInNote = 'You must <a href="signin.html">sign in</a> to post.'
+    if (!session) {
+      document.getElementById('post-thread-note').innerHTML = signInNote
+      document.getElementById('post-comment-note').innerHTML = signInNote
+    }
 
     const viewList   = document.getElementById('view-list')
     const viewThread = document.getElementById('view-thread')
@@ -354,27 +356,23 @@
 
     // ── new thread ───────────────────────────────────────────
     document.getElementById('new-thread-btn').addEventListener('click', async () => {
-      const author = document.getElementById('new-author').value.trim()
-      const title  = document.getElementById('new-title').value.trim()
-      const body   = document.getElementById('new-body').value.trim()
-      if (!author || !title || !body) { alert('please fill in all fields'); return }
+      const title = document.getElementById('new-title').value.trim()
+      const body  = document.getElementById('new-body').value.trim()
+      if (!title || !body) { alert('please fill in all fields'); return }
 
       const btn = document.getElementById('new-thread-btn')
       btn.disabled = true; btn.textContent = 'Posting...'
 
       try {
-        await dbInsertThread(author, title, body)
+        await dbInsertThread(null, title, body)
       } catch (error) {
         alert('error: ' + error.message)
         btn.disabled = false; btn.textContent = 'Post Thread'
         return
       }
-      {
-        document.getElementById('new-author').value = ''
-        document.getElementById('new-title').value  = ''
-        document.getElementById('new-body').value   = ''
-        await loadThreads()
-      }
+      document.getElementById('new-title').value = ''
+      document.getElementById('new-body').value  = ''
+      await loadThreads()
       btn.disabled = false; btn.textContent = 'Post Thread'
     })
 
@@ -438,17 +436,15 @@
 
     // ── new comment ──────────────────────────────────────────
     document.getElementById('comment-btn').addEventListener('click', async () => {
-      const author = document.getElementById('c-author').value.trim()
-      const body   = document.getElementById('c-body').value.trim()
-      if (!author || !body) { alert('please fill in all fields'); return }
+      const body = document.getElementById('c-body').value.trim()
+      if (!body) { alert('please fill in all fields'); return }
 
       const btn = document.getElementById('comment-btn')
       btn.disabled = true; btn.textContent = 'Posting...'
 
       try {
-        await dbInsertComment(activeThreadId, author, body)
-        document.getElementById('c-author').value = ''
-        document.getElementById('c-body').value   = ''
+        await dbInsertComment(activeThreadId, null, body)
+        document.getElementById('c-body').value = ''
         const data = await dbGetThreadComments(activeThreadId)
         renderComments(data, null)
       } catch (error) {

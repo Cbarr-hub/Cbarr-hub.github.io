@@ -57,17 +57,17 @@ const ENEMY_OPTS = [
 ];
 
 const START_OPTS = [
-  { value: 'very-small', label: 'Very Small' },
-  { value: 'small',      label: 'Small' },
-  { value: 'normal',     label: 'Normal' },
-  { value: 'large',      label: 'Large' },
-  { value: 'very-large', label: 'Very Large' },
+  { value: 'very-low',  label: 'Very Small' },
+  { value: 'low',       label: 'Small' },
+  { value: 'normal',    label: 'Normal' },
+  { value: 'high',      label: 'Large' },
+  { value: 'very-high', label: 'Very Large' },
 ];
 
 const VALID_PRESET   = new Set(PRESETS.map(p => p.value));
 const VALID_DENSITY  = new Set(['very-low', 'low', 'normal', 'high', 'very-high']);
 const VALID_ENEMY    = new Set(['none', ...VALID_DENSITY]);
-const VALID_START    = new Set(['very-small', 'small', 'normal', 'large', 'very-large']);
+const VALID_START    = new Set(['very-low', 'low', 'normal', 'high', 'very-high']);
 
 export class FactorioConnector extends LinuxGsmConnector {
   gsmUser   = 'miles';

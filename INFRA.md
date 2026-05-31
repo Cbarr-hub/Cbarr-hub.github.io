@@ -136,10 +136,12 @@ Configured via Firewall → NAT/Gaming at http://192.168.1.254
 ### Pull latest code into the container
 
 ```bash
-pct exec 103 -- bash -c "cd /srv/gamertown && git pull"
+pct exec 103 -- bash -c "git config --global --add safe.directory /srv/gamertown && cd /srv/gamertown && git pull"
 pct exec 103 -- systemctl restart gamertown   # only if backend changed
 pct exec 103 -- systemctl reload caddy        # only if Caddyfile changed
 ```
+
+> **Note:** The `safe.directory` line is required when running as root via `pct exec` because the repo is owned by the `gamertown` service user. The config flag is idempotent — safe to run every time.
 
 ### Two independent git clones
 

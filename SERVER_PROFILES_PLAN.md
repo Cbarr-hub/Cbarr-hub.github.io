@@ -64,6 +64,19 @@
 >   occasionally staying hidden until you switch tabs and back, seen on Minecraft).
 > - The Servers page re-mounts the active card (re-runs `wireCard`) on each tab
 >   switch, so loads re-fire per tab.
+>
+> **Save semantics (clarified — was three ambiguous "Save" buttons):**
+> - **Apply & Restart** — save edits *and* restart the server to go live.
+> - **Save** — store edits to the selected profile (DB only, no restart).
+> - **Duplicate** (was "Save As") — save current edits as a *new* profile.
+> - **Capture from server**, **＋ New**, **Delete** — grouped in a "Profiles:" row.
+> - **Save File** (raw-config section) — writes one config file directly (a
+>   different, advanced layer), clearly labelled so it's not confused with profiles.
+>
+> **CS workshop maps:** the map field is a by-name pick-list — a saved Workshop map
+> shows its **name** ("Assembly"), not `ws:<id>`. **＋ Workshop Map** adds a new one
+> inline (Steam id + name → saved catalog via `/maps`) and selects it, replacing the
+> old `ws:`-prefix typing.
 
 This is a *re-framing + completion*, not a rewrite. Status quo and the gap:
 

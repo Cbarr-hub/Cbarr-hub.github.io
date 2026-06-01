@@ -166,15 +166,15 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     const catalog = this.store ? this.store.listWorkshopMaps(this.server.id) : [];
     const mapOpts = [
       ...stock.map((m) => ({ value: m, label: m })),
-      ...catalog.map((w) => ({ value: `ws:${w.workshopId}`, label: `${w.name} (ws:${w.workshopId})` })),
+      ...catalog.map((w) => ({ value: `ws:${w.workshopId}`, label: w.name })),  // by name, not id
     ];
     return {
       groups: [
         {
           key: 'map', title: 'Map & Mode',
           fields: [
-            { key: 'map', label: 'Map', type: 'select', custom: true, options: mapOpts,
-              help: 'A stock map (e.g. de_dust2) or a Workshop map as ws:<id> (overrides stock). You can type a Workshop id even if it is not in the suggestions.' },
+            { key: 'map', label: 'Map', type: 'select', addWorkshop: true, options: mapOpts,
+              help: 'Pick a stock map or a saved Workshop map (by name). Use “＋ Workshop Map” to add a new one by its Steam id — a Workshop map overrides the stock map.' },
             { key: 'gameMode', label: 'Game Mode', type: 'select',
               options: Object.entries(GAME_ALIASES).map(([value, label]) => ({ value, label })) },
             { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 64, step: 1 },

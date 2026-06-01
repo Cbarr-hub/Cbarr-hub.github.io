@@ -322,6 +322,8 @@ test('cs: profileSchema groups Map&Mode + Advanced; seeded Assembly is a ws: opt
   const schema = await conn.profileSchema();
   assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'advanced']);
   const mapField = schema.groups[0].fields.find((f) => f.key === 'map');
-  assert.ok(mapField.custom && mapField.options.some((o) => o.value === 'ws:3071005299')); // from migration seed
+  assert.ok(mapField.addWorkshop); // inline "add workshop map" form (no ws: typing)
+  // the migration-seeded Assembly shows BY NAME, value carries the ws: id
+  assert.ok(mapField.options.some((o) => o.value === 'ws:3071005299' && o.label === 'Assembly'));
   assert.ok(schema.groups[1].fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
 });

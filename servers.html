@@ -248,6 +248,14 @@
     .prof-grid input[type=checkbox].switch { width: auto; accent-color: #42F527; transform: scale(1.25); justify-self: start; }
     .prof-grid .field-help { grid-column: 1 / -1; color: #777; font-size: 10px; font-style: italic; margin-top: -3px; }
     .prof-grid .ml-label { grid-column: 1 / -1; margin-top: 2px; }
+    /* CS map field: by-name select + inline add-workshop form */
+    .mapcat .inline { display: flex; gap: 6px; align-items: center; }
+    .mapcat .inline select { flex: 1; min-width: 0; }
+    .mc-add { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .mc-add input { flex: 1 1 110px; min-width: 0; }
+    /* profile management row (New / Duplicate / Capture / Delete) */
+    .prof-manage { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #2a2a2a; flex-wrap: wrap; }
+    .prof-manage .retro-btn { padding: 3px 9px; }
     /* ordered map-rotation list builder */
     .maplist { grid-column: 1 / -1; }
     .maplist-rows { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
@@ -791,7 +799,7 @@
             <div class="panel-row" style="margin-top:8px">
               <label>File</label>
               <select data-cfg-select><option value="">— loading… —</option></select>
-              <button class="retro-btn" data-cfg-save disabled>Save</button>
+              <button class="retro-btn" data-cfg-save disabled>Save File</button>
             </div>
             <textarea class="cfg" data-cfg-text placeholder="expand to load…" disabled></textarea>
           </details>
@@ -1209,6 +1217,30 @@
         const lbl = `<label for="${lid}">${esc(f.label)}</label>`
         const help = f.help ? `<div class="field-help">${esc(f.help)}</div>` : ''
         if (f.type === 'select') {
+          // CS map field: a by-name pick-list (Workshop maps show their name, not
+          // ws:id) plus an inline "add a Workshop map by id + name" form.
+          if (f.addWorkshop) {
+            const opts = [...(f.options || [])]
+            if (v != null && v !== '' && !opts.some(o => String(o.value) === String(v))) {
+              const fb = String(v).startsWith('ws:') ? `Workshop ${String(v).slice(3)}` : String(v)
+              opts.unshift({ value: v, label: fb })
+            }
+            const optsHtml = opts.map(o =>
+              `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
+            return lbl + `
+              <div class="mapcat" data-mapcat="${esc(f.key)}">
+                <div class="inline">
+                  <select id="${lid}" data-pf="${esc(f.key)}" data-pt="text">${optsHtml}</select>
+                  <button type="button" class="mini-btn" data-mc-toggle>＋ Workshop Map</button>
+                </div>
+                <div class="mc-add" data-mc-add style="display:none">
+                  <input type="text" data-mc-id placeholder="Workshop ID (digits)" inputmode="numeric" />
+                  <input type="text" data-mc-name placeholder="Name (e.g. Assembly)" />
+                  <button type="button" class="mini-btn" data-mc-save>Add</button>
+                  <button type="button" class="mini-btn" data-mc-cancel>Cancel</button>
+                </div>
+              </div>` + help
+          }
           // `custom` selects are combo inputs: pick a suggestion or type a value
           // (e.g. a collection map name that hasn't downloaded yet).
           if (f.custom) {
@@ -1295,16 +1327,18 @@
           <div class="prof-bar">
             <select data-prof-pick>${opts}</select>
             <span class="prof-active${isActive ? '' : ' off'}">${isActive ? 'active' : 'not applied'}</span>
-            <button class="retro-btn" data-prof-apply>Apply</button>
-            <button class="retro-btn" data-prof-new>＋ New</button>
-            <button class="retro-btn" data-prof-saveas>Save As</button>
-            <button class="retro-btn" data-prof-capture>Capture</button>
-            <button class="retro-btn danger" data-prof-delete>Delete</button>
+            <button class="retro-btn" data-prof-apply title="Save your edits and restart the server to go live">Apply &amp; Restart</button>
+            <button class="retro-btn" data-prof-save title="Save your edits to this profile (no restart)">Save</button>
           </div>
           ${groups}
-          <div class="panel-row" style="margin-top:8px">
-            <button class="retro-btn" data-prof-save>Save Changes</button>
-            <span class="qs-note">${esc(P.schema.note || '')}</span>
+          <div class="qs-note-block">${esc(P.schema.note || '')}
+            <b>Apply &amp; Restart</b> = save + restart (go live). <b>Save</b> = store edits only.</div>
+          <div class="panel-row prof-manage">
+            <span class="qs-note">Profiles:</span>
+            <button class="retro-btn" data-prof-new title="Create a new profile from defaults">＋ New</button>
+            <button class="retro-btn" data-prof-saveas title="Save the current edits as a new profile">Duplicate</button>
+            <button class="retro-btn" data-prof-capture title="Save the server's current live config as a new profile">Capture from server</button>
+            <button class="retro-btn danger" data-prof-delete title="Delete this profile">Delete</button>
           </div>`
 
         wireProfileEvents()
@@ -1346,7 +1380,7 @@
             readProfileForm()
             await dbUpdateProfile(id, P.editId, { settings: P.values })
             const r = await dbApplyProfile(id, P.editId)
-            logLine(`Applied "${r?.name}" ✓ — restarting to load it (downloads/mounts the collection)…`)
+            logLine(`Applied "${r?.name}" ✓ — restarting to load it…`)
             await dbServerAction(id, 'restartGame')
             await new Promise(res => setTimeout(res, 2500))
             await refresh()
@@ -1366,12 +1400,12 @@
         })
 
         onClick('[data-prof-saveas]', (b) => {
-          const name = (prompt('Save the current settings as a new profile named:') || '').trim()
+          const name = (prompt('Duplicate this profile — name the copy:') || '').trim()
           if (!name) return
-          withBtn(b, 'Save As', async () => {
+          withBtn(b, 'Duplicate', async () => {
             readProfileForm()
             const p = await dbCreateProfile(id, name, P.values)
-            logLine(`Saved as "${p.name}" ✓`)
+            logLine(`Duplicated as "${p.name}" ✓`)
             await reloadProfileList(p.id)
           }).catch(() => {})
         })
@@ -1398,10 +1432,40 @@
           }).catch(() => {})
         })
 
-        // maplist widgets (ordered rotation builders) mutate P.values in place
+        // field widgets that need their own wiring
         ;(P.schema.groups || []).forEach(g => (g.fields || []).forEach(f => {
           if (f.type === 'maplist') wireMaplist(f)
+          if (f.type === 'select' && f.addWorkshop) wireMapCatalog(f)
         }))
+      }
+
+      // CS map field: the "＋ Workshop Map" inline form adds a Workshop map to the
+      // saved catalog (so it shows by name) and selects it.
+      function wireMapCatalog(f) {
+        const wrap = [...profBody.querySelectorAll('.mapcat')].find(w => w.dataset.mapcat === f.key)
+        if (!wrap) return
+        const sel = wrap.querySelector('select[data-pf]')
+        const addBox = wrap.querySelector('[data-mc-add]')
+        const idEl = wrap.querySelector('[data-mc-id]')
+        const nameEl = wrap.querySelector('[data-mc-name]')
+        const showAdd = (on) => { addBox.style.display = on ? 'flex' : 'none'; if (on) { idEl.value = ''; nameEl.value = ''; idEl.focus() } }
+        wrap.querySelector('[data-mc-toggle]')?.addEventListener('click', () => showAdd(addBox.style.display === 'none'))
+        wrap.querySelector('[data-mc-cancel]')?.addEventListener('click', () => showAdd(false))
+        const save = wrap.querySelector('[data-mc-save]')
+        save?.addEventListener('click', () => {
+          const wsId = (idEl.value || '').trim(), nm = (nameEl.value || '').trim()
+          if (!/^\d{1,20}$/.test(wsId)) { setErr('Workshop ID must be digits'); return }
+          if (!nm) { setErr('Give the map a name'); return }
+          withBtn(save, 'Add workshop map', async () => {
+            await dbAddServerMap(id, wsId, nm)            // persist to the catalog
+            const val = `ws:${wsId}`
+            let opt = [...sel.options].find(o => o.value === val)
+            if (!opt) { opt = document.createElement('option'); opt.value = val; sel.appendChild(opt) }
+            opt.textContent = nm; sel.value = val; P.values[f.key] = val
+            showAdd(false)
+            logLine(`Added workshop map "${nm}" (${wsId}) ✓`)
+          }).catch(() => {})
+        })
       }
 
       function wireMaplist(f) {

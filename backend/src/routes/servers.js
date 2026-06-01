@@ -77,6 +77,18 @@ export default async function serversRoutes(app) {
     }
   });
 
+  // ── host (node) dashboard ─────────────────────────────────────────────────────
+  // Static route declared before '/:id' so it can never be shadowed by the
+  // parametric matcher (Fastify prefers static, but keeping it explicit is clear).
+  app.get('/node', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      return await svc.getNodeStatus();
+    } catch (err) {
+      if (handleError(err, reply)) return;
+      throw err;
+    }
+  });
+
   app.get('/:id', {
     preHandler: requireAdmin,
     schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },

@@ -20,6 +20,31 @@ export class ServerControlError extends Error {
 
 const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame']);
 
+// Shape Proxmox's `/nodes/{node}/status` payload into a stable, UI-friendly
+// dashboard object. Proxmox reports cpu as a 0..1 fraction and memory/rootfs in
+// bytes; we keep raw values and let the client render gauges. Everything is
+// defensively defaulted so a partial payload never blanks the whole dashboard.
+export function normalizeNodeStatus(data) {
+  const mem = data?.memory ?? {};
+  const swap = data?.swap ?? {};
+  const root = data?.rootfs ?? {};
+  const cpus = data?.cpuinfo?.cpus ?? null;
+  return {
+    uptime: data?.uptime ?? 0,                         // seconds
+    cpu: data?.cpu ?? null,                             // fraction 0..1
+    cpus,                                               // logical core count
+    cpuModel: data?.cpuinfo?.model ?? null,
+    loadavg: Array.isArray(data?.loadavg)               // ['0.10','0.20','0.30']
+      ? data.loadavg.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+      : [],
+    memory: { total: mem.total ?? null, used: mem.used ?? null, free: mem.free ?? null },
+    swap: { total: swap.total ?? null, used: swap.used ?? null },
+    rootfs: { total: root.total ?? null, used: root.used ?? null },
+    kversion: data?.kversion ?? null,
+    pveversion: data?.pveversion ?? null,
+  };
+}
+
 /**
  * @param {object} deps
  * @param {import('../proxmox/client.js').ProxmoxClient|null} deps.client
@@ -52,6 +77,17 @@ export function createServerService({ client, publicHost = '', db = null }) {
 
   return {
     isConfigured: () => Boolean(connectors),
+
+    // Host-level dashboard: live resource snapshot of the Proxmox node itself.
+    // Returns { node: <name>, ...normalized } so the UI can render CPU/RAM/load
+    // gauges. Throws NOT_CONFIGURED when PVE isn't wired up.
+    async getNodeStatus() {
+      if (!client) {
+        throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
+      }
+      const data = await client.nodeStatus();
+      return { node: client.node, ...normalizeNodeStatus(data) };
+    },
 
     // List every server with its current status. Status failures are captured
     // per-server so one unreachable VM doesn't blank the whole list.

@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../src/db.js';
 import { getServer, listServers } from '../src/servers/registry.js';
 import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
-import { createServerService, ServerControlError } from '../src/servers/service.js';
+import { createServerService, ServerControlError, normalizeNodeStatus } from '../src/servers/service.js';
 import { getVar, setVar, setVars } from '../src/servers/cfgvars.js';
 import { getCvar, setCvars } from '../src/servers/cvars.js';
 
@@ -15,6 +15,19 @@ function fakeClient(overrides = {}) {
   const rec = (name) => (...args) => { calls.push([name, ...args]); return Promise.resolve(); };
   return {
     calls,
+    node: 'pve',
+    nodeStatus: overrides.nodeStatus ?? (() => {
+      calls.push(['nodeStatus']);
+      return Promise.resolve({
+        uptime: 7200, cpu: 0.25,
+        cpuinfo: { cpus: 4, model: 'Test CPU' },
+        loadavg: ['0.50', '0.40', '0.30'],
+        memory: { total: 8e9, used: 4e9, free: 4e9 },
+        swap: { total: 2e9, used: 1e8 },
+        rootfs: { total: 1e11, used: 3e10 },
+        kversion: 'Linux 6.x', pveversion: 'pve-manager/8.0',
+      });
+    }),
     statusCurrent: overrides.statusCurrent ?? ((vmid) => {
       calls.push(['statusCurrent', vmid]);
       return Promise.resolve({ status: 'running', uptime: 3600 });
@@ -90,6 +103,41 @@ test('listServers captures per-server errors without failing the whole list', as
   const f = list.find((s) => s.id === 'factorio');
   assert.equal(f.status, 'unknown');
   assert.match(f.error, /boom/);
+});
+
+// ── node dashboard ──────────────────────────────────────────────────────────────
+test('normalizeNodeStatus shapes the proxmox node payload defensively', () => {
+  const n = normalizeNodeStatus({
+    uptime: 100, cpu: 0.5, cpuinfo: { cpus: 8, model: 'Xeon' },
+    loadavg: ['1.0', '0.5', 'nan'], memory: { total: 100, used: 60 },
+    swap: { total: 10, used: 2 }, rootfs: { total: 1000, used: 400 },
+    kversion: 'k', pveversion: 'pve',
+  });
+  assert.equal(n.cpu, 0.5);
+  assert.equal(n.cpus, 8);
+  assert.deepEqual(n.loadavg, [1.0, 0.5]); // non-finite dropped
+  assert.equal(n.memory.used, 60);
+  assert.equal(n.rootfs.total, 1000);
+  // empty/partial payload never throws and defaults cleanly
+  const empty = normalizeNodeStatus(null);
+  assert.equal(empty.uptime, 0);
+  assert.equal(empty.cpu, null);
+  assert.deepEqual(empty.loadavg, []);
+});
+
+test('getNodeStatus returns the node name plus normalized host stats', async () => {
+  const svc = createServerService({ client: fakeClient() });
+  const n = await svc.getNodeStatus();
+  assert.equal(n.node, 'pve');
+  assert.equal(n.cpus, 4);
+  assert.equal(n.memory.total, 8e9);
+  assert.deepEqual(n.loadavg, [0.5, 0.4, 0.3]);
+});
+
+test('getNodeStatus without a client reports not-configured', async () => {
+  const svc = createServerService({ client: null });
+  await assert.rejects(() => svc.getNodeStatus(), (e) =>
+    e instanceof ServerControlError && e.code === 'NOT_CONFIGURED');
 });
 
 // ── service: power actions ──────────────────────────────────────────────────────

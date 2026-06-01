@@ -229,6 +229,73 @@
       white-space: pre-wrap; max-height: 200px; overflow: auto; margin: 6px 0 0;
     }
 
+    /* ── Proxmox host dashboard ── */
+    .dash {
+      border: 1px solid #7bb85f; border-top: none;
+      background: linear-gradient(180deg, #1c241c 0%, #161616 100%);
+      padding: 12px; margin-bottom: 16px;
+      box-shadow: inset 0 0 24px rgba(66,245,39,0.05);
+    }
+    .dash-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .dash-node { color: #42F527; font-weight: bold; font-size: 13px; letter-spacing: 1px; text-shadow: 0 0 6px rgba(66,245,39,0.4); }
+    .dash-node .host { color: #d4d4b8; text-shadow: none; }
+    .dash-sub { color: #777; font-size: 10px; }
+    .dash-sub b { color: #b8d4a0; font-weight: bold; }
+    .dash-refresh { color: #666; font-size: 10px; font-style: italic; }
+
+    .dash-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .dash-tile {
+      border: 1px solid #333; background: #141914; padding: 10px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    .dash-tile.wide { align-items: stretch; }
+    .tile-label { color: #7bb85f; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* radial gauges */
+    .gauge { position: relative; width: 108px; height: 108px; }
+    .gauge svg { transform: rotate(-90deg); display: block; }
+    .gauge .track { stroke: #2a2a2a; }
+    .gauge .fill { stroke: #42F527; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(66,245,39,0.6)); transition: stroke-dashoffset 0.6s ease, stroke 0.4s ease; }
+    .gauge.warn .fill { stroke: #c2a13a; filter: drop-shadow(0 0 3px rgba(194,161,58,0.6)); }
+    .gauge.crit .fill { stroke: #ff6666; filter: drop-shadow(0 0 3px rgba(255,102,102,0.6)); }
+    .gauge-center {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center;
+    }
+    .gauge-pct { color: #d4d4b8; font-size: 20px; font-weight: bold; font-family: "Courier New", monospace; }
+    .gauge-meta { color: #777; font-size: 9px; margin-top: 2px; }
+
+    /* stat rows (uptime / load / versions tile) */
+    .stat-rows { display: grid; gap: 7px; width: 100%; }
+    .stat-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1px dashed #2a2a2a; padding-bottom: 5px; }
+    .stat-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .stat-k { color: #7bb85f; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    .stat-v { color: #d4d4b8; font-size: 11px; font-family: "Courier New", monospace; text-align: right; word-break: break-word; }
+
+    /* horizontal bars (disk / load) */
+    .bar { width: 100%; height: 8px; background: #2a2a2a; border: 1px solid #333; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: #42F527; box-shadow: 0 0 6px rgba(66,245,39,0.5); transition: width 0.6s ease, background 0.4s ease; }
+    .bar.warn > span { background: #c2a13a; }
+    .bar.crit > span { background: #ff6666; }
+    .load-list { display: flex; gap: 6px; }
+    .load-chip { flex: 1; text-align: center; background: #101410; border: 1px solid #2a2a2a; padding: 4px 0; color: #b8d4a0; font-family: "Courier New", monospace; font-size: 11px; }
+    .load-chip small { display: block; color: #666; font-size: 8px; letter-spacing: 1px; }
+
+    /* fleet strip */
+    .fleet { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .fleet-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #2a2a2a; background: #101410; padding: 4px 8px; font-size: 11px; color: #b8d4a0; }
+    .fleet-chip .dot { width: 8px; height: 8px; }
+    .fleet-summary { color: #777; font-size: 10px; margin-left: auto; align-self: center; }
+    .fleet-summary b { color: #42F527; }
+    .dash-err { color: #ff6666; font-size: 11px; }
+
     #gate { padding: 24px 8px; color: #ff6666; font-size: 13px; }
     #gate a { font-weight: bold; }
 
@@ -248,6 +315,11 @@
     <div id="gate" style="display:none"></div>
 
     <div id="panel" style="display:none">
+      <div class="sec-head">Proxmox Host</div>
+      <div id="dashboard" class="dash">
+        <div class="dash-err" style="font-style:italic;color:#999">loading host stats&hellip;</div>
+      </div>
+
       <div class="sec-head">Game Servers</div>
       <div id="server-list">
         <div style="padding:12px;color:#999;font-style:italic">loading...</div>
@@ -268,6 +340,7 @@
       dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
       dbListServerBackups, dbCreateServerBackup, dbRestoreServerBackup, dbDeleteServerBackup,
+      dbGetNodeStatus,
     } from './db.js'
     import { loadSession } from './auth.js'
 
@@ -301,6 +374,125 @@
       if (h) return `up ${h}h ${m}m`
       return `up ${m}m`
     }
+    function fmtBytes(n) {
+      if (n == null || !Number.isFinite(n)) return '—'
+      const u = ['B','KB','MB','GB','TB']
+      let i = 0
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++ }
+      return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${u[i]}`
+    }
+
+    // ── Proxmox host dashboard ─────────────────────────────────────────────
+    const GAUGE_C = 2 * Math.PI * 46  // circumference for r=46 radial gauge
+
+    function sevClass(pct) { return pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : '' }
+
+    function gaugeHtml(pct, center, meta) {
+      const p = Math.max(0, Math.min(100, pct || 0))
+      const offset = GAUGE_C * (1 - p / 100)
+      return `
+        <div class="gauge ${sevClass(p)}">
+          <svg width="108" height="108" viewBox="0 0 108 108">
+            <circle class="track" cx="54" cy="54" r="46" fill="none" stroke-width="10"></circle>
+            <circle class="fill" cx="54" cy="54" r="46" fill="none" stroke-width="10"
+              stroke-dasharray="${GAUGE_C.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>
+          </svg>
+          <div class="gauge-center">
+            <span class="gauge-pct">${center}</span>
+            ${meta ? `<span class="gauge-meta">${esc(meta)}</span>` : ''}
+          </div>
+        </div>`
+    }
+
+    function barHtml(pct) {
+      const p = Math.max(0, Math.min(100, pct || 0))
+      return `<div class="bar ${sevClass(p)}"><span style="width:${p.toFixed(1)}%"></span></div>`
+    }
+
+    function fleetHtml() {
+      if (!servers.length) return ''
+      const chips = servers.map(s => {
+        const { cls, label } = statusBits(s)
+        return `<span class="fleet-chip"><span class="dot ${cls}"></span>${esc(s.name)} <span style="color:#666">${esc(label)}</span></span>`
+      }).join('')
+      const hosting = servers.filter(s => s.gameStatus === 'hosting').length
+      const running = servers.filter(s => s.status === 'running').length
+      return `<div class="fleet">${chips}
+        <span class="fleet-summary"><b>${running}</b>/${servers.length} VMs up &middot; <b>${hosting}</b> hosting</span>
+      </div>`
+    }
+
+    function renderDashboard(n) {
+      const host = document.getElementById('dashboard')
+      const cpuPct = n.cpu != null ? n.cpu * 100 : 0
+      const memPct = (n.memory?.total) ? (n.memory.used / n.memory.total) * 100 : 0
+      const diskPct = (n.rootfs?.total) ? (n.rootfs.used / n.rootfs.total) * 100 : 0
+      const swapPct = (n.swap?.total) ? (n.swap.used / n.swap.total) * 100 : 0
+      const load = n.loadavg || []
+      const loadChips = ['1m','5m','15m'].map((lbl, i) =>
+        `<div class="load-chip">${(load[i] ?? 0).toFixed(2)}<small>${lbl}</small></div>`).join('')
+
+      host.innerHTML = `
+        <div class="dash-head">
+          <div>
+            <span class="dash-node">▣ NODE <span class="host">${esc(n.node || 'pve')}</span></span>
+            <div class="dash-sub">${esc(n.cpus ? n.cpus + ' cores' : '')}${n.cpuModel ? ' &middot; ' + esc(n.cpuModel) : ''}</div>
+          </div>
+          <div class="dash-sub" style="text-align:right">
+            ${n.pveversion ? `<div><b>${esc(n.pveversion)}</b></div>` : ''}
+            ${n.kversion ? `<div>${esc(n.kversion)}</div>` : ''}
+          </div>
+        </div>
+        <div class="dash-grid">
+          <div class="dash-tile">
+            <span class="tile-label">CPU</span>
+            ${gaugeHtml(cpuPct, cpuPct.toFixed(0) + '%', n.cpus ? n.cpus + ' cores' : '')}
+          </div>
+          <div class="dash-tile">
+            <span class="tile-label">Memory</span>
+            ${gaugeHtml(memPct, memPct.toFixed(0) + '%', `${fmtBytes(n.memory?.used)} / ${fmtBytes(n.memory?.total)}`)}
+          </div>
+          <div class="dash-tile wide">
+            <span class="tile-label">Host</span>
+            <div class="stat-rows">
+              <div class="stat-row"><span class="stat-k">Uptime</span><span class="stat-v">${esc((fmtUptime(n.uptime) || 'down').replace(/^up /,''))}</span></div>
+              <div class="stat-row"><span class="stat-k">Disk (/)</span><span class="stat-v">${fmtBytes(n.rootfs?.used)} / ${fmtBytes(n.rootfs?.total)}</span></div>
+              <div class="stat-row" style="border:none;padding:0">${barHtml(diskPct)}</div>
+              ${n.swap?.total ? `<div class="stat-row"><span class="stat-k">Swap</span><span class="stat-v">${swapPct.toFixed(0)}%</span></div>` : ''}
+            </div>
+          </div>
+          <div class="dash-tile wide">
+            <span class="tile-label">Load Average</span>
+            <div class="load-list">${loadChips}</div>
+            <div class="stat-rows" style="margin-top:8px">
+              <div class="stat-row"><span class="stat-k">Per-core 1m</span><span class="stat-v">${n.cpus ? ((load[0] ?? 0) / n.cpus * 100).toFixed(0) + '%' : '—'}</span></div>
+              ${n.cpus ? `<div class="stat-row" style="border:none;padding:0">${barHtml((load[0] ?? 0) / n.cpus * 100)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+        ${fleetHtml()}
+        <div class="dash-head" style="margin:10px 0 0">
+          <span class="dash-refresh">live &middot; refreshes every 10s</span>
+          <span class="dash-refresh">updated ${new Date().toLocaleTimeString()}</span>
+        </div>`
+    }
+
+    async function refreshDashboard() {
+      try {
+        const n = await dbGetNodeStatus()
+        renderDashboard(n)
+      } catch (e) {
+        const host = document.getElementById('dashboard')
+        // Keep any previously-rendered dashboard; only show error on first load.
+        if (host.querySelector('.dash-grid')) return
+        host.innerHTML = `<div class="dash-err">host stats unavailable: ${esc(e.message)}</div>`
+      }
+    }
+
+    function startDashboard() {
+      refreshDashboard()
+      setInterval(refreshDashboard, 10000)
+    }
 
     let servers = []
 
@@ -313,6 +505,7 @@
         return
       }
       render()
+      startDashboard()
     }
 
     function render() {

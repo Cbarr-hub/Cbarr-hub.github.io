@@ -147,6 +147,11 @@ export async function dbGetServerStatus(id) {
   return api(`/servers/${encodeURIComponent(id)}`);
 }
 
+// Host-level Proxmox node snapshot (CPU/RAM/load/uptime) for the dashboard.
+export async function dbGetNodeStatus() {
+  return api('/servers/node');
+}
+
 // action ∈ start | shutdown | reboot | stop
 export async function dbServerAction(id, action) {
   return api(`/servers/${encodeURIComponent(id)}/actions/${encodeURIComponent(action)}`, {

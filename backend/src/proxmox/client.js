@@ -98,6 +98,13 @@ export class ProxmoxClient {
     return `/nodes/${encodeURIComponent(this.node)}/qemu/${encodeURIComponent(vmid)}${suffix}`;
   }
 
+  // ── node (host) level ──────────────────────────────────────────────────────
+  // Live resource snapshot for the Proxmox host itself: cpu, memory, swap,
+  // rootfs, loadavg, uptime, kernel/PVE versions. Powers the host dashboard.
+  nodeStatus() {
+    return this.#request('GET', `/nodes/${encodeURIComponent(this.node)}/status`);
+  }
+
   // ── status + power ────────────────────────────────────────────────────────
   statusCurrent(vmid) {
     return this.#request('GET', this.#qemu(vmid, '/status/current'));

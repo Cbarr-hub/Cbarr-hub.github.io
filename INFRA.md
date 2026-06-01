@@ -135,9 +135,10 @@ Configured via Firewall → NAT/Gaming at http://192.168.1.254
 
 > **GMOD port note:** GMOD uses **27066** specifically because the Counter-Strike
 > forward already claims the whole 27000–27039 range (pointed at the CS VM), so
-> the obvious 27015/27016 are taken. **⚠️ The 27066 forward still needs to be
-> added** in the BGW210 UI (External 27066 TCP/UDP → 192.168.1.243). Until then
-> the TTT server is reachable on the LAN only.
+> the obvious 27015/27016 are taken. The 27066 forward is **live** (custom service
+> `GmodTTT`, TCP/UDP, → `Garrys-Mod-Server` / 192.168.1.243) and verified — an A2S
+> query to `104.177.95.216:27066` returns the "Gamertown TTT" server. See
+> "Scripting the BGW210 port-forward" below for how it was added.
 
 **Note:** Port 80 cannot be forwarded on this router model — the BGW210 reserves it internally.
 
@@ -437,21 +438,40 @@ curl -sk -H "Authorization: PVEAPIToken=gamertown@pve!serverctl=<secret>" \
 + the connector (`connectors/gmod.js`, `connectors/index.js`), then deploy
 (`git pull` inside CT 103 + `systemctl restart gamertown`).
 
-**8. Port-forward on the BGW210 (manual — browser required).** The gateway's
-NAT/Gaming page (`/cgi-bin/apphosting.ha`) is **fully JS-rendered and HMAC-hashes
-the device access code client-side**, so it can't be driven by `curl`/scripts
-safely — do it in a browser to avoid clobbering the existing CS/Factorio/Minecraft
-rules. At http://192.168.1.254 → **Firewall → NAT/Gaming**, enter the device
-access code (sticker on the gateway), **Custom Services →** Service Name
-`GmodTTT`, Global Port Range `27066`, Base Host Port `27066`, Protocol **TCP/UDP**,
-**Add**; then under **Needed by Device** pick `Garrys-Mod-Server` (192.168.1.243)
-and **Add**. GMOD uses **27066** because CS already owns the 27000–27039 range.
+**8. Port-forward on the BGW210.** In the browser: http://192.168.1.254 →
+**Firewall → NAT/Gaming** → enter the device access code (sticker on the gateway)
+→ **Custom Services**: Service Name `GmodTTT`, Global Port Range `27066`, Base
+Host Port `27066`, Protocol **TCP/UDP**, **Add** → then under **Needed by Device**
+pick `Garrys-Mod-Server` (192.168.1.243) and **Add**. GMOD uses **27066** because
+CS already owns the 27000–27039 range. (Done — see scripting note below.)
 
 **9. GSLT (manual — needs a Steam login).** For reliable Workshop downloads + a
 public server listing, generate a Game Server Login Token at
 `steamgameservers.com` for **appid 4000** and set `gslt="<token>"` in the instance
 cfg, then restart. The server runs without one (LAN / `terrortown` is built in),
 just without Workshop auto-download.
+
+### Scripting the BGW210 port-forward (no browser needed)
+
+The gateway UI looks unscriptable (the page is JS-rendered and the access code is
+hashed client-side), but the actual protocol is simple once mapped. **Use a real
+browser User-Agent** (it gates non-browser UAs) and keep one `SessionID` cookie
+across the flow. The access code is **`md5(accesscode + nonce)`** (plain MD5, not
+HMAC), where the nonce is per-session. Endpoints:
+
+| Step | Request |
+|---|---|
+| Establish session | `GET /cgi-bin/apphosting.ha` → grab `SessionID` from `Set-Cookie` (it's a `Discard` cookie, so pass it manually with `-b`, curl won't persist it) |
+| Get the nonce | `GET /cgi-bin/apphosting.ha` **with** the SessionID → the body now has `<input name="nonce" value="…">` |
+| Log in | `POST /cgi-bin/login.ha` with `nonce`, `password=****…` (one `*` per access-code char), `hashpassword=md5(code+nonce)`, `Continue=Continue` → 302 to apphosting.ha = success |
+| Create a custom service | `POST /cgi-bin/services.ha` with fresh `nonce`, `Service=<name>`, `extMinPort`, `extMaxPort`, `intStartPort`, `protocol=both\|tcp\|udp`, `Add=Add` |
+| Assign to a device | `POST /cgi-bin/apphosting.ha` with fresh `nonce`, `service=*<name>` (custom services are prefixed `*`), `device=<MAC>`, `Add=Add` |
+
+Re-fetch the page for a **fresh nonce before every POST**. Devices are selected by
+**MAC** (the GMOD VM is `bc:24:11:c9:b7:f6`). Verify end-to-end with an A2S query:
+`echo -en '\xff\xff\xff\xffTSource Engine Query\x00' | nc -u -w2 104.177.95.216 27066`
+should return the server name. This is exactly how the `GmodTTT` (27066) forward
+was added.
 
 ### Offsite backups (rclone → R2)
 

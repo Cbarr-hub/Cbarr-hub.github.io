@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../src/db.js';
 import { createServerStore } from '../src/servers/store.js';
 import { GmodConnector } from '../src/servers/connectors/gmod.js';
+import { FactorioConnector } from '../src/servers/connectors/factorio.js';
 
 // In-memory DB with all migrations applied. Deliberately does NOT set the
 // foreign_keys pragma (mirrors store.test.mjs) so the active-pointer cleanup is
@@ -38,6 +39,16 @@ function gmod(files) {
   const store = createServerStore(testDb());
   const client = fakeClient(files);
   return { conn: new GmodConnector(GMOD, client, store), store, client };
+}
+
+const FACTORIO = { id: 'factorio', name: 'Factorio', vmid: 101, port: 34197, connect: 'address' };
+const F_LGSM     = '/home/miles/fctrserver/lgsm/config-lgsm/fctrserver/fctrserver.cfg';
+const F_SETTINGS = '/home/miles/fctrserver/serverfiles/data/server-settings.json';
+
+function factorio(files) {
+  const store = createServerStore(testDb());
+  const client = fakeClient(files);
+  return { conn: new FactorioConnector(FACTORIO, client, store), store, client };
 }
 
 // ── store: profile CRUD + active pointer ─────────────────────────────────────────
@@ -175,4 +186,72 @@ test('gmod: profileSchema groups Maps/Gameplay with collection-driven fields', a
   assert.ok(mapGroup.fields.some((f) => f.key === 'mapcycle' && f.type === 'maplist' && f.custom));
   assert.ok(!mapGroup.fields.some((f) => f.key === 'map')); // no separate start-map field
   assert.ok(mapGroup.fields.some((f) => f.key === 'useMapcycle' && f.type === 'bool'));
+});
+
+// ── Factorio connector: schema / validate / apply / capture ──────────────────────
+test('factorio: validateProfileSettings normalizes + rejects bad values', () => {
+  const { conn } = factorio();
+  const base = conn.defaultProfileSettings();
+  assert.equal(conn.validateProfileSettings(base).visibility, 'lan');
+  assert.throws(() => conn.validateProfileSettings({ ...base, maxPlayers: 999 }), /max players/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, autosaveInterval: 0 }), /autosave/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, saveName: 'bad name!' }), /invalid world/);
+});
+
+test('factorio: applyProfileSettings edits server-settings.json + switches the active save', async () => {
+  const { conn, client } = factorio({
+    [F_SETTINGS]: JSON.stringify({ name: 'old', max_players: 5, tags: ['keepme'] }),
+    [F_LGSM]: 'savename="old"\nstartparameters="--start-server x"\n',
+  });
+  await conn.applyProfileSettings({
+    saveName: 'WileyWorld', serverName: 'GT', description: 'hi', maxPlayers: 12,
+    visibility: 'public', password: 'pw', autosaveInterval: 7,
+  }, 4);
+
+  const json = JSON.parse(client.files[F_SETTINGS]);
+  assert.equal(json.name, 'GT');
+  assert.equal(json.max_players, 12);
+  assert.deepEqual(json.visibility, { public: true, lan: true });
+  assert.equal(json.game_password, 'pw');
+  assert.equal(json.autosave_interval, 7);
+  assert.deepEqual(json.tags, ['keepme']); // untouched keys preserved
+
+  const lgsm = client.files[F_LGSM];
+  assert.match(lgsm, /savename="WileyWorld"/);
+  assert.match(lgsm, /start-server \$\{serverfiles\}\/saves\/WileyWorld\.zip/);
+  assert.match(lgsm, /gt_active_profile="4"/);
+});
+
+test('factorio: empty saveName keeps the current active world', async () => {
+  const { conn, client } = factorio({
+    [F_SETTINGS]: '{}',
+    [F_LGSM]: 'savename="keepme"\nstartparameters="--start-server ${serverfiles}/saves/keepme.zip"\n',
+  });
+  await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), saveName: '' }, 1);
+  assert.match(client.files[F_LGSM], /savename="keepme"/); // unchanged
+});
+
+test('factorio: capture round-trips server-settings + active save', async () => {
+  const { conn } = factorio({
+    [F_SETTINGS]: JSON.stringify({ name: 'Srv', description: 'd', max_players: 8,
+      visibility: { public: false, lan: true }, game_password: 'p', autosave_interval: 15 }),
+    [F_LGSM]: 'savename="w"\nstartparameters="--bind x --start-server ${serverfiles}/saves/MyWorld.zip --port 34197"\n',
+  });
+  const c = await conn.captureProfileSettings();
+  assert.equal(c.saveName, 'MyWorld');
+  assert.equal(c.serverName, 'Srv');
+  assert.equal(c.maxPlayers, 8);
+  assert.equal(c.visibility, 'lan');
+  assert.equal(c.password, 'p');
+  assert.equal(c.autosaveInterval, 15);
+});
+
+test('factorio: profileSchema groups World + Server Settings; getSettings is operations-only', async () => {
+  const { conn } = factorio();
+  const schema = await conn.profileSchema();
+  assert.deepEqual(schema.groups.map((g) => g.key), ['world', 'server']);
+  assert.ok(schema.groups[1].fields.some((f) => f.key === 'visibility' && f.type === 'select'));
+  // active world moved to the profile; getSettings now exposes only operations
+  const ops = await conn.getSettings();
+  assert.deepEqual(ops.sections.map((s) => s.key), ['saveAs', 'newWorld']);
 });

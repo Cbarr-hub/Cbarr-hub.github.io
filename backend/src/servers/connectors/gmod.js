@@ -114,60 +114,19 @@ export class GmodConnector extends LinuxGsmConnector {
     }
   }
 
+  // Profiles own the startup config (the Profiles panel). getSettings is kept only
+  // to feed the Runtime panel's live change-map dropdown with the loadable maps.
   async getSettings() {
-    const [game, inst, mapcycle, maps] = await Promise.all([
-      this.client.agentFileRead(this.vmid, SERVER_CFG).then((r) => r.content ?? '').catch(() => ''),
+    const [inst, maps] = await Promise.all([
       this.client.agentFileRead(this.vmid, INSTANCE_CFG).then((r) => r.content ?? '').catch(() => ''),
-      this.client.agentFileRead(this.vmid, MAPCYCLE).then((r) => r.content ?? '').catch(() => ''),
       this.#listMaps(),
     ]);
-
     const defaultMap = (getVar(inst, 'defaultmap') || '').trim();
-    const collection = (getVar(inst, 'wscollectionid') || '').trim();
-    const maxplayers = Number(getVar(inst, 'maxplayers') || 16);
-
-    const num = (cvar, def) => {
-      const v = getCvar(game, cvar);
-      return v === undefined || v === '' ? def : Number(v);
-    };
-    const useMapcycle = num('ttt_always_use_mapcycle', 1) ? '1' : '0';
-
-    // Map select: installed ttt_* maps, plus the current defaultmap if not listed.
-    const mapOpts = maps.map((m) => ({ value: m, label: m }));
-    if (defaultMap && !mapOpts.some((o) => o.value === defaultMap)) {
-      mapOpts.unshift({ value: defaultMap, label: defaultMap });
-    }
-    if (!mapOpts.length) mapOpts.push({ value: defaultMap || 'ttt_minecraft_b5', label: defaultMap || 'ttt_minecraft_b5' });
-
-    const tttFields = TTT_FIELDS.map((f) => ({
-      key: f.key, label: f.label, type: 'number', value: num(f.cvar, f.def),
-      min: f.min, max: f.max,
-    }));
-
     return {
       game: 'gmod',
-      // CS-compatible `map` block so the Runtime panel's live change-map dropdown
-      // (which reads data.map.stock/workshop/current) populates with the same maps.
-      // GMOD maps are plain bsp names, so they all go in `stock`.
+      // CS-compatible `map` block: the live change-map dropdown reads
+      // map.stock/workshop/current. GMOD maps are plain bsp names → all stock.
       map: { stock: maps.length ? maps : [defaultMap].filter(Boolean), workshop: [], current: defaultMap },
-      sections: [
-        {
-          key: 'ttt',
-          title: 'TTT Settings',
-          saveLabel: 'Apply (restart to take effect)',
-          fields: [
-            { key: 'map', label: 'Starting Map', type: 'select', value: defaultMap || mapOpts[0].value, options: mapOpts },
-            { key: 'maxPlayers', label: 'Max Players', type: 'number', value: maxplayers, min: 1, max: 128 },
-            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text', value: collection, placeholder: 'Steam collection id (auto-downloads maps)' },
-            ...tttFields,
-            { key: 'useMapcycle', label: 'Auto-rotate via Map Cycle', type: 'select', value: useMapcycle,
-              options: [{ value: '1', label: 'Yes' }, { value: '0', label: 'No' }] },
-            { key: 'mapcycle', label: 'Map Cycle (one per line)', type: 'textarea', value: mapcycle.replace(/\r/g, ''),
-              placeholder: 'ttt_minecraft_b5\nttt_rooftops_a3_v2\nttt_67thway_v3' },
-          ],
-        },
-      ],
-      note: 'Map collection auto-downloads on restart. Maps rotate after the round or time limit using the Map Cycle. All changes apply on the next server restart.',
     };
   }
 

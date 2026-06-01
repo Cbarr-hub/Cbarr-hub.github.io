@@ -728,18 +728,14 @@ function gmodClient(opts = {}) {
   return { client, writes };
 }
 
-test('GMOD getSettings exposes the TTT knobs split across server.cfg + instance cfg', async () => {
+test('GMOD getSettings returns just the map block for the live change-map (config now in Profiles)', async () => {
   const { client } = gmodClient();
   const svc = createServerService({ client, db: testDb() });
   const s = await svc.getSettings('gmod');
   assert.equal(s.game, 'gmod');
-  const fields = Object.fromEntries(s.sections[0].fields.map((f) => [f.key, f]));
-  assert.equal(fields.map.value, 'ttt_minecraft_b5');     // from instance defaultmap
-  assert.equal(fields.maxPlayers.value, 16);
-  assert.equal(fields.roundLimit.value, 6);               // from server.cfg cvar
-  assert.equal(fields.traitorPct.value, 0.25);
-  assert.equal(fields.detectivePct.value, 0.13);          // default when cvar absent
-  assert.equal(fields.mapcycle.type, 'textarea');
+  assert.equal(s.map.current, 'ttt_minecraft_b5');  // from instance defaultmap
+  assert.ok(Array.isArray(s.map.stock));
+  assert.equal(s.sections, undefined);              // TTT config moved to the Profiles panel
 });
 
 test('GMOD setSettings writes cvars to server.cfg, vars to instance cfg, sanitizes mapcycle', async () => {

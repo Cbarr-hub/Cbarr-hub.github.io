@@ -1296,7 +1296,7 @@
 
         onClick('[data-prof-apply]', (b) => {
           if (P.editId == null) return
-          if (!confirm('Apply this profile and restart the server now?\n\nThe server reloads with this config — it downloads/mounts the Workshop collection and briefly disconnects players.')) return
+          if (!confirm('Apply this profile and restart the server now?\n\nThe server reloads with this config (e.g. GMOD downloads/mounts its Workshop collection) and briefly disconnects players.')) return
           withBtn(b, 'Apply & restart', async () => {
             // persist pending edits, write the startup config, then restart so it
             // fully takes effect (collection download/mount happens at boot).
@@ -1670,9 +1670,11 @@
         } catch (e) { setErr(e.message) } finally { qsSave.disabled = false }
       })
 
-      // Profiles supersede the legacy Quick Settings panel where a game supports
-      // them (GMOD today); otherwise fall back so CS/Factorio/Minecraft are unchanged.
-      ;(async () => { if (!(await loadProfiles())) loadSettings() })()
+      // Profiles (startup config) and Quick Settings (operations like Save As /
+      // Generate) are independent panels — a game can have one, the other, or both.
+      // Run both; each gates its own visibility (empty schema / no sections → no-op).
+      loadProfiles()
+      loadSettings()
       loadLive()
       loadBackups()
 

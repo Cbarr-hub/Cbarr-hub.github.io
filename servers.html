@@ -1174,6 +1174,13 @@
         const lbl = `<label for="${lid}">${esc(f.label)}</label>`
         const help = f.help ? `<div class="field-help">${esc(f.help)}</div>` : ''
         if (f.type === 'select') {
+          // `custom` selects are combo inputs: pick a suggestion or type a value
+          // (e.g. a collection map name that hasn't downloaded yet).
+          if (f.custom) {
+            const dlid = `dl-${id}-${f.key}`
+            const opts = (f.options || []).map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
+            return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="text" type="text" list="${dlid}" value="${esc(v ?? '')}" placeholder="map name" autocomplete="off" /><datalist id="${dlid}">${opts}</datalist>` + help
+          }
           const opts = (f.options || []).map(o =>
             `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
           return lbl + `<select id="${lid}" data-pf="${esc(f.key)}" data-pt="select">${opts}</select>` + help
@@ -1212,14 +1219,17 @@
               </div>`).join('')
           : `<div class="maplist-empty">No maps in rotation yet.</div>`
         const addable = f.options || []
-        const addOpts = addable.length
-          ? addable.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
-          : '<option value="">(no maps discovered)</option>'
+        const dlOpts = addable.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
+        // `custom` maplists let you type any map name (collection maps not yet
+        // downloaded); otherwise it's a plain pick-list of discovered maps.
+        const addControl = f.custom
+          ? `<input type="text" data-ml-pick list="mldl-${id}-${f.key}" placeholder="add a map by name…" autocomplete="off" /><datalist id="mldl-${id}-${f.key}">${dlOpts}</datalist>`
+          : `<select data-ml-pick${addable.length ? '' : ' disabled'}>${addable.length ? dlOpts : '<option value="">(no maps discovered)</option>'}</select>`
         return `
           <div class="maplist-rows">${rows}</div>
           <div class="maplist-add">
-            <select data-ml-pick${addable.length ? '' : ' disabled'}>${addOpts}</select>
-            <button type="button" class="mini-btn" data-ml-add${addable.length ? '' : ' disabled'}>＋ Add</button>
+            ${addControl}
+            <button type="button" class="mini-btn" data-ml-add${f.custom || addable.length ? '' : ' disabled'}>＋ Add</button>
           </div>`
       }
 
@@ -1356,8 +1366,10 @@
         }))
         const add = wrap.querySelector('[data-ml-add]')
         if (add) add.addEventListener('click', () => {
-          const picked = wrap.querySelector('[data-ml-pick]')?.value
-          if (picked) { arr().push(picked); rerender() }
+          const picked = (wrap.querySelector('[data-ml-pick]')?.value || '').trim()
+          if (!picked) return
+          if (!/^[a-z0-9_]{1,64}$/.test(picked)) { setErr(`invalid map name: ${picked}`); return }
+          setErr(''); arr().push(picked); rerender()
         })
       }
 

@@ -283,8 +283,11 @@ export class GmodConnector extends LinuxGsmConnector {
   }
 
   async profileSchema() {
-    const maps = await this.#listMaps();
-    const mapOpts = (maps.length ? maps : STOCK_ALWAYS).map((m) => ({ value: m, label: m }));
+    const discovered = await this.#listMaps();
+    // Always offer the stock fallback maps (gm_construct/gm_flatgrass), plus what
+    // the collection has downloaded. The map fields are combos (custom:true) so a
+    // collection map can be typed as the start map even before its first download.
+    const mapOpts = [...new Set([...STOCK_ALWAYS, ...discovered])].map((m) => ({ value: m, label: m }));
     const numField = (f) => ({ key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01 });
 
     return {
@@ -294,11 +297,12 @@ export class GmodConnector extends LinuxGsmConnector {
           fields: [
             { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
               placeholder: 'Steam Workshop collection id',
-              help: 'Steam stores & manages these maps. The map choices below come from this collection (plus stock maps). After changing it, Apply then Restart Hosting once so Steam downloads the maps — they then appear here.' },
-            { key: 'map', label: 'Starting Map', type: 'select', options: mapOpts },
+              help: 'Steam stores & manages these maps. Set this, then pick your start map / rotation from the collection. After changing it, Apply then Restart Hosting once so Steam downloads the maps.' },
+            { key: 'map', label: 'Starting Map', type: 'select', custom: true, options: mapOpts,
+              help: 'Pick one of your collection’s maps (type its name — selectable even before its first download). gm_construct is the always-available fallback.' },
             { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },
-            { key: 'mapcycle', label: 'Map Rotation (in order)', type: 'maplist', options: mapOpts,
-              help: 'After each round/time limit the server advances to the next map. Only installed maps appear here.' },
+            { key: 'mapcycle', label: 'Map Rotation (in order)', type: 'maplist', custom: true, options: mapOpts,
+              help: 'After each round/time limit the server advances to the next map. Add collection maps by name; gm_construct works as a fallback.' },
           ],
         },
         {
@@ -309,7 +313,7 @@ export class GmodConnector extends LinuxGsmConnector {
           ],
         },
       ],
-      note: 'A profile is the startup config the server boots as. Maps come from your Workshop Collection (set it, Apply, then Restart Hosting once to download). Changes apply on the next restart.',
+      note: 'A profile is the startup config the server boots as. Maps come from your Workshop Collection (gm_construct is the fallback). Changes apply on the next restart.',
     };
   }
 

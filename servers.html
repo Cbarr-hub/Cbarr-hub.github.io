@@ -292,6 +292,20 @@
       border-radius: 50%; animation: spin 0.7s linear infinite;
     }
 
+    /* card sections: group panels into Configuration / Runtime / Backups, each
+       with a distinct accent so the conceptual areas are visually separated. */
+    .srv-section { border-left: 3px solid #2a2a2a; padding-left: 12px; margin-top: 16px; }
+    .srv-section-head { font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; }
+    .srv-section-head span { font-size: 10px; font-weight: normal; text-transform: none; letter-spacing: 0; font-style: italic; color: #777; margin-left: 8px; }
+    .srv-section.cfg { border-left-color: #42F527; }
+    .srv-section.cfg .srv-section-head { color: #42F527; }
+    .srv-section.rt  { border-left-color: #4f9fd0; }
+    .srv-section.rt  .srv-section-head { color: #7fc0f0; }
+    .srv-section.bk  { border-left-color: #c2a13a; }
+    .srv-section.bk  .srv-section-head { color: #d8bc5a; }
+    /* the section head already separates the group → drop the first panel's divider */
+    .srv-section > .srv-section-head + .panel { border-top: none; margin-top: 6px; padding-top: 2px; }
+
     /* ── Proxmox host dashboard ── */
     .dash {
       border: 1px solid #7bb85f; border-top: none;
@@ -770,39 +784,50 @@
           </div>
           <div class="srv-err" data-err></div>
 
-          <div class="panel profiles" data-profiles data-loading="1" style="display:none">
-            <div class="panel-title">Profiles <span class="qs-note">startup config — Apply, then Restart Hosting to boot into it</span></div>
-            <div data-prof-body><div class="panel-ldg">Loading profiles…</div></div>
+          <!-- CONFIGURATION: everything persistent (profiles, quick settings, raw files) -->
+          <div class="srv-section cfg" data-section style="display:none">
+            <div class="srv-section-head">Configuration <span>persistent — saved settings &amp; files, applied on (re)start</span></div>
+
+            <div class="panel profiles" data-profiles data-loading="1" style="display:none">
+              <div class="panel-title">Profiles <span class="qs-note">startup config — Apply, then Restart Hosting to boot into it</span></div>
+              <div data-prof-body><div class="panel-ldg">Loading profiles…</div></div>
+            </div>
+
+            <div class="panel quickset" data-quickset data-loading="1" style="display:none">
+              <div class="panel-title">Quick Settings <span class="qs-note">world / save operations</span></div>
+              <div class="qs-fields" data-qs-fields><div class="panel-ldg">Loading…</div></div>
+              <div class="panel-row">
+                <button class="retro-btn" data-qs-save>Save Settings</button>
+                <span class="qs-note" data-qs-note></span>
+              </div>
+            </div>
+
+            <details class="panel rawcfg" data-rawcfg style="display:none">
+              <summary>Raw Config Files <span class="qs-note">advanced — edit a file directly</span></summary>
+              <div class="panel-row" style="margin-top:8px">
+                <label>File</label>
+                <select data-cfg-select><option value="">— loading… —</option></select>
+                <button class="retro-btn" data-cfg-save disabled>Save File</button>
+              </div>
+              <textarea class="cfg" data-cfg-text placeholder="expand to load…" disabled></textarea>
+            </details>
           </div>
 
-          <div class="panel quickset" data-quickset data-loading="1" style="display:none">
-            <div class="panel-title">Quick Settings</div>
-            <div class="qs-fields" data-qs-fields><div class="panel-ldg">Loading…</div></div>
-            <div class="panel-row">
-              <button class="retro-btn" data-qs-save>Save Settings</button>
-              <span class="qs-note" data-qs-note></span>
+          <!-- RUNTIME: live commands to the running server (not persisted) -->
+          <div class="srv-section rt" data-section style="display:none">
+            <div class="srv-section-head">Runtime <span>live commands — not saved; server must be hosting</span></div>
+            <div class="panel runtime" data-runtime data-loading="1" style="display:none">
+              <div data-rt-body><div class="panel-ldg">Loading runtime…</div></div>
             </div>
           </div>
 
-          <div class="panel runtime" data-runtime data-loading="1" style="display:none">
-            <div class="panel-title">Runtime <span class="qs-note">live — server must be hosting</span></div>
-            <div data-rt-body><div class="panel-ldg">Loading runtime…</div></div>
-          </div>
-
-          <div class="panel backups" data-backups data-loading="1" style="display:none">
-            <div class="panel-title">Backups <span class="qs-note">offsite — Cloudflare R2</span></div>
-            <div data-bk-body><div class="panel-ldg">Loading backups…</div></div>
-          </div>
-
-          <details class="panel rawcfg" data-rawcfg>
-            <summary>Raw Config Files <span class="qs-note">advanced — edit a file directly</span></summary>
-            <div class="panel-row" style="margin-top:8px">
-              <label>File</label>
-              <select data-cfg-select><option value="">— loading… —</option></select>
-              <button class="retro-btn" data-cfg-save disabled>Save File</button>
+          <!-- BACKUPS: offsite snapshots -->
+          <div class="srv-section bk" data-section style="display:none">
+            <div class="srv-section-head">Backups <span>offsite snapshots — Cloudflare R2</span></div>
+            <div class="panel backups" data-backups data-loading="1" style="display:none">
+              <div data-bk-body><div class="panel-ldg">Loading backups…</div></div>
             </div>
-            <textarea class="cfg" data-cfg-text placeholder="expand to load…" disabled></textarea>
-          </details>
+          </div>
 
           <pre class="console" data-console style="display:none"></pre>
         </div>
@@ -1877,6 +1902,17 @@
       // backups need only the VM up (guest agent + files), not the game process.
       const bk = root.querySelector('[data-backups]')
       if (bk) bk.style.display = (s.status === 'running' && ready(bk)) ? 'block' : 'none'
+
+      // raw config files: editable whenever the VM is up.
+      const rawcfg = root.querySelector('[data-rawcfg]')
+      if (rawcfg) rawcfg.style.display = (s.status === 'running') ? 'block' : 'none'
+
+      // Each grouping section (Configuration / Runtime / Backups) shows only when
+      // at least one of its panels is visible — no empty bordered headers.
+      root.querySelectorAll('[data-section]').forEach(sec => {
+        const anyVisible = [...sec.querySelectorAll('.panel')].some(p => p.style.display !== 'none')
+        sec.style.display = anyVisible ? '' : 'none'
+      })
     }
 
     function formatUpdate(res) {

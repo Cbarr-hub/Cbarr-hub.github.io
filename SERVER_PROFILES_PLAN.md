@@ -71,8 +71,11 @@ own panels.
 - **CS workshop maps** show by name ("Assembly"); **＋ Workshop Map** adds one
   inline (id + name → catalog) and **Remove** deletes the selected one from the
   catalog (`DELETE /maps/:workshopId`) — no `ws:` typing.
-- **Panel UX:** per-panel "Loading…" placeholders; fresh per-server status on card
-  mount; the active card re-mounts per tab switch.
+- **Panel UX:** the card groups panels into three accent-coloured **sections** —
+  **Configuration** (Profiles + Quick Settings + Raw Config Files), **Runtime**
+  (live commands), **Backups** — with a shared **console** at the bottom; a section
+  hides when none of its panels are visible. Plus per-panel "Loading…" placeholders,
+  fresh per-server status on card mount, and per-tab re-mount.
 
 ## Not done (optional)
 

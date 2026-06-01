@@ -239,10 +239,10 @@ export class GmodConnector extends LinuxGsmConnector {
   // ttt_always_use_mapcycle), and mapcycle.txt. Takes effect on the next restart.
 
   defaultProfileSettings() {
-    // Boot to a stock map that always exists (TTT runs fine on it). Workshop maps
-    // become available once a collection is set — never default to one.
+    // The server boots into the FIRST map of the rotation; default it to a stock
+    // map that always exists (TTT runs fine on it). Workshop maps need a collection.
     const d = {
-      map: 'gm_construct', maxPlayers: 16, workshopCollection: '',
+      maxPlayers: 16, workshopCollection: '',
       useMapcycle: '1', mapcycle: ['gm_construct'],
     };
     for (const f of TTT_FIELDS) d[f.key] = f.def;
@@ -251,10 +251,6 @@ export class GmodConnector extends LinuxGsmConnector {
 
   validateProfileSettings(s = {}) {
     const out = {};
-
-    const map = String(s.map ?? '').trim();
-    if (!MAP_RE.test(map)) throw badSetting(`invalid map name: ${map}`);
-    out.map = map;
 
     const mp = Number(s.maxPlayers);
     if (!Number.isInteger(mp) || mp < 1 || mp > 128) throw badSetting('maxPlayers must be 1–128');
@@ -297,12 +293,10 @@ export class GmodConnector extends LinuxGsmConnector {
           fields: [
             { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
               placeholder: 'Steam Workshop collection id',
-              help: 'Steam stores & manages these maps. Set this, then pick your start map / rotation from the collection. After changing it, Apply then Restart Hosting once so Steam downloads the maps.' },
-            { key: 'map', label: 'Starting Map', type: 'select', custom: true, options: mapOpts,
-              help: 'Pick one of your collection’s maps (type its name — selectable even before its first download). gm_construct is the always-available fallback.' },
+              help: 'Steam stores & manages these maps. Set this, then build the rotation from the collection. After changing it, Apply then Restart Hosting once so Steam downloads the maps.' },
+            { key: 'mapcycle', label: 'Map Rotation', type: 'maplist', custom: true, options: mapOpts,
+              help: 'The server boots into the FIRST map and (with auto-rotate on) advances down the list after each round/time limit. Type collection map names; gm_construct is the always-available fallback.' },
             { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },
-            { key: 'mapcycle', label: 'Map Rotation (in order)', type: 'maplist', custom: true, options: mapOpts,
-              help: 'After each round/time limit the server advances to the next map. Add collection maps by name; gm_construct works as a fallback.' },
           ],
         },
         {
@@ -320,14 +314,18 @@ export class GmodConnector extends LinuxGsmConnector {
   async applyProfileSettings(settings, profileId) {
     const s = this.validateProfileSettings(settings);
 
+    // The server boots into the FIRST map of the rotation (stock fallback if the
+    // rotation is somehow empty). One ordered list drives both boot + rotation.
+    const rotation = s.mapcycle.length ? s.mapcycle : ['gm_construct'];
+    const bootMap = rotation[0];
+
     // Boot-map guard. With NO workshop collection set, only stock maps can load —
-    // a workshop map would mount nothing and leave the server with "no active map"
-    // (the exact brick we hit). So block a non-stock boot/rotation map when the
-    // collection is empty. When a collection IS set we trust it: GMOD downloads +
-    // mounts it at boot before loading the map, so its maps are fine.
+    // a workshop map mounts nothing and leaves the server with "no active map"
+    // (the exact brick we hit). Block that; trust any map once a collection is set
+    // (GMOD downloads + mounts it at boot before loading the map).
     if (!s.workshopCollection) {
       const loadable = new Set([...(await this.#listMaps()), ...STOCK_ALWAYS]);
-      const missing = [...new Set([s.map, ...s.mapcycle])].filter((m) => !loadable.has(m));
+      const missing = [...new Set(rotation)].filter((m) => !loadable.has(m));
       if (missing.length) {
         throw badSetting(
           `no Workshop Collection is set, so only stock maps can load (${[...loadable].sort().join(', ')}). ` +
@@ -339,7 +337,7 @@ export class GmodConnector extends LinuxGsmConnector {
 
     let inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
     inst = setVars(inst, {
-      defaultmap: s.map,
+      defaultmap: bootMap,
       maxplayers: String(s.maxPlayers),
       wscollectionid: s.workshopCollection,
       ...(profileId != null ? { gt_active_profile: String(profileId) } : {}),
@@ -352,7 +350,7 @@ export class GmodConnector extends LinuxGsmConnector {
     game = setCvars(game, cvars);
     await this.client.agentFileWrite(this.vmid, SERVER_CFG, game);
 
-    await this.client.agentFileWrite(this.vmid, MAPCYCLE, s.mapcycle.join('\n') + (s.mapcycle.length ? '\n' : ''));
+    await this.client.agentFileWrite(this.vmid, MAPCYCLE, rotation.join('\n') + '\n');
     return { ok: true };
   }
 
@@ -366,12 +364,16 @@ export class GmodConnector extends LinuxGsmConnector {
       const v = getCvar(game, cvar);
       return v === undefined || v === '' ? def : Number(v);
     };
+    // Preserve the invariant: the boot map (defaultmap) is the first rotation entry.
+    const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim();
+    let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (cycle[0] !== bootMap) cycle = [bootMap, ...cycle.filter((m) => m !== bootMap)];
+
     const doc = {
-      map: (getVar(inst, 'defaultmap') || 'ttt_minecraft_b5').trim(),
       maxPlayers: Number(getVar(inst, 'maxplayers') || 16),
       workshopCollection: (getVar(inst, 'wscollectionid') || '').trim(),
       useMapcycle: num('ttt_always_use_mapcycle', 1) ? '1' : '0',
-      mapcycle: mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean),
+      mapcycle: cycle,
     };
     for (const f of TTT_FIELDS) doc[f.key] = num(f.cvar, f.def);
     return this.validateProfileSettings(doc);

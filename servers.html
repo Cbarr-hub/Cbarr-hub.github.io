@@ -255,6 +255,8 @@
     .maplist-row .mi-idx { color: #5f8f4f; font-size: 10px; width: 18px; text-align: right; }
     .maplist-row .mi-name { flex: 1; min-width: 0; color: #b8d4a0; font-family: "Courier New", monospace; font-size: 11px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .maplist-row .mi-boot { flex: none; color: #0c0c0c; background: #42F527; font-size: 9px; font-weight: bold;
+      text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 5px; border-radius: 2px; }
     .mini-btn { background: #23331a; border: 1px solid #4a6a3a; color: #b8d4a0; font-size: 11px; line-height: 1;
       padding: 2px 7px; cursor: pointer; font-family: Verdana, Arial, sans-serif; }
     .mini-btn:hover { background: #33491f; color: #42F527; }
@@ -1213,6 +1215,7 @@
               <div class="maplist-row">
                 <span class="mi-idx">${i + 1}</span>
                 <span class="mi-name" title="${esc(m)}">${esc(m)}</span>
+                ${i === 0 ? '<span class="mi-boot" title="the server boots into this map">start</span>' : ''}
                 <button type="button" class="mini-btn" data-ml-up="${i}"${i === 0 ? ' disabled' : ''}>↑</button>
                 <button type="button" class="mini-btn" data-ml-down="${i}"${i === arr.length - 1 ? ' disabled' : ''}>↓</button>
                 <button type="button" class="mini-btn x" data-ml-del="${i}">✕</button>

@@ -47,9 +47,18 @@
 > muddle into one switchable profile; retires the bespoke CS panel (`getSettings`
 > trimmed to the map block for the live change-map). Box-verified against VM 100.
 >
-> **All three useful games (GMOD / Factorio / CS) now run the unified Profiles +
-> live-commands model. Minecraft intentionally skipped.** Remaining: live-vs-restart
-> apply tagging + the startup-file drift badge.
+> **Minecraft (shipped):** profile = active world (`level-name`) + a structured
+> `server.properties` subset (gamemode, difficulty, hardcore, pvp, max-players,
+> view-distance, spawn-protection, whitelist toggle, online-mode, motd) via
+> key=value helpers; player *lists* (whitelist.json/ops.json) stay in the raw editor
+> / in-game commands; snapshots stay in Quick Settings. No on-box active-profile
+> mirror (MC rewrites server.properties on boot) — SQLite pointer is authoritative.
+> Uses only generic field types, so no frontend changes were needed. Box-verified
+> against VM 102.
+>
+> **All four games (GMOD / Factorio / CS / Minecraft) now run the unified Profiles
+> + live-commands model.** Remaining: live-vs-restart apply tagging + the
+> startup-file drift badge.
 >
 > **Panel UX polish (servers.html):**
 > - **Per-panel loading placeholders** — Profiles / Quick Settings / Runtime /

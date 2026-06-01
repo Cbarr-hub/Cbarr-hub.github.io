@@ -7,6 +7,7 @@ import { createServerStore } from '../src/servers/store.js';
 import { GmodConnector } from '../src/servers/connectors/gmod.js';
 import { FactorioConnector } from '../src/servers/connectors/factorio.js';
 import { CounterStrikeConnector } from '../src/servers/connectors/counterstrike.js';
+import { MinecraftConnector } from '../src/servers/connectors/minecraft.js';
 
 // In-memory DB with all migrations applied. Deliberately does NOT set the
 // foreign_keys pragma (mirrors store.test.mjs) so the active-pointer cleanup is
@@ -63,6 +64,15 @@ function cs(files) {
   const store = createServerStore(testDb());
   const client = fakeClient(files);
   return { conn: new CounterStrikeConnector(CS, client, store), store, client };
+}
+
+const MC = { id: 'minecraft', name: 'Minecraft', vmid: 102, port: 25565, connect: 'address' };
+const MC_PROPS = '/home/miles/MinecraftServer/server.properties';
+
+function mc(files) {
+  const store = createServerStore(testDb());
+  const client = fakeClient(files);
+  return { conn: new MinecraftConnector(MC, client, store), store, client };
 }
 
 // ── store: profile CRUD + active pointer ─────────────────────────────────────────
@@ -326,4 +336,66 @@ test('cs: profileSchema groups Map&Mode + Advanced; seeded Assembly is a ws: opt
   // the migration-seeded Assembly shows BY NAME, value carries the ws: id
   assert.ok(mapField.options.some((o) => o.value === 'ws:3071005299' && o.label === 'Assembly'));
   assert.ok(schema.groups[1].fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
+});
+
+// ── Minecraft connector: schema / validate / apply / capture ─────────────────────
+test('mc: validateProfileSettings normalizes enums + rejects bad values', () => {
+  const { conn } = mc();
+  const base = conn.defaultProfileSettings();
+  assert.equal(conn.validateProfileSettings({ ...base, gamemode: 'nope' }).gamemode, 'survival'); // falls back
+  assert.equal(conn.validateProfileSettings({ ...base, difficulty: 'x' }).difficulty, 'normal');
+  assert.throws(() => conn.validateProfileSettings({ ...base, maxPlayers: 0 }), /max players/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, viewDistance: 99 }), /view distance/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, world: 'bad name!' }), /invalid world/);
+});
+
+test('mc: applyProfileSettings writes the server.properties keys', async () => {
+  const { conn, client } = mc({ [MC_PROPS]: 'level-name=world\nmax-players=20\nmotd=old\n' });
+  await conn.applyProfileSettings({
+    world: 'world_GTown', gamemode: 'creative', difficulty: 'hard', maxPlayers: 8, motd: 'Hi',
+    pvp: '0', hardcore: '1', whitelist: '1', onlineMode: '0', viewDistance: 16, spawnProtection: 0,
+  });
+  const p = client.files[MC_PROPS];
+  assert.match(p, /level-name=world_GTown/);
+  assert.match(p, /gamemode=creative/);
+  assert.match(p, /difficulty=hard/);
+  assert.match(p, /max-players=8/);
+  assert.match(p, /pvp=false/);
+  assert.match(p, /hardcore=true/);
+  assert.match(p, /white-list=true/);
+  assert.match(p, /online-mode=false/);
+  assert.match(p, /view-distance=16/);
+  assert.match(p, /spawn-protection=0/);
+});
+
+test('mc: empty world keeps the current level-name', async () => {
+  const { conn, client } = mc({ [MC_PROPS]: 'level-name=keepme\n' });
+  await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), world: '' });
+  assert.match(client.files[MC_PROPS], /level-name=keepme/);
+});
+
+test('mc: capture round-trips server.properties (bools as 1/0)', async () => {
+  const { conn } = mc({ [MC_PROPS]:
+    'level-name=W\ngamemode=adventure\ndifficulty=peaceful\nmax-players=5\nmotd=Srv\n' +
+    'pvp=false\nhardcore=true\nwhite-list=true\nonline-mode=false\nview-distance=12\nspawn-protection=4\n' });
+  const c = await conn.captureProfileSettings();
+  assert.equal(c.world, 'W');
+  assert.equal(c.gamemode, 'adventure');
+  assert.equal(c.difficulty, 'peaceful');
+  assert.equal(c.maxPlayers, 5);
+  assert.equal(c.pvp, '0');
+  assert.equal(c.hardcore, '1');
+  assert.equal(c.whitelist, '1');
+  assert.equal(c.onlineMode, '0');
+  assert.equal(c.viewDistance, 12);
+});
+
+test('mc: profileSchema groups World/Gameplay/Access; getSettings is ops-only', async () => {
+  const { conn } = mc({ [MC_PROPS]: 'level-name=world\n' });
+  const schema = await conn.profileSchema();
+  assert.deepEqual(schema.groups.map((g) => g.key), ['world', 'gameplay', 'access']);
+  assert.ok(schema.groups[1].fields.some((f) => f.key === 'gamemode' && f.type === 'select'));
+  assert.ok(schema.groups[2].fields.some((f) => f.key === 'whitelist' && f.type === 'bool'));
+  const ops = await conn.getSettings();
+  assert.deepEqual(ops.sections.map((s) => s.key), ['saveAs']);
 });

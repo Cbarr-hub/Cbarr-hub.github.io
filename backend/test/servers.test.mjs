@@ -504,11 +504,11 @@ test('a connector with no quick settings returns empty fields by default', async
   assert.deepEqual(await base.getSettings(), { fields: [] });
 });
 
-test('Minecraft exposes world-management sections', async () => {
+test('Minecraft Quick Settings exposes the snapshot operation (config now in Profiles)', async () => {
   const svc = createServerService({ client: fakeClient() });
   const s = await svc.getSettings('minecraft');
-  assert.ok(Array.isArray(s.sections) && s.sections.length > 0);
-  assert.ok(s.sections.some((sec) => sec.key === 'loadWorld'));
+  // active world + properties moved to the Profiles panel; Quick Settings is ops-only
+  assert.deepEqual(s.sections.map((sec) => sec.key), ['saveAs']);
 });
 
 // ── offsite backups (Phase 4; rclone → R2) ──────────────────────────────────────

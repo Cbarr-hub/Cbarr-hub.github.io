@@ -65,9 +65,13 @@ own panels.
 - **Save vs Apply vs Save File:** *Save* stores edits to the selected profile (no
   restart); *Apply & Restart* makes it live; *Duplicate* forks a new profile;
   *Save File* (Raw Config Files section) writes one config file directly (advanced).
-- **GMOD maps are collection-driven** (stock maps always; collection maps only when
-  `wscollectionid` is set), grouped **Stock / Collection** in the selectors; a
-  boot-map guard blocks a workshop map with no collection (would brick the boot).
+- **GMOD map discovery is unified to `garrysmod/maps/`** (single source of truth).
+  GMOD scatters downloaded workshop content across two cache locations/formats, so
+  **Sync from Collection** (`syncMaps`) extracts each downloaded map's `.bsp` there
+  via `gmad_linux`, and `#listMaps` reads only that dir. Maps are grouped **Stock /
+  Collection** in the selectors; a boot-map guard blocks a map that isn't installed.
+  Flow for a newly-added map: add on Steam → Restart Hosting (download) → Sync
+  (install). Removal from the collection isn't auto-uninstalled (additive).
 - **CS workshop maps** show by name ("Assembly"); **＋ Workshop Map** adds one
   inline (id + name → catalog) and **Remove** deletes the selected one from the
   catalog (`DELETE /maps/:workshopId`) — no `ws:` typing.

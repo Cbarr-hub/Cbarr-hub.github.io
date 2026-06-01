@@ -110,6 +110,9 @@
     .qs-fields .retro-btn, [data-cs-add] .retro-btn { padding: 2px 8px; }
     .qs-fields .inline { display: flex; gap: 6px; align-items: center; }
     .qs-fields .inline select { flex: 1; min-width: 0; }
+    /* ── Runtime (live) panel ── */
+    .rt-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    [data-rt-cmd] { flex: 1; min-width: 0; font-family: "Courier New", monospace; }
     .panel-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
     .panel label { color: #7bb85f; font-size: 11px; font-weight: bold; }
     select, input[type=text], input[type=number] {
@@ -164,6 +167,7 @@
       dbGetServerSettings, dbSaveServerSettings,
       dbAddServerMap, dbRenameServerMap, dbDeleteServerMap,
       dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
+      dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
     } from './db.js'
     import { loadSession } from './auth.js'
 
@@ -274,6 +278,11 @@
               <button class="retro-btn" data-qs-save>Save Settings</button>
               <span class="qs-note" data-qs-note></span>
             </div>
+          </div>
+
+          <div class="panel runtime" data-runtime style="display:none">
+            <div class="panel-title">Runtime <span class="qs-note">live — server must be hosting</span></div>
+            <div data-rt-body></div>
           </div>
 
           <div class="panel">
@@ -397,6 +406,59 @@
       const qsFields = root.querySelector('[data-qs-fields]')
       const qsNote = root.querySelector('[data-qs-note]')
       const qsSave = root.querySelector('[data-qs-save]')
+      const rt = root.querySelector('[data-runtime]')
+
+      // ── runtime (live RCON/console) panel ─────────────────────────────────
+      async function loadLive() {
+        let data
+        try { data = await dbGetServerLive(id) } catch { return }
+        if (!data) return
+        renderLive(data)
+        rt.dataset.loaded = '1'
+        const current = servers.find(x => x.id === id)
+        if (current) updateStatus(root, current)
+      }
+
+      function renderLive(data) {
+        const body = rt.querySelector('[data-rt-body]')
+        if (!data.available) {
+          body.innerHTML = `<div class="qs-note-block">${esc(data.reason || 'live control unavailable')}</div>`
+          return
+        }
+        const actions = (data.actions || []).map(a =>
+          `<button class="retro-btn${a.danger ? ' danger' : ''}" data-rt-act="${esc(a.key)}">${esc(a.label)}</button>`).join('')
+        body.innerHTML = `
+          <div class="rt-actions">${actions}</div>
+          <div class="panel-row" style="margin-top:6px">
+            <input type="text" data-rt-cmd placeholder="${esc(data.commandHint || 'console command…')}" />
+            <button class="retro-btn" data-rt-send>Send</button>
+          </div>
+          <pre class="out" data-rt-out style="display:none"></pre>`
+
+        const rtOut = body.querySelector('[data-rt-out]')
+        const cmdEl = body.querySelector('[data-rt-cmd]')
+        const logOut = (label, text) => {
+          rtOut.style.display = 'block'
+          rtOut.textContent += (rtOut.textContent ? '\n\n' : '') + `> ${label}\n${String(text ?? '').replace(/\s+$/, '')}`
+          rtOut.scrollTop = rtOut.scrollHeight
+        }
+        body.querySelectorAll('[data-rt-act]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            setErr(''); btn.disabled = true
+            try { const r = await dbServerLiveAction(id, btn.dataset.rtAct); logOut(btn.textContent.trim(), r?.output) }
+            catch (e) { setErr(e.message) } finally { btn.disabled = false }
+          })
+        })
+        const send = async () => {
+          const cmd = cmdEl.value.trim()
+          if (!cmd) return
+          setErr(''); cmdEl.disabled = true
+          try { const r = await dbServerLiveCommand(id, cmd); logOut(cmd, r?.output); cmdEl.value = '' }
+          catch (e) { setErr(e.message) } finally { cmdEl.disabled = false; cmdEl.focus() }
+        }
+        body.querySelector('[data-rt-send]').addEventListener('click', send)
+        cmdEl.addEventListener('keydown', e => { if (e.key === 'Enter') send() })
+      }
 
       function renderField(id, f) {
         const lbl = `<label for="qs-${id}-${f.key}">${esc(f.label)}</label>`
@@ -703,6 +765,7 @@
       })
 
       loadSettings()
+      loadLive()
 
       // update recipe
       root.querySelector('[data-update]').addEventListener('click', async () => {
@@ -745,6 +808,8 @@
       // settings panel only when hosting and populated
       const qs = root.querySelector('[data-quickset]')
       if (qs) qs.style.display = (gs === 'hosting' && qs.dataset.loaded === '1') ? 'block' : 'none'
+      const rt = root.querySelector('[data-runtime]')
+      if (rt) rt.style.display = (gs === 'hosting' && rt.dataset.loaded === '1') ? 'block' : 'none'
     }
 
     function formatUpdate(res) {

@@ -219,6 +219,19 @@ export async function dbDeleteServerConfig(id, configId) {
   return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`, { method: 'DELETE' });
 }
 
+// ── live / runtime commands (RCON / console) ──────────────────────────────────
+export async function dbGetServerLive(id) {
+  return api(`/servers/${encodeURIComponent(id)}/live`);
+}
+
+export async function dbServerLiveCommand(id, command) {
+  return api(`/servers/${encodeURIComponent(id)}/live/command`, { method: 'POST', body: { command } });
+}
+
+export async function dbServerLiveAction(id, action) {
+  return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body: { action } });
+}
+
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────
 
 export async function dbInsertScore(_name, seconds) {

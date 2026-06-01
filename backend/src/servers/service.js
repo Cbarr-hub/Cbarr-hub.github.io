@@ -18,7 +18,7 @@ export class ServerControlError extends Error {
   }
 }
 
-const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame']);
+const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame']);
 
 /**
  * @param {object} deps
@@ -148,8 +148,8 @@ export function createServerService({ client, publicHost = '', db = null }) {
     sendCommand(id, command) {
       return connectorFor(id).sendCommand(command);
     },
-    runLiveAction(id, action) {
-      return connectorFor(id).runLiveAction(action);
+    runLiveAction(id, action, value) {
+      return connectorFor(id).runLiveAction(action, value);
     },
   };
 }

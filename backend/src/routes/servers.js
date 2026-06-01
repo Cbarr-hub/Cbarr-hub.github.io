@@ -97,7 +97,7 @@ export default async function serversRoutes(app) {
         type: 'object',
         properties: {
           id: ID_PARAM,
-          action: { type: 'string', enum: ['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame'] },
+          action: { type: 'string', enum: ['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame'] },
         },
         required: ['id', 'action'],
       },
@@ -308,13 +308,16 @@ export default async function serversRoutes(app) {
       params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] },
       body: {
         type: 'object',
-        properties: { action: { type: 'string', minLength: 1, maxLength: 64 } },
+        properties: {
+          action: { type: 'string', minLength: 1, maxLength: 64 },
+          value:  { type: 'string', maxLength: 80 }, // optional param, e.g. change_map target
+        },
         required: ['action'],
         additionalProperties: false,
       },
     },
   }, async (req, reply) => {
-    try { return await svc.runLiveAction(req.params.id, req.body.action); }
+    try { return await svc.runLiveAction(req.params.id, req.body.action, req.body.value); }
     catch (err) { if (sendErr(err, reply)) return; throw err; }
   });
 

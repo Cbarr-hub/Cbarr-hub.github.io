@@ -58,6 +58,7 @@ const STOCK_FALLBACK = [
 const RCON_PORT = 27015;
 const CS_LIVE_ACTIONS = [
   { key: 'restart_round', label: 'Restart Round' },
+  { key: 'apply_config',  label: 'Apply Config' },   // re-exec the deployed gamertown/active.cfg live
   { key: 'cheats_on',     label: 'Cheats On' },
   { key: 'cheats_off',    label: 'Cheats Off' },
   { key: 'bunnyhop_on',   label: 'Bunnyhop On' },
@@ -65,6 +66,7 @@ const CS_LIVE_ACTIONS = [
 ];
 const CS_ACTION_CMDS = {
   restart_round: 'mp_restartgame 1',
+  apply_config:  'exec gamertown/active',
   cheats_on:     'sv_cheats 1',
   cheats_off:    'sv_cheats 0',
   bunnyhop_on:   'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_staminamax 0; sv_airaccelerate 1000',
@@ -339,6 +341,7 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     return {
       available: true,
       actions: CS_LIVE_ACTIONS,
+      changeMap: true, // panel renders a live change-map control (uses the same map options as Startup)
       commandHint: 'any CS2 console command, e.g. bot_add, mp_warmup_end, exec gamertown/active',
     };
   }
@@ -348,9 +351,28 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });
   }
 
-  async runLiveAction(key) {
+  async runLiveAction(key, value) {
+    if (key === 'change_map') return this.#changeMapLive(value);
     const cmd = CS_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);
+    return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });
+  }
+
+  // Live map change on the running server (verified RCON commands):
+  //   stock    'de_dust2'        → changelevel de_dust2
+  //   workshop 'ws:3071005299'   → host_workshop_map 3071005299 (cvar alone loads it)
+  // Runtime-only — reverts to the cfg's map on restart (Startup sets the persistent map).
+  async #changeMapLive(value) {
+    const v = String(value ?? '').trim();
+    let cmd;
+    if (v.startsWith('ws:')) {
+      const id = v.slice(3);
+      if (!/^\d{1,20}$/.test(id)) throw badSetting(`invalid workshop id: ${id}`);
+      cmd = `host_workshop_map ${id}`;
+    } else {
+      if (!/^[a-z0-9_]{1,64}$/.test(v)) throw badSetting(`invalid map: ${v}`);
+      cmd = `changelevel ${v}`;
+    }
     return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });
   }
 }

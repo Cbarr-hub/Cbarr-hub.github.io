@@ -68,6 +68,11 @@ export class MinecraftConnector extends BaseConnector {
     return { ok: true };
   }
 
+  async restartGame() {
+    await this.runShell('systemctl restart minecraft', { timeoutMs: 90_000 });
+    return { ok: true };
+  }
+
   // ── live commands (Phase 3; via the tmux console — no RCON) ──────────────────
   // Send to the `minecraft` tmux session, then read back the log tail as
   // best-effort output (the console has no response channel like RCON does).

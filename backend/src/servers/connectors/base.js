@@ -51,9 +51,10 @@ export class BaseConnector {
   stop()     { return this.client.stop(this.vmid); }     // hard power-off (force)
 
   // ── game process (in-VM) ─────────────────────────────────────────────────────
-  // Subclasses override to start/stop the game server process inside the VM.
-  startGame() { const e = new Error('startGame not implemented'); e.code = 'BAD_ACTION'; throw e; }
-  stopGame()  { const e = new Error('stopGame not implemented');  e.code = 'BAD_ACTION'; throw e; }
+  // Subclasses override to start/stop/restart the game server process in the VM.
+  startGame()   { const e = new Error('startGame not implemented');   e.code = 'BAD_ACTION'; throw e; }
+  stopGame()    { const e = new Error('stopGame not implemented');    e.code = 'BAD_ACTION'; throw e; }
+  restartGame() { const e = new Error('restartGame not implemented'); e.code = 'BAD_ACTION'; throw e; }
 
   // ── in-VM command execution (Phase 2) ──────────────────────────────────────
   // Run a /bin/bash login-shell command line inside the guest. The QEMU guest

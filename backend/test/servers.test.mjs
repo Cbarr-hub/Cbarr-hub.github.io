@@ -399,6 +399,41 @@ test('Factorio live is available and maps actions to console commands', async ()
   assert.equal(calls.at(-1).input, 'CHANGE_ME'); // LinuxGSM default rcon password fallback
 });
 
+test('restartGame action runs the LinuxGSM restart as the owning user', async () => {
+  const cmds = [];
+  const client = fakeClient({ agentExec: (_v, { command }) => { cmds.push(command); return Promise.resolve({ pid: 1 }); } });
+  const svc = createServerService({ client });
+  await svc.doAction('counterstrike', 'restartGame');
+  const c = cmds.at(-1);
+  assert.equal(c[0], '/usr/sbin/runuser');
+  assert.match(c.at(-1), /\.\/cs2server restart/);
+});
+
+test('CS change_map issues the verified RCON command (stock vs workshop)', async () => {
+  const cmds = [];
+  const client = csClientRcon({
+    agentExec: (_v, { command }) => { cmds.push(command); return Promise.resolve({ pid: 1 }); },
+    agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': 'ok' }),
+  });
+  const svc = createServerService({ client, db: testDb() });
+  await svc.runLiveAction('counterstrike', 'change_map', 'de_dust2');
+  assert.equal(cmds.at(-1).at(-1), 'changelevel de_dust2');
+  await svc.runLiveAction('counterstrike', 'change_map', 'ws:3071005299');
+  assert.equal(cmds.at(-1).at(-1), 'host_workshop_map 3071005299');
+  await assert.rejects(async () => svc.runLiveAction('counterstrike', 'change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
+});
+
+test('CS apply_config execs the deployed active.cfg live', async () => {
+  const cmds = [];
+  const client = csClientRcon({
+    agentExec: (_v, { command }) => { cmds.push(command); return Promise.resolve({ pid: 1 }); },
+    agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': 'ok' }),
+  });
+  const svc = createServerService({ client, db: testDb() });
+  await svc.runLiveAction('counterstrike', 'apply_config');
+  assert.equal(cmds.at(-1).at(-1), 'exec gamertown/active');
+});
+
 test('LinuxGSM gameRunning maps the port-check exit code to gameStatus', async () => {
   // running VM + game port bound (grep exits 0) → hosting
   const hosting = createServerService({ client: fakeClient(), db: testDb() });

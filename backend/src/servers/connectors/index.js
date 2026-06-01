@@ -7,11 +7,13 @@ import { BaseConnector } from './base.js';
 import { FactorioConnector } from './factorio.js';
 import { MinecraftConnector } from './minecraft.js';
 import { CounterStrikeConnector } from './counterstrike.js';
+import { GmodConnector } from './gmod.js';
 
 const CONNECTOR_CLASSES = {
   factorio: FactorioConnector,
   minecraft: MinecraftConnector,
   counterstrike: CounterStrikeConnector,
+  gmod: GmodConnector,
 };
 
 /**

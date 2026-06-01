@@ -18,6 +18,10 @@
 import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVar } from '../cfgvars.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
+import * as backups from '../backups.js';
+
+const BK_PREFIX = 'factorio';
+const BK_EXT    = '.zip';
 
 const DIR        = '/home/miles/fctrserver';
 const SAVES_DIR  = `${DIR}/serverfiles/saves`;
@@ -317,6 +321,52 @@ export class FactorioConnector extends LinuxGsmConnector {
     }
 
     throw bad(`unknown section: ${section}`);
+  }
+
+  // ── offsite backups (Phase 4; rclone → R2) ───────────────────────────────────
+  // A backup uploads the current save zip to R2. Restore downloads it back into
+  // saves/ as a *loadable* save (user then picks it via "Load Existing World") —
+  // no active-save change, no restart.
+
+  async listBackups() {
+    return backups.listBackups(this, { asUser: this.gsmUser, prefix: BK_PREFIX, ext: BK_EXT });
+  }
+
+  async createBackup() {
+    if (!(await backups.rcloneReady(this, this.gsmUser))) {
+      throw backups.badSetting('rclone/R2 not configured on this VM');
+    }
+    // Source: latest autosave (most current state) or the active savegame.
+    const lgsmText = (await this.client.agentFileRead(this.vmid, LGSM_CFG)).content ?? '';
+    const rawSave  = getVar(lgsmText, 'savegame') || '';
+    const currName = rawSave.replace(/^.*\//, '').replace(/\.zip$/, '') || getVar(lgsmText, 'savename') || '';
+    const source   = (await this.#latestAutosave())
+      ?? (currName ? `${SAVES_DIR}/${currName}.zip` : null);
+    if (!source) throw backups.badSetting('no autosave or active save found to back up');
+
+    const name = `${backups.safeBase(currName, 'save')}_${backups.timestamp()}`;
+    return backups.uploadFile(this, { asUser: this.gsmUser, source, prefix: BK_PREFIX, name, ext: BK_EXT });
+  }
+
+  async restoreBackup(name) {
+    if (!backups.NAME_RE.test(name)) throw backups.badSetting('invalid backup name');
+    if (!(await backups.rcloneReady(this, this.gsmUser))) {
+      throw backups.badSetting('rclone/R2 not configured on this VM');
+    }
+    if (!(await backups.objectExists(this, { asUser: this.gsmUser, prefix: BK_PREFIX, name, ext: BK_EXT }))) {
+      throw backups.notFound('backup not found');
+    }
+    const dest = `${SAVES_DIR}/${name}.zip`;
+    const res  = await this.runShell(
+      `rclone copyto "${backups.r2Path(BK_PREFIX, name, BK_EXT)}" "${dest}"`,
+      { asUser: this.gsmUser, timeoutMs: 300_000 },
+    );
+    if (res.exitCode !== 0) throw backups.badSetting(`restore failed: ${res.stderr || res.stdout}`);
+    return { ok: true, action: 'restore', saveName: name, note: 'Downloaded into saves — load it via "Load Existing World".' };
+  }
+
+  async deleteBackup(name) {
+    return backups.deleteBackup(this, { asUser: this.gsmUser, prefix: BK_PREFIX, name, ext: BK_EXT });
   }
 
   // ── live commands (Phase 3; Factorio Source RCON) ────────────────────────────

@@ -153,6 +153,13 @@ export class BaseConnector {
   updateConfig() { throw unsupportedCapability('a config library'); }
   deleteConfig() { throw unsupportedCapability('a config library'); }
 
+  // ── offsite backups (Phase 4; Factorio + Minecraft via rclone → R2) ──────────
+  // Point-in-time archives pushed off the VM. Default: unsupported (e.g. CS).
+  listBackups()   { throw unsupportedCapability('backups'); }
+  createBackup()  { throw unsupportedCapability('backups'); }
+  restoreBackup() { throw unsupportedCapability('backups'); }
+  deleteBackup()  { throw unsupportedCapability('backups'); }
+
   // ── live commands (Phase 3) ─────────────────────────────────────────────────
   // Runtime control of a running server. getLive() advertises whether live
   // control is available + the curated action buttons; sendCommand/runLiveAction

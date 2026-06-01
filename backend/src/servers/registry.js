@@ -5,18 +5,22 @@
 // VMID never crosses the API boundary. That guarantees the control panel can
 // only ever touch these three VMs, no matter what a client sends.
 //
-// VMIDs are from INFRA.md: CS=100, Factorio=101, Minecraft=102.
+// VMIDs are from INFRA.md: CS=100, Factorio=101, Minecraft=102, GMOD/TTT=104.
 //
 // `port` is the game's public (port-forwarded) port; `connect` picks how the
 // join string is rendered — 'cs' yields the in-console `connect host:port`
 // command, 'address' yields a plain `host:port`. These + the public host
 // (env PUBLIC_HOST) are the single source of truth for the join strings the
 // panel shows. Update here if a port or forward changes.
+//
+// GMOD shares the Source `connect` join style with CS but uses port 27066 —
+// CS already reserves the 27000-27039 external forward range on the router.
 
 export const SERVERS = [
-  { id: 'counterstrike', name: 'Counter-Strike', vmid: 100, connector: 'counterstrike', port: 27015, connect: 'cs' },
-  { id: 'factorio',      name: 'Factorio',       vmid: 101, connector: 'factorio',      port: 34197, connect: 'address' },
-  { id: 'minecraft',     name: 'Minecraft',      vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
+  { id: 'counterstrike', name: 'Counter-Strike',     vmid: 100, connector: 'counterstrike', port: 27015, connect: 'cs' },
+  { id: 'factorio',      name: 'Factorio',           vmid: 101, connector: 'factorio',      port: 34197, connect: 'address' },
+  { id: 'minecraft',     name: 'Minecraft',          vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
+  { id: 'gmod',          name: "Garry's Mod (TTT)",  vmid: 104, connector: 'gmod',          port: 27066, connect: 'cs' },
 ];
 
 /** Render the copy-pastable join string for a server given the public host. */

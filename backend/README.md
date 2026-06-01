@@ -84,6 +84,24 @@ node src/cli.js delete-user
 | GET    | `/api/admin/users`                    | admin    |
 | POST   | `/api/admin/users`                    | admin    |
 | DELETE | `/api/admin/users/:id`                | admin    |
+| GET    | `/api/servers/:id/backups`            | admin    |
+| POST   | `/api/servers/:id/backups`            | admin    |
+| POST   | `/api/servers/:id/backups/:name/restore` | admin |
+| DELETE | `/api/servers/:id/backups/:name`      | admin    |
+
+> Backups (Factorio + Minecraft only) are point-in-time archives pushed offsite to
+> Cloudflare R2 via `rclone` running on the game VM — see `INFRA.md` → "Offsite
+> backups (rclone → R2)". `GET` returns `{ available, backups[], reason? }`;
+> `available:false` means rclone/R2 isn't configured on that VM yet. Counter-Strike
+> returns 404 (`NOT_SUPPORTED`). The app never stores R2 credentials.
+
+> Game servers are wired in `src/servers/registry.js` (id → VMID) with a connector
+> per game in `src/servers/connectors/`: Counter-Strike (100), Factorio (101),
+> Minecraft (102), and **Garry's Mod / TTT (104)**. GMOD reuses the LinuxGSM +
+> Source-RCON pattern — `getSettings`/`setSettings` expose the TTT knobs (map,
+> workshop collection, round/time limits, traitor & detective ratios + caps, map
+> cycle) and the Runtime panel drives it live over RCON. See `INFRA.md` →
+> "Game Server VMs" for the in-guest layout.
 
 ## What's not here yet
 

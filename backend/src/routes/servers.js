@@ -16,6 +16,7 @@ const ERROR_STATUS = {
 const ID_PARAM = { type: 'string', pattern: '^[a-z0-9-]{1,32}$' };
 const WS_PARAM = { type: 'string', pattern: '^[0-9]{1,20}$' };
 const CONFIG_ID_PARAM = { type: 'integer', minimum: 1 };
+const BACKUP_NAME_PARAM = { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' };
 
 // Map a typed error code → HTTP status for the catalog/config endpoints.
 const CODE_STATUS = {
@@ -272,6 +273,42 @@ export default async function serversRoutes(app) {
     schema: { params: { type: 'object', properties: { id: ID_PARAM, configId: CONFIG_ID_PARAM }, required: ['id', 'configId'] } },
   }, async (req, reply) => {
     try { return svc.deleteConfig(req.params.id, req.params.configId); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  // ── offsite backups (Phase 4; Factorio + Minecraft via rclone → R2) ───────────
+  app.get('/:id/backups', {
+    preHandler: requireAdmin,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },
+  }, async (req, reply) => {
+    try { return await svc.listBackups(req.params.id); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.post('/:id/backups', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },
+  }, async (req, reply) => {
+    try { return await svc.createBackup(req.params.id); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.post('/:id/backups/:name/restore', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM, name: BACKUP_NAME_PARAM }, required: ['id', 'name'] } },
+  }, async (req, reply) => {
+    try { return await svc.restoreBackup(req.params.id, req.params.name); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.delete('/:id/backups/:name', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM, name: BACKUP_NAME_PARAM }, required: ['id', 'name'] } },
+  }, async (req, reply) => {
+    try { return await svc.deleteBackup(req.params.id, req.params.name); }
     catch (err) { if (sendErr(err, reply)) return; throw err; }
   });
 

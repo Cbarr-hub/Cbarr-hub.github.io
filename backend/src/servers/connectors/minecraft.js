@@ -7,9 +7,14 @@
 
 import { BaseConnector } from './base.js';
 import { validateLiveCommand } from '../rcon.js';
+import * as backups from '../backups.js';
 
 const DIR = '/home/miles/MinecraftServer';
 const PROPS = `${DIR}/server.properties`;
+const STAGING = `${DIR}/.restore-staging`;
+
+const BK_PREFIX = 'minecraft';
+const BK_EXT    = '.tar.gz';
 
 // Live curated actions (sent to the tmux console).
 const MC_LIVE_ACTIONS = [
@@ -237,5 +242,90 @@ export class MinecraftConnector extends BaseConnector {
     }
 
     throw bad(`unknown section: ${section}`);
+  }
+
+  // ── offsite backups (Phase 4; rclone → R2) ───────────────────────────────────
+  // A backup tar.gz's the active world dir and streams it to R2. Restore is
+  // destructive (overwrites the live world), so it stops → swaps → restarts.
+
+  async listBackups() {
+    return backups.listBackups(this, { asUser: 'miles', prefix: BK_PREFIX, ext: BK_EXT });
+  }
+
+  async createBackup() {
+    if (!(await backups.rcloneReady(this, 'miles'))) {
+      throw backups.badSetting('rclone/R2 not configured on this VM');
+    }
+    const world = await this.#currentWorld();
+
+    // Best-effort flush before archiving, if the server is up.
+    const vmStatus = await this.status().catch(() => ({ status: 'unknown' }));
+    if (vmStatus.status === 'running') {
+      await this.runShell(`tmux send-keys -t minecraft 'save-all' Enter`, {
+        asUser: 'miles', timeoutMs: 10_000,
+      }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 3_000));
+    }
+
+    const name = `${backups.safeBase(world, 'world')}_${backups.timestamp()}`;
+    const dest = backups.r2Path(BK_PREFIX, name, BK_EXT);
+    // Stream tar → R2 in one pipe; no temp file, no agent-stdout payload.
+    const res = await this.runShell(
+      `tar -czf - -C "${DIR}" "${world}" | rclone rcat "${dest}"`,
+      { asUser: 'miles', timeoutMs: 300_000 },
+    );
+    if (res.exitCode !== 0) throw backups.badSetting(`backup upload failed: ${res.stderr || res.stdout}`);
+    return { ok: true, action: 'backup', name };
+  }
+
+  async restoreBackup(name) {
+    if (!backups.NAME_RE.test(name)) throw backups.badSetting('invalid backup name');
+    if (!(await backups.rcloneReady(this, 'miles'))) {
+      throw backups.badSetting('rclone/R2 not configured on this VM');
+    }
+    if (!(await backups.objectExists(this, { asUser: 'miles', prefix: BK_PREFIX, name, ext: BK_EXT }))) {
+      throw backups.notFound('backup not found');
+    }
+    const world = await this.#currentWorld();
+    const obj   = backups.r2Path(BK_PREFIX, name, BK_EXT);
+    const steps = [];
+
+    // 1. Stop the service (guest agent runs as root — no sudo needed).
+    const stop = await this.runShell('systemctl stop minecraft', { timeoutMs: 60_000 });
+    steps.push({ name: 'stop', ...stop });
+
+    // 2. Download + extract into a staging dir (don't touch the live world yet).
+    const stage = await this.runShell(
+      `rm -rf "${STAGING}" && mkdir -p "${STAGING}" && rclone cat "${obj}" | tar -xzf - -C "${STAGING}"`,
+      { asUser: 'miles', timeoutMs: 300_000 },
+    );
+    steps.push({ name: 'download + extract', ...stage });
+
+    if (stage.exitCode !== 0) {
+      // Nothing destructive happened yet — clean up and bring the server back.
+      await this.runShell(`rm -rf "${STAGING}"`, { asUser: 'miles', timeoutMs: 30_000 }).catch(() => {});
+      const recover = await this.runShell('systemctl start minecraft', { timeoutMs: 30_000 })
+        .catch((e) => ({ exitCode: 1, stdout: '', stderr: e.message }));
+      steps.push({ name: 'start (recovery)', ...recover });
+      return { ok: false, action: 'restore', world, steps };
+    }
+
+    // 3. Swap the single extracted top-level dir into place as the active world.
+    const swap = await this.runShell(
+      `top="$(ls -1 "${STAGING}")" && rm -rf "${DIR}/${world}" && ` +
+      `mv "${STAGING}/$top" "${DIR}/${world}" && rmdir "${STAGING}" 2>/dev/null; true`,
+      { asUser: 'miles', timeoutMs: 60_000 },
+    );
+    steps.push({ name: 'swap world', ...swap });
+
+    // 4. Restart.
+    const start = await this.runShell('systemctl start minecraft', { timeoutMs: 30_000 });
+    steps.push({ name: 'start', ...start });
+
+    return { ok: swap.exitCode === 0 && start.exitCode === 0, action: 'restore', world, steps };
+  }
+
+  async deleteBackup(name) {
+    return backups.deleteBackup(this, { asUser: 'miles', prefix: BK_PREFIX, name, ext: BK_EXT });
   }
 }

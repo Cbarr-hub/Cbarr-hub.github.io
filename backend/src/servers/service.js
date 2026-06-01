@@ -141,6 +141,20 @@ export function createServerService({ client, publicHost = '', db = null }) {
       return connectorFor(id).deleteConfig(configId);
     },
 
+    // ── offsite backups (Phase 4; Factorio + Minecraft) ──────────────────────
+    listBackups(id) {
+      return connectorFor(id).listBackups();
+    },
+    createBackup(id) {
+      return connectorFor(id).createBackup();
+    },
+    restoreBackup(id, name) {
+      return connectorFor(id).restoreBackup(name);
+    },
+    deleteBackup(id, name) {
+      return connectorFor(id).deleteBackup(name);
+    },
+
     // ── live commands (Phase 3) ──────────────────────────────────────────────
     getLive(id) {
       return connectorFor(id).getLive();

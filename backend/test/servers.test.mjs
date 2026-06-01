@@ -47,8 +47,9 @@ test('registry maps ids to the documented VMIDs', () => {
   assert.equal(getServer('counterstrike').vmid, 100);
   assert.equal(getServer('factorio').vmid, 101);
   assert.equal(getServer('minecraft').vmid, 102);
+  assert.equal(getServer('gmod').vmid, 104);
   assert.equal(getServer('nope'), undefined);
-  assert.equal(listServers().length, 3);
+  assert.equal(listServers().length, 4);
 });
 
 // ── status normalization ────────────────────────────────────────────────────────
@@ -73,7 +74,7 @@ test('service without a client reports not-configured', async () => {
 test('listServers returns every server with normalized status', async () => {
   const svc = createServerService({ client: fakeClient() });
   const list = await svc.listServers();
-  assert.equal(list.length, 3);
+  assert.equal(list.length, 4);
   assert.ok(list.every((s) => s.status === 'running'));
   assert.equal(list.find((s) => s.id === 'factorio').vmid, 101);
 });
@@ -464,6 +465,125 @@ test('Minecraft exposes world-management sections', async () => {
   assert.ok(s.sections.some((sec) => sec.key === 'loadWorld'));
 });
 
+// ── offsite backups (Phase 4; rclone → R2) ──────────────────────────────────────
+// A fake client that simulates rclone on the VM: it records every shell command
+// and returns canned stdout per command kind (keyed by pid → command).
+function bkClient({ rcloneReady = true, lsjson = '[]', exists = true } = {}) {
+  const cmds = [];
+  const byPid = {};
+  let pid = 0;
+  const client = fakeClient({
+    statusCurrent: () => Promise.resolve({ status: 'stopped' }), // skip MC flush delay
+    agentFileRead: (_v, f) => Promise.resolve({
+      content: /server\.properties$/.test(f)
+        ? 'level-name=world\n'
+        : 'savename="myworld"\nsavegame="/home/miles/fctrserver/serverfiles/saves/myworld.zip"\n',
+    }),
+    agentExec: (_v, { command, input }) => {
+      const sh = command.at(-1);
+      cmds.push({ command, input, sh });
+      pid += 1; byPid[pid] = sh;
+      return Promise.resolve({ pid });
+    },
+    agentExecStatus: (_v, p) => {
+      const sh = byPid[p] || '';
+      let out = 'ok';
+      if (/rclone listremotes/.test(sh)) out = rcloneReady ? 'r2:\n' : 'other:\n';
+      else if (/rclone lsjson/.test(sh)) out = lsjson;
+      else if (/rclone lsf/.test(sh)) out = exists ? 'myworld_20260101_000000.zip\n' : '';
+      else if (/_autosave/.test(sh)) out = ''; // no autosave → fall back to active save
+      return Promise.resolve({ exited: 1, exitcode: 0, 'out-data': out });
+    },
+  });
+  return { client, cmds };
+}
+
+test('Counter-Strike rejects backup ops as unsupported', async () => {
+  const svc = createServerService({ client: fakeClient(), db: testDb() });
+  await assert.rejects(async () => svc.listBackups('counterstrike'), (e) => e.code === 'NOT_SUPPORTED');
+  await assert.rejects(async () => svc.createBackup('counterstrike'), (e) => e.code === 'NOT_SUPPORTED');
+});
+
+test('listBackups reports unavailable when rclone/R2 is not configured', async () => {
+  const { client } = bkClient({ rcloneReady: false });
+  const svc = createServerService({ client });
+  const res = await svc.listBackups('factorio');
+  assert.equal(res.available, false);
+  assert.match(res.reason, /not configured/);
+  assert.deepEqual(res.backups, []);
+});
+
+test('listBackups parses rclone lsjson, strips ext, and sorts newest-first', async () => {
+  const lsjson = JSON.stringify([
+    { Name: 'a_20260101_000000.zip', Size: 10, ModTime: '2026-01-01T00:00:00Z', IsDir: false },
+    { Name: 'b_20260201_000000.zip', Size: 20, ModTime: '2026-02-01T00:00:00Z', IsDir: false },
+    { Name: 'subdir', IsDir: true },
+  ]);
+  const { client } = bkClient({ lsjson });
+  const svc = createServerService({ client });
+  const res = await svc.listBackups('factorio');
+  assert.equal(res.available, true);
+  assert.equal(res.backups.length, 2);                 // dir excluded
+  assert.equal(res.backups[0].name, 'b_20260201_000000'); // newest first, ext stripped
+  assert.equal(res.backups[1].size, 10);
+});
+
+test('Factorio createBackup uploads the active save zip to the R2 factorio prefix as miles', async () => {
+  const { client, cmds } = bkClient();
+  const svc = createServerService({ client });
+  const res = await svc.createBackup('factorio');
+  assert.match(res.name, /^myworld_\d{8}_\d{6}$/);
+  const up = cmds.find((c) => /rclone copyto/.test(c.sh) && /factorio\//.test(c.sh));
+  assert.equal(up.command[0], '/usr/sbin/runuser');
+  assert.deepEqual(up.command.slice(1, 4), ['-u', 'miles', '--']);
+  assert.match(up.sh, /serverfiles\/saves\/myworld\.zip" "r2:gamertown-backups\/factorio\/myworld_\d{8}_\d{6}\.zip"/);
+});
+
+test('Factorio restoreBackup downloads the backup into saves as a loadable save (no restart)', async () => {
+  const { client, cmds } = bkClient();
+  const svc = createServerService({ client });
+  const res = await svc.restoreBackup('factorio', 'myworld_20260101_000000');
+  assert.equal(res.action, 'restore');
+  const dl = cmds.find((c) => /rclone copyto/.test(c.sh));
+  assert.match(dl.sh, /"r2:gamertown-backups\/factorio\/myworld_20260101_000000\.zip" "[^"]*\/saves\/myworld_20260101_000000\.zip"/);
+  assert.ok(!cmds.some((c) => /systemctl|fctrserver (start|stop|restart)/.test(c.sh))); // no restart
+});
+
+test('Minecraft createBackup streams a tar.gz of the world to R2', async () => {
+  const { client, cmds } = bkClient();
+  const svc = createServerService({ client });
+  const res = await svc.createBackup('minecraft');
+  assert.match(res.name, /^world_\d{8}_\d{6}$/);
+  const up = cmds.find((c) => /rclone rcat/.test(c.sh));
+  assert.match(up.sh, /tar -czf - -C "[^"]*MinecraftServer" "world" \| rclone rcat "r2:gamertown-backups\/minecraft\/world_\d{8}_\d{6}\.tar\.gz"/);
+});
+
+test('Minecraft restoreBackup stops, restores, and restarts in order', async () => {
+  const { client, cmds } = bkClient();
+  const svc = createServerService({ client });
+  const res = await svc.restoreBackup('minecraft', 'world_20260101_000000');
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.steps.map((s) => s.name), ['stop', 'download + extract', 'swap world', 'start']);
+  assert.ok(cmds.some((c) => /systemctl stop minecraft/.test(c.sh)));
+  assert.ok(cmds.some((c) => /rclone cat "r2:gamertown-backups\/minecraft\/world_20260101_000000\.tar\.gz" \| tar -xzf -/.test(c.sh)));
+  assert.ok(cmds.some((c) => /systemctl start minecraft/.test(c.sh)));
+});
+
+test('deleteBackup removes the object; missing backup → NOT_FOUND; bad name → BAD_SETTING', async () => {
+  const ok = bkClient();
+  const svcOk = createServerService({ client: ok.client });
+  const del = await svcOk.deleteBackup('factorio', 'myworld_20260101_000000');
+  assert.equal(del.ok, true);
+  assert.ok(ok.cmds.some((c) => /rclone deletefile "r2:gamertown-backups\/factorio\/myworld_20260101_000000\.zip"/.test(c.sh)));
+
+  const missing = bkClient({ exists: false });
+  const svcMissing = createServerService({ client: missing.client });
+  await assert.rejects(async () => svcMissing.deleteBackup('factorio', 'gone_20260101_000000'), (e) => e.code === 'NOT_FOUND');
+
+  await assert.rejects(async () => svcOk.restoreBackup('factorio', 'bad name!'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(async () => svcOk.deleteBackup('minecraft', 'bad;rm -rf'), (e) => e.code === 'BAD_SETTING');
+});
+
 // ── connection strings ────────────────────────────────────────────────────────────
 test('connect strings render per game from the registry + public host', async () => {
   const svc = createServerService({ client: fakeClient(), publicHost: '1.2.3.4' });
@@ -472,4 +592,103 @@ test('connect strings render per game from the registry + public host', async ()
   assert.equal(byId.counterstrike.string, 'connect 1.2.3.4:27015');
   assert.equal(byId.factorio.string, '1.2.3.4:34197');
   assert.equal(byId.minecraft.string, '1.2.3.4:25565');
+  assert.equal(byId.gmod.string, 'connect 1.2.3.4:27066');
+});
+
+// ── GMOD / TTT connector ───────────────────────────────────────────────────────────
+const GMOD_SERVER_CFG = [
+  'hostname "Gamertown TTT"',
+  'ttt_round_limit 6',
+  'ttt_traitor_pct 0.25',
+  'ttt_minimum_players 2',
+].join('\n') + '\n';
+const GMOD_INSTANCE_CFG = 'gamemode="terrortown"\ndefaultmap="ttt_minecraft_b5"\nmaxplayers="16"\nwscollectionid=""\n';
+
+function gmodClient(opts = {}) {
+  const writes = [];
+  const files = {
+    server: opts.serverCfg ?? GMOD_SERVER_CFG,
+    inst: GMOD_INSTANCE_CFG,
+    mapcycle: opts.mapcycle ?? 'ttt_minecraft_b5\n',
+  };
+  const pick = (f) =>
+    f.endsWith('/cfg/gmodserver.cfg') ? files.server
+    : f.endsWith('/mapcycle.txt') ? files.mapcycle
+    : f.includes('config-lgsm') ? files.inst
+    : '';
+  const client = fakeClient({
+    agentFileRead: (_v, f) => Promise.resolve({ content: pick(f) }),
+    agentFileWrite: (_v, path, content) => { writes.push({ path, content }); return Promise.resolve(); },
+    agentExec: opts.agentExec,
+    agentExecStatus: opts.agentExecStatus,
+  });
+  return { client, writes };
+}
+
+test('GMOD getSettings exposes the TTT knobs split across server.cfg + instance cfg', async () => {
+  const { client } = gmodClient();
+  const svc = createServerService({ client, db: testDb() });
+  const s = await svc.getSettings('gmod');
+  assert.equal(s.game, 'gmod');
+  const fields = Object.fromEntries(s.sections[0].fields.map((f) => [f.key, f]));
+  assert.equal(fields.map.value, 'ttt_minecraft_b5');     // from instance defaultmap
+  assert.equal(fields.maxPlayers.value, 16);
+  assert.equal(fields.roundLimit.value, 6);               // from server.cfg cvar
+  assert.equal(fields.traitorPct.value, 0.25);
+  assert.equal(fields.detectivePct.value, 0.13);          // default when cvar absent
+  assert.equal(fields.mapcycle.type, 'textarea');
+});
+
+test('GMOD setSettings writes cvars to server.cfg, vars to instance cfg, sanitizes mapcycle', async () => {
+  const { client, writes } = gmodClient();
+  const svc = createServerService({ client, db: testDb() });
+  await svc.setSettings('gmod', {
+    section: 'ttt', map: 'ttt_rooftops_a3', maxPlayers: 24, workshopCollection: '123456',
+    roundLimit: 8, traitorPct: 0.3, traitorMax: 4, useMapcycle: '1',
+    mapcycle: 'ttt_rooftops_a3\n// comment\n\nttt_67thway_v3\n',
+  });
+  const instWrite = writes.find((w) => w.path.includes('config-lgsm'));
+  assert.match(instWrite.content, /defaultmap="ttt_rooftops_a3"/);
+  assert.match(instWrite.content, /maxplayers="24"/);
+  assert.match(instWrite.content, /wscollectionid="123456"/);
+  const cfgWrite = writes.find((w) => w.path.endsWith('/cfg/gmodserver.cfg'));
+  assert.match(cfgWrite.content, /ttt_round_limit "8"/);
+  assert.match(cfgWrite.content, /ttt_traitor_pct "0.3"/);
+  assert.match(cfgWrite.content, /ttt_always_use_mapcycle "1"/);
+  const cycleWrite = writes.find((w) => w.path.endsWith('/mapcycle.txt'));
+  assert.equal(cycleWrite.content, 'ttt_rooftops_a3\nttt_67thway_v3\n'); // comment + blank dropped
+});
+
+test('GMOD setSettings rejects bad map names, out-of-range knobs, bad collection id', async () => {
+  const { client } = gmodClient();
+  const svc = createServerService({ client, db: testDb() });
+  await assert.rejects(() => svc.setSettings('gmod', { map: 'Bad Map!' }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => svc.setSettings('gmod', { traitorPct: 5 }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => svc.setSettings('gmod', { maxPlayers: 999 }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => svc.setSettings('gmod', { workshopCollection: 'abc' }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => svc.setSettings('gmod', { mapcycle: 'ok_map\nbad map' }), (e) => e.code === 'BAD_SETTING');
+});
+
+test('GMOD live RCON gates on rcon_password and builds a safe argv', async () => {
+  const off = gmodClient();
+  const svcOff = createServerService({ client: off.client, db: testDb() });
+  assert.equal((await svcOff.getLive('gmod')).available, false);
+
+  const calls = [];
+  const on = gmodClient({
+    serverCfg: GMOD_SERVER_CFG + 'rcon_password "ttt-secret"\n',
+    agentExec: (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); },
+    agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': 'players: 3' }),
+  });
+  const svc = createServerService({ client: on.client, db: testDb() });
+  assert.equal((await svc.getLive('gmod')).available, true);
+
+  const res = await svc.runLiveAction('gmod', 'change_map', 'ttt_waterworld');
+  assert.equal(res.output, 'players: 3');
+  const c = calls.at(-1);
+  assert.ok(c.command.includes('27066'));
+  assert.equal(c.command.at(-1), 'changelevel ttt_waterworld');
+  assert.equal(c.input, 'ttt-secret');
+  assert.ok(!c.command.includes('ttt-secret'));
+  await assert.rejects(() => svc.runLiveAction('gmod', 'change_map', 'bad map'), (e) => e.code === 'BAD_SETTING');
 });

@@ -269,16 +269,30 @@ Service passthroughs + a `NO_RCON` (503/501) error mapping.
 
 ---
 
-## 8. Phase 4 — Factorio + Minecraft backups (deferred)
+## 8. Phase 4 — Factorio + Minecraft backups — ✅ implemented (offsite to R2)
 
-- ~~Minecraft "Generate New World"~~ — **dropped** (not wanted).
-- **Factorio "Back Up World"**: copy the active save (or latest `_autosave*`) to
-  `serverfiles/backups/<name>_<timestamp>.zip`. Distinct from "Save As" (which
-  makes a *loadable* named save). No restart.
-- **Minecraft backup**: keep current "Back Up Current World As"; add a **Restore**
-  (copy a backup dir back over `level-name`, restart) for symmetry.
-- Both backup flows list existing backups so they're restorable.
-- **Status:** deferred — to be done after the runtime work below.
+Implemented as **offsite backups to Cloudflare R2** (free tier) rather than on-VM
+copies, so they survive a VM/disk loss. Manual-only (panel button); distinct from
+"Save As". rclone runs on each game VM via the guest agent; the app never holds R2
+creds (they live in rclone's on-VM config — see `INFRA.md` → "Offsite backups").
+
+- **Backups card** per server (Factorio + Minecraft): Create / list / Restore /
+  Delete. Counter-Strike has no backups (404 → panel hidden).
+- **Factorio**: Create uploads the active save zip to `r2:gamertown-backups/
+  factorio/<save>_<ts>.zip`. Restore downloads it into `saves/` as a *loadable*
+  save (then "Load Existing World") — no restart.
+- **Minecraft**: Create streams `tar.gz` of the active world to
+  `r2:.../minecraft/<world>_<ts>.tar.gz`. Restore is destructive → stop → swap
+  world dir → restart.
+- **Endpoints:** `GET/POST /api/servers/:id/backups`,
+  `POST /api/servers/:id/backups/:name/restore`, `DELETE …/:name` (admin + CSRF).
+  `GET` returns `{ available, backups[], reason? }`; `available:false` when
+  rclone/R2 isn't set up on that VM (graceful degrade).
+- **Code:** `backend/src/servers/backups.js` (shared rclone helpers), connector
+  methods in `factorio.js`/`minecraft.js`, base stubs, service + route dispatch,
+  `db.js` helpers, Backups panel in `servers.html`; tests in
+  `backend/test/servers.test.mjs`.
+- **Prerequisite:** one-time rclone/R2 config per VM (see `INFRA.md`).
 
 ## 8b. Phase 3.5 — Runtime control follow-ups — ✅ implemented
 

@@ -183,6 +183,11 @@
     .qs-sep { border-top: 1px dashed #3a3a3a; margin: 10px 0; }
     .qs-section-title { color: #7bb85f; font-size: 11px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
     .qs-note-block { color: #999; font-size: 10px; font-style: italic; margin-top: 8px; }
+    /* ── backups panel ── */
+    .bk-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px dashed #3a3a3a; }
+    .bk-row .bk-label { color: #ddd; font-size: 12px; word-break: break-all; }
+    .bk-row .bk-meta { color: #999; font-size: 10px; margin-left: auto; white-space: nowrap; }
+    .bk-row button { flex: none; }
     /* ── CS startup panel ── */
     details.cs-advanced { margin-top: 10px; border-top: 1px dashed #3a3a3a; padding-top: 6px; }
     details.cs-advanced summary { color: #7bb85f; font-size: 11px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
@@ -262,6 +267,7 @@
       dbAddServerMap, dbRenameServerMap, dbDeleteServerMap,
       dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
+      dbListServerBackups, dbCreateServerBackup, dbRestoreServerBackup, dbDeleteServerBackup,
     } from './db.js'
     import { loadSession } from './auth.js'
 
@@ -406,6 +412,11 @@
           <div class="panel runtime" data-runtime style="display:none">
             <div class="panel-title">Runtime <span class="qs-note">live — server must be hosting</span></div>
             <div data-rt-body></div>
+          </div>
+
+          <div class="panel backups" data-backups style="display:none">
+            <div class="panel-title">Backups <span class="qs-note">offsite — Cloudflare R2</span></div>
+            <div data-bk-body></div>
           </div>
 
           <div class="panel">
@@ -577,6 +588,7 @@
       const qsNote = root.querySelector('[data-qs-note]')
       const qsSave = root.querySelector('[data-qs-save]')
       const rt = root.querySelector('[data-runtime]')
+      const bk = root.querySelector('[data-backups]')
 
       // ── runtime (live RCON/console) panel ─────────────────────────────────
       async function loadLive() {
@@ -652,12 +664,109 @@
         cmdEl.addEventListener('keydown', e => { if (e.key === 'Enter') send() })
       }
 
+      // ── backups (offsite, Cloudflare R2) panel ────────────────────────────
+      function fmtBytes(n) {
+        if (!Number.isFinite(n) || n <= 0) return ''
+        const u = ['B', 'KB', 'MB', 'GB']; let i = 0; let v = n
+        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
+        return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${u[i]}`
+      }
+      function fmtWhen(iso) {
+        if (!iso) return ''
+        const d = new Date(iso)
+        return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
+      }
+
+      async function loadBackups() {
+        let data
+        // A 404 means this server has no backup support (e.g. CS) — leave the
+        // panel unloaded so updateStatus keeps it hidden.
+        try { data = await dbListServerBackups(id) } catch { return }
+        if (!data) return
+        renderBackups(data)
+        bk.dataset.loaded = '1'
+        const current = servers.find(x => x.id === id)
+        if (current) updateStatus(root, current)
+      }
+
+      function renderBackups(data) {
+        const body = bk.querySelector('[data-bk-body]')
+        if (!data.available) {
+          body.innerHTML = `<div class="qs-note-block">${esc(data.reason || 'backups unavailable')}</div>`
+          return
+        }
+        const list = data.backups || []
+        const rows = list.length
+          ? list.map(b => {
+              const meta = [fmtWhen(b.createdAt), fmtBytes(b.size)].filter(Boolean).join(' · ')
+              return `<div class="bk-row" data-bk-name="${esc(b.name)}">
+                <span class="bk-label">${esc(b.label || b.name)}</span>
+                <span class="bk-meta">${esc(meta)}</span>
+                <button class="retro-btn" data-bk-restore>Restore</button>
+                <button class="retro-btn danger" data-bk-delete>Delete</button>
+              </div>`
+            }).join('')
+          : `<div class="qs-note-block">No backups yet.</div>`
+
+        const isMc = id === 'minecraft'
+        const noun = isMc ? 'world' : 'save'
+
+        body.innerHTML = `
+          <div class="panel-row">
+            <button class="retro-btn" data-bk-create>Create Backup</button>
+            <span class="qs-note">${list.length} backup${list.length === 1 ? '' : 's'} in R2</span>
+          </div>
+          <div class="qs-note-block">Uploads the current ${noun} to Cloudflare R2. Large ${noun}s can take several minutes — leave the page open until it finishes.</div>
+          ${rows}`
+
+        body.querySelector('[data-bk-create]').addEventListener('click', () => {
+          if (!confirm(`Create a new backup of the current ${noun} and upload it to Cloudflare R2?`)) return
+          withBtn(body.querySelector('[data-bk-create]'), 'Create Backup', async () => {
+            const r = await dbCreateServerBackup(id)
+            logLine(`Create Backup ✓ — ${r?.name || 'done'}`)
+            await loadBackups()
+          }).catch(() => {})
+        })
+
+        body.querySelectorAll('[data-bk-restore]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const name = btn.closest('.bk-row').dataset.bkName
+            const warn = isMc
+              ? `Restore "${name}"?\n\nThis STOPS the server, overwrites the live world, and restarts it. Current world state will be lost.`
+              : `Restore "${name}"?\n\nThis downloads the backup into your saves so you can pick it via "Load Existing World". It does not change the active world.`
+            if (!confirm(warn)) return
+            withBtn(btn, 'Restore', async () => {
+              const r = await dbRestoreServerBackup(id, name)
+              if (r?.steps) logLine(`Restore "${name}"`, formatUpdate(r))
+              else logLine(`Restore "${name}" ✓`, r?.note)
+              if (r?.ok === false) setErr('restore failed — see console')
+              if (isMc) { await new Promise(res => setTimeout(res, 1500)); await refresh() }
+            }).catch(() => {})
+          })
+        })
+
+        body.querySelectorAll('[data-bk-delete]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const name = btn.closest('.bk-row').dataset.bkName
+            if (!confirm(`Delete backup "${name}" from R2? This can't be undone.`)) return
+            withBtn(btn, 'Delete', async () => {
+              await dbDeleteServerBackup(id, name)
+              logLine(`Delete backup "${name}" ✓`)
+              await loadBackups()
+            }).catch(() => {})
+          })
+        })
+      }
+
       function renderField(id, f) {
         const lbl = `<label for="qs-${id}-${f.key}">${esc(f.label)}</label>`
         if (f.type === 'select') {
           const opts = f.options.map(o =>
             `<option value="${esc(o.value)}"${o.value === f.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
           return `${lbl}<select id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}">${opts}</select>`
+        }
+        if (f.type === 'textarea') {
+          return `${lbl}<textarea class="cfg" id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>${esc(f.value ?? '')}</textarea>`
         }
         const attrs = [
           f.min != null ? `min="${f.min}"` : '',
@@ -955,6 +1064,7 @@
 
       loadSettings()
       loadLive()
+      loadBackups()
 
       // update recipe
       const updateBtn = root.querySelector('[data-update]')
@@ -1005,6 +1115,9 @@
       if (qs) qs.style.display = (gs === 'hosting' && qs.dataset.loaded === '1') ? 'block' : 'none'
       const rt = root.querySelector('[data-runtime]')
       if (rt) rt.style.display = (gs === 'hosting' && rt.dataset.loaded === '1') ? 'block' : 'none'
+      // backups need only the VM up (guest agent + files), not the game process.
+      const bk = root.querySelector('[data-backups]')
+      if (bk) bk.style.display = (s.status === 'running' && bk.dataset.loaded === '1') ? 'block' : 'none'
     }
 
     function formatUpdate(res) {

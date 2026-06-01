@@ -57,7 +57,45 @@ export function createServerStore(db) {
     deleteConfig: db.prepare(
       `DELETE FROM server_configs WHERE server_id = ? AND id = ?`,
     ),
+
+    // ── startup-config profiles ──
+    listProfiles: db.prepare(
+      `SELECT id, name, created_at, updated_at
+         FROM server_profiles
+        WHERE server_id = ?
+        ORDER BY name COLLATE NOCASE`,
+    ),
+    getProfile: db.prepare(
+      `SELECT id, name, settings, created_at, updated_at
+         FROM server_profiles
+        WHERE server_id = ? AND id = ?`,
+    ),
+    countProfiles: db.prepare(
+      `SELECT COUNT(*) AS n FROM server_profiles WHERE server_id = ?`,
+    ),
+    insertProfile: db.prepare(
+      `INSERT INTO server_profiles (server_id, name, settings) VALUES (?, ?, ?)`,
+    ),
+    updateProfile: db.prepare(
+      `UPDATE server_profiles SET name = ?, settings = ?, updated_at = unixepoch()
+        WHERE server_id = ? AND id = ?`,
+    ),
+    deleteProfile: db.prepare(
+      `DELETE FROM server_profiles WHERE server_id = ? AND id = ?`,
+    ),
+    clearActiveForProfile: db.prepare(
+      `DELETE FROM server_active_profile WHERE server_id = ? AND profile_id = ?`,
+    ),
+    getActiveProfile: db.prepare(
+      `SELECT profile_id FROM server_active_profile WHERE server_id = ?`,
+    ),
+    setActiveProfile: db.prepare(
+      `INSERT INTO server_active_profile (server_id, profile_id) VALUES (?, ?)
+       ON CONFLICT(server_id) DO UPDATE SET profile_id = excluded.profile_id`,
+    ),
   };
+
+  const parseSettings = (json) => { try { return JSON.parse(json); } catch { return {}; } };
 
   return {
     // ── workshop map catalog ─────────────────────────────────────────────────
@@ -103,6 +141,50 @@ export function createServerStore(db) {
     },
     deleteConfig(serverId, id) {
       return stmts.deleteConfig.run(serverId, id).changes > 0;
+    },
+
+    // ── startup-config profiles ──────────────────────────────────────────────
+    // `settings` is stored as a JSON string and (de)serialized here so callers
+    // only ever see/pass plain objects. listProfiles omits the body for cheap
+    // catalogs; getProfile returns the parsed settings.
+    listProfiles(serverId) {
+      return stmts.listProfiles.all(serverId);
+    },
+    getProfile(serverId, id) {
+      const row = stmts.getProfile.get(serverId, id);
+      if (!row) return null;
+      return { ...row, settings: parseSettings(row.settings) };
+    },
+    countProfiles(serverId) {
+      return stmts.countProfiles.get(serverId).n;
+    },
+    createProfile(serverId, { name, settings = {} }) {
+      const { lastInsertRowid } = stmts.insertProfile.run(serverId, name, JSON.stringify(settings));
+      return this.getProfile(serverId, lastInsertRowid);
+    },
+    // Partial update: only provided fields change. Returns the updated row or null.
+    updateProfile(serverId, id, { name, settings } = {}) {
+      const existing = this.getProfile(serverId, id);
+      if (!existing) return null;
+      const nextName = name ?? existing.name;
+      const nextSettings = settings === undefined ? existing.settings : settings;
+      stmts.updateProfile.run(nextName, JSON.stringify(nextSettings), serverId, id);
+      return this.getProfile(serverId, id);
+    },
+    // Delete a profile and clear the active pointer if it referenced it (explicit
+    // clear so it's correct even when SQLite FK cascade isn't enforced).
+    deleteProfile(serverId, id) {
+      const tx = db.transaction(() => {
+        stmts.clearActiveForProfile.run(serverId, id);
+        return stmts.deleteProfile.run(serverId, id).changes;
+      });
+      return tx() > 0;
+    },
+    getActiveProfileId(serverId) {
+      return stmts.getActiveProfile.get(serverId)?.profile_id ?? null;
+    },
+    setActiveProfile(serverId, id) {
+      stmts.setActiveProfile.run(serverId, id);
     },
   };
 }

@@ -229,6 +229,42 @@
       white-space: pre-wrap; max-height: 200px; overflow: auto; margin: 6px 0 0;
     }
 
+    /* ── startup-config Profiles editor ── */
+    .prof-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+    .prof-bar select { flex: 1 1 150px; min-width: 0; }
+    .prof-bar .retro-btn { padding: 3px 9px; }
+    .prof-active { font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+      padding: 2px 7px; border: 1px solid #2a4a1a; background: #162016; color: #42F527; white-space: nowrap; }
+    .prof-active.off { color: #c2a13a; border-color: #3a2f10; background: #201c10; }
+    .prof-group { border: 1px solid #2a2a2a; background: #141914; margin-bottom: 8px; }
+    .prof-group > summary { color: #7bb85f; font-size: 11px; font-weight: bold; text-transform: uppercase;
+      letter-spacing: 1px; padding: 6px 9px; cursor: pointer; list-style: none; background: #1a201a; user-select: none; }
+    .prof-group > summary::-webkit-details-marker { display: none; }
+    .prof-group > summary::before { content: '▸'; color: #5f8f4f; margin-right: 6px; }
+    .prof-group[open] > summary::before { content: '▾'; }
+    .prof-grid { display: grid; grid-template-columns: 150px 1fr; gap: 7px 10px; align-items: center; padding: 10px; }
+    .prof-grid label { color: #7bb85f; font-size: 11px; font-weight: bold; }
+    .prof-grid input, .prof-grid select, .prof-grid textarea { width: 100%; box-sizing: border-box; }
+    .prof-grid input[type=checkbox].switch { width: auto; accent-color: #42F527; transform: scale(1.25); justify-self: start; }
+    .prof-grid .field-help { grid-column: 1 / -1; color: #777; font-size: 10px; font-style: italic; margin-top: -3px; }
+    .prof-grid .ml-label { grid-column: 1 / -1; margin-top: 2px; }
+    /* ordered map-rotation list builder */
+    .maplist { grid-column: 1 / -1; }
+    .maplist-rows { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+    .maplist-row { display: flex; align-items: center; gap: 6px; background: #101410; border: 1px solid #2a2a2a; padding: 3px 6px; }
+    .maplist-row .mi-idx { color: #5f8f4f; font-size: 10px; width: 18px; text-align: right; }
+    .maplist-row .mi-name { flex: 1; min-width: 0; color: #b8d4a0; font-family: "Courier New", monospace; font-size: 11px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mini-btn { background: #23331a; border: 1px solid #4a6a3a; color: #b8d4a0; font-size: 11px; line-height: 1;
+      padding: 2px 7px; cursor: pointer; font-family: Verdana, Arial, sans-serif; }
+    .mini-btn:hover { background: #33491f; color: #42F527; }
+    .mini-btn:disabled { opacity: 0.3; cursor: default; }
+    .mini-btn.x { border-color: #7a3a3a; color: #d88; }
+    .mini-btn.x:hover { background: #3a1a1a; color: #ff7777; }
+    .maplist-add { display: flex; gap: 6px; }
+    .maplist-add select { flex: 1; min-width: 0; }
+    .maplist-empty { color: #777; font-size: 10px; font-style: italic; padding: 3px 0; }
+
     /* ── Proxmox host dashboard ── */
     .dash {
       border: 1px solid #7bb85f; border-top: none;
@@ -382,6 +418,8 @@
       dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
       dbListServerBackups, dbCreateServerBackup, dbRestoreServerBackup, dbDeleteServerBackup,
+      dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile,
+      dbUpdateProfile, dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
       dbGetNodeStatus,
     } from './db.js'
     import { loadSession } from './auth.js'
@@ -704,6 +742,11 @@
             </div>
           </div>
           <div class="srv-err" data-err></div>
+
+          <div class="panel profiles" data-profiles style="display:none">
+            <div class="panel-title">Profiles <span class="qs-note">startup config — Apply, then Restart Hosting to boot into it</span></div>
+            <div data-prof-body></div>
+          </div>
 
           <div class="panel quickset" data-quickset style="display:none">
             <div class="panel-title">Quick Settings</div>
@@ -1082,6 +1125,242 @@
         return `${lbl}<input id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}" type="${f.type === 'number' ? 'number' : 'text'}" value="${esc(f.value ?? '')}" ${attrs} />`
       }
 
+      // ── startup-config Profiles editor ────────────────────────────────────
+      const prof = root.querySelector('[data-profiles]')
+      const profBody = prof.querySelector('[data-prof-body]')
+      // Per-card editor state: the loaded field schema, the profile list + the
+      // applied profile's id, the id open in the editor, and the live working
+      // values (maplist widgets keep their arrays here — they aren't plain inputs).
+      const P = { schema: null, list: [], activeId: null, editId: null, values: {} }
+
+      // True if this server supports profiles (non-empty schema). When false the
+      // caller falls back to the legacy Quick Settings panel.
+      async function loadProfiles() {
+        let schema
+        try { schema = await dbGetProfileSchema(id) } catch { return false }
+        if (!schema?.groups?.length) return false
+        P.schema = schema
+        await reloadProfileList()
+        prof.dataset.loaded = '1'
+        const current = servers.find(x => x.id === id)
+        if (current) updateStatus(root, current)
+        return true
+      }
+
+      async function reloadProfileList(selectId) {
+        try {
+          const { profiles, activeId } = await dbListProfiles(id)
+          P.list = profiles || []
+          P.activeId = activeId ?? null
+        } catch (e) { setErr(e.message); return }
+        const want = selectId ?? P.editId ?? P.activeId ?? P.list[0]?.id
+        await openProfile(want)
+      }
+
+      // Load a profile's full settings into the editor.
+      async function openProfile(profileId) {
+        P.editId = profileId == null ? null : Number(profileId)
+        if (P.editId == null) { P.values = {}; renderProfiles(); return }
+        try {
+          const full = await dbGetProfile(id, P.editId)
+          P.values = { ...(full?.settings || {}) }
+        } catch (e) { setErr(e.message); P.values = {} }
+        renderProfiles()
+      }
+
+      function profFieldHtml(f) {
+        const v = P.values[f.key]
+        const lid = `prof-${id}-${f.key}`
+        const lbl = `<label for="${lid}">${esc(f.label)}</label>`
+        const help = f.help ? `<div class="field-help">${esc(f.help)}</div>` : ''
+        if (f.type === 'select') {
+          const opts = (f.options || []).map(o =>
+            `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
+          return lbl + `<select id="${lid}" data-pf="${esc(f.key)}" data-pt="select">${opts}</select>` + help
+        }
+        if (f.type === 'bool') {
+          const on = v === '1' || v === 1 || v === true
+          return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="bool" type="checkbox" class="switch"${on ? ' checked' : ''} />` + help
+        }
+        if (f.type === 'textarea') {
+          return lbl + `<textarea id="${lid}" data-pf="${esc(f.key)}" data-pt="text" class="cfg" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>${esc(v ?? '')}</textarea>` + help
+        }
+        if (f.type === 'maplist') {
+          return `<label class="ml-label">${esc(f.label)}</label>`
+            + `<div class="maplist" data-pf="${esc(f.key)}" data-pt="maplist">${maplistHtml(f)}</div>` + help
+        }
+        const attrs = [
+          f.min != null ? `min="${f.min}"` : '',
+          f.max != null ? `max="${f.max}"` : '',
+          f.step != null ? `step="${f.step}"` : '',
+          f.placeholder ? `placeholder="${esc(f.placeholder)}"` : '',
+        ].filter(Boolean).join(' ')
+        const type = f.type === 'number' ? 'number' : 'text'
+        return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="${type}" type="${type}" value="${esc(v ?? '')}" ${attrs} />` + help
+      }
+
+      function maplistHtml(f) {
+        const arr = Array.isArray(P.values[f.key]) ? P.values[f.key] : []
+        const rows = arr.length
+          ? arr.map((m, i) => `
+              <div class="maplist-row">
+                <span class="mi-idx">${i + 1}</span>
+                <span class="mi-name" title="${esc(m)}">${esc(m)}</span>
+                <button type="button" class="mini-btn" data-ml-up="${i}"${i === 0 ? ' disabled' : ''}>↑</button>
+                <button type="button" class="mini-btn" data-ml-down="${i}"${i === arr.length - 1 ? ' disabled' : ''}>↓</button>
+                <button type="button" class="mini-btn x" data-ml-del="${i}">✕</button>
+              </div>`).join('')
+          : `<div class="maplist-empty">No maps in rotation yet.</div>`
+        const addable = f.options || []
+        const addOpts = addable.length
+          ? addable.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
+          : '<option value="">(no maps discovered)</option>'
+        return `
+          <div class="maplist-rows">${rows}</div>
+          <div class="maplist-add">
+            <select data-ml-pick${addable.length ? '' : ' disabled'}>${addOpts}</select>
+            <button type="button" class="mini-btn" data-ml-add${addable.length ? '' : ' disabled'}>＋ Add</button>
+          </div>`
+      }
+
+      function renderProfiles() {
+        const opts = P.list.length
+          ? P.list.map(p =>
+              `<option value="${esc(p.id)}"${p.id === P.editId ? ' selected' : ''}>${esc(p.name)}${p.id === P.activeId ? ' ✓' : ''}</option>`).join('')
+          : '<option value="">(no profiles)</option>'
+        const isActive = P.editId != null && P.editId === P.activeId
+        const groups = (P.schema.groups || []).map((g, gi) => `
+          <details class="prof-group"${gi === 0 ? ' open' : ''}>
+            <summary>${esc(g.title)}</summary>
+            <div class="prof-grid">${(g.fields || []).map(profFieldHtml).join('')}</div>
+          </details>`).join('')
+
+        profBody.innerHTML = `
+          <div class="prof-bar">
+            <select data-prof-pick>${opts}</select>
+            <span class="prof-active${isActive ? '' : ' off'}">${isActive ? 'active' : 'not applied'}</span>
+            <button class="retro-btn" data-prof-apply>Apply</button>
+            <button class="retro-btn" data-prof-new>＋ New</button>
+            <button class="retro-btn" data-prof-saveas>Save As</button>
+            <button class="retro-btn" data-prof-capture>Capture</button>
+            <button class="retro-btn danger" data-prof-delete>Delete</button>
+          </div>
+          ${groups}
+          <div class="panel-row" style="margin-top:8px">
+            <button class="retro-btn" data-prof-save>Save Changes</button>
+            <span class="qs-note">${esc(P.schema.note || '')}</span>
+          </div>`
+
+        wireProfileEvents()
+      }
+
+      // Pull every plain input back into P.values (maplists already live there).
+      function readProfileForm() {
+        profBody.querySelectorAll('[data-pf]').forEach(el => {
+          const key = el.dataset.pf, t = el.dataset.pt
+          if (t === 'maplist') return
+          if (t === 'bool') P.values[key] = el.checked ? '1' : '0'
+          else if (t === 'number') P.values[key] = el.value === '' ? '' : Number(el.value)
+          else P.values[key] = el.value
+        })
+        return P.values
+      }
+
+      function wireProfileEvents() {
+        const pick = profBody.querySelector('[data-prof-pick]')
+        if (pick) pick.addEventListener('change', () => openProfile(pick.value))
+
+        const onClick = (sel, fn) => { const b = profBody.querySelector(sel); if (b) b.addEventListener('click', () => fn(b)) }
+        const curName = () => (P.list.find(p => p.id === P.editId)?.name) || 'profile'
+
+        onClick('[data-prof-save]', (b) => withBtn(b, 'Save profile', async () => {
+          if (P.editId == null) return
+          readProfileForm()
+          await dbUpdateProfile(id, P.editId, { settings: P.values })
+          logLine(`Profile "${curName()}" saved ✓`)
+          await reloadProfileList(P.editId)
+        }).catch(() => {}))
+
+        onClick('[data-prof-apply]', (b) => withBtn(b, 'Apply profile', async () => {
+          if (P.editId == null) return
+          // persist pending edits first so Apply writes exactly what's on screen
+          readProfileForm()
+          await dbUpdateProfile(id, P.editId, { settings: P.values })
+          const r = await dbApplyProfile(id, P.editId)
+          logLine(`Applied "${r?.name}" ✓ — Restart Hosting to boot into it`)
+          await reloadProfileList(P.editId)
+        }).catch(() => {}))
+
+        onClick('[data-prof-new]', (b) => {
+          const name = (prompt('Name for the new profile:') || '').trim()
+          if (!name) return
+          withBtn(b, 'New profile', async () => {
+            const p = await dbCreateProfile(id, name) // seeded from connector defaults
+            logLine(`Created profile "${p.name}" ✓`)
+            await reloadProfileList(p.id)
+          }).catch(() => {})
+        })
+
+        onClick('[data-prof-saveas]', (b) => {
+          const name = (prompt('Save the current settings as a new profile named:') || '').trim()
+          if (!name) return
+          withBtn(b, 'Save As', async () => {
+            readProfileForm()
+            const p = await dbCreateProfile(id, name, P.values)
+            logLine(`Saved as "${p.name}" ✓`)
+            await reloadProfileList(p.id)
+          }).catch(() => {})
+        })
+
+        onClick('[data-prof-capture]', (b) => {
+          const name = (prompt('Capture the server’s current live config as a profile named:') || '').trim()
+          if (!name) return
+          withBtn(b, 'Capture', async () => {
+            const p = await dbCaptureProfile(id, name)
+            logLine(`Captured current config as "${p.name}" ✓`)
+            await reloadProfileList(p.id)
+          }).catch(() => {})
+        })
+
+        onClick('[data-prof-delete]', (b) => {
+          if (P.editId == null) return
+          const name = curName()
+          if (!confirm(`Delete profile "${name}"? This can't be undone.`)) return
+          withBtn(b, 'Delete profile', async () => {
+            await dbDeleteProfile(id, P.editId)
+            logLine(`Deleted profile "${name}" ✓`)
+            P.editId = null
+            await reloadProfileList()
+          }).catch(() => {})
+        })
+
+        // maplist widgets (ordered rotation builders) mutate P.values in place
+        ;(P.schema.groups || []).forEach(g => (g.fields || []).forEach(f => {
+          if (f.type === 'maplist') wireMaplist(f)
+        }))
+      }
+
+      function wireMaplist(f) {
+        const wrap = [...profBody.querySelectorAll('.maplist')].find(w => w.dataset.pf === f.key)
+        if (!wrap) return
+        const arr = () => (Array.isArray(P.values[f.key]) ? P.values[f.key] : (P.values[f.key] = []))
+        const rerender = () => { wrap.innerHTML = maplistHtml(f); wireMaplist(f) }
+        wrap.querySelectorAll('[data-ml-up]').forEach(b => b.addEventListener('click', () => {
+          const i = Number(b.dataset.mlUp); const a = arr(); [a[i - 1], a[i]] = [a[i], a[i - 1]]; rerender()
+        }))
+        wrap.querySelectorAll('[data-ml-down]').forEach(b => b.addEventListener('click', () => {
+          const i = Number(b.dataset.mlDown); const a = arr(); [a[i + 1], a[i]] = [a[i], a[i + 1]]; rerender()
+        }))
+        wrap.querySelectorAll('[data-ml-del]').forEach(b => b.addEventListener('click', () => {
+          arr().splice(Number(b.dataset.mlDel), 1); rerender()
+        }))
+        const add = wrap.querySelector('[data-ml-add]')
+        if (add) add.addEventListener('click', () => {
+          const picked = wrap.querySelector('[data-ml-pick]')?.value
+          if (picked) { arr().push(picked); rerender() }
+        })
+      }
+
       async function loadSettings() {
         let data
         try {
@@ -1368,7 +1647,9 @@
         } catch (e) { setErr(e.message) } finally { qsSave.disabled = false }
       })
 
-      loadSettings()
+      // Profiles supersede the legacy Quick Settings panel where a game supports
+      // them (GMOD today); otherwise fall back so CS/Factorio/Minecraft are unchanged.
+      ;(async () => { if (!(await loadProfiles())) loadSettings() })()
       loadLive()
       loadBackups()
 
@@ -1415,6 +1696,11 @@
           .some(button => button.style.display !== 'none')
         group.hidden = !hasVisibleAction
       })
+
+      // Profiles edit the startup config, so they're usable whenever the VM is up
+      // (idle or hosting) — configure first, then Start/Restart Hosting to apply.
+      const prof = root.querySelector('[data-profiles]')
+      if (prof) prof.style.display = (s.status === 'running' && prof.dataset.loaded === '1') ? 'block' : 'none'
 
       // settings panel only when hosting and populated
       const qs = root.querySelector('[data-quickset]')

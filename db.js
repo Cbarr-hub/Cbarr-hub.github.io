@@ -255,6 +255,41 @@ export async function dbServerLiveAction(id, action, value) {
   return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body });
 }
 
+// ── startup-config profiles (named, structured loadouts) ──────────────────────
+export async function dbListProfiles(id) {
+  return api(`/servers/${encodeURIComponent(id)}/profiles`);
+}
+
+export async function dbGetProfileSchema(id) {
+  return api(`/servers/${encodeURIComponent(id)}/profiles/schema`);
+}
+
+export async function dbGetProfile(id, profileId) {
+  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}`);
+}
+
+// settings omitted → backend seeds the new profile from connector defaults.
+export async function dbCreateProfile(id, name, settings) {
+  const body = settings === undefined ? { name } : { name, settings };
+  return api(`/servers/${encodeURIComponent(id)}/profiles`, { method: 'POST', body });
+}
+
+export async function dbUpdateProfile(id, profileId, patch) {
+  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}`, { method: 'PUT', body: patch });
+}
+
+export async function dbDeleteProfile(id, profileId) {
+  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
+}
+
+export async function dbApplyProfile(id, profileId) {
+  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}/apply`, { method: 'POST' });
+}
+
+export async function dbCaptureProfile(id, name) {
+  return api(`/servers/${encodeURIComponent(id)}/profiles/capture`, { method: 'POST', body: { name } });
+}
+
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────
 
 export async function dbInsertScore(_name, seconds) {

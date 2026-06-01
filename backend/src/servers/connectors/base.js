@@ -178,6 +178,97 @@ export class BaseConnector {
   updateConfig() { throw unsupportedCapability('a config library'); }
   deleteConfig() { throw unsupportedCapability('a config library'); }
 
+  // ── startup-config profiles ──────────────────────────────────────────────────
+  // A profile is the full, named, structured startup config a server boots as.
+  // The base owns persistence + lifecycle (list/get/create/update/delete/apply/
+  // capture); subclasses supply the game semantics through these hooks:
+  //   profileSchema()            → editor shape { groups:[{ key, title, fields }] }
+  //   defaultProfileSettings()   → seed doc for the first "Default" profile (or null)
+  //   validateProfileSettings(s) → normalize/validate a doc before persist/apply
+  //   applyProfileSettings(s,id) → materialize a doc onto the VM's config files
+  //   captureProfileSettings()   → read the VM's current files back into a doc
+  async profileSchema()            { return { groups: [] }; }
+  defaultProfileSettings()         { return null; }
+  validateProfileSettings(s)       { return s ?? {}; }
+  async applyProfileSettings()     { throw unsupportedCapability('profiles'); }
+  async captureProfileSettings()   { throw unsupportedCapability('profiles'); }
+
+  #requireStore() {
+    if (!this.store) {
+      const e = new Error('persistence store is not configured');
+      e.code = 'NOT_CONFIGURED';
+      throw e;
+    }
+    return this.store;
+  }
+
+  // List profiles (+ the active profile id). Seeds a "Default" the first time so
+  // the list is never empty — only when the connector defines defaults.
+  listProfiles() {
+    const store = this.#requireStore();
+    if (store.countProfiles(this.server.id) === 0) {
+      const def = this.defaultProfileSettings();
+      if (def) {
+        try { store.createProfile(this.server.id, { name: 'Default', settings: def }); }
+        catch { /* concurrent seed — ignore the UNIQUE collision */ }
+      }
+    }
+    return {
+      profiles: store.listProfiles(this.server.id),
+      activeId: store.getActiveProfileId(this.server.id),
+    };
+  }
+
+  getProfile(id) {
+    const p = this.#requireStore().getProfile(this.server.id, id);
+    if (!p) throw notFoundErr('profile');
+    return p;
+  }
+
+  createProfile({ name, settings } = {}) {
+    const store = this.#requireStore();
+    const nm = validProfileName(name);
+    const st = this.validateProfileSettings(settings ?? this.defaultProfileSettings() ?? {});
+    try { return store.createProfile(this.server.id, { name: nm, settings: st }); }
+    catch (e) { throw mapDuplicateProfile(e, nm); }
+  }
+
+  updateProfile(id, { name, settings } = {}) {
+    const store = this.#requireStore();
+    const patch = {};
+    if (name !== undefined) patch.name = validProfileName(name);
+    if (settings !== undefined) patch.settings = this.validateProfileSettings(settings);
+    let updated;
+    try { updated = store.updateProfile(this.server.id, id, patch); }
+    catch (e) { throw mapDuplicateProfile(e, patch.name); }
+    if (!updated) throw notFoundErr('profile');
+    return updated;
+  }
+
+  deleteProfile(id) {
+    if (!this.#requireStore().deleteProfile(this.server.id, id)) throw notFoundErr('profile');
+    return { ok: true };
+  }
+
+  // Write a saved profile onto the box as the active startup config.
+  async applyProfile(id) {
+    const store = this.#requireStore();
+    const p = store.getProfile(this.server.id, id);
+    if (!p) throw notFoundErr('profile');
+    await this.applyProfileSettings(p.settings, id);
+    store.setActiveProfile(this.server.id, id);
+    return { ok: true, id, name: p.name };
+  }
+
+  // Snapshot the box's current startup files into a new named profile.
+  async captureProfile(name) {
+    const store = this.#requireStore();
+    const nm = validProfileName(name);
+    const settings = await this.captureProfileSettings();
+    try { return store.createProfile(this.server.id, { name: nm, settings }); }
+    catch (e) { throw mapDuplicateProfile(e, nm); }
+  }
+
   // ── offsite backups (Phase 4; Factorio + Minecraft via rclone → R2) ──────────
   // Point-in-time archives pushed off the VM. Default: unsupported (e.g. CS).
   listBackups()   { throw unsupportedCapability('backups'); }
@@ -198,6 +289,31 @@ function unsupportedCapability(what) {
   const err = new Error(`this server has no ${what}`);
   err.code = 'NOT_SUPPORTED';
   return err;
+}
+
+function notFoundErr(what) {
+  const err = new Error(`${what} not found`);
+  err.code = 'NOT_FOUND';
+  return err;
+}
+
+function validProfileName(name) {
+  const nm = String(name ?? '').trim();
+  if (!/^[A-Za-z0-9 _-]{1,48}$/.test(nm)) {
+    const e = new Error('profile name must be 1–48 chars: letters, digits, spaces, _ or -');
+    e.code = 'BAD_SETTING';
+    throw e;
+  }
+  return nm;
+}
+
+function mapDuplicateProfile(e, name) {
+  if (/UNIQUE/.test(e?.message || '')) {
+    const x = new Error(`a profile named "${name}" already exists`);
+    x.code = 'BAD_SETTING';
+    return x;
+  }
+  return e;
 }
 
 // Map Proxmox's qemu status payload to our normalized shape.

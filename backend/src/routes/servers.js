@@ -299,6 +299,101 @@ export default async function serversRoutes(app) {
     catch (err) { if (sendErr(err, reply)) return; throw err; }
   });
 
+  // ── startup-config profiles ───────────────────────────────────────────────────
+  // Static sub-paths (/schema, /capture) are declared before '/:profileId' so the
+  // parametric matcher can't shadow them.
+  app.get('/:id/profiles', {
+    preHandler: requireAdmin,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },
+  }, async (req, reply) => {
+    try { return svc.listProfiles(req.params.id); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.get('/:id/profiles/schema', {
+    preHandler: requireAdmin,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },
+  }, async (req, reply) => {
+    try { return await svc.profileSchema(req.params.id); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.post('/:id/profiles', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: {
+      params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] },
+      body: {
+        type: 'object',
+        properties: { name: { type: 'string', minLength: 1, maxLength: 48 }, settings: { type: 'object' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    try { return svc.createProfile(req.params.id, req.body); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.post('/:id/profiles/capture', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: {
+      params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] },
+      body: {
+        type: 'object',
+        properties: { name: { type: 'string', minLength: 1, maxLength: 48 } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    try { return await svc.captureProfile(req.params.id, req.body.name); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.get('/:id/profiles/:profileId', {
+    preHandler: requireAdmin,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM, profileId: CONFIG_ID_PARAM }, required: ['id', 'profileId'] } },
+  }, async (req, reply) => {
+    try { return svc.getProfile(req.params.id, req.params.profileId); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.put('/:id/profiles/:profileId', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: {
+      params: { type: 'object', properties: { id: ID_PARAM, profileId: CONFIG_ID_PARAM }, required: ['id', 'profileId'] },
+      body: {
+        type: 'object',
+        properties: { name: { type: 'string', minLength: 1, maxLength: 48 }, settings: { type: 'object' } },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    try { return svc.updateProfile(req.params.id, req.params.profileId, req.body); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.delete('/:id/profiles/:profileId', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM, profileId: CONFIG_ID_PARAM }, required: ['id', 'profileId'] } },
+  }, async (req, reply) => {
+    try { return svc.deleteProfile(req.params.id, req.params.profileId); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.post('/:id/profiles/:profileId/apply', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM, profileId: CONFIG_ID_PARAM }, required: ['id', 'profileId'] } },
+  }, async (req, reply) => {
+    try { return await svc.applyProfile(req.params.id, req.params.profileId); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
   // ── offsite backups (Phase 4; Factorio + Minecraft via rclone → R2) ───────────
   app.get('/:id/backups', {
     preHandler: requireAdmin,

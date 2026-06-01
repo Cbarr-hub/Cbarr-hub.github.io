@@ -182,6 +182,32 @@ export function createServerService({ client, publicHost = '', db = null }) {
       return connectorFor(id).deleteConfig(configId);
     },
 
+    // ── startup-config profiles ──────────────────────────────────────────────
+    listProfiles(id) {
+      return connectorFor(id).listProfiles();
+    },
+    profileSchema(id) {
+      return connectorFor(id).profileSchema();
+    },
+    getProfile(id, profileId) {
+      return connectorFor(id).getProfile(profileId);
+    },
+    createProfile(id, body) {
+      return connectorFor(id).createProfile(body);
+    },
+    updateProfile(id, profileId, body) {
+      return connectorFor(id).updateProfile(profileId, body);
+    },
+    deleteProfile(id, profileId) {
+      return connectorFor(id).deleteProfile(profileId);
+    },
+    applyProfile(id, profileId) {
+      return connectorFor(id).applyProfile(profileId);
+    },
+    captureProfile(id, name) {
+      return connectorFor(id).captureProfile(name);
+    },
+
     // ── offsite backups (Phase 4; Factorio + Minecraft) ──────────────────────
     listBackups(id) {
       return connectorFor(id).listBackups();

@@ -217,6 +217,134 @@ export class GmodConnector extends LinuxGsmConnector {
     return { ok: true, applied: { section: 'ttt' } };
   }
 
+  // ── startup-config profiles ─────────────────────────────────────────────────
+  // A GMOD profile is the whole TTT startup config: starting map + ordered
+  // rotation, the ttt_* gameplay cvars, player slots, and the workshop collection.
+  // applyProfile writes them across the instance cfg (defaultmap / maxplayers /
+  // wscollectionid + the gt_active_profile mirror), the game cfg (ttt_* +
+  // ttt_always_use_mapcycle), and mapcycle.txt. Takes effect on the next restart.
+
+  defaultProfileSettings() {
+    const d = {
+      map: 'ttt_minecraft_b5', maxPlayers: 16, workshopCollection: '',
+      useMapcycle: '1', mapcycle: ['ttt_minecraft_b5'],
+    };
+    for (const f of TTT_FIELDS) d[f.key] = f.def;
+    return d;
+  }
+
+  validateProfileSettings(s = {}) {
+    const out = {};
+
+    const map = String(s.map ?? '').trim();
+    if (!MAP_RE.test(map)) throw badSetting(`invalid map name: ${map}`);
+    out.map = map;
+
+    const mp = Number(s.maxPlayers);
+    if (!Number.isInteger(mp) || mp < 1 || mp > 128) throw badSetting('maxPlayers must be 1–128');
+    out.maxPlayers = mp;
+
+    const coll = String(s.workshopCollection ?? '').trim();
+    if (coll !== '' && !/^\d{1,20}$/.test(coll)) throw badSetting('workshop collection id must be digits');
+    out.workshopCollection = coll;
+
+    for (const f of TTT_FIELDS) {
+      const n = Number(s[f.key]);
+      if (Number.isNaN(n)) throw badSetting(`${f.label} must be a number`);
+      if (n < f.min || n > f.max) throw badSetting(`${f.label} must be ${f.min}–${f.max}`);
+      if (f.int && !Number.isInteger(n)) throw badSetting(`${f.label} must be a whole number`);
+      out[f.key] = n;
+    }
+
+    out.useMapcycle = String(s.useMapcycle) === '0' ? '0' : '1';
+
+    const raw = Array.isArray(s.mapcycle) ? s.mapcycle : String(s.mapcycle ?? '').split('\n');
+    const cycle = raw.map((l) => String(l).trim()).filter((l) => l && !l.startsWith('//'));
+    for (const l of cycle) if (!MAP_RE.test(l)) throw badSetting(`invalid map in cycle: ${l}`);
+    out.mapcycle = cycle;
+
+    return out;
+  }
+
+  async profileSchema() {
+    const maps = await this.#listMaps();
+    const mapOpts = maps.map((m) => ({ value: m, label: m }));
+    const fallbackOpts = mapOpts.length ? mapOpts : [{ value: 'ttt_minecraft_b5', label: 'ttt_minecraft_b5' }];
+    const numField = (f) => ({ key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01 });
+
+    return {
+      groups: [
+        {
+          key: 'map', title: 'Map & Rotation',
+          fields: [
+            { key: 'map', label: 'Starting Map', type: 'select', options: fallbackOpts },
+            { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },
+            { key: 'mapcycle', label: 'Map Rotation (in order)', type: 'maplist', options: mapOpts,
+              help: 'After each round/time limit the server advances to the next map here.' },
+          ],
+        },
+        {
+          key: 'gameplay', title: 'Gameplay',
+          fields: [
+            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1 },
+            ...TTT_FIELDS.map(numField),
+          ],
+        },
+        {
+          key: 'content', title: 'Workshop',
+          fields: [
+            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
+              placeholder: 'Steam collection id — auto-downloads its maps on restart' },
+          ],
+        },
+      ],
+      note: 'A profile is the startup config the server boots as. Changes apply on the next restart.',
+    };
+  }
+
+  async applyProfileSettings(settings, profileId) {
+    const s = this.validateProfileSettings(settings);
+
+    let inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
+    inst = setVars(inst, {
+      defaultmap: s.map,
+      maxplayers: String(s.maxPlayers),
+      wscollectionid: s.workshopCollection,
+      ...(profileId != null ? { gt_active_profile: String(profileId) } : {}),
+    });
+    await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, inst);
+
+    let game = (await this.client.agentFileRead(this.vmid, SERVER_CFG)).content ?? '';
+    const cvars = { ttt_always_use_mapcycle: s.useMapcycle };
+    for (const f of TTT_FIELDS) cvars[f.cvar] = String(s[f.key]);
+    game = setCvars(game, cvars);
+    await this.client.agentFileWrite(this.vmid, SERVER_CFG, game);
+
+    await this.client.agentFileWrite(this.vmid, MAPCYCLE, s.mapcycle.join('\n') + (s.mapcycle.length ? '\n' : ''));
+    return { ok: true };
+  }
+
+  async captureProfileSettings() {
+    const [game, inst, mapcycle] = await Promise.all([
+      this.client.agentFileRead(this.vmid, SERVER_CFG).then((r) => r.content ?? '').catch(() => ''),
+      this.client.agentFileRead(this.vmid, INSTANCE_CFG).then((r) => r.content ?? '').catch(() => ''),
+      this.client.agentFileRead(this.vmid, MAPCYCLE).then((r) => r.content ?? '').catch(() => ''),
+    ]);
+    const num = (cvar, def) => {
+      const v = getCvar(game, cvar);
+      return v === undefined || v === '' ? def : Number(v);
+    };
+    const doc = {
+      map: (getVar(inst, 'defaultmap') || 'ttt_minecraft_b5').trim(),
+      maxPlayers: Number(getVar(inst, 'maxplayers') || 16),
+      workshopCollection: (getVar(inst, 'wscollectionid') || '').trim(),
+      useMapcycle: num('ttt_always_use_mapcycle', 1) ? '1' : '0',
+      mapcycle: mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean),
+    };
+    for (const f of TTT_FIELDS) doc[f.key] = num(f.cvar, f.def);
+    return this.validateProfileSettings(doc);
+  }
+
   // ── live commands (Source RCON on the game port, like CS2) ──
   async #rconPassword() {
     const game = await this.client.agentFileRead(this.vmid, SERVER_CFG).then((r) => r.content ?? '').catch(() => '');

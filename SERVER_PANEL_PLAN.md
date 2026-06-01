@@ -269,19 +269,28 @@ Service passthroughs + a `NO_RCON` (503/501) error mapping.
 
 ---
 
-## 8. Phase 4 — Factorio + Minecraft gaps
+## 8. Phase 4 — Factorio + Minecraft backups (deferred)
 
-- **Minecraft "Generate New World"** (new `getSettings` section + `setSettings`
-  branch in `connectors/minecraft.js`): fields — Name (`level-name`), Seed
-  (`level-seed`), World Type (`level-type`: normal/flat/large_biomes/amplified),
-  optional Difficulty / Gamemode. Setting `level-name` to a fresh value + restart
-  generates the world. Validate name `^[a-zA-Z0-9_-]{1,64}$` (matches existing).
+- ~~Minecraft "Generate New World"~~ — **dropped** (not wanted).
 - **Factorio "Back Up World"**: copy the active save (or latest `_autosave*`) to
   `serverfiles/backups/<name>_<timestamp>.zip`. Distinct from "Save As" (which
   makes a *loadable* named save). No restart.
 - **Minecraft backup**: keep current "Back Up Current World As"; add a **Restore**
   (copy a backup dir back over `level-name`, restart) for symmetry.
 - Both backup flows list existing backups so they're restorable.
+- **Status:** deferred — to be done after the runtime work below.
+
+## 8b. Phase 3.5 — Runtime control follow-ups — ✅ implemented
+
+Added on top of Phase 3 (per user gripes):
+- **Restart Hosting** (`restartGame`): LinuxGSM `restart` / Minecraft systemctl.
+- **Live change-map** (CS): `change_map` action — stock → `changelevel <map>`,
+  workshop → `host_workshop_map <id>` (both verified live). Runtime-only.
+- **Live config apply** (CS): `apply_config` → RCON `exec gamertown/active`, so a
+  deployed config runs without a restart (the exec otherwise only fires at map
+  load).
+- **Unified per-server console + per-control loading spinners** in `servers.html`.
+- **RCON read-until-quiet** so no-reply commands don't falsely time out.
 
 ---
 

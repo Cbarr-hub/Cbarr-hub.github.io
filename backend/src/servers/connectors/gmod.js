@@ -77,13 +77,22 @@ export class GmodConnector extends LinuxGsmConnector {
     'lgsm-common.cfg': COMMON_CFG,
   };
 
-  // List installed maps named ttt_* (best-effort; workshop maps mount from .gma
-  // and may not appear here, so the map field is editable text seeded from this).
+  // List available ttt_* maps. Two sources, unioned: maps extracted under
+  // garrysmod/maps/, AND maps inside downloaded Steam Workshop addons (which mount
+  // straight from .gma in the cache and are never written to maps/). The .gma
+  // file list embeds each `maps/<name>.bsp` path, so grep pulls them out without
+  // unpacking. This is what populates both the Startup map select and the live
+  // change-map control with the collection's maps.
   async #listMaps() {
     try {
-      const res = await this.runShell(`ls -1 ${MAPS_DIR}/*.bsp 2>/dev/null`, { asUser: this.gsmUser, timeoutMs: 15_000 });
+      const res = await this.runShell(
+        `{ ls -1 ${MAPS_DIR}/*.bsp 2>/dev/null; ` +
+        `LANG=C grep -ahoE 'maps/[A-Za-z0-9_]+\\.bsp' ${GARRYSMOD}/cache/srcds/*.gma 2>/dev/null; } ` +
+        `| sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
+        { asUser: this.gsmUser, timeoutMs: 20_000 },
+      );
       const names = (res.stdout || '').split('\n')
-        .map((l) => l.trim().replace(/^.*\//, '').replace(/\.bsp$/, ''))
+        .map((l) => l.trim())
         .filter((n) => /^ttt_/.test(n));
       return [...new Set(names)].sort();
     } catch {
@@ -123,6 +132,10 @@ export class GmodConnector extends LinuxGsmConnector {
 
     return {
       game: 'gmod',
+      // CS-compatible `map` block so the Runtime panel's live change-map dropdown
+      // (which reads data.map.stock/workshop/current) populates with the same maps.
+      // GMOD maps are plain bsp names, so they all go in `stock`.
+      map: { stock: maps.length ? maps : [defaultMap].filter(Boolean), workshop: [], current: defaultMap },
       sections: [
         {
           key: 'ttt',

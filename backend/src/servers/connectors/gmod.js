@@ -293,7 +293,7 @@ export class GmodConnector extends LinuxGsmConnector {
           fields: [
             { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
               placeholder: 'Steam Workshop collection id',
-              help: 'Steam stores & manages these maps. Set this, then build the rotation from the collection. After changing it, Apply then Restart Hosting once so Steam downloads the maps.' },
+              help: 'Steam stores & manages these maps. Set this, build the rotation, then Apply — that restarts the server so Steam downloads + mounts the collection.' },
             { key: 'mapcycle', label: 'Map Rotation', type: 'maplist', custom: true, options: mapOpts,
               help: 'The server boots into the FIRST map and (with auto-rotate on) advances down the list after each round/time limit. Type collection map names; gm_construct is the always-available fallback.' },
             { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },
@@ -307,7 +307,7 @@ export class GmodConnector extends LinuxGsmConnector {
           ],
         },
       ],
-      note: 'A profile is the startup config the server boots as. Maps come from your Workshop Collection (gm_construct is the fallback). Changes apply on the next restart.',
+      note: 'A profile is the startup config the server boots as. Apply saves it and restarts the server (which downloads + mounts your Workshop collection). Maps come from the collection; gm_construct is the always-available fallback.',
     };
   }
 

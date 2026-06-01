@@ -1294,15 +1294,23 @@
           await reloadProfileList(P.editId)
         }).catch(() => {}))
 
-        onClick('[data-prof-apply]', (b) => withBtn(b, 'Apply profile', async () => {
+        onClick('[data-prof-apply]', (b) => {
           if (P.editId == null) return
-          // persist pending edits first so Apply writes exactly what's on screen
-          readProfileForm()
-          await dbUpdateProfile(id, P.editId, { settings: P.values })
-          const r = await dbApplyProfile(id, P.editId)
-          logLine(`Applied "${r?.name}" ✓ — Restart Hosting to boot into it`)
-          await reloadProfileList(P.editId)
-        }).catch(() => {}))
+          if (!confirm('Apply this profile and restart the server now?\n\nThe server reloads with this config — it downloads/mounts the Workshop collection and briefly disconnects players.')) return
+          withBtn(b, 'Apply & restart', async () => {
+            // persist pending edits, write the startup config, then restart so it
+            // fully takes effect (collection download/mount happens at boot).
+            readProfileForm()
+            await dbUpdateProfile(id, P.editId, { settings: P.values })
+            const r = await dbApplyProfile(id, P.editId)
+            logLine(`Applied "${r?.name}" ✓ — restarting to load it (downloads/mounts the collection)…`)
+            await dbServerAction(id, 'restartGame')
+            await new Promise(res => setTimeout(res, 2500))
+            await refresh()
+            logLine(`Restarted ✓ — now running "${r?.name}"`)
+            await reloadProfileList(P.editId)
+          }).catch(() => {})
+        })
 
         onClick('[data-prof-new]', (b) => {
           const name = (prompt('Name for the new profile:') || '').trim()

@@ -21,11 +21,13 @@
 // games take `+connect host:port`; Factorio takes `--mp-connect host:port`.
 // Minecraft (Java) has no launch-and-connect URL scheme, so it has no `steam`
 // entry and the panel shows copy-only for it.
+// Array order drives the panel's tab order + Quick Connect list (Minecraft is
+// kept last for a cleaner layout). VMIDs stay bound to ids regardless of order.
 export const SERVERS = [
   { id: 'counterstrike', name: 'Counter-Strike',     vmid: 100, connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
   { id: 'factorio',      name: 'Factorio',           vmid: 101, connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },
-  { id: 'minecraft',     name: 'Minecraft',          vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
   { id: 'gmod',          name: "Garry's Mod (TTT)",  vmid: 104, connector: 'gmod',          port: 27066, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'minecraft',     name: 'Minecraft',          vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
 ];
 
 /** Render the copy-pastable join string for a server given the public host. */

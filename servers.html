@@ -389,6 +389,14 @@
     const gate  = document.getElementById('gate')
     const panel = document.getElementById('panel')
 
+    // Page state — declared before the admin gate so boot() (called from the
+    // gate, below) can never touch these bindings in their temporal dead zone.
+    // The gate runs after a top-level `await`, so without hoisting these a slow
+    // (e.g. mobile) load could resume boot() before the original declarations
+    // ran → "Cannot access 'servers' before initialization".
+    let servers = []
+    let activeId = null
+
     // ── admin gate ─────────────────────────────────────────────
     const session = await loadSession()
     if (!session) {
@@ -574,8 +582,6 @@
       setInterval(refreshDashboard, 10000)
     }
 
-    let servers = []
-
     async function boot() {
       try {
         servers = await dbGetServers()
@@ -587,8 +593,6 @@
       render()
       startDashboard()
     }
-
-    let activeId = null
 
     // Tabbed layout: a tab bar + a single active card. Only the selected game's
     // panels are mounted/fetched, which keeps the page light (one game's worth of

@@ -62,7 +62,85 @@
     .status .meta { color: #666666; }
 
     .srv-body { padding: 8px; }
-    .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .server-actions {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 8px;
+      border: 1px solid #333333;
+      background: #1d1d1d;
+    }
+
+    .action-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #999999;
+      font-size: 10px;
+      min-height: 14px;
+    }
+
+    .action-spinner {
+      display: none;
+      width: 10px;
+      height: 10px;
+      border: 2px solid #555555;
+      border-top-color: #42F527;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+
+    .server-actions[aria-busy="true"] .action-spinner {
+      display: inline-block;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .action-groups {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .action-group {
+      display: grid;
+      align-content: start;
+      gap: 5px;
+      min-width: 0;
+      padding: 7px;
+      border: 1px solid #3a3a3a;
+      background: #181818;
+    }
+
+    .action-group[hidden] {
+      display: none;
+    }
+
+    .action-group-title {
+      color: #42F527;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .action-group-note {
+      color: #777777;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .action-group .retro-btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    @media (max-width: 680px) {
+      .action-groups {
+        grid-template-columns: 1fr;
+      }
+    }
 
     .connbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
     .connbar .clbl { color: #7bb85f; font-size: 11px; font-weight: bold; }
@@ -76,6 +154,8 @@
     .copy-btn:hover { background: #3a5a7a; color: #9fd0ff; }
 
     button.retro-btn {
+      display: inline-flex;
+      align-items: center;
       background: #2a4a1a;
       color: #d4d4b8;
       border: 1px solid #7bb85f;
@@ -84,6 +164,7 @@
       font-size: 11px;
       cursor: pointer;
       font-weight: bold;
+      user-select: none;
     }
     button.retro-btn:hover { background: #3a6a2a; color: #42F527; }
     button.retro-btn:disabled { background: #333333; color: #555555; border-color: #3a3a3a; cursor: default; }
@@ -236,6 +317,17 @@
       return { cls, label, meta }
     }
 
+    const actionLabels = {
+      refresh: 'Refresh Status',
+      start: 'Start VM',
+      startGame: 'Start Hosting',
+      stopGame: 'Stop Hosting',
+      reboot: 'Restart VM',
+      shutdown: 'Shut Down',
+      stop: 'Force Stop',
+      update: 'Update Server'
+    }
+
     function cardHtml(s) {
       const { cls, label, meta } = statusBits(s)
       return `
@@ -243,7 +335,6 @@
         <div class="srv-head">
           <div><span class="srv-name">${esc(s.name)}</span><span class="srv-vmid">VMID ${esc(s.vmid)}</span></div>
           <div style="display:flex;align-items:center;gap:10px">
-            <button class="retro-btn" data-update>Update</button>
             <div class="status" data-status>
               <span class="dot ${cls}"></span>
               <span class="label">${esc(label)}</span>
@@ -258,16 +349,33 @@
             <code data-conn>${esc(s.connect.string)}</code>
             <button class="copy-btn" data-copy>Copy</button>
           </div>` : ''}
-          <div class="btn-row">
-            <button class="retro-btn" data-act="start">Start VM</button>
-            <button class="retro-btn" data-act="reboot">Restart VM</button>
-            <button class="retro-btn" data-act="shutdown">Shut Down</button>
-            <button class="retro-btn danger" data-act="stop">Force Stop</button>
-          </div>
-          <div class="btn-row" style="margin-top:4px">
-            <button class="retro-btn" data-act="startGame">Start Hosting</button>
-            <button class="retro-btn danger" data-act="stopGame">Stop Hosting</button>
-            <button class="retro-btn" data-act="refresh">Refresh</button>
+          <div class="server-actions" data-actions aria-label="Server actions">
+            <div class="action-status" data-action-status>
+              <span class="action-spinner" aria-hidden="true"></span>
+              <span data-action-status-text>Choose an action below.</span>
+            </div>
+            <div class="action-groups">
+              <section class="action-group" data-action-group="game" aria-label="Game service actions">
+                <div class="action-group-title">Game Service</div>
+                <div class="action-group-note">Start or stop the playable server process.</div>
+                <button class="retro-btn" type="button" data-act="startGame">Start Hosting</button>
+                <button class="retro-btn danger" type="button" data-act="stopGame">Stop Hosting</button>
+              </section>
+              <section class="action-group" data-action-group="vm" aria-label="Virtual machine actions">
+                <div class="action-group-title">Virtual Machine</div>
+                <div class="action-group-note">Power controls for the whole server VM.</div>
+                <button class="retro-btn" type="button" data-act="start">Start VM</button>
+                <button class="retro-btn" type="button" data-act="reboot">Restart VM</button>
+                <button class="retro-btn" type="button" data-act="shutdown">Shut Down</button>
+                <button class="retro-btn danger" type="button" data-act="stop">Force Stop</button>
+              </section>
+              <section class="action-group" data-action-group="maintenance" aria-label="Maintenance actions">
+                <div class="action-group-title">Maintenance</div>
+                <div class="action-group-note">Check status or run the configured updater.</div>
+                <button class="retro-btn" type="button" data-act="refresh">Refresh Status</button>
+                <button class="retro-btn" type="button" data-update>Update Server</button>
+              </section>
+            </div>
           </div>
           <div class="srv-err" data-err></div>
 
@@ -305,12 +413,24 @@
       const sel   = root.querySelector('[data-cfg-select]')
       const text  = root.querySelector('[data-cfg-text]')
       const saveBtn = root.querySelector('[data-cfg-save]')
+      const actionStatus = root.querySelector('[data-action-status-text]')
 
       const setErr = (m) => { errEl.textContent = m || '' }
-      const setBusy = (busy) => {
-        root.querySelectorAll('.btn-row button').forEach(b => b.disabled = busy)
+      const setBusy = (busy, label = 'Working...') => {
+        root.querySelectorAll('[data-actions] button').forEach(b => {
+          b.disabled = busy
+          b.setAttribute('aria-disabled', String(busy))
+        })
         const dot = root.querySelector('.dot')
-        if (busy) { dot.className = 'dot busy' }
+        root.querySelector('[data-actions]').setAttribute('aria-busy', String(busy))
+        if (busy) {
+          dot.className = 'dot busy'
+          actionStatus.textContent = label
+        } else {
+          actionStatus.textContent = 'Choose an action below.'
+          const current = servers.find(x => x.id === id)
+          if (current) updateStatus(root, current)
+        }
       }
       const showOut = (txt) => { out.style.display = 'block'; out.textContent = txt }
 
@@ -345,24 +465,33 @@
         setTimeout(() => { copyBtn.textContent = old }, 1200)
       })
 
-      // power actions
+      async function runAction(act) {
+        if (act === 'refresh') {
+          setErr(''); setBusy(true, 'Refreshing...')
+          try { await refresh() }
+          catch (e) { setErr(e.message) }
+          finally { setBusy(false) }
+          return
+        }
+        if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
+        if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
+        const label = actionLabels[act] || 'Working'
+        setErr(''); setBusy(true, `${label}...`)
+        try {
+          await dbServerAction(id, act)
+          // give Proxmox a moment, then refresh status
+          await new Promise(r => setTimeout(r, 1500))
+          await refresh()
+        } catch (e) {
+          setErr(e.message)
+        } finally {
+          setBusy(false)
+        }
+      }
+
       root.querySelectorAll('[data-act]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const act = btn.dataset.act
-          if (act === 'refresh') return refresh()
-          if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
-          if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
-          setErr(''); setBusy(true)
-          try {
-            await dbServerAction(id, act)
-            // give Proxmox a moment, then refresh status
-            await new Promise(r => setTimeout(r, 1500))
-            await refresh()
-          } catch (e) {
-            setErr(e.message)
-          } finally {
-            setBusy(false)
-          }
+          await runAction(btn.dataset.act)
         })
       })
 
@@ -770,7 +899,7 @@
       // update recipe
       root.querySelector('[data-update]').addEventListener('click', async () => {
         if (!confirm('Run the update recipe? This may stop and restart the server.')) return
-        setErr(''); setBusy(true); showOut('running update…')
+        setErr(''); setBusy(true, 'Updating...'); showOut('running update...')
         try {
           const res = await dbUpdateServer(id)
           showOut(formatUpdate(res))
@@ -804,6 +933,12 @@
       } else {
         show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'refresh')
       }
+
+      root.querySelectorAll('[data-action-group]').forEach(group => {
+        const hasVisibleAction = Array.from(group.querySelectorAll('button'))
+          .some(button => button.style.display !== 'none')
+        group.hidden = !hasVisibleAction
+      })
 
       // settings panel only when hosting and populated
       const qs = root.querySelector('[data-quickset]')

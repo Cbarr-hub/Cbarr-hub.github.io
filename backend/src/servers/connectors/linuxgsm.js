@@ -21,10 +21,14 @@ export class LinuxGsmConnector extends BaseConnector {
     });
   }
 
+  // True when the game is actually serving. LinuxGSM has no reliable `status`
+  // subcommand (it errors "Unknown command"), so the truthful signal is whether
+  // the game's public port is bound — works for CS2 (TCP) and Factorio (UDP).
+  // Runs as root so `ss` sees every socket.
   async gameRunning() {
-    const res = await this.#gsm('status', 15_000);
-    if (/offline/i.test(res.stdout)) return false;
-    if (/online/i.test(res.stdout)) return true;
+    const port = this.server.port;
+    if (!port) return false;
+    const res = await this.runShell(`ss -tuln 2>/dev/null | grep -qE ':${port}\\b'`, { timeoutMs: 10_000 });
     return res.exitCode === 0;
   }
 

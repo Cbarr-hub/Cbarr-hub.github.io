@@ -399,6 +399,18 @@ test('Factorio live is available and maps actions to console commands', async ()
   assert.equal(calls.at(-1).input, 'CHANGE_ME'); // LinuxGSM default rcon password fallback
 });
 
+test('LinuxGSM gameRunning maps the port-check exit code to gameStatus', async () => {
+  // running VM + game port bound (grep exits 0) → hosting
+  const hosting = createServerService({ client: fakeClient(), db: testDb() });
+  assert.equal((await hosting.getStatus('counterstrike')).gameStatus, 'hosting');
+  // running VM + port not bound (grep exits 1) → idle
+  const idle = createServerService({
+    client: fakeClient({ agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 1, 'out-data': '' }) }),
+    db: testDb(),
+  });
+  assert.equal((await idle.getStatus('counterstrike')).gameStatus, 'idle');
+});
+
 test('a non-RCON base server reports live unavailable', async () => {
   const base = new BaseConnector({ id: 'x', name: 'X', vmid: 1 }, fakeClient());
   assert.equal((await base.getLive()).available, false);

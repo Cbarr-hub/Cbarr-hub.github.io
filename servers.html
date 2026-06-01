@@ -1227,11 +1227,13 @@
             }
             const optsHtml = opts.map(o =>
               `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
+            const isWs = String(v ?? '').startsWith('ws:')
             return lbl + `
               <div class="mapcat" data-mapcat="${esc(f.key)}">
                 <div class="inline">
                   <select id="${lid}" data-pf="${esc(f.key)}" data-pt="text">${optsHtml}</select>
                   <button type="button" class="mini-btn" data-mc-toggle>＋ Workshop Map</button>
+                  <button type="button" class="mini-btn x" data-mc-remove title="Remove the selected Workshop map from your list"${isWs ? '' : ' disabled'}>Remove</button>
                 </div>
                 <div class="mc-add" data-mc-add style="display:none">
                   <input type="text" data-mc-id placeholder="Workshop ID (digits)" inputmode="numeric" />
@@ -1440,7 +1442,8 @@
       }
 
       // CS map field: the "＋ Workshop Map" inline form adds a Workshop map to the
-      // saved catalog (so it shows by name) and selects it.
+      // saved catalog (so it shows by name) and selects it; "Remove" deletes the
+      // selected Workshop map from the catalog.
       function wireMapCatalog(f) {
         const wrap = [...profBody.querySelectorAll('.mapcat')].find(w => w.dataset.mapcat === f.key)
         if (!wrap) return
@@ -1448,7 +1451,13 @@
         const addBox = wrap.querySelector('[data-mc-add]')
         const idEl = wrap.querySelector('[data-mc-id]')
         const nameEl = wrap.querySelector('[data-mc-name]')
+        const removeBtn = wrap.querySelector('[data-mc-remove]')
         const showAdd = (on) => { addBox.style.display = on ? 'flex' : 'none'; if (on) { idEl.value = ''; nameEl.value = ''; idEl.focus() } }
+        // Remove is only valid for a Workshop (ws:) map; keep it in sync with the select.
+        const syncRemove = () => { if (removeBtn) removeBtn.disabled = !String(sel.value || '').startsWith('ws:') }
+        sel.addEventListener('change', syncRemove)
+        syncRemove()
+
         wrap.querySelector('[data-mc-toggle]')?.addEventListener('click', () => showAdd(addBox.style.display === 'none'))
         wrap.querySelector('[data-mc-cancel]')?.addEventListener('click', () => showAdd(false))
         const save = wrap.querySelector('[data-mc-save]')
@@ -1462,8 +1471,26 @@
             let opt = [...sel.options].find(o => o.value === val)
             if (!opt) { opt = document.createElement('option'); opt.value = val; sel.appendChild(opt) }
             opt.textContent = nm; sel.value = val; P.values[f.key] = val
-            showAdd(false)
+            showAdd(false); syncRemove()
             logLine(`Added workshop map "${nm}" (${wsId}) ✓`)
+          }).catch(() => {})
+        })
+
+        removeBtn?.addEventListener('click', () => {
+          const val = String(sel.value || '')
+          if (!val.startsWith('ws:')) return
+          const wsId = val.slice(3)
+          const opt = [...sel.options].find(o => o.value === val)
+          const label = opt ? opt.textContent : `Workshop ${wsId}`
+          if (!confirm(`Remove "${label}" from your Workshop map list?\n\nThis only removes it from the picker — it doesn't unsubscribe on Steam or change a running server.`)) return
+          withBtn(removeBtn, 'Remove workshop map', async () => {
+            // 404 = wasn't in the catalog (a fallback entry) — drop it locally anyway.
+            try { await dbDeleteServerMap(id, wsId) } catch (e) { if (e.status !== 404) throw e }
+            opt?.remove()
+            sel.value = sel.options[0]?.value || ''
+            P.values[f.key] = sel.value
+            syncRemove()
+            logLine(`Removed workshop map "${label}" ✓`)
           }).catch(() => {})
         })
       }

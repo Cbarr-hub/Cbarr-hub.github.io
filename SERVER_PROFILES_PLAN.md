@@ -68,8 +68,9 @@ own panels.
 - **GMOD maps are collection-driven** (stock maps always; collection maps only when
   `wscollectionid` is set), grouped **Stock / Collection** in the selectors; a
   boot-map guard blocks a workshop map with no collection (would brick the boot).
-- **CS workshop maps** show by name ("Assembly"), added via an inline **＋ Workshop
-  Map** form (id + name → catalog) — no `ws:` typing.
+- **CS workshop maps** show by name ("Assembly"); **＋ Workshop Map** adds one
+  inline (id + name → catalog) and **Remove** deletes the selected one from the
+  catalog (`DELETE /maps/:workshopId`) — no `ws:` typing.
 - **Panel UX:** per-panel "Loading…" placeholders; fresh per-server status on card
   mount; the active card re-mounts per tab switch.
 

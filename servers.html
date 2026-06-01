@@ -19,7 +19,7 @@
     a:visited { color: #7bb85f; }
     a:hover { color: #42F527; }
 
-    #wrap { padding: 8px; max-width: 760px; }
+    #wrap { padding: 10px 14px; max-width: 1080px; margin: 0 auto; width: auto; }
 
     .sec-head {
       background: #1e2e1e;
@@ -288,13 +288,37 @@
     .load-chip { flex: 1; text-align: center; background: #101410; border: 1px solid #2a2a2a; padding: 4px 0; color: #b8d4a0; font-family: "Courier New", monospace; font-size: 11px; }
     .load-chip small { display: block; color: #666; font-size: 8px; letter-spacing: 1px; }
 
-    /* fleet strip */
-    .fleet { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .fleet-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #2a2a2a; background: #101410; padding: 4px 8px; font-size: 11px; color: #b8d4a0; }
-    .fleet-chip .dot { width: 8px; height: 8px; }
-    .fleet-summary { color: #777; font-size: 10px; margin-left: auto; align-self: center; }
+    /* quick-connect strip (join strings live with the host data) */
+    .qc { margin-top: 14px; border-top: 1px solid #2a2a2a; padding-top: 10px; }
+    .qc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    .qc-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px dashed #242424; }
+    .qc-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .qc-name { color: #d4d4b8; font-weight: bold; font-size: 11px; min-width: 132px; }
+    .qc-code { flex: 1; min-width: 0; background: #141414; border: 1px solid #2a2a2a; color: #b8d4a0;
+      padding: 3px 7px; font-family: "Courier New", monospace; font-size: 11px; white-space: nowrap; overflow: auto; }
+    .qc-down { flex: 1; color: #666; font-size: 10px; font-style: italic; }
+    .qc-copy { flex: none; }
+    .fleet-summary { color: #777; font-size: 10px; }
     .fleet-summary b { color: #42F527; }
     .dash-err { color: #ff6666; font-size: 11px; }
+
+    /* ── game tab bar ── */
+    .tabbar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #7bb85f; margin-bottom: 16px; }
+    .tab {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: #1a1a1a; border: 1px solid #3a3a3a; border-bottom: none;
+      color: #999; padding: 8px 16px; font-family: Verdana, Arial, sans-serif;
+      font-size: 12px; font-weight: bold; cursor: pointer; position: relative; top: 1px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .tab:hover { color: #d4d4b8; background: #232323; }
+    .tab.active { background: #1e2e1e; color: #42F527; border-color: #7bb85f; text-shadow: 0 0 6px rgba(66,245,39,0.4); }
+    .tab .dot { width: 8px; height: 8px; }
+    .tab-name { letter-spacing: 0.5px; }
+    @media (max-width: 520px) {
+      .tab { flex: 1 1 auto; justify-content: center; padding: 8px 10px; }
+      .qc-name { min-width: 0; }
+    }
 
     #gate { padding: 24px 8px; color: #ff6666; font-size: 13px; }
     #gate a { font-weight: bold; }
@@ -409,17 +433,51 @@
       return `<div class="bar ${sevClass(p)}"><span style="width:${p.toFixed(1)}%"></span></div>`
     }
 
+    // Copy text to the clipboard with a graceful fallback for non-secure
+    // contexts, and flash the triggering button. Shared by Quick Connect + cards.
+    async function copyToClipboard(str, btn) {
+      try {
+        await navigator.clipboard.writeText(str)
+      } catch {
+        const ta = document.createElement('textarea')
+        ta.value = str; ta.style.position = 'fixed'; ta.style.opacity = '0'
+        document.body.appendChild(ta); ta.select()
+        try { document.execCommand('copy') } catch {}
+        ta.remove()
+      }
+      if (btn) { const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = old }, 1200) }
+    }
+
+    // Quick Connect: every server's copyable join string surfaced next to the
+    // host data, plus a one-line fleet summary. Status dots reflect last poll.
     function fleetHtml() {
       if (!servers.length) return ''
-      const chips = servers.map(s => {
+      const rows = servers.map(s => {
         const { cls, label } = statusBits(s)
-        return `<span class="fleet-chip"><span class="dot ${cls}"></span>${esc(s.name)} <span style="color:#666">${esc(label)}</span></span>`
+        const conn = s.connect?.string
+        return `<div class="qc-row">
+          <span class="dot ${cls}" title="${esc(label)}"></span>
+          <span class="qc-name">${esc(s.name)}</span>
+          ${conn
+            ? `<code class="qc-code">${esc(conn)}</code><button class="copy-btn qc-copy" data-qc-copy="${esc(conn)}">Copy</button>`
+            : `<span class="qc-down">${esc(label.toLowerCase())} — no join address</span>`}
+        </div>`
       }).join('')
       const hosting = servers.filter(s => s.gameStatus === 'hosting').length
       const running = servers.filter(s => s.status === 'running').length
-      return `<div class="fleet">${chips}
-        <span class="fleet-summary"><b>${running}</b>/${servers.length} VMs up &middot; <b>${hosting}</b> hosting</span>
+      return `<div class="qc">
+        <div class="qc-head">
+          <span class="tile-label">Quick Connect</span>
+          <span class="fleet-summary"><b>${running}</b>/${servers.length} VMs up &middot; <b>${hosting}</b> hosting</span>
+        </div>
+        ${rows}
       </div>`
+    }
+
+    function wireQuickConnect() {
+      document.querySelectorAll('[data-qc-copy]').forEach(btn => {
+        btn.addEventListener('click', () => copyToClipboard(btn.dataset.qcCopy, btn))
+      })
     }
 
     function renderDashboard(n) {
@@ -475,6 +533,7 @@
           <span class="dash-refresh">live &middot; refreshes every 10s</span>
           <span class="dash-refresh">updated ${new Date().toLocaleTimeString()}</span>
         </div>`
+      wireQuickConnect()
     }
 
     async function refreshDashboard() {
@@ -508,14 +567,48 @@
       startDashboard()
     }
 
+    let activeId = null
+
+    // Tabbed layout: a tab bar + a single active card. Only the selected game's
+    // panels are mounted/fetched, which keeps the page light (one game's worth of
+    // API calls instead of all four). All per-card logic stays scoped to its
+    // #srv-<id> root, so wiring one card at a time is equivalent to the old
+    // render-all approach — just cleaner and lighter.
     function render() {
       const host = document.getElementById('server-list')
       if (!servers.length) {
         host.innerHTML = '<div style="padding:12px;color:#999">no servers configured</div>'
         return
       }
-      host.innerHTML = servers.map(cardHtml).join('')
-      servers.forEach(s => wireCard(s.id))
+      if (!activeId || !servers.some(s => s.id === activeId)) activeId = servers[0].id
+      host.innerHTML = '<div class="tabbar" id="tabbar"></div><div id="active-card"></div>'
+      renderTabs()
+      renderActiveCard()
+    }
+
+    function renderTabs() {
+      const bar = document.getElementById('tabbar')
+      if (!bar) return
+      bar.innerHTML = servers.map(s => {
+        const { cls, label } = statusBits(s)
+        return `<button class="tab ${s.id === activeId ? 'active' : ''}" type="button" data-tab="${esc(s.id)}" title="${esc(label)}">
+          <span class="dot ${cls}"></span><span class="tab-name">${esc(s.name)}</span>
+        </button>`
+      }).join('')
+      bar.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+        if (b.dataset.tab === activeId) return
+        activeId = b.dataset.tab
+        renderTabs()
+        renderActiveCard()
+      }))
+    }
+
+    function renderActiveCard() {
+      const host = document.getElementById('active-card')
+      const s = servers.find(x => x.id === activeId)
+      if (!host || !s) return
+      host.innerHTML = cardHtml(s)
+      wireCard(s.id)
     }
 
     function statusBits(s) {
@@ -556,12 +649,6 @@
           </div>
         </div>
         <div class="srv-body">
-          ${s.connect?.string ? `
-          <div class="connbar">
-            <span class="clbl">Join</span>
-            <code data-conn>${esc(s.connect.string)}</code>
-            <button class="copy-btn" data-copy>Copy</button>
-          </div>` : ''}
           <div class="server-actions" data-actions aria-label="Server actions">
             <div class="action-status" data-action-status>
               <span class="action-spinner" aria-hidden="true"></span>
@@ -688,6 +775,7 @@
           servers = all
           const s = all.find(x => x.id === id)
           if (s) updateStatus(root, s)
+          renderTabs()        // keep the other tabs' status dots in sync
           setErr(s?.error || '')
         } catch (e) { setErr(e.message) }
       }

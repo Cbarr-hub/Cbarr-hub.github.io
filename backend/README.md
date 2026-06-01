@@ -84,6 +84,7 @@ node src/cli.js delete-user
 | GET    | `/api/admin/users`                    | admin    |
 | POST   | `/api/admin/users`                    | admin    |
 | DELETE | `/api/admin/users/:id`                | admin    |
+| GET    | `/api/servers/node`                   | admin    |
 | GET    | `/api/servers/:id/backups`            | admin    |
 | POST   | `/api/servers/:id/backups`            | admin    |
 | POST   | `/api/servers/:id/backups/:name/restore` | admin |
@@ -94,6 +95,13 @@ node src/cli.js delete-user
 > backups (rclone → R2)". `GET` returns `{ available, backups[], reason? }`;
 > `available:false` means rclone/R2 isn't configured on that VM yet. Counter-Strike
 > returns 404 (`NOT_SUPPORTED`). The app never stores R2 credentials.
+
+> `GET /api/servers/node` is a host-level snapshot of the Proxmox node itself
+> (CPU/RAM/swap/rootfs/loadavg/uptime + kernel & PVE versions) powering the
+> servers-page dashboard. It maps to PVE `GET /nodes/:node/status`, which needs
+> `Sys.Audit` on `/nodes/<node>` — a grant **separate** from the VM-scoped
+> `ServerCtl` role (see `INFRA.md` → "Proxmox setup", step 4). Without it the
+> endpoint returns 502 and the dashboard shows "host stats unavailable".
 
 > Game servers are wired in `src/servers/registry.js` (id → VMID) with a connector
 > per game in `src/servers/connectors/`: Counter-Strike (100), Factorio (101),

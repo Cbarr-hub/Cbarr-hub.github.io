@@ -286,9 +286,25 @@ Reproduced here for reference / rebuild. All commands run on the `pve` host.
      pveum acl modify /vms/$v --tokens 'gamertown@pve!serverctl'  --roles ServerCtl
    done
    ```
-4. **Guest-agent channel** on each VM (host side): `qm set 100 --agent enabled=1`
+4. **Node-level read access for the host dashboard.** The servers page shows a
+   Proxmox host dashboard (CPU/RAM/load/uptime) backed by `GET /api/servers/node`
+   → PVE `GET /nodes/pve/status`, which requires **`Sys.Audit` on `/nodes/pve`**.
+   `ServerCtl` is intentionally VM-scoped and has no node rights, so this is a
+   separate minimal read-only role granted on the node path. Same privsep rule:
+   grant to BOTH the user and the token. `propagate 0` keeps it on `/nodes/pve`
+   itself (the status check is against that path) and prevents it cascading audit
+   rights onto every guest under the node.
+   ```bash
+   pveum role add NodeAudit --privs "Sys.Audit"
+   pveum acl modify /nodes/pve --users  'gamertown@pve'           --roles NodeAudit --propagate 0
+   pveum acl modify /nodes/pve --tokens 'gamertown@pve!serverctl' --roles NodeAudit --propagate 0
+   ```
+   Without this the dashboard shows *"host stats unavailable: upstream Proxmox
+   error"* (PVE returns `403 Permission check failed (/nodes/pve, Sys.Audit)`),
+   while the per-VM cards keep working — they only touch `/vms/*`.
+5. **Guest-agent channel** on each VM (host side): `qm set 100 --agent enabled=1`
    (repeat 101, 102, 104). Takes effect on the VM's next boot.
-5. **Backend config** — `/srv/gamertown/backend/.env` (see `.env.example`):
+6. **Backend config** — `/srv/gamertown/backend/.env` (see `.env.example`):
    ```
    PVE_API_URL=https://192.168.1.109:8006
    PVE_NODE=pve

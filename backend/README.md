@@ -89,6 +89,12 @@ node src/cli.js delete-user
 | POST   | `/api/servers/:id/backups`            | admin    |
 | POST   | `/api/servers/:id/backups/:name/restore` | admin |
 | DELETE | `/api/servers/:id/backups/:name`      | admin    |
+| GET    | `/api/servers/:id/profiles`           | admin    |
+| GET    | `/api/servers/:id/profiles/schema`    | admin    |
+| POST   | `/api/servers/:id/profiles`           | admin    |
+| POST   | `/api/servers/:id/profiles/capture`   | admin    |
+| GET/PUT/DELETE | `/api/servers/:id/profiles/:profileId` | admin |
+| POST   | `/api/servers/:id/profiles/:profileId/apply` | admin |
 
 > Backups (Factorio + Minecraft only) are point-in-time archives pushed offsite to
 > Cloudflare R2 via `rclone` running on the game VM — see `INFRA.md` → "Offsite
@@ -110,6 +116,17 @@ node src/cli.js delete-user
 > workshop collection, round/time limits, traitor & detective ratios + caps, map
 > cycle) and the Runtime panel drives it live over RCON. See `INFRA.md` →
 > "Game Server VMs" for the in-guest layout.
+
+> **Startup-config profiles** (`server_profiles` + `server_active_profile`,
+> migration 003) are named, structured startup configs per server — the durable
+> counterpart to the ephemeral live-command layer. The generic lifecycle lives on
+> `BaseConnector` (list/get/create/update/delete/apply/capture + an auto-seeded
+> "Default"); each game supplies five hooks (`profileSchema`,
+> `defaultProfileSettings`, `validateProfileSettings`, `applyProfileSettings`,
+> `captureProfileSettings`). **GMOD is wired; Factorio/Minecraft/CS are pending.**
+> `…/apply` writes the config onto the VM and marks the profile active; the panel
+> pairs it with a restart so a GMOD workshop collection actually mounts. See
+> `SERVER_PROFILES_PLAN.md` and the CLAUDE.md GMOD gotchas.
 
 ## What's not here yet
 

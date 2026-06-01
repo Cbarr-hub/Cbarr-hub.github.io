@@ -18,11 +18,23 @@
 > - *Frontend:* `db.js` profile client + a structured **Profiles** panel in
 >   `servers.html` — profile picker with active badge, Apply / New / Save As /
 >   Capture / Delete, schema-driven grouped fields (select / number / bool toggle
->   / text / **ordered map-rotation list builder**). Supersedes Quick Settings
->   where a game has profiles (GMOD); CS/Factorio/Minecraft fall back unchanged.
->   Panel shows whenever the VM is up (idle or hosting) so you configure first.
-> **Next:** replicate the per-game hooks to Factorio / Minecraft / CS (CS folds
-> in the `server_configs` → profiles migration); then Smart-Apply live tagging.
+>   / text / map-name combos / **ordered map-rotation list builder**, first entry
+>   badged "start"). Supersedes Quick Settings where a game has profiles (GMOD);
+>   CS/Factorio/Minecraft fall back unchanged. Panel shows whenever the VM is up.
+>
+> **GMOD lessons (shipped, now live):**
+> - Boot map = the **first rotation entry** (no separate start-map field).
+> - **Apply = apply + restart** — the workshop collection only mounts at boot, so
+>   writing config without a restart left maps unmountable + live changelevel
+>   failing. Apply now restarts so the collection downloads/mounts and the config
+>   takes effect in one action.
+> - Maps are **collection-driven**: stock maps always; workshop maps only when a
+>   collection is set (an empty collection mounts 0 addons → bricks a workshop boot
+>   map). A boot-map guard blocks that case. See the CLAUDE.md GMOD gotchas.
+>
+> **Next:** replicate the per-game hooks to Factorio / Minecraft (structured
+> server-settings + access lists), then CS (folds in the `server_configs` →
+> profiles migration); then live-vs-restart apply tagging.
 
 This is a *re-framing + completion*, not a rewrite. Status quo and the gap:
 

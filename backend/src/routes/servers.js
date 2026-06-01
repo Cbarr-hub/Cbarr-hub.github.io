@@ -49,6 +49,17 @@ export default async function serversRoutes(app) {
       return true;
     }
     if (err instanceof ProxmoxError) {
+      // The QEMU guest agent only comes up ~20-40s after the VM powers on, so a
+      // command issued through it (Start Hosting, settings, update, live, …)
+      // right after a VM start fails with this specific upstream message.
+      // Surface it as actionable guidance instead of a generic 502.
+      if (/guest agent is not running/i.test(err.message)) {
+        reply.code(503).send({
+          error: "The VM is still booting — its guest agent isn't ready yet. Wait ~30s after starting the VM, hit Refresh Status, then try again.",
+          code: 'AGENT_NOT_READY',
+        });
+        return true;
+      }
       app.log.error({ err }, 'proxmox upstream error');
       reply.code(502).send({ error: 'upstream Proxmox error', detail: err.message });
       return true;

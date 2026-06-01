@@ -1391,15 +1391,10 @@
         } catch { return }
         if (!data) return
 
-        // Counter-Strike: bespoke startup panel (map catalog + config library).
-        // Render content, then let updateStatus gate visibility (hosting-only).
-        if (data.game === 'counterstrike') {
-          renderCsPanel(data)
-          qs.dataset.loaded = '1'
-          const current = servers.find(x => x.id === id)
-          if (current) updateStatus(root, current)
-          return
-        }
+        // Counter-Strike now uses the generic Profiles panel for its startup
+        // config; getSettings only returns the map block (for the live change-map),
+        // so this falls through to the no-op below. (renderCsPanel is retained but
+        // unused.)
 
         if (!data.fields?.length && !data.sections?.length) return
 

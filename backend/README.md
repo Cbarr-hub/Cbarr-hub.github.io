@@ -123,9 +123,11 @@ node src/cli.js delete-user
 > `BaseConnector` (list/get/create/update/delete/apply/capture + an auto-seeded
 > "Default"); each game supplies five hooks (`profileSchema`,
 > `defaultProfileSettings`, `validateProfileSettings`, `applyProfileSettings`,
-> `captureProfileSettings`). **GMOD is wired; Factorio/Minecraft/CS are pending.**
-> `…/apply` writes the config onto the VM and marks the profile active; the panel
-> pairs it with a restart so a GMOD workshop collection actually mounts. See
+> `captureProfileSettings`). **GMOD + Factorio are wired; CS is next; Minecraft is
+> skipped.** `…/apply` writes the config onto the VM and marks the profile active;
+> the panel pairs it with a restart so a GMOD workshop collection actually mounts.
+> A game wired for profiles trims its `getSettings` to operations only (or just the
+> live-map block) so config doesn't double-render beside the Profiles panel. See
 > `SERVER_PROFILES_PLAN.md` and the CLAUDE.md GMOD gotchas.
 
 ## What's not here yet

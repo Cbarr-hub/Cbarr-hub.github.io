@@ -6,6 +6,7 @@ import { runMigrations } from '../src/db.js';
 import { createServerStore } from '../src/servers/store.js';
 import { GmodConnector } from '../src/servers/connectors/gmod.js';
 import { FactorioConnector } from '../src/servers/connectors/factorio.js';
+import { CounterStrikeConnector } from '../src/servers/connectors/counterstrike.js';
 
 // In-memory DB with all migrations applied. Deliberately does NOT set the
 // foreign_keys pragma (mirrors store.test.mjs) so the active-pointer cleanup is
@@ -19,14 +20,16 @@ function testDb() {
   return db;
 }
 
-// Fake ProxmoxClient: an in-memory file map for agentFileRead/Write. agentExec
-// throws so GmodConnector.#listMaps degrades to [] (no live box in tests).
+// Fake ProxmoxClient: an in-memory file map for agentFileRead/Write, plus a
+// benign-success agentExec so runShell calls (e.g. CS's `mkdir`) work. Map-listing
+// helpers that grep see empty stdout → [] (no live box in tests).
 function fakeClient(files = {}) {
   return {
     files,
     async agentFileRead(_vmid, path) { return { content: files[path] ?? '' }; },
     async agentFileWrite(_vmid, path, content) { files[path] = content; return { ok: true }; },
-    async agentExec() { throw new Error('no guest agent in tests'); },
+    async agentExec() { return { pid: 1 }; },
+    async agentExecStatus() { return { exited: true, exitcode: 0, 'out-data': '', 'err-data': '' }; },
   };
 }
 
@@ -49,6 +52,17 @@ function factorio(files) {
   const store = createServerStore(testDb());
   const client = fakeClient(files);
   return { conn: new FactorioConnector(FACTORIO, client, store), store, client };
+}
+
+const CS = { id: 'counterstrike', name: 'Counter-Strike', vmid: 100, port: 27015, connect: 'cs' };
+const CS_GAME   = '/home/miles/csserver/serverfiles/game/csgo/cfg/cs2server.cfg';
+const CS_INST   = '/home/miles/csserver/lgsm/config-lgsm/cs2server/cs2server.cfg';
+const CS_ACTIVE = '/home/miles/csserver/serverfiles/game/csgo/cfg/gamertown/active.cfg';
+
+function cs(files) {
+  const store = createServerStore(testDb());
+  const client = fakeClient(files);
+  return { conn: new CounterStrikeConnector(CS, client, store), store, client };
 }
 
 // ── store: profile CRUD + active pointer ─────────────────────────────────────────
@@ -254,4 +268,60 @@ test('factorio: profileSchema groups World + Server Settings; getSettings is ope
   // active world moved to the profile; getSettings now exposes only operations
   const ops = await conn.getSettings();
   assert.deepEqual(ops.sections.map((s) => s.key), ['saveAs', 'newWorld']);
+});
+
+// ── Counter-Strike connector: schema / validate / apply / capture ────────────────
+test('cs: validateProfileSettings handles stock + ws maps, rejects bad values', () => {
+  const { conn } = cs();
+  const base = conn.defaultProfileSettings();
+  assert.equal(conn.validateProfileSettings({ ...base, map: 'de_nuke' }).map, 'de_nuke');
+  assert.equal(conn.validateProfileSettings({ ...base, map: 'ws:123' }).map, 'ws:123');
+  assert.throws(() => conn.validateProfileSettings({ ...base, map: 'ws:abc' }), /workshop id/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, map: 'Bad Map!' }), /invalid map/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, gameMode: 'nope' }), /game mode/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, maxPlayers: 99 }), /maxPlayers/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, hostname: 'a"b' }), /server name/);
+});
+
+test('cs: applyProfileSettings — stock map clears workshop, deploys rawConfig', async () => {
+  const { conn, client } = cs({ [CS_GAME]: 'exec gamertown/active\n', [CS_INST]: 'maxplayers="10"\n' });
+  await conn.applyProfileSettings(
+    { map: 'de_nuke', gameMode: 'deathmatch', maxPlayers: 12, hostname: 'GT', rawConfig: 'sv_cheats 1\n' }, 5);
+  const game = client.files[CS_GAME];
+  assert.match(game, /map "de_nuke"/);
+  assert.match(game, /host_workshop_map ""/);     // workshop override cleared for a stock map
+  assert.match(game, /game_alias "deathmatch"/);
+  assert.match(game, /hostname "GT"/);
+  assert.equal(client.files[CS_ACTIVE], 'sv_cheats 1\n');   // extra cvars deployed
+  assert.match(client.files[CS_INST], /maxplayers="12"/);
+  assert.match(client.files[CS_INST], /gt_active_profile="5"/);
+});
+
+test('cs: applyProfileSettings — ws map sets host_workshop_map', async () => {
+  const { conn, client } = cs({ [CS_GAME]: 'exec gamertown/active\n', [CS_INST]: '' });
+  await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), map: 'ws:3071005299' }, 1);
+  assert.match(client.files[CS_GAME], /host_workshop_map "3071005299"/);
+});
+
+test('cs: capture round-trips map/mode/players/hostname/rawConfig', async () => {
+  const { conn } = cs({
+    [CS_GAME]: 'host_workshop_map "999"\ngame_alias "wingman"\nhostname "Srv"\nexec gamertown/active\n',
+    [CS_INST]: 'maxplayers="8"\n',
+    [CS_ACTIVE]: 'sv_gravity 200\n',
+  });
+  const c = await conn.captureProfileSettings();
+  assert.equal(c.map, 'ws:999');
+  assert.equal(c.gameMode, 'wingman');
+  assert.equal(c.maxPlayers, 8);
+  assert.equal(c.hostname, 'Srv');
+  assert.equal(c.rawConfig, 'sv_gravity 200\n');
+});
+
+test('cs: profileSchema groups Map&Mode + Advanced; seeded Assembly is a ws: option', async () => {
+  const { conn } = cs();
+  const schema = await conn.profileSchema();
+  assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'advanced']);
+  const mapField = schema.groups[0].fields.find((f) => f.key === 'map');
+  assert.ok(mapField.custom && mapField.options.some((o) => o.value === 'ws:3071005299')); // from migration seed
+  assert.ok(schema.groups[1].fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
 });

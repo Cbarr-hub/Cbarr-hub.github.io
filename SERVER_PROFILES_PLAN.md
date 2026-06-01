@@ -32,9 +32,18 @@
 >   collection is set (an empty collection mounts 0 addons → bricks a workshop boot
 >   map). A boot-map guard blocks that case. See the CLAUDE.md GMOD gotchas.
 >
-> **Next:** replicate the per-game hooks to Factorio / Minecraft (structured
-> server-settings + access lists), then CS (folds in the `server_configs` →
-> profiles migration); then live-vs-restart apply tagging.
+> **Factorio (shipped):** profile = active world + structured `server-settings.json`
+> (name, description, max players, visibility, game password, autosave) — replacing
+> raw-JSON-only editing. World **operations** (Save As / Generate) stay in Quick
+> Settings. This established the **config/operations panel split**: the frontend
+> now renders the **Profiles** panel (config) *and* the **Quick Settings** panel
+> (operations) together; each game can have one or both. GMOD's `getSettings` was
+> trimmed to just the map block (for the live change-map) so it doesn't
+> double-render. Box-verified against VM 101.
+>
+> **Next:** Counter-Strike (map + mode + max players + hostname + a raw-cvar block,
+> replacing the bespoke CS panel). **Minecraft skipped** (low value for this group).
+> Then live-vs-restart apply tagging.
 
 This is a *re-framing + completion*, not a rewrite. Status quo and the gap:
 

@@ -269,19 +269,17 @@ function csClient(onWrite) {
   });
 }
 
-test('CS getSettings reflects the workshop map in effect, with catalog names', async () => {
+test('CS getSettings returns the map block for the live change-map (config now in Profiles)', async () => {
   const svc = createServerService({ client: csClient(), db: testDb() });
   const s = await svc.getSettings('counterstrike');
   assert.equal(s.game, 'counterstrike');
   // host_workshop_map overrides the stock `map`, so the effective map is the workshop one
   assert.equal(s.map.current, 'ws:3071005299');
-  assert.equal(s.gameMode.value, 'competitive');
-  assert.equal(s.maxPlayers, 10);
   // Assembly comes from the seeded catalog
   assert.ok(s.map.workshop.some((w) => w.id === '3071005299' && w.name === 'Assembly'));
   // stock list comes from installed vpks, minus the _vanity entry
   assert.ok(s.map.stock.includes('de_dust2') && !s.map.stock.includes('de_dust2_vanity'));
-  assert.equal(s.configs.selectedId, null); // none selected by default
+  assert.equal(s.gameMode, undefined); // game mode + config moved to the Profiles panel
 });
 
 test('CS setSettings: stock map clears the workshop override', async () => {

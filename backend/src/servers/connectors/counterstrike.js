@@ -109,51 +109,134 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     }
   }
 
-  // ── structured settings (consumed by the bespoke CS panel) ──────────────────
+  // Profiles own the startup config (the Profiles panel). getSettings is kept only
+  // to feed the Runtime panel's live change-map dropdown (stock + workshop maps).
   async getSettings() {
     const game = await this.client.agentFileRead(this.vmid, GAME_CFG)
       .then((r) => r.content ?? '').catch(() => '');
-    const inst = await this.client.agentFileRead(this.vmid, INSTANCE_CFG)
-      .then((r) => r.content ?? '').catch(() => '');
-
-    const hwm        = (getCvar(game, 'host_workshop_map') || '').trim();
-    const stockMap   = getCvar(game, 'map') || 'de_dust2';
-    const alias      = (getCvar(game, 'game_alias') || 'competitive').trim();
-    const hostname   = getCvar(game, 'hostname') ?? '';
-    const maxplayers = Number(getVar(inst, 'maxplayers') || 10);
-    const activeCfg  = getVar(inst, 'gt_active_config') || '';
-
+    const hwm      = (getCvar(game, 'host_workshop_map') || '').trim();
+    const stockMap = getCvar(game, 'map') || 'de_dust2';
     const stock    = await this.#listMaps();
     const catalog  = this.store ? this.store.listWorkshopMaps(this.server.id) : [];
-    const configs  = this.store ? this.store.listConfigs(this.server.id) : [];
-
     const workshop = catalog.map((w) => ({ id: w.workshopId, name: w.name }));
-    // If the active workshop map isn't catalogued, surface it anyway so the
-    // dropdown can show + keep the current selection (fallback name).
-    if (hwm && !workshop.some((w) => w.id === hwm)) {
-      const fallback = getVar(inst, 'gt_workshop_name') || `Workshop ${hwm}`;
-      workshop.unshift({ id: hwm, name: fallback });
-    }
-
+    if (hwm && !workshop.some((w) => w.id === hwm)) workshop.unshift({ id: hwm, name: `Workshop ${hwm}` });
     return {
       game: 'counterstrike',
-      map: {
-        current: hwm ? `ws:${hwm}` : stockMap, // 'de_dust2' or 'ws:<id>'
-        stock,
-        workshop,
-      },
-      gameMode: {
-        value: GAME_ALIASES[alias] ? alias : 'competitive',
-        options: Object.entries(GAME_ALIASES).map(([value, label]) => ({ value, label })),
-      },
-      maxPlayers: maxplayers,
-      hostname, // shown under Advanced
-      configs: {
-        options: configs.map((c) => ({ id: c.id, name: c.name })),
-        selectedId: activeCfg ? Number(activeCfg) : null,
-      },
-      note: 'Workshop map overrides a stock map. Map + config changes apply on the next server restart.',
+      map: { current: hwm ? `ws:${hwm}` : stockMap, stock, workshop },
     };
+  }
+
+  // ── startup-config profiles ─────────────────────────────────────────────────
+  // A CS profile is the startup config: map (stock or ws:<id>) + game mode + max
+  // players + server name + a raw extra-cvars block (the bunnyhop-style escape
+  // hatch, deployed to gamertown/active.cfg). Replaces the old bespoke CS panel.
+
+  defaultProfileSettings() {
+    return { map: 'de_dust2', gameMode: 'competitive', maxPlayers: 10, hostname: '', rawConfig: '' };
+  }
+
+  validateProfileSettings(s = {}) {
+    const out = {};
+    const map = String(s.map ?? '').trim();
+    if (map.startsWith('ws:')) {
+      const id = map.slice(3);
+      if (!/^\d{1,20}$/.test(id)) throw badSetting(`invalid workshop id: ${id}`);
+      out.map = `ws:${id}`;
+    } else {
+      if (!/^[a-z0-9_]{1,64}$/.test(map)) throw badSetting(`invalid map name: ${map}`);
+      out.map = map;
+    }
+    if (!GAME_ALIASES[s.gameMode]) throw badSetting(`invalid game mode: ${s.gameMode}`);
+    out.gameMode = s.gameMode;
+    const mp = Number(s.maxPlayers);
+    if (!Number.isInteger(mp) || mp < 1 || mp > 64) throw badSetting('maxPlayers must be 1–64');
+    out.maxPlayers = mp;
+    const hostname = String(s.hostname ?? '');
+    if (/["\n\r]/.test(hostname)) throw badSetting('server name may not contain quotes or newlines');
+    out.hostname = hostname;
+    const raw = String(s.rawConfig ?? '');
+    if (raw.length > 100_000) throw badSetting('extra cvars too large (max 100000 chars)');
+    if (raw.includes('\0')) throw badSetting('extra cvars may not contain null bytes');
+    out.rawConfig = raw;
+    return out;
+  }
+
+  async profileSchema() {
+    const stock   = await this.#listMaps();
+    const catalog = this.store ? this.store.listWorkshopMaps(this.server.id) : [];
+    const mapOpts = [
+      ...stock.map((m) => ({ value: m, label: m })),
+      ...catalog.map((w) => ({ value: `ws:${w.workshopId}`, label: `${w.name} (ws:${w.workshopId})` })),
+    ];
+    return {
+      groups: [
+        {
+          key: 'map', title: 'Map & Mode',
+          fields: [
+            { key: 'map', label: 'Map', type: 'select', custom: true, options: mapOpts,
+              help: 'A stock map (e.g. de_dust2) or a Workshop map as ws:<id> (overrides stock). You can type a Workshop id even if it is not in the suggestions.' },
+            { key: 'gameMode', label: 'Game Mode', type: 'select',
+              options: Object.entries(GAME_ALIASES).map(([value, label]) => ({ value, label })) },
+            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 64, step: 1 },
+          ],
+        },
+        {
+          key: 'advanced', title: 'Advanced',
+          fields: [
+            { key: 'hostname', label: 'Server Name', type: 'text' },
+            { key: 'rawConfig', label: 'Extra cvars (deployed as a live-execable config)', type: 'textarea',
+              placeholder: 'sv_cheats 1\nsv_autobunnyhopping 1\nsv_enablebunnyhopping 1' },
+          ],
+        },
+      ],
+      note: 'A profile is the startup config. A Workshop map overrides a stock map. Extra cvars deploy to gamertown/active.cfg (exec on map load, or live via Runtime → Apply Config). Changes apply on the next restart.',
+    };
+  }
+
+  async applyProfileSettings(settings, profileId) {
+    const s = this.validateProfileSettings(settings);
+
+    // game cfg: map / workshop / mode / hostname + ensure the active.cfg exec line
+    let game = (await this.client.agentFileRead(this.vmid, GAME_CFG)).content ?? '';
+    const cvars = {};
+    if (s.map.startsWith('ws:')) {
+      cvars.host_workshop_map = s.map.slice(3);          // overrides the stock map
+    } else {
+      cvars.map = s.map;
+      cvars.host_workshop_map = '';
+      cvars.host_workshop_collection = '';
+    }
+    cvars.game_alias = s.gameMode;
+    cvars.hostname = s.hostname;
+    game = setCvars(game, cvars);
+    const ensured = await this.#ensureActiveExec(game);
+    await this.client.agentFileWrite(this.vmid, GAME_CFG, ensured.text);
+
+    // deploy the extra-cvars block to gamertown/active.cfg (exec'd by cs2server.cfg)
+    await this.runShell(`mkdir -p "${GT_DIR}"`, { asUser: this.gsmUser, timeoutMs: 10_000 });
+    await this.client.agentFileWrite(this.vmid, ACTIVE_CFG, s.rawConfig);
+
+    // instance cfg: maxplayers + on-box active-profile mirror
+    let inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
+    inst = setVar(inst, 'maxplayers', String(s.maxPlayers));
+    if (profileId != null) inst = setVar(inst, 'gt_active_profile', String(profileId));
+    await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, inst);
+    return { ok: true };
+  }
+
+  async captureProfileSettings() {
+    const game   = await this.client.agentFileRead(this.vmid, GAME_CFG).then((r) => r.content ?? '').catch(() => '');
+    const inst   = await this.client.agentFileRead(this.vmid, INSTANCE_CFG).then((r) => r.content ?? '').catch(() => '');
+    const active = await this.client.agentFileRead(this.vmid, ACTIVE_CFG).then((r) => r.content ?? '').catch(() => '');
+    const hwm   = (getCvar(game, 'host_workshop_map') || '').trim();
+    const alias = (getCvar(game, 'game_alias') || 'competitive').trim();
+    return this.validateProfileSettings({
+      map: hwm ? `ws:${hwm}` : (getCvar(game, 'map') || 'de_dust2'),
+      gameMode: GAME_ALIASES[alias] ? alias : 'competitive',
+      maxPlayers: Number(getVar(inst, 'maxplayers') || 10),
+      hostname: getCvar(game, 'hostname') ?? '',
+      rawConfig: active,
+    });
   }
 
   // Ensure cs2server.cfg execs the managed active.cfg, creating the file if

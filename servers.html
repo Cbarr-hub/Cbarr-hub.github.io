@@ -1296,7 +1296,7 @@
 
         onClick('[data-prof-apply]', (b) => {
           if (P.editId == null) return
-          if (!confirm('Apply this profile and restart the server now?\n\nThe server reloads with this config (e.g. GMOD downloads/mounts its Workshop collection) and briefly disconnects players.')) return
+          if (!confirm('Apply this profile and restart the server now?\n\nThe server reloads with this config and briefly disconnects any players.')) return
           withBtn(b, 'Apply & restart', async () => {
             // persist pending edits, write the startup config, then restart so it
             // fully takes effect (collection download/mount happens at boot).

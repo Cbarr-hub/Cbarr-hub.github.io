@@ -37,12 +37,12 @@ CLAUDE.md gotchas) is:
 | Managed live-config exec | `cfg/gamertown/active.cfg` (same convention as CS) |
 | Game port | **27066** |
 
-## Still pending
+## Done
 
-- **GSLT token (manual — needs a Steam login).** Generate a Game Server Login
-  Token for appid 4000 at `steamgameservers.com`, set `gslt="…"` in the instance
-  cfg, restart. Without it the server runs fine (TTT is built in, LAN works) but
-  Workshop auto-download / public listing are unreliable.
+- **GSLT token — configured.** A Game Server Login Token (Steam appid 4000) is set
+  on the box (`gslt=` → srcds `+sv_setsteamaccount`), so Workshop collection
+  downloads + public listing are reliable. The token value lives only in the
+  gitignored `SECRETS.local.md` (never in this public repo).
 
 ## Open / nice-to-haves (not blocking)
 

@@ -65,85 +65,81 @@
 
     .server-actions {
       display: grid;
-      grid-template-columns: minmax(180px, 1fr) auto;
-      gap: 6px;
-      align-items: start;
+      gap: 8px;
       margin-bottom: 8px;
+      padding: 8px;
+      border: 1px solid #333333;
+      background: #1d1d1d;
     }
 
-    .primary-action {
-      min-height: 34px;
-      justify-content: center;
-      text-transform: uppercase;
-      letter-spacing: 1px;
+    .action-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #999999;
+      font-size: 10px;
+      min-height: 14px;
     }
 
-    .primary-action.danger {
-      background: #4a1a1a;
-      border-color: #b85f5f;
-    }
-
-    .primary-action .spinner {
+    .action-spinner {
       display: none;
       width: 10px;
       height: 10px;
-      margin-right: 6px;
       border: 2px solid #555555;
       border-top-color: #42F527;
       border-radius: 50%;
       animation: spin 0.75s linear infinite;
-      vertical-align: -2px;
     }
 
-    .primary-action.busy .spinner { display: inline-block; }
+    .server-actions[aria-busy="true"] .action-spinner {
+      display: inline-block;
+    }
+
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .more-actions {
-      position: relative;
+    .action-groups {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
     }
 
-    .more-actions summary {
-      list-style: none;
+    .action-group {
+      display: grid;
+      align-content: start;
+      gap: 5px;
+      min-width: 0;
+      padding: 7px;
+      border: 1px solid #3a3a3a;
+      background: #181818;
     }
 
-    .more-actions summary::-webkit-details-marker {
+    .action-group[hidden] {
       display: none;
     }
 
-    .more-actions[open] summary {
-      background: #3a6a2a;
+    .action-group-title {
       color: #42F527;
-    }
-
-    .more-actions summary[aria-disabled="true"] {
-      pointer-events: none;
-      opacity: 0.5;
-    }
-
-    .more-menu {
-      position: absolute;
-      top: calc(100% + 4px);
-      right: 0;
-      z-index: 5;
-      display: grid;
-      gap: 4px;
-      min-width: 150px;
-      padding: 6px;
-      border: 1px solid #3a3a3a;
-      background: #181818;
-      box-shadow: 0 8px 18px rgba(0,0,0,0.35);
-    }
-
-    .more-menu .retro-btn {
-      width: 100%;
-      text-align: left;
-    }
-
-    .action-hint {
-      grid-column: 1 / -1;
-      color: #999999;
       font-size: 10px;
-      min-height: 12px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .action-group-note {
+      color: #777777;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .action-group .retro-btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    @media (max-width: 680px) {
+      .action-groups {
+        grid-template-columns: 1fr;
+      }
     }
 
     .connbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
@@ -157,8 +153,7 @@
       font-size: 11px; font-weight: bold; cursor: pointer; font-family: Verdana, Arial, sans-serif; }
     .copy-btn:hover { background: #3a5a7a; color: #9fd0ff; }
 
-    button.retro-btn,
-    summary.retro-btn {
+    button.retro-btn {
       display: inline-flex;
       align-items: center;
       background: #2a4a1a;
@@ -171,8 +166,7 @@
       font-weight: bold;
       user-select: none;
     }
-    button.retro-btn:hover,
-    summary.retro-btn:hover { background: #3a6a2a; color: #42F527; }
+    button.retro-btn:hover { background: #3a6a2a; color: #42F527; }
     button.retro-btn:disabled { background: #333333; color: #555555; border-color: #3a3a3a; cursor: default; }
     button.retro-btn.danger { background: #4a1a1a; border-color: #b85f5f; }
     button.retro-btn.danger:hover { background: #6a2a2a; color: #ff7777; }
@@ -319,21 +313,15 @@
       return { cls, label, meta }
     }
 
-    const actionMeta = {
-      refresh: { label: 'Refresh Status', hint: 'Check the latest VM and game state.' },
-      start: { label: 'Start VM', hint: 'Power on the virtual machine.' },
-      startGame: { label: 'Start Hosting', hint: 'Launch the game server for players.' },
-      stopGame: { label: 'Stop Hosting', hint: 'Stop the game process and kick active players.', danger: true },
-      reboot: { label: 'Restart VM', hint: 'Gracefully reboot the whole virtual machine.' },
-      shutdown: { label: 'Shut Down', hint: 'Gracefully power down the virtual machine.' },
-      stop: { label: 'Force Stop', hint: 'Immediately cut VM power. Use only when stuck.', danger: true }
-    }
-
-    function primaryActionFor(s) {
-      if (s.gameStatus === 'down') return 'start'
-      if (s.gameStatus === 'idle') return 'startGame'
-      if (s.gameStatus === 'hosting') return 'stopGame'
-      return 'refresh'
+    const actionLabels = {
+      refresh: 'Refresh Status',
+      start: 'Start VM',
+      startGame: 'Start Hosting',
+      stopGame: 'Stop Hosting',
+      reboot: 'Restart VM',
+      shutdown: 'Shut Down',
+      stop: 'Force Stop',
+      update: 'Update Server'
     }
 
     function cardHtml(s) {
@@ -357,24 +345,33 @@
             <code data-conn>${esc(s.connect.string)}</code>
             <button class="copy-btn" data-copy>Copy</button>
           </div>` : ''}
-          <div class="server-actions" data-actions>
-            <button class="retro-btn primary-action" data-primary-action type="button">
-              <span class="spinner" aria-hidden="true"></span><span data-primary-label>Refresh Status</span>
-            </button>
-            <details class="more-actions" data-more-actions>
-              <summary class="retro-btn" role="button">More</summary>
-              <div class="more-menu">
-                <button class="retro-btn" type="button" data-act="refresh">Refresh Status</button>
-                <button class="retro-btn" type="button" data-act="start">Start VM</button>
+          <div class="server-actions" data-actions aria-label="Server actions">
+            <div class="action-status" data-action-status>
+              <span class="action-spinner" aria-hidden="true"></span>
+              <span data-action-status-text>Choose an action below.</span>
+            </div>
+            <div class="action-groups">
+              <section class="action-group" data-action-group="game" aria-label="Game service actions">
+                <div class="action-group-title">Game Service</div>
+                <div class="action-group-note">Start or stop the playable server process.</div>
                 <button class="retro-btn" type="button" data-act="startGame">Start Hosting</button>
                 <button class="retro-btn danger" type="button" data-act="stopGame">Stop Hosting</button>
+              </section>
+              <section class="action-group" data-action-group="vm" aria-label="Virtual machine actions">
+                <div class="action-group-title">Virtual Machine</div>
+                <div class="action-group-note">Power controls for the whole server VM.</div>
+                <button class="retro-btn" type="button" data-act="start">Start VM</button>
                 <button class="retro-btn" type="button" data-act="reboot">Restart VM</button>
                 <button class="retro-btn" type="button" data-act="shutdown">Shut Down</button>
                 <button class="retro-btn danger" type="button" data-act="stop">Force Stop</button>
+              </section>
+              <section class="action-group" data-action-group="maintenance" aria-label="Maintenance actions">
+                <div class="action-group-title">Maintenance</div>
+                <div class="action-group-note">Check status or run the configured updater.</div>
+                <button class="retro-btn" type="button" data-act="refresh">Refresh Status</button>
                 <button class="retro-btn" type="button" data-update>Update Server</button>
-              </div>
-            </details>
-            <div class="action-hint" data-action-hint></div>
+              </section>
+            </div>
           </div>
           <div class="srv-err" data-err></div>
 
@@ -407,24 +404,21 @@
       const sel   = root.querySelector('[data-cfg-select]')
       const text  = root.querySelector('[data-cfg-text]')
       const saveBtn = root.querySelector('[data-cfg-save]')
-      const primaryBtn = root.querySelector('[data-primary-action]')
-      const primaryLabel = root.querySelector('[data-primary-label]')
-      const actionHint = root.querySelector('[data-action-hint]')
+      const actionStatus = root.querySelector('[data-action-status-text]')
 
       const setErr = (m) => { errEl.textContent = m || '' }
       const setBusy = (busy, label = 'Working...') => {
-        root.querySelectorAll('[data-actions] button, [data-actions] summary').forEach(b => {
-          if ('disabled' in b) b.disabled = busy
+        root.querySelectorAll('[data-actions] button').forEach(b => {
+          b.disabled = busy
           b.setAttribute('aria-disabled', String(busy))
         })
         const dot = root.querySelector('.dot')
-        primaryBtn.classList.toggle('busy', busy)
         root.querySelector('[data-actions]').setAttribute('aria-busy', String(busy))
         if (busy) {
           dot.className = 'dot busy'
-          primaryLabel.textContent = label
-          actionHint.textContent = 'Waiting for the server to report back...'
+          actionStatus.textContent = label
         } else {
+          actionStatus.textContent = 'Choose an action below.'
           const current = servers.find(x => x.id === id)
           if (current) updateStatus(root, current)
         }
@@ -472,8 +466,8 @@
         }
         if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
         if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
-        const meta = actionMeta[act] || actionMeta.refresh
-        setErr(''); setBusy(true, `${meta.label}...`)
+        const label = actionLabels[act] || 'Working'
+        setErr(''); setBusy(true, `${label}...`)
         try {
           await dbServerAction(id, act)
           // give Proxmox a moment, then refresh status
@@ -486,11 +480,8 @@
         }
       }
 
-      primaryBtn.addEventListener('click', () => runAction(primaryBtn.dataset.act || 'refresh'))
-
       root.querySelectorAll('[data-act]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          root.querySelector('[data-more-actions]').removeAttribute('open')
           await runAction(btn.dataset.act)
         })
       })
@@ -844,7 +835,6 @@
 
       // update recipe
       root.querySelector('[data-update]').addEventListener('click', async () => {
-        root.querySelector('[data-more-actions]').removeAttribute('open')
         if (!confirm('Run the update recipe? This may stop and restart the server.')) return
         setErr(''); setBusy(true, 'Updating...'); showOut('running update...')
         try {
@@ -865,19 +855,8 @@
       root.querySelector('.status .meta').innerHTML = meta
 
       const gs = s.gameStatus
-      const primaryAct = primaryActionFor(s)
-      const primaryMeta = actionMeta[primaryAct] || actionMeta.refresh
-      const primaryBtn = root.querySelector('[data-primary-action]')
-      const primaryLabel = root.querySelector('[data-primary-label]')
-      const actionHint = root.querySelector('[data-action-hint]')
-      primaryBtn.dataset.act = primaryAct
-      primaryLabel.textContent = primaryMeta.label
-      actionHint.textContent = primaryMeta.hint
-      primaryBtn.classList.toggle('danger', Boolean(primaryMeta.danger))
-
       const show = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = '' })
       const hide = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = 'none' })
-      const hidePrimary = () => hide(primaryAct)
 
       if (gs === 'down') {
         show('start', 'refresh')
@@ -891,7 +870,12 @@
       } else {
         show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'refresh')
       }
-      hidePrimary()
+
+      root.querySelectorAll('[data-action-group]').forEach(group => {
+        const hasVisibleAction = Array.from(group.querySelectorAll('button'))
+          .some(button => button.style.display !== 'none')
+        group.hidden = !hasVisibleAction
+      })
 
       // settings panel only when hosting and populated
       const qs = root.querySelector('[data-quickset]')

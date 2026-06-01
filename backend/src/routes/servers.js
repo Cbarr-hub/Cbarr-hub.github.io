@@ -94,7 +94,7 @@ export default async function serversRoutes(app) {
         type: 'object',
         properties: {
           id: ID_PARAM,
-          action: { type: 'string', enum: ['start', 'shutdown', 'reboot', 'stop'] },
+          action: { type: 'string', enum: ['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame'] },
         },
         required: ['id', 'action'],
       },

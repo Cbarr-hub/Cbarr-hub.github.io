@@ -6,7 +6,7 @@
 //   - normalize results and raise typed errors the route layer maps to HTTP
 // It knows nothing about Fastify, requests, auth, or Proxmox HTTP details.
 
-import { listServers, getServer, connectString } from './registry.js';
+import { listServers, getServer, connectString, launchUrl } from './registry.js';
 import { buildConnectors } from './connectors/index.js';
 import { createServerStore } from './store.js';
 
@@ -71,7 +71,12 @@ export function createServerService({ client, publicHost = '', db = null }) {
       id: server.id,
       name: server.name,
       vmid: server.vmid,
-      connect: { host: publicHost, port: server.port, string: connectString(server, publicHost) },
+      connect: {
+        host: publicHost,
+        port: server.port,
+        string: connectString(server, publicHost),
+        launch: launchUrl(server, publicHost),
+      },
     };
   }
 

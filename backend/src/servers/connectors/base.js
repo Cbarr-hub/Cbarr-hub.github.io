@@ -69,8 +69,14 @@ export class BaseConnector {
 
   // Runs a command via the guest agent and polls until it exits (or times out).
   // `command` is an argv array, e.g. ['/bin/systemctl', 'restart', 'factorio'].
-  async runCommand(command, { input, timeoutMs = 120_000, pollMs = 1000 } = {}) {
-    const { pid } = await this.client.agentExec(this.vmid, { command, input });
+  //
+  // `awaitAgentMs` (default 0): the QEMU guest agent only comes up ~20-40s after
+  // a VM powers on, so an exec issued right after a Start VM fails with "QEMU
+  // guest agent is not running". When set, we retry ONLY that specific error for
+  // up to this long before giving up — letting actions like Start Hosting wait
+  // out a freshly-booted VM instead of erroring. Passive reads leave it at 0.
+  async runCommand(command, { input, timeoutMs = 120_000, pollMs = 1000, awaitAgentMs = 0 } = {}) {
+    const { pid } = await this.#execAwaitingAgent(command, input, awaitAgentMs, pollMs);
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const st = await this.client.agentExecStatus(this.vmid, pid);
@@ -87,6 +93,25 @@ export class BaseConnector {
         throw new Error(`command timed out after ${timeoutMs}ms (pid ${pid})`);
       }
       await sleep(pollMs);
+    }
+  }
+
+  // Kick off agentExec, retrying ONLY the "guest agent is not running" upstream
+  // error for up to `awaitAgentMs` (the post-boot window). Any other error, or
+  // exhausting the window, rethrows so callers still see real failures.
+  async #execAwaitingAgent(command, input, awaitAgentMs, pollMs) {
+    const deadline = Date.now() + awaitAgentMs;
+    for (;;) {
+      try {
+        return await this.client.agentExec(this.vmid, { command, input });
+      } catch (err) {
+        const agentDown = /guest agent is not running/i.test(err?.message ?? '');
+        if (agentDown && Date.now() < deadline) {
+          await sleep(pollMs);
+          continue;
+        }
+        throw err;
+      }
     }
   }
 

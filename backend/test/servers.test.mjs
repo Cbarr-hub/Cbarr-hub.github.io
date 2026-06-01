@@ -643,6 +643,61 @@ test('connect strings render per game from the registry + public host', async ()
   assert.equal(byId.gmod.string, 'connect 1.2.3.4:27066');
 });
 
+test('launch URLs open the game + connect; Minecraft has none', async () => {
+  const svc = createServerService({ client: fakeClient(), publicHost: '1.2.3.4' });
+  const list = await svc.listServers();
+  const byId = Object.fromEntries(list.map((s) => [s.id, s.connect]));
+  // Source games: steam://run/<appid>//+connect host:port (args URL-encoded)
+  assert.equal(byId.counterstrike.launch, 'steam://run/730//%2Bconnect%201.2.3.4%3A27015');
+  assert.equal(byId.gmod.launch, 'steam://run/4000//%2Bconnect%201.2.3.4%3A27066');
+  // Factorio: --mp-connect
+  assert.equal(byId.factorio.launch, 'steam://run/427520//--mp-connect%201.2.3.4%3A34197');
+  // Minecraft (Java) has no launch-and-connect scheme
+  assert.equal(byId.minecraft.launch, null);
+});
+
+test('a launch URL needs a public host', async () => {
+  const svc = createServerService({ client: fakeClient(), publicHost: '' });
+  const cs = (await svc.listServers()).find((s) => s.id === 'counterstrike');
+  assert.equal(cs.connect.launch, null);
+});
+
+// ── guest-agent post-boot auto-wait ─────────────────────────────────────────────
+test('runCommand waits out a not-yet-ready guest agent, then succeeds', async () => {
+  let attempts = 0;
+  const client = fakeClient({
+    agentExec: () => {
+      attempts += 1;
+      if (attempts < 3) return Promise.reject(new Error('proxmox ... 500: QEMU guest agent is not running'));
+      return Promise.resolve({ pid: 7 });
+    },
+    agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': 'started' }),
+  });
+  const conn = new BaseConnector(getServer('factorio'), client);
+  const res = await conn.runCommand(['/bin/true'], { awaitAgentMs: 5_000, pollMs: 5 });
+  assert.equal(attempts, 3);           // retried until the agent answered
+  assert.equal(res.exitCode, 0);
+  assert.equal(res.stdout, 'started');
+});
+
+test('runCommand still fails fast on agent-down when no wait budget is given', async () => {
+  const client = fakeClient({
+    agentExec: () => Promise.reject(new Error('500: QEMU guest agent is not running')),
+  });
+  const conn = new BaseConnector(getServer('factorio'), client);
+  await assert.rejects(() => conn.runCommand(['/bin/true']), /guest agent is not running/);
+});
+
+test('runCommand does NOT retry non-agent errors even with a wait budget', async () => {
+  let attempts = 0;
+  const client = fakeClient({
+    agentExec: () => { attempts += 1; return Promise.reject(new Error('500: some other failure')); },
+  });
+  const conn = new BaseConnector(getServer('factorio'), client);
+  await assert.rejects(() => conn.runCommand(['/bin/true'], { awaitAgentMs: 5_000, pollMs: 5 }), /some other failure/);
+  assert.equal(attempts, 1);           // tried once, did not loop
+});
+
 // ── GMOD / TTT connector ───────────────────────────────────────────────────────────
 const GMOD_SERVER_CFG = [
   'hostname "Gamertown TTT"',

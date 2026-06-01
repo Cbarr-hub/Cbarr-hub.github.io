@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GAMERTOWN.SOLUTIONS :: SERVER CONTROL</title>
+  <title>GamerTownCloud :: Server Control</title>
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
   <style>
@@ -298,6 +298,20 @@
       padding: 3px 7px; font-family: "Courier New", monospace; font-size: 11px; white-space: nowrap; overflow: auto; }
     .qc-down { flex: 1; color: #666; font-size: 10px; font-style: italic; }
     .qc-copy { flex: none; }
+    .play-btn {
+      flex: none; display: inline-block;
+      background: #2a4a1a; border: 1px solid #7bb85f; color: #d4d4b8;
+      padding: 4px 10px; font-size: 11px; font-weight: bold; cursor: pointer;
+      text-decoration: none; font-family: Verdana, Arial, sans-serif;
+    }
+    .play-btn:visited { color: #d4d4b8; }
+    .play-btn:hover { background: #3a6a2a; color: #42F527; }
+
+    /* brand header */
+    #brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+    .brand-name { font-size: 20px; font-weight: bold; letter-spacing: 1px; color: #d4d4b8; }
+    .brand-cloud { color: #42F527; text-shadow: 0 0 8px rgba(66,245,39,0.45); }
+    .brand-tag { color: #777; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
     .fleet-summary { color: #777; font-size: 10px; }
     .fleet-summary b { color: #42F527; }
     .dash-err { color: #ff6666; font-size: 11px; }
@@ -339,6 +353,10 @@
     <div id="gate" style="display:none"></div>
 
     <div id="panel" style="display:none">
+      <div id="brand">
+        <span class="brand-name">GamerTown<span class="brand-cloud">Cloud</span></span>
+        <span class="brand-tag">game server control</span>
+      </div>
       <div class="sec-head">Proxmox Host</div>
       <div id="dashboard" class="dash">
         <div class="dash-err" style="font-style:italic;color:#999">loading host stats&hellip;</div>
@@ -352,7 +370,7 @@
   </div>
 
   <div id="footer-bar">
-    &copy; 2026 GAMERTOWN.SOLUTIONS &mdash; all realities reserved
+    &copy; 2026 GamerTownCloud &mdash; all realities reserved
   </div>
 
   <script type="module">
@@ -455,11 +473,14 @@
       const rows = servers.map(s => {
         const { cls, label } = statusBits(s)
         const conn = s.connect?.string
+        const launch = s.connect?.launch
         return `<div class="qc-row">
           <span class="dot ${cls}" title="${esc(label)}"></span>
           <span class="qc-name">${esc(s.name)}</span>
           ${conn
-            ? `<code class="qc-code">${esc(conn)}</code><button class="copy-btn qc-copy" data-qc-copy="${esc(conn)}">Copy</button>`
+            ? `<code class="qc-code">${esc(conn)}</code><button class="copy-btn qc-copy" data-qc-copy="${esc(conn)}">Copy</button>${launch
+                ? `<a class="play-btn" href="${esc(launch)}" title="Open the game and connect to this server">Launch</a>`
+                : ''}`
             : `<span class="qc-down">${esc(label.toLowerCase())} — no join address</span>`}
         </div>`
       }).join('')

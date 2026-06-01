@@ -63,8 +63,10 @@ export class MinecraftConnector extends BaseConnector {
     return res.stdout.trim() === 'active';
   }
 
+  // Start/restart may be fired right after a Start VM, so wait out the guest
+  // agent's post-boot warm-up (up to 45s) instead of erroring immediately.
   async startGame() {
-    await this.runShell('systemctl start minecraft', { timeoutMs: 30_000 });
+    await this.runShell('systemctl start minecraft', { timeoutMs: 30_000, awaitAgentMs: 45_000 });
     return { ok: true };
   }
 
@@ -74,7 +76,7 @@ export class MinecraftConnector extends BaseConnector {
   }
 
   async restartGame() {
-    await this.runShell('systemctl restart minecraft', { timeoutMs: 90_000 });
+    await this.runShell('systemctl restart minecraft', { timeoutMs: 90_000, awaitAgentMs: 45_000 });
     return { ok: true };
   }
 

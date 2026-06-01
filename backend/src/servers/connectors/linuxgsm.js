@@ -14,10 +14,11 @@ export class LinuxGsmConnector extends BaseConnector {
   gsmDir = '';         // e.g. /home/miles/csserver
   gsmScript = '';      // e.g. cs2server
 
-  #gsm(action, timeoutMs) {
+  #gsm(action, timeoutMs, awaitAgentMs = 0) {
     return this.runShell(`cd ${this.gsmDir} && ./${this.gsmScript} ${action}`, {
       asUser: this.gsmUser,
       timeoutMs,
+      awaitAgentMs,
     });
   }
 
@@ -32,8 +33,10 @@ export class LinuxGsmConnector extends BaseConnector {
     return res.exitCode === 0;
   }
 
+  // Start/restart may be fired right after a Start VM, so wait out the guest
+  // agent's post-boot warm-up (up to 45s) instead of erroring immediately.
   async startGame() {
-    await this.#gsm('start', 120_000);
+    await this.#gsm('start', 120_000, 45_000);
     return { ok: true };
   }
 
@@ -43,7 +46,7 @@ export class LinuxGsmConnector extends BaseConnector {
   }
 
   async restartGame() {
-    await this.#gsm('restart', 180_000);
+    await this.#gsm('restart', 180_000, 45_000);
     return { ok: true };
   }
 

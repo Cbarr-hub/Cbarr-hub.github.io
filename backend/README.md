@@ -90,5 +90,3 @@ node src/cli.js delete-user
 - Seed data for the `games` table (wheel page). The old Supabase rows need
   to be re-entered or imported.
 - Display-name editing UI.
-- Live in-game RCON commands (Factorio port 34198, CS2 rcon) — power/update/config
-  are wired; changemap-without-restart and similar are not.

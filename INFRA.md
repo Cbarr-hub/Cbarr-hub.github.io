@@ -236,6 +236,9 @@ VMIDs only ever come from the registry — the API can never be aimed at another
 | PATCH / DELETE | `/api/servers/:id/maps/:workshopId` | rename / remove a catalog map |
 | GET / POST | `/api/servers/:id/configs` | CS saved-config library (list / create) |
 | GET / PUT / DELETE | `/api/servers/:id/configs/:configId` | read / update / delete a saved config |
+| GET | `/api/servers/:id/live` | live-control availability + curated actions |
+| POST | `/api/servers/:id/live/command` | run a free-form console/RCON command |
+| POST | `/api/servers/:id/live/action` | run a curated action (restart round, cheats, …) |
 
 `shutdown`/`reboot` are graceful (ACPI, needs guest agent); `stop` is a hard
 power-off (force, confirm-gated in the UI). If the PVE token is unset, every
@@ -386,8 +389,9 @@ sources the config — they must appear as **literal text** in the file.
   enemy density for `death-world`, etc.). The `--map-gen-settings` JSON overrides
   individual resource settings on top of the preset.
 
-*RCON:* default password `CHANGE_ME` on port 34198 — live in-game commands not wired
-in the panel yet.
+*RCON:* live in-game commands ARE wired (Phase 3, see "Live commands" below).
+Factorio RCON is on port 34198; the `rconpassword` defaults to LinuxGSM's
+`CHANGE_ME` until overridden in `common.cfg`.
 
 **Join strings:** each server's `connect` info comes from the registry
 (`port` + `connect` style) and `PUBLIC_HOST` (env, default `104.177.95.216` —
@@ -402,8 +406,17 @@ Minecraft `104.177.95.216:25565`.
 - **Updates:** CS2 + Factorio use LinuxGSM `update` (SteamCMD + restart). Minecraft
   pulls the latest stable `server.jar` from Mojang's version manifest, backs up the
   old jar, and restarts (see `connectors/minecraft.js` `update()`).
-- **Live commands** (changemap, etc. without a restart) are not wired yet — RCON is
-  available in-guest (Factorio rcon-port 34198; CS2 rcon) as a future stretch goal.
+- **Live commands (Phase 3):** the Runtime panel sends live, no-restart commands.
+  A tiny embedded Source-RCON client (`backend/src/servers/rcon.js`) runs in-guest
+  via `python3` over the guest agent — the command goes as an argv element (never
+  a shell) and the password on stdin (never in argv/`ps`). CS2 speaks RCON on the
+  game port (27015) and needs `rcon_password` set in `cs2server.cfg`; Factorio on
+  34198. Minecraft has no RCON and uses the tmux console, reading output back from
+  the log. Curated actions per game: CS2 restart-round / cheats / bunnyhop;
+  Factorio `/players`,`/time`; Minecraft list / save.
+- **gameStatus (hosting/idle/down):** `LinuxGsmConnector.gameRunning()` checks
+  whether the game's registry port is bound via `ss` (LinuxGSM has no working
+  `status` subcommand). Minecraft uses `systemctl is-active`.
 - **Factorio 2.0 / Space Age** (v2.0.76 build 84451): mods `elevated-rails`,
   `quality`, `space-age` are always active. Map gen settings must use Factorio 2.0
   MapGenSize enum — see above.

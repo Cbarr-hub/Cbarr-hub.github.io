@@ -1,7 +1,7 @@
 # Server Control Panel — Expansion Plan
 
-Status: **Phase 1 + Phase 2 implemented; Phases 3–6 pending.** This document is
-the implementation spec for the work on `/servers.html` + `/api/servers`. Read it
+Status: **Phases 1–3 implemented; Phases 4–6 pending.** This document is the
+implementation spec for the work on `/servers.html` + `/api/servers`. Read it
 alongside [`INFRA.md`](INFRA.md) ("Game Server Control Panel") and
 [`backend/README.md`](backend/README.md).
 
@@ -208,7 +208,7 @@ section renderer). Startup panel contents:
 
 ---
 
-## 7. Phase 3 — Runtime / live command surface (RCON)
+## 7. Phase 3 — Runtime / live command surface (RCON) — ✅ implemented
 
 ### 7.1 Connector capability (`BaseConnector`)
 

@@ -194,6 +194,19 @@
     /* ── Runtime (live) panel ── */
     .rt-actions { display: flex; flex-wrap: wrap; gap: 6px; }
     [data-rt-cmd] { flex: 1; min-width: 0; font-family: "Courier New", monospace; }
+    /* ── unified per-server console + per-button loading spinner ── */
+    .console {
+      background: #101410; border: 1px solid #2a2a2a; color: #b8d4a0;
+      padding: 6px 8px; font-family: "Courier New", monospace; font-size: 11px;
+      white-space: pre-wrap; max-height: 200px; overflow: auto; margin-top: 10px;
+    }
+    button.retro-btn.loading { position: relative; color: transparent !important; pointer-events: none; }
+    button.retro-btn.loading::after {
+      content: ''; position: absolute; left: 50%; top: 50%;
+      width: 11px; height: 11px; margin: -6px 0 0 -6px;
+      border: 2px solid rgba(123,184,95,0.35); border-top-color: #42F527;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
     .panel-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
     .panel label { color: #7bb85f; font-size: 11px; font-weight: bold; }
     select, input[type=text], input[type=number] {
@@ -321,6 +334,7 @@
       refresh: 'Refresh Status',
       start: 'Start VM',
       startGame: 'Start Hosting',
+      restartGame: 'Restart Hosting',
       stopGame: 'Stop Hosting',
       reboot: 'Restart VM',
       shutdown: 'Shut Down',
@@ -359,6 +373,7 @@
                 <div class="action-group-title">Game Service</div>
                 <div class="action-group-note">Start or stop the playable server process.</div>
                 <button class="retro-btn" type="button" data-act="startGame">Start Hosting</button>
+                <button class="retro-btn" type="button" data-act="restartGame">Restart Hosting</button>
                 <button class="retro-btn danger" type="button" data-act="stopGame">Stop Hosting</button>
               </section>
               <section class="action-group" data-action-group="vm" aria-label="Virtual machine actions">
@@ -400,8 +415,9 @@
               <button class="retro-btn" data-cfg-save disabled>Save</button>
             </div>
             <textarea class="cfg" data-cfg-text placeholder="select a config file and click Open" disabled></textarea>
-            <pre class="out" data-out style="display:none"></pre>
           </div>
+
+          <pre class="console" data-console style="display:none"></pre>
         </div>
       </div>`
     }
@@ -409,7 +425,7 @@
     function wireCard(id) {
       const root = document.getElementById(`srv-${id}`)
       const errEl = root.querySelector('[data-err]')
-      const out   = root.querySelector('[data-out]')
+      const consoleEl = root.querySelector('[data-console]')
       const sel   = root.querySelector('[data-cfg-select]')
       const text  = root.querySelector('[data-cfg-text]')
       const saveBtn = root.querySelector('[data-cfg-save]')
@@ -432,7 +448,31 @@
           if (current) updateStatus(root, current)
         }
       }
-      const showOut = (txt) => { out.style.display = 'block'; out.textContent = txt }
+      // unified per-server console: every state change logs its result here.
+      function logLine(text, body) {
+        consoleEl.style.display = 'block'
+        const t = new Date().toLocaleTimeString()
+        let entry = `[${t}] ${text}`
+        if (body != null && String(body).trim()) entry += `\n${String(body).replace(/\s+$/, '')}`
+        consoleEl.textContent += (consoleEl.textContent ? '\n' : '') + entry
+        consoleEl.scrollTop = consoleEl.scrollHeight
+      }
+      const showOut = (txt) => logLine(txt)
+      // run an async op with a spinner on the triggering control + error capture.
+      async function withBtn(btn, label, fn) {
+        setErr('')
+        const prev = btn ? btn.disabled : false
+        if (btn) { btn.disabled = true; btn.classList.add('loading') }
+        try {
+          const res = await fn()
+          return res
+        } catch (e) {
+          setErr(e.message); if (label) logLine(`${label} — error: ${e.message}`)
+          throw e
+        } finally {
+          if (btn) { btn.disabled = prev; btn.classList.remove('loading') }
+        }
+      }
 
       // apply initial game-button state from the server data already in `servers`
       const initData = servers.find(x => x.id === id)
@@ -465,33 +505,34 @@
         setTimeout(() => { copyBtn.textContent = old }, 1200)
       })
 
-      async function runAction(act) {
+      async function runAction(act, btn) {
         if (act === 'refresh') {
-          setErr(''); setBusy(true, 'Refreshing...')
-          try { await refresh() }
+          setErr(''); setBusy(true, 'Refreshing...'); if (btn) btn.classList.add('loading')
+          try { await refresh(); logLine('Status refreshed') }
           catch (e) { setErr(e.message) }
-          finally { setBusy(false) }
+          finally { if (btn) btn.classList.remove('loading'); setBusy(false) }
           return
         }
         if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
         if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
         const label = actionLabels[act] || 'Working'
-        setErr(''); setBusy(true, `${label}...`)
+        setErr(''); setBusy(true, `${label}...`); logLine(`${label}…`); if (btn) btn.classList.add('loading')
         try {
           await dbServerAction(id, act)
           // give Proxmox a moment, then refresh status
           await new Promise(r => setTimeout(r, 1500))
           await refresh()
+          logLine(`${label} ✓`)
         } catch (e) {
-          setErr(e.message)
+          setErr(e.message); logLine(`${label} — error: ${e.message}`)
         } finally {
-          setBusy(false)
+          if (btn) btn.classList.remove('loading'); setBusy(false)
         }
       }
 
       root.querySelectorAll('[data-act]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          await runAction(btn.dataset.act)
+          await runAction(btn.dataset.act, btn)
         })
       })
 
@@ -542,13 +583,13 @@
         let data
         try { data = await dbGetServerLive(id) } catch { return }
         if (!data) return
-        renderLive(data)
+        await renderLive(data)
         rt.dataset.loaded = '1'
         const current = servers.find(x => x.id === id)
         if (current) updateStatus(root, current)
       }
 
-      function renderLive(data) {
+      async function renderLive(data) {
         const body = rt.querySelector('[data-rt-body]')
         if (!data.available) {
           body.innerHTML = `<div class="qs-note-block">${esc(data.reason || 'live control unavailable')}</div>`
@@ -556,34 +597,56 @@
         }
         const actions = (data.actions || []).map(a =>
           `<button class="retro-btn${a.danger ? ' danger' : ''}" data-rt-act="${esc(a.key)}">${esc(a.label)}</button>`).join('')
+
+        // optional live change-map control — map options reuse the Startup settings.
+        let changeMapHtml = ''
+        if (data.changeMap) {
+          let opts = ''
+          try {
+            const m = (await dbGetServerSettings(id))?.map || { stock: [], workshop: [], current: '' }
+            opts = '<optgroup label="Stock">' +
+              m.stock.map(n => `<option value="${esc(n)}"${n === m.current ? ' selected' : ''}>${esc(n)}</option>`).join('') + '</optgroup>'
+            if (m.workshop?.length) opts += '<optgroup label="Workshop">' +
+              m.workshop.map(w => { const v = `ws:${w.id}`; return `<option value="${esc(v)}"${v === m.current ? ' selected' : ''}>${esc(w.name)}</option>` }).join('') + '</optgroup>'
+          } catch {}
+          changeMapHtml = `
+            <div class="qs-section-title" style="margin-top:10px">Change Map (live)</div>
+            <div class="inline" style="display:flex;gap:6px;align-items:center">
+              <select data-rt-map style="flex:1;min-width:0">${opts}</select>
+              <button class="retro-btn" data-rt-changemap>Change Now</button>
+            </div>`
+        }
+
         body.innerHTML = `
           <div class="rt-actions">${actions}</div>
-          <div class="panel-row" style="margin-top:6px">
+          ${changeMapHtml}
+          <div class="panel-row" style="margin-top:8px">
             <input type="text" data-rt-cmd placeholder="${esc(data.commandHint || 'console command…')}" />
             <button class="retro-btn" data-rt-send>Send</button>
-          </div>
-          <pre class="out" data-rt-out style="display:none"></pre>`
+          </div>`
 
-        const rtOut = body.querySelector('[data-rt-out]')
         const cmdEl = body.querySelector('[data-rt-cmd]')
-        const logOut = (label, text) => {
-          rtOut.style.display = 'block'
-          rtOut.textContent += (rtOut.textContent ? '\n\n' : '') + `> ${label}\n${String(text ?? '').replace(/\s+$/, '')}`
-          rtOut.scrollTop = rtOut.scrollHeight
-        }
         body.querySelectorAll('[data-rt-act]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            setErr(''); btn.disabled = true
-            try { const r = await dbServerLiveAction(id, btn.dataset.rtAct); logOut(btn.textContent.trim(), r?.output) }
-            catch (e) { setErr(e.message) } finally { btn.disabled = false }
-          })
+          btn.addEventListener('click', () => withBtn(btn, btn.textContent.trim(), async () => {
+            const r = await dbServerLiveAction(id, btn.dataset.rtAct)
+            logLine(`> ${btn.textContent.trim()}`, r?.output)
+          }).catch(() => {}))
         })
-        const send = async () => {
+        const cm = body.querySelector('[data-rt-changemap]')
+        if (cm) cm.addEventListener('click', () => {
+          const val = body.querySelector('[data-rt-map]').value
+          withBtn(cm, 'Change map', async () => {
+            const r = await dbServerLiveAction(id, 'change_map', val)
+            logLine(`> change map → ${val}`, r?.output)
+          }).catch(() => {})
+        })
+        const send = () => {
           const cmd = cmdEl.value.trim()
           if (!cmd) return
-          setErr(''); cmdEl.disabled = true
-          try { const r = await dbServerLiveCommand(id, cmd); logOut(cmd, r?.output); cmdEl.value = '' }
-          catch (e) { setErr(e.message) } finally { cmdEl.disabled = false; cmdEl.focus() }
+          withBtn(body.querySelector('[data-rt-send]'), cmd, async () => {
+            const r = await dbServerLiveCommand(id, cmd)
+            logLine(`> ${cmd}`, r?.output); cmdEl.value = ''
+          }).catch(() => {}).finally(() => cmdEl.focus())
         }
         body.querySelector('[data-rt-send]').addEventListener('click', send)
         cmdEl.addEventListener('keydown', e => { if (e.key === 'Enter') send() })
@@ -652,15 +715,13 @@
               if (sectionKey === 'saveAs') {
                 if (!confirm(`Save current world as "${values.saveName}"?\n\nIf a save with this name already exists it will be overwritten.`)) return
               }
-              setErr('')
-              const btn = secEl.querySelector('[data-qs-save]')
-              btn.disabled = true
-              try {
+              const secLabel = secEl.querySelector('[data-qs-save]').textContent.trim()
+              withBtn(secEl.querySelector('[data-qs-save]'), secLabel, async () => {
                 const res = await dbSaveServerSettings(id, values)
-                if (res?.steps) showOut(formatUpdate(res))
-                if (res?.ok === false) setErr('operation failed — see output below')
-                else if (!res?.steps) showOut('settings saved ✓ — restart the server to apply')
-              } catch (e) { setErr(e.message) } finally { btn.disabled = false }
+                if (res?.steps) logLine(`${secLabel} ✓`, formatUpdate(res))
+                else logLine(`${secLabel} ✓ — restart the server to apply`)
+                if (res?.ok === false) setErr('operation failed — see console')
+              }).catch(() => {})
             })
           })
           return
@@ -842,22 +903,23 @@
           }
           list.addEventListener('change', () => loadInto(list.value))
           loadInto('__new__')
-          ed.querySelector('[data-ce-save]').addEventListener('click', async () => {
-            setErr('')
+          ed.querySelector('[data-ce-save]').addEventListener('click', (e) => {
             const nm = nameEl.value.trim(), body = bodyEl.value
-            try {
+            withBtn(e.currentTarget, `Save config "${nm}"`, async () => {
               if (list.value === '__new__') await dbCreateServerConfig(id, nm, body)
               else await dbUpdateServerConfig(id, list.value, { name: nm, body })
               await csReload(mapSel.value === '__add__' ? undefined : mapSel.value)
-              showOut(`config "${nm}" saved ✓`)
-            } catch (e) { setErr(e.message) }
+              logLine(`Config "${nm}" saved ✓`)
+            }).catch(() => {})
           })
-          delBtn.addEventListener('click', async () => {
+          delBtn.addEventListener('click', (e) => {
             if (list.value === '__new__') return
             if (!confirm('Delete this config?')) return
-            setErr('')
-            try { await dbDeleteServerConfig(id, list.value); await csReload(mapSel.value === '__add__' ? undefined : mapSel.value); showOut('config deleted ✓') }
-            catch (e) { setErr(e.message) }
+            withBtn(e.currentTarget, 'Delete config', async () => {
+              await dbDeleteServerConfig(id, list.value)
+              await csReload(mapSel.value === '__add__' ? undefined : mapSel.value)
+              logLine('Config deleted ✓')
+            }).catch(() => {})
           })
         }
 
@@ -872,12 +934,10 @@
             hostname: $('[data-cs-hostname]').value,
             configId: cfgVal === '' ? '' : Number(cfgVal),
           }
-          setErr('')
-          const btn = $('[data-cs-apply]'); btn.disabled = true
-          try {
+          withBtn($('[data-cs-apply]'), 'Apply settings', async () => {
             await dbSaveServerSettings(id, payload)
-            showOut('settings saved ✓ — restart the server to apply')
-          } catch (e) { setErr(e.message) } finally { btn.disabled = false }
+            logLine('Startup settings saved ✓ — restart (or use Runtime → Apply Config) to apply')
+          }).catch(() => {})
         })
       }
 
@@ -897,17 +957,17 @@
       loadLive()
 
       // update recipe
-      root.querySelector('[data-update]').addEventListener('click', async () => {
+      const updateBtn = root.querySelector('[data-update]')
+      updateBtn.addEventListener('click', async () => {
         if (!confirm('Run the update recipe? This may stop and restart the server.')) return
-        setErr(''); setBusy(true, 'Updating...'); showOut('running update...')
+        setErr(''); setBusy(true, 'Updating...'); updateBtn.classList.add('loading'); logLine('Update Server…')
         try {
           const res = await dbUpdateServer(id)
-          showOut(formatUpdate(res))
+          logLine('Update Server ✓', formatUpdate(res))
           await refresh()
         } catch (e) {
-          setErr(e.message)
-          out.style.display = 'none'
-        } finally { setBusy(false) }
+          setErr(e.message); logLine(`Update Server — error: ${e.message}`)
+        } finally { updateBtn.classList.remove('loading'); setBusy(false) }
       })
     }
 
@@ -923,15 +983,15 @@
 
       if (gs === 'down') {
         show('start', 'refresh')
-        hide('reboot', 'shutdown', 'stop', 'startGame', 'stopGame')
+        hide('reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'restartGame')
       } else if (gs === 'idle') {
         show('startGame', 'shutdown', 'stop', 'refresh')
-        hide('start', 'reboot', 'stopGame')
+        hide('start', 'reboot', 'stopGame', 'restartGame')
       } else if (gs === 'hosting') {
-        show('stopGame', 'shutdown', 'stop', 'refresh')
+        show('stopGame', 'restartGame', 'shutdown', 'stop', 'refresh')
         hide('start', 'reboot', 'startGame')
       } else {
-        show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'refresh')
+        show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'restartGame', 'refresh')
       }
 
       root.querySelectorAll('[data-action-group]').forEach(group => {

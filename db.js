@@ -228,8 +228,9 @@ export async function dbServerLiveCommand(id, command) {
   return api(`/servers/${encodeURIComponent(id)}/live/command`, { method: 'POST', body: { command } });
 }
 
-export async function dbServerLiveAction(id, action) {
-  return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body: { action } });
+export async function dbServerLiveAction(id, action, value) {
+  const body = value === undefined ? { action } : { action, value };
+  return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body });
 }
 
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────

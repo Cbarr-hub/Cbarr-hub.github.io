@@ -62,7 +62,89 @@
     .status .meta { color: #666666; }
 
     .srv-body { padding: 8px; }
-    .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .server-actions {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) auto;
+      gap: 6px;
+      align-items: start;
+      margin-bottom: 8px;
+    }
+
+    .primary-action {
+      min-height: 34px;
+      justify-content: center;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .primary-action.danger {
+      background: #4a1a1a;
+      border-color: #b85f5f;
+    }
+
+    .primary-action .spinner {
+      display: none;
+      width: 10px;
+      height: 10px;
+      margin-right: 6px;
+      border: 2px solid #555555;
+      border-top-color: #42F527;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      vertical-align: -2px;
+    }
+
+    .primary-action.busy .spinner { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .more-actions {
+      position: relative;
+    }
+
+    .more-actions summary {
+      list-style: none;
+    }
+
+    .more-actions summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .more-actions[open] summary {
+      background: #3a6a2a;
+      color: #42F527;
+    }
+
+    .more-actions summary[aria-disabled="true"] {
+      pointer-events: none;
+      opacity: 0.5;
+    }
+
+    .more-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      z-index: 5;
+      display: grid;
+      gap: 4px;
+      min-width: 150px;
+      padding: 6px;
+      border: 1px solid #3a3a3a;
+      background: #181818;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+    }
+
+    .more-menu .retro-btn {
+      width: 100%;
+      text-align: left;
+    }
+
+    .action-hint {
+      grid-column: 1 / -1;
+      color: #999999;
+      font-size: 10px;
+      min-height: 12px;
+    }
 
     .connbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
     .connbar .clbl { color: #7bb85f; font-size: 11px; font-weight: bold; }
@@ -75,7 +157,10 @@
       font-size: 11px; font-weight: bold; cursor: pointer; font-family: Verdana, Arial, sans-serif; }
     .copy-btn:hover { background: #3a5a7a; color: #9fd0ff; }
 
-    button.retro-btn {
+    button.retro-btn,
+    summary.retro-btn {
+      display: inline-flex;
+      align-items: center;
       background: #2a4a1a;
       color: #d4d4b8;
       border: 1px solid #7bb85f;
@@ -84,8 +169,10 @@
       font-size: 11px;
       cursor: pointer;
       font-weight: bold;
+      user-select: none;
     }
-    button.retro-btn:hover { background: #3a6a2a; color: #42F527; }
+    button.retro-btn:hover,
+    summary.retro-btn:hover { background: #3a6a2a; color: #42F527; }
     button.retro-btn:disabled { background: #333333; color: #555555; border-color: #3a3a3a; cursor: default; }
     button.retro-btn.danger { background: #4a1a1a; border-color: #b85f5f; }
     button.retro-btn.danger:hover { background: #6a2a2a; color: #ff7777; }
@@ -232,6 +319,23 @@
       return { cls, label, meta }
     }
 
+    const actionMeta = {
+      refresh: { label: 'Refresh Status', hint: 'Check the latest VM and game state.' },
+      start: { label: 'Start VM', hint: 'Power on the virtual machine.' },
+      startGame: { label: 'Start Hosting', hint: 'Launch the game server for players.' },
+      stopGame: { label: 'Stop Hosting', hint: 'Stop the game process and kick active players.', danger: true },
+      reboot: { label: 'Restart VM', hint: 'Gracefully reboot the whole virtual machine.' },
+      shutdown: { label: 'Shut Down', hint: 'Gracefully power down the virtual machine.' },
+      stop: { label: 'Force Stop', hint: 'Immediately cut VM power. Use only when stuck.', danger: true }
+    }
+
+    function primaryActionFor(s) {
+      if (s.gameStatus === 'down') return 'start'
+      if (s.gameStatus === 'idle') return 'startGame'
+      if (s.gameStatus === 'hosting') return 'stopGame'
+      return 'refresh'
+    }
+
     function cardHtml(s) {
       const { cls, label, meta } = statusBits(s)
       return `
@@ -239,7 +343,6 @@
         <div class="srv-head">
           <div><span class="srv-name">${esc(s.name)}</span><span class="srv-vmid">VMID ${esc(s.vmid)}</span></div>
           <div style="display:flex;align-items:center;gap:10px">
-            <button class="retro-btn" data-update>Update</button>
             <div class="status" data-status>
               <span class="dot ${cls}"></span>
               <span class="label">${esc(label)}</span>
@@ -254,16 +357,24 @@
             <code data-conn>${esc(s.connect.string)}</code>
             <button class="copy-btn" data-copy>Copy</button>
           </div>` : ''}
-          <div class="btn-row">
-            <button class="retro-btn" data-act="start">Start VM</button>
-            <button class="retro-btn" data-act="reboot">Restart VM</button>
-            <button class="retro-btn" data-act="shutdown">Shut Down</button>
-            <button class="retro-btn danger" data-act="stop">Force Stop</button>
-          </div>
-          <div class="btn-row" style="margin-top:4px">
-            <button class="retro-btn" data-act="startGame">Start Hosting</button>
-            <button class="retro-btn danger" data-act="stopGame">Stop Hosting</button>
-            <button class="retro-btn" data-act="refresh">Refresh</button>
+          <div class="server-actions" data-actions>
+            <button class="retro-btn primary-action" data-primary-action type="button">
+              <span class="spinner" aria-hidden="true"></span><span data-primary-label>Refresh Status</span>
+            </button>
+            <details class="more-actions" data-more-actions>
+              <summary class="retro-btn" role="button">More</summary>
+              <div class="more-menu">
+                <button class="retro-btn" type="button" data-act="refresh">Refresh Status</button>
+                <button class="retro-btn" type="button" data-act="start">Start VM</button>
+                <button class="retro-btn" type="button" data-act="startGame">Start Hosting</button>
+                <button class="retro-btn danger" type="button" data-act="stopGame">Stop Hosting</button>
+                <button class="retro-btn" type="button" data-act="reboot">Restart VM</button>
+                <button class="retro-btn" type="button" data-act="shutdown">Shut Down</button>
+                <button class="retro-btn danger" type="button" data-act="stop">Force Stop</button>
+                <button class="retro-btn" type="button" data-update>Update Server</button>
+              </div>
+            </details>
+            <div class="action-hint" data-action-hint></div>
           </div>
           <div class="srv-err" data-err></div>
 
@@ -296,12 +407,27 @@
       const sel   = root.querySelector('[data-cfg-select]')
       const text  = root.querySelector('[data-cfg-text]')
       const saveBtn = root.querySelector('[data-cfg-save]')
+      const primaryBtn = root.querySelector('[data-primary-action]')
+      const primaryLabel = root.querySelector('[data-primary-label]')
+      const actionHint = root.querySelector('[data-action-hint]')
 
       const setErr = (m) => { errEl.textContent = m || '' }
-      const setBusy = (busy) => {
-        root.querySelectorAll('.btn-row button').forEach(b => b.disabled = busy)
+      const setBusy = (busy, label = 'Working...') => {
+        root.querySelectorAll('[data-actions] button, [data-actions] summary').forEach(b => {
+          if ('disabled' in b) b.disabled = busy
+          b.setAttribute('aria-disabled', String(busy))
+        })
         const dot = root.querySelector('.dot')
-        if (busy) { dot.className = 'dot busy' }
+        primaryBtn.classList.toggle('busy', busy)
+        root.querySelector('[data-actions]').setAttribute('aria-busy', String(busy))
+        if (busy) {
+          dot.className = 'dot busy'
+          primaryLabel.textContent = label
+          actionHint.textContent = 'Waiting for the server to report back...'
+        } else {
+          const current = servers.find(x => x.id === id)
+          if (current) updateStatus(root, current)
+        }
       }
       const showOut = (txt) => { out.style.display = 'block'; out.textContent = txt }
 
@@ -336,24 +462,36 @@
         setTimeout(() => { copyBtn.textContent = old }, 1200)
       })
 
-      // power actions
+      async function runAction(act) {
+        if (act === 'refresh') {
+          setErr(''); setBusy(true, 'Refreshing...')
+          try { await refresh() }
+          catch (e) { setErr(e.message) }
+          finally { setBusy(false) }
+          return
+        }
+        if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
+        if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
+        const meta = actionMeta[act] || actionMeta.refresh
+        setErr(''); setBusy(true, `${meta.label}...`)
+        try {
+          await dbServerAction(id, act)
+          // give Proxmox a moment, then refresh status
+          await new Promise(r => setTimeout(r, 1500))
+          await refresh()
+        } catch (e) {
+          setErr(e.message)
+        } finally {
+          setBusy(false)
+        }
+      }
+
+      primaryBtn.addEventListener('click', () => runAction(primaryBtn.dataset.act || 'refresh'))
+
       root.querySelectorAll('[data-act]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const act = btn.dataset.act
-          if (act === 'refresh') return refresh()
-          if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
-          if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
-          setErr(''); setBusy(true)
-          try {
-            await dbServerAction(id, act)
-            // give Proxmox a moment, then refresh status
-            await new Promise(r => setTimeout(r, 1500))
-            await refresh()
-          } catch (e) {
-            setErr(e.message)
-          } finally {
-            setBusy(false)
-          }
+          root.querySelector('[data-more-actions]').removeAttribute('open')
+          await runAction(btn.dataset.act)
         })
       })
 
@@ -706,8 +844,9 @@
 
       // update recipe
       root.querySelector('[data-update]').addEventListener('click', async () => {
+        root.querySelector('[data-more-actions]').removeAttribute('open')
         if (!confirm('Run the update recipe? This may stop and restart the server.')) return
-        setErr(''); setBusy(true); showOut('running update…')
+        setErr(''); setBusy(true, 'Updating...'); showOut('running update...')
         try {
           const res = await dbUpdateServer(id)
           showOut(formatUpdate(res))
@@ -726,8 +865,19 @@
       root.querySelector('.status .meta').innerHTML = meta
 
       const gs = s.gameStatus
+      const primaryAct = primaryActionFor(s)
+      const primaryMeta = actionMeta[primaryAct] || actionMeta.refresh
+      const primaryBtn = root.querySelector('[data-primary-action]')
+      const primaryLabel = root.querySelector('[data-primary-label]')
+      const actionHint = root.querySelector('[data-action-hint]')
+      primaryBtn.dataset.act = primaryAct
+      primaryLabel.textContent = primaryMeta.label
+      actionHint.textContent = primaryMeta.hint
+      primaryBtn.classList.toggle('danger', Boolean(primaryMeta.danger))
+
       const show = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = '' })
       const hide = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = 'none' })
+      const hidePrimary = () => hide(primaryAct)
 
       if (gs === 'down') {
         show('start', 'refresh')
@@ -741,6 +891,7 @@
       } else {
         show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'refresh')
       }
+      hidePrimary()
 
       // settings panel only when hosting and populated
       const qs = root.querySelector('[data-quickset]')

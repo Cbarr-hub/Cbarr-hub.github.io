@@ -212,10 +212,16 @@ curl -sk https://192.168.1.200/api/me -b /tmp/c.txt
 
 ## Game Server Control Panel (`/servers.html` + `/api/servers`)
 
-Admins can power-cycle, update, and edit the config of the three game VMs from the
-browser at `https://192.168.1.200/servers.html`. The Fastify backend (in CT 103)
-reaches the VMs through the **Proxmox VE API** with a scoped **API token** — it
-never runs `qm` and never needs root on the host.
+Admins can power-cycle, update, and edit the config of the four game VMs (CS 100,
+Factorio 101, Minecraft 102, GMOD 104) from the browser at
+`https://192.168.1.200/servers.html`. The Fastify backend (in CT 103) reaches the
+VMs through the **Proxmox VE API** with a scoped **API token** — it never runs `qm`
+and never needs root on the host.
+
+**Startup config = named "Profiles"** (all four games): a profile is the structured
+startup config the server boots as, stored in SQLite (`server_profiles` +
+`server_active_profile`, migration 003); live RCON/console commands are the separate
+ephemeral layer. Design + per-game details → [`SERVER_PROFILES_PLAN.md`](SERVER_PROFILES_PLAN.md).
 
 ### Architecture (layers, infra → UI)
 

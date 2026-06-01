@@ -3,7 +3,7 @@
 // VMIDs MUST only ever come from this table — never from a request parameter.
 // The HTTP layer accepts an opaque `id` ("factorio"), looks it up here, and the
 // VMID never crosses the API boundary. That guarantees the control panel can
-// only ever touch these three VMs, no matter what a client sends.
+// only ever touch these four VMs, no matter what a client sends.
 //
 // VMIDs are from INFRA.md: CS=100, Factorio=101, Minecraft=102, GMOD/TTT=104.
 //

@@ -5,6 +5,11 @@ detail now lives in [`INFRA.md`](INFRA.md) ("Game Server Control Panel") and
 [`backend/README.md`](backend/README.md); this file tracks **phase status and
 what's left**.
 
+> **Superseded:** the per-game *startup-config* model below (Quick Settings, the CS
+> map catalog + raw config library) was reframed into named **Profiles** for all
+> four games — see [`SERVER_PROFILES_PLAN.md`](SERVER_PROFILES_PLAN.md). This doc
+> remains the record of the original panel/RCON/backups build.
+
 ## Goal
 
 A control panel with an explicit split between **Startup configuration** (applies

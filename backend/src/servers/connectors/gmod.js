@@ -122,11 +122,13 @@ export class GmodConnector extends LinuxGsmConnector {
       this.#listMaps(),
     ]);
     const defaultMap = (getVar(inst, 'defaultmap') || '').trim();
+    const stock      = maps.filter((m) => STOCK_ALWAYS.includes(m));
+    const collection = maps.filter((m) => !STOCK_ALWAYS.includes(m));
     return {
       game: 'gmod',
-      // CS-compatible `map` block: the live change-map dropdown reads
-      // map.stock/workshop/current. GMOD maps are plain bsp names → all stock.
-      map: { stock: maps.length ? maps : [defaultMap].filter(Boolean), workshop: [], current: defaultMap },
+      // Stock vs collection maps as separate groups so the live change-map shows
+      // two categories. GMOD maps are plain bsp names (no ws: ids).
+      map: { stock: stock.length ? stock : STOCK_ALWAYS, collection, workshop: [], current: defaultMap },
     };
   }
 
@@ -242,7 +244,10 @@ export class GmodConnector extends LinuxGsmConnector {
     // Always offer the stock fallback maps (gm_construct/gm_flatgrass), plus what
     // the collection has downloaded. The map fields are combos (custom:true) so a
     // collection map can be typed as the start map even before its first download.
-    const mapOpts = [...new Set([...STOCK_ALWAYS, ...discovered])].map((m) => ({ value: m, label: m }));
+    // Tag each map Stock vs Collection so the rotation builder shows two groups.
+    const mapOpts = [...new Set([...STOCK_ALWAYS, ...discovered])].map((m) => ({
+      value: m, label: m, group: STOCK_ALWAYS.includes(m) ? 'Stock' : 'Collection',
+    }));
     const numField = (f) => ({ key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01 });
 
     return {

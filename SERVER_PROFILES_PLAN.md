@@ -41,9 +41,29 @@
 > trimmed to just the map block (for the live change-map) so it doesn't
 > double-render. Box-verified against VM 101.
 >
-> **Next:** Counter-Strike (map + mode + max players + hostname + a raw-cvar block,
-> replacing the bespoke CS panel). **Minecraft skipped** (low value for this group).
-> Then live-vs-restart apply tagging.
+> **Counter-Strike (shipped):** profile = map (stock or `ws:<id>`) + game mode +
+> max players + server name + a raw extra-cvars block (the bunnyhop escape hatch →
+> `gamertown/active.cfg`). Collapses the old map + config-library + loose-settings
+> muddle into one switchable profile; retires the bespoke CS panel (`getSettings`
+> trimmed to the map block for the live change-map). Box-verified against VM 100.
+>
+> **All three useful games (GMOD / Factorio / CS) now run the unified Profiles +
+> live-commands model. Minecraft intentionally skipped.** Remaining: live-vs-restart
+> apply tagging + the startup-file drift badge.
+>
+> **Panel UX polish (servers.html):**
+> - **Per-panel loading placeholders** — Profiles / Quick Settings / Runtime /
+>   Backups each show a "Loading…" spinner while their data fetches (gated by
+>   `data-loading`/`data-loaded` + a `panelReady()` helper) instead of popping in.
+> - **Raw-config editor** is now a collapsed `<details>` that **auto-loads** the
+>   selected file when expanded (no more dead-space / select-to-load friction).
+> - **TTT map categories** — GMOD's live change-map and rotation builder split maps
+>   into **Stock** vs **Collection** `<optgroup>`s (driven by `STOCK_ALWAYS`).
+> - **Fresh status on mount** — each card pulls its own status via
+>   `dbGetServerStatus` when mounted, so panels gate on current data (fixes a panel
+>   occasionally staying hidden until you switch tabs and back, seen on Minecraft).
+> - The Servers page re-mounts the active card (re-runs `wireCard`) on each tab
+>   switch, so loads re-fire per tab.
 
 This is a *re-framing + completion*, not a rewrite. Status quo and the gap:
 

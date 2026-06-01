@@ -267,6 +267,23 @@
     .maplist-add select { flex: 1; min-width: 0; }
     .maplist-empty { color: #777; font-size: 10px; font-style: italic; padding: 3px 0; }
 
+    /* collapsible raw-config section */
+    details.rawcfg { border-top: 1px dashed #3a3a3a; margin-top: 8px; padding-top: 8px; }
+    details.rawcfg > summary { color: #7bb85f; font-size: 11px; font-weight: bold; cursor: pointer;
+      text-transform: uppercase; letter-spacing: 1px; list-style: none; user-select: none; }
+    details.rawcfg > summary::-webkit-details-marker { display: none; }
+    details.rawcfg > summary::before { content: '▸'; color: #5f8f4f; margin-right: 6px; }
+    details.rawcfg[open] > summary::before { content: '▾'; }
+
+    /* per-panel loading placeholder (sleek shimmer) */
+    .panel-ldg { display: flex; align-items: center; gap: 8px; color: #6f9f5f; font-size: 11px;
+      font-style: italic; padding: 8px 2px; }
+    .panel-ldg::before {
+      content: ''; width: 12px; height: 12px; flex: none;
+      border: 2px solid rgba(123,184,95,0.30); border-top-color: #42F527;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+
     /* ── Proxmox host dashboard ── */
     .dash {
       border: 1px solid #7bb85f; border-top: none;
@@ -413,7 +430,7 @@
 
   <script type="module">
     import {
-      dbGetServers, dbServerAction,
+      dbGetServers, dbGetServerStatus, dbServerAction,
       dbListServerConfig, dbReadServerConfig, dbWriteServerConfig, dbUpdateServer,
       dbGetServerSettings, dbSaveServerSettings,
       dbAddServerMap, dbRenameServerMap, dbDeleteServerMap,
@@ -745,38 +762,39 @@
           </div>
           <div class="srv-err" data-err></div>
 
-          <div class="panel profiles" data-profiles style="display:none">
+          <div class="panel profiles" data-profiles data-loading="1" style="display:none">
             <div class="panel-title">Profiles <span class="qs-note">startup config — Apply, then Restart Hosting to boot into it</span></div>
-            <div data-prof-body></div>
+            <div data-prof-body><div class="panel-ldg">Loading profiles…</div></div>
           </div>
 
-          <div class="panel quickset" data-quickset style="display:none">
+          <div class="panel quickset" data-quickset data-loading="1" style="display:none">
             <div class="panel-title">Quick Settings</div>
-            <div class="qs-fields" data-qs-fields></div>
+            <div class="qs-fields" data-qs-fields><div class="panel-ldg">Loading…</div></div>
             <div class="panel-row">
               <button class="retro-btn" data-qs-save>Save Settings</button>
               <span class="qs-note" data-qs-note></span>
             </div>
           </div>
 
-          <div class="panel runtime" data-runtime style="display:none">
+          <div class="panel runtime" data-runtime data-loading="1" style="display:none">
             <div class="panel-title">Runtime <span class="qs-note">live — server must be hosting</span></div>
-            <div data-rt-body></div>
+            <div data-rt-body><div class="panel-ldg">Loading runtime…</div></div>
           </div>
 
-          <div class="panel backups" data-backups style="display:none">
+          <div class="panel backups" data-backups data-loading="1" style="display:none">
             <div class="panel-title">Backups <span class="qs-note">offsite — Cloudflare R2</span></div>
-            <div data-bk-body></div>
+            <div data-bk-body><div class="panel-ldg">Loading backups…</div></div>
           </div>
 
-          <div class="panel">
-            <div class="panel-row">
-              <label>Config (raw)</label>
+          <details class="panel rawcfg" data-rawcfg>
+            <summary>Raw Config Files <span class="qs-note">advanced — edit a file directly</span></summary>
+            <div class="panel-row" style="margin-top:8px">
+              <label>File</label>
               <select data-cfg-select><option value="">— loading… —</option></select>
               <button class="retro-btn" data-cfg-save disabled>Save</button>
             </div>
-            <textarea class="cfg" data-cfg-text placeholder="select a config file and click Open" disabled></textarea>
-          </div>
+            <textarea class="cfg" data-cfg-text placeholder="expand to load…" disabled></textarea>
+          </details>
 
           <pre class="console" data-console style="display:none"></pre>
         </div>
@@ -898,7 +916,8 @@
         })
       })
 
-      // config: auto-load file list on page load
+      // config: load the file list (the section is collapsed by default)
+      const cfgDetails = root.querySelector('[data-rawcfg]')
       async function loadConfigList() {
         try {
           const { files } = await dbListServerConfig(id)
@@ -906,21 +925,28 @@
             || '<option value="">(no editable files)</option>'
         } catch (e) { setErr(e.message) }
       }
-      loadConfigList()
+      const cfgListReady = loadConfigList()
 
-      // config: read the file selected in the dropdown
-      sel.addEventListener('change', async () => {
-        const file = sel.value
+      // config: read a file into the editor
+      async function loadFile(file) {
         if (!file) return
-        setErr('')
+        text.disabled = true; saveBtn.disabled = true; text.value = 'loading…'
         try {
           const { content, truncated } = await dbReadServerConfig(id, file)
-          text.value = content
-          text.disabled = false
-          saveBtn.disabled = false
+          text.value = content; text.disabled = false; saveBtn.disabled = false
           if (truncated) setErr('note: file was truncated by Proxmox (very large file)')
-        } catch (e) { setErr(e.message); text.disabled = true; saveBtn.disabled = true }
+        } catch (e) { setErr(e.message); text.value = ''; text.disabled = true; saveBtn.disabled = true }
+      }
+
+      // auto-load the selected file the first time the section is expanded
+      cfgDetails.addEventListener('toggle', async () => {
+        if (cfgDetails.open && !cfgDetails.dataset.loaded) {
+          cfgDetails.dataset.loaded = '1'
+          await cfgListReady
+          loadFile(sel.value)
+        }
       })
+      sel.addEventListener('change', () => loadFile(sel.value))
 
       // config: save
       saveBtn.addEventListener('click', async () => {
@@ -941,15 +967,23 @@
       const rt = root.querySelector('[data-runtime]')
       const bk = root.querySelector('[data-backups]')
 
+      // Clear a panel's loading state and re-gate it. applicable=false → the panel
+      // doesn't apply to this game (stays hidden); true → loaded, shows content.
+      function panelReady(panel, applicable = true) {
+        if (!panel) return
+        panel.dataset.loading = ''
+        if (applicable) panel.dataset.loaded = '1'
+        const current = servers.find(x => x.id === id)
+        if (current) updateStatus(root, current)
+      }
+
       // ── runtime (live RCON/console) panel ─────────────────────────────────
       async function loadLive() {
         let data
-        try { data = await dbGetServerLive(id) } catch { return }
-        if (!data) return
+        try { data = await dbGetServerLive(id) } catch { return panelReady(rt, false) }
+        if (!data) return panelReady(rt, false)
         await renderLive(data)
-        rt.dataset.loaded = '1'
-        const current = servers.find(x => x.id === id)
-        if (current) updateStatus(root, current)
+        panelReady(rt)
       }
 
       async function renderLive(data) {
@@ -966,10 +1000,13 @@
         if (data.changeMap) {
           let opts = ''
           try {
-            const m = (await dbGetServerSettings(id))?.map || { stock: [], workshop: [], current: '' }
-            opts = '<optgroup label="Stock">' +
-              m.stock.map(n => `<option value="${esc(n)}"${n === m.current ? ' selected' : ''}>${esc(n)}</option>`).join('') + '</optgroup>'
-            if (m.workshop?.length) opts += '<optgroup label="Workshop">' +
+            const m = (await dbGetServerSettings(id))?.map || { stock: [], collection: [], workshop: [], current: '' }
+            const plainGroup = (label, names) => names?.length
+              ? `<optgroup label="${label}">` + names.map(n => `<option value="${esc(n)}"${n === m.current ? ' selected' : ''}>${esc(n)}</option>`).join('') + '</optgroup>'
+              : ''
+            opts = plainGroup('Stock', m.stock)
+            opts += plainGroup('Collection', m.collection)   // GMOD workshop-collection maps
+            if (m.workshop?.length) opts += '<optgroup label="Workshop">' +   // CS workshop maps (ws: ids)
               m.workshop.map(w => { const v = `ws:${w.id}`; return `<option value="${esc(v)}"${v === m.current ? ' selected' : ''}>${esc(w.name)}</option>` }).join('') + '</optgroup>'
           } catch {}
           changeMapHtml = `
@@ -1031,13 +1068,11 @@
       async function loadBackups() {
         let data
         // A 404 means this server has no backup support (e.g. CS) — leave the
-        // panel unloaded so updateStatus keeps it hidden.
-        try { data = await dbListServerBackups(id) } catch { return }
-        if (!data) return
+        // panel hidden.
+        try { data = await dbListServerBackups(id) } catch { return panelReady(bk, false) }
+        if (!data) return panelReady(bk, false)
         renderBackups(data)
-        bk.dataset.loaded = '1'
-        const current = servers.find(x => x.id === id)
-        if (current) updateStatus(root, current)
+        panelReady(bk)
       }
 
       function renderBackups(data) {
@@ -1139,13 +1174,11 @@
       // caller falls back to the legacy Quick Settings panel.
       async function loadProfiles() {
         let schema
-        try { schema = await dbGetProfileSchema(id) } catch { return false }
-        if (!schema?.groups?.length) return false
+        try { schema = await dbGetProfileSchema(id) } catch { panelReady(prof, false); return false }
+        if (!schema?.groups?.length) { panelReady(prof, false); return false }
         P.schema = schema
         await reloadProfileList()
-        prof.dataset.loaded = '1'
-        const current = servers.find(x => x.id === id)
-        if (current) updateStatus(root, current)
+        panelReady(prof)
         return true
       }
 
@@ -1223,16 +1256,26 @@
           : `<div class="maplist-empty">No maps in rotation yet.</div>`
         const addable = f.options || []
         const dlOpts = addable.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
-        // `custom` maplists let you type any map name (collection maps not yet
-        // downloaded); otherwise it's a plain pick-list of discovered maps.
-        const addControl = f.custom
-          ? `<input type="text" data-ml-pick list="mldl-${id}-${f.key}" placeholder="add a map by name…" autocomplete="off" /><datalist id="mldl-${id}-${f.key}">${dlOpts}</datalist>`
-          : `<select data-ml-pick${addable.length ? '' : ' disabled'}>${addable.length ? dlOpts : '<option value="">(no maps discovered)</option>'}</select>`
+        const grouped = addable.some(o => o.group)
+        let addControl
+        if (grouped) {
+          // categorized pick-list (e.g. TTT: Stock vs Collection)
+          const byGroup = {}
+          addable.forEach(o => { (byGroup[o.group || 'Other'] ??= []).push(o) })
+          const groupsHtml = Object.entries(byGroup).map(([g, opts]) =>
+            `<optgroup label="${esc(g)}">${opts.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</optgroup>`).join('')
+          addControl = `<select data-ml-pick>${groupsHtml || '<option value="">(no maps)</option>'}</select>`
+        } else if (f.custom) {
+          // `custom` maplists let you type any map name (not-yet-downloaded maps)
+          addControl = `<input type="text" data-ml-pick list="mldl-${id}-${f.key}" placeholder="add a map by name…" autocomplete="off" /><datalist id="mldl-${id}-${f.key}">${dlOpts}</datalist>`
+        } else {
+          addControl = `<select data-ml-pick${addable.length ? '' : ' disabled'}>${addable.length ? dlOpts : '<option value="">(no maps discovered)</option>'}</select>`
+        }
         return `
           <div class="maplist-rows">${rows}</div>
           <div class="maplist-add">
             ${addControl}
-            <button type="button" class="mini-btn" data-ml-add${f.custom || addable.length ? '' : ' disabled'}>＋ Add</button>
+            <button type="button" class="mini-btn" data-ml-add${grouped || f.custom || addable.length ? '' : ' disabled'}>＋ Add</button>
           </div>`
       }
 
@@ -1388,15 +1431,15 @@
         let data
         try {
           data = await dbGetServerSettings(id)
-        } catch { return }
-        if (!data) return
+        } catch { return panelReady(qs, false) }
+        if (!data) return panelReady(qs, false)
 
         // Counter-Strike now uses the generic Profiles panel for its startup
         // config; getSettings only returns the map block (for the live change-map),
         // so this falls through to the no-op below. (renderCsPanel is retained but
         // unused.)
 
-        if (!data.fields?.length && !data.sections?.length) return
+        if (!data.fields?.length && !data.sections?.length) return panelReady(qs, false)
 
         if (data.sections?.length) {
           // Multi-section layout (e.g. Factorio): replace panel content dynamically.
@@ -1413,9 +1456,7 @@
             ).join('') +
             (data.note ? `<div class="qs-note-block">${esc(data.note)}</div>` : '')
 
-          qs.dataset.loaded = '1'
-          const current = servers.find(x => x.id === id)
-          if (current) updateStatus(root, current)
+          panelReady(qs)
 
           qs.querySelectorAll('[data-qs-section]').forEach(secEl => {
             const sectionKey = secEl.dataset.qsSection
@@ -1444,9 +1485,7 @@
         qsFields.innerHTML = data.fields.map(f => renderField(id, f)).join('')
 
         // mark loaded and let updateStatus decide visibility
-        qs.dataset.loaded = '1'
-        const current = servers.find(x => x.id === id)
-        if (current) updateStatus(root, current)
+        panelReady(qs)
       }
 
       // ── Counter-Strike startup panel ──────────────────────────────────────
@@ -1673,6 +1712,19 @@
       loadLive()
       loadBackups()
 
+      // Pull this server's fresh status on mount so the panel gates use current
+      // data, not the cached page-load snapshot (else e.g. Minecraft's panel could
+      // stay hidden until you switch tabs and back). One light per-server call.
+      ;(async () => {
+        try {
+          const fresh = await dbGetServerStatus(id)
+          const i = servers.findIndex(x => x.id === id)
+          if (i >= 0) servers[i] = { ...servers[i], ...fresh }
+          updateStatus(root, servers[i] ?? fresh)
+          renderTabs()
+        } catch {}
+      })()
+
       // update recipe
       const updateBtn = root.querySelector('[data-update]')
       updateBtn.addEventListener('click', async () => {
@@ -1717,19 +1769,23 @@
         group.hidden = !hasVisibleAction
       })
 
+      // A panel is visible when its status gate matches AND it's either loaded or
+      // still loading (so the "Loading…" placeholder shows in place, not blank).
+      const ready = (el) => el && (el.dataset.loaded === '1' || el.dataset.loading === '1')
+
       // Profiles edit the startup config, so they're usable whenever the VM is up
       // (idle or hosting) — configure first, then Start/Restart Hosting to apply.
       const prof = root.querySelector('[data-profiles]')
-      if (prof) prof.style.display = (s.status === 'running' && prof.dataset.loaded === '1') ? 'block' : 'none'
+      if (prof) prof.style.display = (s.status === 'running' && ready(prof)) ? 'block' : 'none'
 
       // settings panel only when hosting and populated
       const qs = root.querySelector('[data-quickset]')
-      if (qs) qs.style.display = (gs === 'hosting' && qs.dataset.loaded === '1') ? 'block' : 'none'
+      if (qs) qs.style.display = (gs === 'hosting' && ready(qs)) ? 'block' : 'none'
       const rt = root.querySelector('[data-runtime]')
-      if (rt) rt.style.display = (gs === 'hosting' && rt.dataset.loaded === '1') ? 'block' : 'none'
+      if (rt) rt.style.display = (gs === 'hosting' && ready(rt)) ? 'block' : 'none'
       // backups need only the VM up (guest agent + files), not the game process.
       const bk = root.querySelector('[data-backups]')
-      if (bk) bk.style.display = (s.status === 'running' && bk.dataset.loaded === '1') ? 'block' : 'none'
+      if (bk) bk.style.display = (s.status === 'running' && ready(bk)) ? 'block' : 'none'
     }
 
     function formatUpdate(res) {

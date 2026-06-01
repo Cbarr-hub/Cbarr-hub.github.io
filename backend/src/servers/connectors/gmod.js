@@ -50,6 +50,10 @@ const GMOD_ACTION_CMDS = { players: 'status' };
 
 const MAP_RE = /^[a-z0-9_]{1,64}$/;
 
+// Maps that ship with the base install, so they're always loadable even with no
+// workshop collection — the safe floor for defaults + the boot-map guard.
+const STOCK_ALWAYS = ['gm_construct', 'gm_flatgrass'];
+
 const badSetting = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
 
 // TTT cvar field specs (key in server.cfg, UI label, numeric bounds). pct fields
@@ -83,17 +87,27 @@ export class GmodConnector extends LinuxGsmConnector {
   // file list embeds each `maps/<name>.bsp` path, so grep pulls them out without
   // unpacking. This is what populates both the Startup map select and the live
   // change-map control with the collection's maps.
+  // Maps offered to the panel = what will actually LOAD on the next boot:
+  //   - stock .bsp maps under garrysmod/maps/ (always present: gm_construct, …)
+  //   - workshop maps from the mounted collection cache, but ONLY when a
+  //     wscollectionid is set. An empty collection mounts 0 addons, so those
+  //     cached .gma maps can't load — offering them is what let a profile pick an
+  //     unmountable boot map and brick startup. So the list is collection-driven.
   async #listMaps() {
+    const inst = await this.client.agentFileRead(this.vmid, INSTANCE_CFG)
+      .then((r) => r.content ?? '').catch(() => '');
+    const collectionSet = !!(getVar(inst, 'wscollectionid') || '').trim();
     try {
+      const cacheCmd = collectionSet
+        ? `LANG=C grep -ahoE 'maps/[A-Za-z0-9_]+\\.bsp' ${GARRYSMOD}/cache/srcds/*.gma 2>/dev/null;`
+        : '';
       const res = await this.runShell(
-        `{ ls -1 ${MAPS_DIR}/*.bsp 2>/dev/null; ` +
-        `LANG=C grep -ahoE 'maps/[A-Za-z0-9_]+\\.bsp' ${GARRYSMOD}/cache/srcds/*.gma 2>/dev/null; } ` +
-        `| sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
+        `{ ls -1 ${MAPS_DIR}/*.bsp 2>/dev/null; ${cacheCmd} } | sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
         { asUser: this.gsmUser, timeoutMs: 20_000 },
       );
       const names = (res.stdout || '').split('\n')
         .map((l) => l.trim())
-        .filter((n) => /^ttt_/.test(n));
+        .filter((n) => /^(ttt_|gm_)[a-z0-9_]*$/.test(n));
       return [...new Set(names)].sort();
     } catch {
       return [];
@@ -225,9 +239,11 @@ export class GmodConnector extends LinuxGsmConnector {
   // ttt_always_use_mapcycle), and mapcycle.txt. Takes effect on the next restart.
 
   defaultProfileSettings() {
+    // Boot to a stock map that always exists (TTT runs fine on it). Workshop maps
+    // become available once a collection is set — never default to one.
     const d = {
-      map: 'ttt_minecraft_b5', maxPlayers: 16, workshopCollection: '',
-      useMapcycle: '1', mapcycle: ['ttt_minecraft_b5'],
+      map: 'gm_construct', maxPlayers: 16, workshopCollection: '',
+      useMapcycle: '1', mapcycle: ['gm_construct'],
     };
     for (const f of TTT_FIELDS) d[f.key] = f.def;
     return d;
@@ -268,19 +284,21 @@ export class GmodConnector extends LinuxGsmConnector {
 
   async profileSchema() {
     const maps = await this.#listMaps();
-    const mapOpts = maps.map((m) => ({ value: m, label: m }));
-    const fallbackOpts = mapOpts.length ? mapOpts : [{ value: 'ttt_minecraft_b5', label: 'ttt_minecraft_b5' }];
+    const mapOpts = (maps.length ? maps : STOCK_ALWAYS).map((m) => ({ value: m, label: m }));
     const numField = (f) => ({ key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01 });
 
     return {
       groups: [
         {
-          key: 'map', title: 'Map & Rotation',
+          key: 'map', title: 'Maps & Rotation',
           fields: [
-            { key: 'map', label: 'Starting Map', type: 'select', options: fallbackOpts },
+            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
+              placeholder: 'Steam Workshop collection id',
+              help: 'Steam stores & manages these maps. The map choices below come from this collection (plus stock maps). After changing it, Apply then Restart Hosting once so Steam downloads the maps — they then appear here.' },
+            { key: 'map', label: 'Starting Map', type: 'select', options: mapOpts },
             { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },
             { key: 'mapcycle', label: 'Map Rotation (in order)', type: 'maplist', options: mapOpts,
-              help: 'After each round/time limit the server advances to the next map here.' },
+              help: 'After each round/time limit the server advances to the next map. Only installed maps appear here.' },
           ],
         },
         {
@@ -290,20 +308,30 @@ export class GmodConnector extends LinuxGsmConnector {
             ...TTT_FIELDS.map(numField),
           ],
         },
-        {
-          key: 'content', title: 'Workshop',
-          fields: [
-            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
-              placeholder: 'Steam collection id — auto-downloads its maps on restart' },
-          ],
-        },
       ],
-      note: 'A profile is the startup config the server boots as. Changes apply on the next restart.',
+      note: 'A profile is the startup config the server boots as. Maps come from your Workshop Collection (set it, Apply, then Restart Hosting once to download). Changes apply on the next restart.',
     };
   }
 
   async applyProfileSettings(settings, profileId) {
     const s = this.validateProfileSettings(settings);
+
+    // Boot-map guard. With NO workshop collection set, only stock maps can load —
+    // a workshop map would mount nothing and leave the server with "no active map"
+    // (the exact brick we hit). So block a non-stock boot/rotation map when the
+    // collection is empty. When a collection IS set we trust it: GMOD downloads +
+    // mounts it at boot before loading the map, so its maps are fine.
+    if (!s.workshopCollection) {
+      const loadable = new Set([...(await this.#listMaps()), ...STOCK_ALWAYS]);
+      const missing = [...new Set([s.map, ...s.mapcycle])].filter((m) => !loadable.has(m));
+      if (missing.length) {
+        throw badSetting(
+          `no Workshop Collection is set, so only stock maps can load (${[...loadable].sort().join(', ')}). ` +
+          `These need a collection: ${missing.join(', ')}. Set a Workshop Collection ID to use workshop maps, ` +
+          `then Restart Hosting once so Steam downloads them.`,
+        );
+      }
+    }
 
     let inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
     inst = setVars(inst, {

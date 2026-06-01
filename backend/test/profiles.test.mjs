@@ -111,13 +111,16 @@ test('gmod: validateProfileSettings rejects bad values', () => {
 
 test('gmod: applyProfileSettings writes the right keys across the three files', async () => {
   const { conn, client } = gmod();
-  const settings = { ...conn.defaultProfileSettings(), map: 'ttt_rooftops', maxPlayers: 20, roundLimit: 8,
+  // workshop maps are allowed once a collection is set (GMOD mounts it at boot)
+  const settings = { ...conn.defaultProfileSettings(), workshopCollection: '12345',
+                     map: 'ttt_rooftops', maxPlayers: 20, roundLimit: 8,
                      mapcycle: ['ttt_rooftops', 'ttt_minecraft_b5'] };
   await conn.applyProfileSettings(settings, 7);
 
   const inst = client.files[INSTANCE_CFG];
   assert.match(inst, /defaultmap="ttt_rooftops"/);
   assert.match(inst, /maxplayers="20"/);
+  assert.match(inst, /wscollectionid="12345"/);
   assert.match(inst, /gt_active_profile="7"/);   // on-box active-profile mirror
 
   const game = client.files[SERVER_CFG];
@@ -127,15 +130,30 @@ test('gmod: applyProfileSettings writes the right keys across the three files', 
   assert.equal(client.files[MAPCYCLE], 'ttt_rooftops\nttt_minecraft_b5\n');
 });
 
+test('gmod: applyProfileSettings blocks a workshop boot map when no collection is set', async () => {
+  const { conn } = gmod();
+  const settings = { ...conn.defaultProfileSettings(), workshopCollection: '',
+                     map: 'ttt_minecraft_b5', mapcycle: ['ttt_minecraft_b5'] };
+  await assert.rejects(() => conn.applyProfileSettings(settings, 1), /no Workshop Collection/);
+});
+
+test('gmod: applyProfileSettings allows stock maps with no collection', async () => {
+  const { conn, client } = gmod();
+  await conn.applyProfileSettings(conn.defaultProfileSettings(), 1); // gm_construct, no collection
+  assert.match(client.files[INSTANCE_CFG], /defaultmap="gm_construct"/);
+});
+
 test('gmod: capture → apply → capture round-trips the settings', async () => {
   // Apply a known profile, then capture the resulting files back into a doc.
   const { conn } = gmod();
-  const original = { ...conn.defaultProfileSettings(), map: 'ttt_clue', maxPlayers: 18, detectiveMax: 4,
+  const original = { ...conn.defaultProfileSettings(), workshopCollection: '777',
+                     map: 'ttt_clue', maxPlayers: 18, detectiveMax: 4,
                      mapcycle: ['ttt_clue', 'ttt_minecraft_b5'] };
   await conn.applyProfileSettings(original, 3);
 
   const captured = await conn.captureProfileSettings();
   assert.equal(captured.map, 'ttt_clue');
+  assert.equal(captured.workshopCollection, '777');
   assert.equal(captured.maxPlayers, 18);
   assert.equal(captured.detectiveMax, 4);
   assert.equal(captured.roundLimit, 6); // default carried through
@@ -150,11 +168,13 @@ test('gmod: applyProfile loads a saved profile and marks it active', async () =>
   assert.equal(store.getActiveProfileId('gmod'), p.id);
 });
 
-test('gmod: profileSchema groups Map/Gameplay/Workshop fields', async () => {
+test('gmod: profileSchema groups Maps/Gameplay with collection-driven fields', async () => {
   const { conn } = gmod();
   const schema = await conn.profileSchema();
-  assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'gameplay', 'content']);
+  assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'gameplay']);
   const mapGroup = schema.groups[0];
+  assert.ok(mapGroup.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text'));
+  assert.ok(mapGroup.fields.some((f) => f.key === 'map' && f.type === 'select'));
   assert.ok(mapGroup.fields.some((f) => f.key === 'mapcycle' && f.type === 'maplist'));
   assert.ok(mapGroup.fields.some((f) => f.key === 'useMapcycle' && f.type === 'bool'));
 });

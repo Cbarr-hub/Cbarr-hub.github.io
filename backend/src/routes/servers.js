@@ -28,6 +28,9 @@ const CODE_STATUS = {
   NOT_SUPPORTED: 404,
   NO_SETTINGS: 404,
   NO_UPDATE_RECIPE: 501,
+  NO_RCON: 503,
+  RCON_AUTH: 502,
+  RCON_ERROR: 502,
 };
 
 export default async function serversRoutes(app) {
@@ -269,6 +272,49 @@ export default async function serversRoutes(app) {
     schema: { params: { type: 'object', properties: { id: ID_PARAM, configId: CONFIG_ID_PARAM }, required: ['id', 'configId'] } },
   }, async (req, reply) => {
     try { return svc.deleteConfig(req.params.id, req.params.configId); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  // ── live commands (Phase 3; RCON / console) ───────────────────────────────────
+  app.get('/:id/live', {
+    preHandler: requireAdmin,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },
+  }, async (req, reply) => {
+    try { return await svc.getLive(req.params.id); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.post('/:id/live/command', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: {
+      params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] },
+      body: {
+        type: 'object',
+        properties: { command: { type: 'string', minLength: 1, maxLength: 512 } },
+        required: ['command'],
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    try { return await svc.sendCommand(req.params.id, req.body.command); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
+  app.post('/:id/live/action', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: {
+      params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] },
+      body: {
+        type: 'object',
+        properties: { action: { type: 'string', minLength: 1, maxLength: 64 } },
+        required: ['action'],
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    try { return await svc.runLiveAction(req.params.id, req.body.action); }
     catch (err) { if (sendErr(err, reply)) return; throw err; }
   });
 

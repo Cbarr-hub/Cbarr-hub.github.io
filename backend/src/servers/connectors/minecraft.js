@@ -6,9 +6,17 @@
 //   service     : systemd unit `minecraft.service`
 
 import { BaseConnector } from './base.js';
+import { validateLiveCommand } from '../rcon.js';
 
 const DIR = '/home/miles/MinecraftServer';
 const PROPS = `${DIR}/server.properties`;
+
+// Live curated actions (sent to the tmux console).
+const MC_LIVE_ACTIONS = [
+  { key: 'list', label: 'List Players' },
+  { key: 'save', label: 'Save World' },
+];
+const MC_ACTION_CMDS = { list: 'list', save: 'save-all' };
 
 export class MinecraftConnector extends BaseConnector {
   configFiles = {
@@ -58,6 +66,36 @@ export class MinecraftConnector extends BaseConnector {
   async stopGame() {
     await this.runShell('systemctl stop minecraft', { timeoutMs: 60_000 });
     return { ok: true };
+  }
+
+  // ── live commands (Phase 3; via the tmux console — no RCON) ──────────────────
+  // Send to the `minecraft` tmux session, then read back the log tail as
+  // best-effort output (the console has no response channel like RCON does).
+  async #console(cmd) {
+    const safe = String(cmd).replace(/'/g, "'\\''"); // single-quote-safe for the shell
+    const res = await this.runShell(
+      `tmux send-keys -t minecraft '${safe}' Enter; sleep 1; tail -n 6 "${DIR}/logs/latest.log" 2>/dev/null`,
+      { asUser: 'miles', timeoutMs: 12_000 },
+    );
+    return { output: res.stdout ?? '' };
+  }
+
+  async getLive() {
+    return {
+      available: true,
+      actions: MC_LIVE_ACTIONS,
+      commandHint: 'Minecraft console (no RCON — output is read back from the server log)',
+    };
+  }
+
+  async sendCommand(command) {
+    return this.#console(validateLiveCommand(command));
+  }
+
+  async runLiveAction(key) {
+    const cmd = MC_ACTION_CMDS[key];
+    if (!cmd) { const e = new Error(`unknown live action: ${key}`); e.code = 'BAD_SETTING'; throw e; }
+    return this.#console(cmd);
   }
 
   // ── update (jar upgrade) ─────────────────────────────────────────────────────

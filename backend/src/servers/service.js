@@ -140,5 +140,16 @@ export function createServerService({ client, publicHost = '', db = null }) {
     deleteConfig(id, configId) {
       return connectorFor(id).deleteConfig(configId);
     },
+
+    // ── live commands (Phase 3) ──────────────────────────────────────────────
+    getLive(id) {
+      return connectorFor(id).getLive();
+    },
+    sendCommand(id, command) {
+      return connectorFor(id).sendCommand(command);
+    },
+    runLiveAction(id, action) {
+      return connectorFor(id).runLiveAction(action);
+    },
   };
 }

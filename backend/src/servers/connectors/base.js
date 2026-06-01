@@ -151,6 +151,14 @@ export class BaseConnector {
   createConfig() { throw unsupportedCapability('a config library'); }
   updateConfig() { throw unsupportedCapability('a config library'); }
   deleteConfig() { throw unsupportedCapability('a config library'); }
+
+  // ── live commands (Phase 3) ─────────────────────────────────────────────────
+  // Runtime control of a running server. getLive() advertises whether live
+  // control is available + the curated action buttons; sendCommand/runLiveAction
+  // execute. Default: unavailable.
+  async getLive() { return { available: false, reason: 'no live control for this server' }; }
+  async sendCommand() { const e = new Error('live commands are not supported for this server'); e.code = 'NO_RCON'; throw e; }
+  async runLiveAction() { const e = new Error('live actions are not supported for this server'); e.code = 'NO_RCON'; throw e; }
 }
 
 function unsupportedCapability(what) {

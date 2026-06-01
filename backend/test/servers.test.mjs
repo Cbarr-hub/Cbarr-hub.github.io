@@ -331,6 +331,80 @@ test('non-CS servers reject catalog + config ops as unsupported', async () => {
   await assert.rejects(async () => svc.listConfigs('minecraft'), (e) => e.code === 'NOT_SUPPORTED');
 });
 
+// ── live commands / RCON (Phase 3) ────────────────────────────────────────────────
+const CS_GAME_CFG_RCON = CS_GAME_CFG + 'rcon_password "secret"\n';
+function csClientRcon(opts = {}) {
+  return fakeClient({
+    agentFileRead: (_v, f) => Promise.resolve({
+      content: f.endsWith('/cfg/cs2server.cfg') ? CS_GAME_CFG_RCON : CS_INSTANCE_CFG,
+    }),
+    agentExec: opts.agentExec,
+    agentExecStatus: opts.agentExecStatus,
+  });
+}
+
+test('CS getLive reflects rcon_password presence', async () => {
+  const off = createServerService({ client: csClient(), db: testDb() });
+  assert.equal((await off.getLive('counterstrike')).available, false);
+
+  const on = createServerService({ client: csClientRcon(), db: testDb() });
+  const live = await on.getLive('counterstrike');
+  assert.equal(live.available, true);
+  assert.ok(live.actions.some((a) => a.key === 'bunnyhop_on'));
+});
+
+test('CS runLiveAction sends the mapped command via rcon (argv command, stdin password)', async () => {
+  const calls = [];
+  const client = csClientRcon({
+    agentExec: (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); },
+    agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': 'done' }),
+  });
+  const svc = createServerService({ client, db: testDb() });
+  const res = await svc.runLiveAction('counterstrike', 'restart_round');
+  assert.equal(res.output, 'done');
+  const c = calls.at(-1);
+  assert.equal(c.command[0], '/usr/bin/python3');
+  assert.ok(c.command.includes('27015'));
+  assert.equal(c.command.at(-1), 'mp_restartgame 1');   // command is a plain argv element
+  assert.equal(c.input, 'secret');                       // password via stdin
+  assert.ok(!c.command.includes('secret'));              // never in argv / process list
+});
+
+test('CS sendCommand validates input; unknown action rejected', async () => {
+  const svc = createServerService({ client: csClientRcon(), db: testDb() });
+  await assert.rejects(async () => svc.sendCommand('counterstrike', ''), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(async () => svc.sendCommand('counterstrike', 'a\nb'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(async () => svc.runLiveAction('counterstrike', 'nope'), (e) => e.code === 'BAD_SETTING');
+});
+
+test('rcon auth failure surfaces RCON_AUTH', async () => {
+  const client = csClientRcon({
+    agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 1, 'err-data': 'rcon: auth failed' }),
+  });
+  const svc = createServerService({ client, db: testDb() });
+  await assert.rejects(async () => svc.runLiveAction('counterstrike', 'restart_round'), (e) => e.code === 'RCON_AUTH');
+});
+
+test('Factorio live is available and maps actions to console commands', async () => {
+  const calls = [];
+  const client = fakeClient({
+    agentExec: (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); },
+    agentExecStatus: () => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': '5 hours' }),
+  });
+  const svc = createServerService({ client, db: testDb() });
+  assert.equal((await svc.getLive('factorio')).available, true);
+  const res = await svc.runLiveAction('factorio', 'time');
+  assert.equal(res.output, '5 hours');
+  assert.equal(calls.at(-1).command.at(-1), '/time');
+  assert.equal(calls.at(-1).input, 'CHANGE_ME'); // LinuxGSM default rcon password fallback
+});
+
+test('a non-RCON base server reports live unavailable', async () => {
+  const base = new BaseConnector({ id: 'x', name: 'X', vmid: 1 }, fakeClient());
+  assert.equal((await base.getLive()).available, false);
+  await assert.rejects(async () => base.sendCommand('x'), (e) => e.code === 'NO_RCON');
+});
+
 test('a connector with no quick settings returns empty fields by default', async () => {
   const base = new BaseConnector({ id: 'x', name: 'X', vmid: 1 }, fakeClient());
   assert.deepEqual(await base.getSettings(), { fields: [] });

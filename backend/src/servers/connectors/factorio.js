@@ -17,11 +17,20 @@
 
 import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVar } from '../cfgvars.js';
+import { rconCommand, validateLiveCommand } from '../rcon.js';
 
-const DIR       = '/home/miles/fctrserver';
-const SAVES_DIR = `${DIR}/serverfiles/saves`;
-const LGSM_CFG  = `${DIR}/lgsm/config-lgsm/fctrserver/fctrserver.cfg`;
-const FACTORIO  = `${DIR}/serverfiles/bin/x64/factorio`;
+const DIR        = '/home/miles/fctrserver';
+const SAVES_DIR  = `${DIR}/serverfiles/saves`;
+const LGSM_CFG   = `${DIR}/lgsm/config-lgsm/fctrserver/fctrserver.cfg`;
+const COMMON_CFG = `${DIR}/lgsm/config-lgsm/fctrserver/common.cfg`;
+const FACTORIO   = `${DIR}/serverfiles/bin/x64/factorio`;
+
+// Live (RCON) curated actions — read-only commands validated to work headless.
+const FACTORIO_LIVE_ACTIONS = [
+  { key: 'players', label: 'List Players' },
+  { key: 'time',    label: 'Map Time' },
+];
+const FACTORIO_ACTION_CMDS = { players: '/players', time: '/time' };
 
 // Shell-variable template written into fctrserver.cfg to override the hardcoded
 // save1.zip in _default.cfg. ${ip}, ${serverfiles}, etc. are expanded by bash
@@ -308,5 +317,35 @@ export class FactorioConnector extends LinuxGsmConnector {
     }
 
     throw bad(`unknown section: ${section}`);
+  }
+
+  // ── live commands (Phase 3; Factorio Source RCON) ────────────────────────────
+  async #rconCreds() {
+    const common = await this.client.agentFileRead(this.vmid, COMMON_CFG).then((r) => r.content ?? '').catch(() => '');
+    // rconpassword/rconport fall back to LinuxGSM's running defaults when not overridden.
+    const password = getVar(common, 'rconpassword') || 'CHANGE_ME';
+    const port = Number(getVar(common, 'rconport') || 34198);
+    return { password, port };
+  }
+
+  async getLive() {
+    return {
+      available: true,
+      actions: FACTORIO_LIVE_ACTIONS,
+      commandHint: 'Factorio console, e.g. /players, /time, /server-save, /c game.speed=1',
+    };
+  }
+
+  async sendCommand(command) {
+    const cmd = validateLiveCommand(command);
+    const { password, port } = await this.#rconCreds();
+    return rconCommand(this, { port, password, command: cmd });
+  }
+
+  async runLiveAction(key) {
+    const cmd = FACTORIO_ACTION_CMDS[key];
+    if (!cmd) { const e = new Error(`unknown live action: ${key}`); e.code = 'BAD_SETTING'; throw e; }
+    const { password, port } = await this.#rconCreds();
+    return rconCommand(this, { port, password, command: cmd });
   }
 }

@@ -26,6 +26,7 @@
 import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVar } from '../cfgvars.js';
 import { getCvar, setCvars } from '../cvars.js';
+import { rconCommand, validateLiveCommand } from '../rcon.js';
 
 const DIR          = '/home/miles/csserver';
 const CFG_DIR      = `${DIR}/serverfiles/game/csgo/cfg`;
@@ -52,6 +53,23 @@ const STOCK_FALLBACK = [
   'de_ancient', 'de_anubis', 'de_dust2', 'de_inferno', 'de_mirage',
   'de_nuke', 'de_overpass', 'de_train', 'de_vertigo', 'cs_italy', 'cs_office',
 ];
+
+// Live (RCON) curated actions. CS2 serves Source RCON on the game port (27015).
+const RCON_PORT = 27015;
+const CS_LIVE_ACTIONS = [
+  { key: 'restart_round', label: 'Restart Round' },
+  { key: 'cheats_on',     label: 'Cheats On' },
+  { key: 'cheats_off',    label: 'Cheats Off' },
+  { key: 'bunnyhop_on',   label: 'Bunnyhop On' },
+  { key: 'bunnyhop_off',  label: 'Bunnyhop Off' },
+];
+const CS_ACTION_CMDS = {
+  restart_round: 'mp_restartgame 1',
+  cheats_on:     'sv_cheats 1',
+  cheats_off:    'sv_cheats 0',
+  bunnyhop_on:   'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_staminamax 0; sv_airaccelerate 1000',
+  bunnyhop_off:  'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_staminamax 14; sv_airaccelerate 12',
+};
 
 const badSetting = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
 const notFound   = (what) => { const e = new Error(`${what} not found`); e.code = 'NOT_FOUND'; return e; };
@@ -307,5 +325,32 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
   #mapDbErr(e, name) {
     if (/UNIQUE/.test(e?.message || '')) return badSetting(`a config named "${name}" already exists`);
     return e;
+  }
+
+  // ── live commands (Phase 3; CS2 Source RCON on the game port) ────────────────
+  async #rconPassword() {
+    const game = await this.client.agentFileRead(this.vmid, GAME_CFG).then((r) => r.content ?? '').catch(() => '');
+    return (getCvar(game, 'rcon_password') || '').trim();
+  }
+
+  async getLive() {
+    const pw = await this.#rconPassword();
+    if (!pw) return { available: false, reason: 'RCON disabled — set rcon_password in cs2server.cfg and restart' };
+    return {
+      available: true,
+      actions: CS_LIVE_ACTIONS,
+      commandHint: 'any CS2 console command, e.g. bot_add, mp_warmup_end, exec gamertown/active',
+    };
+  }
+
+  async sendCommand(command) {
+    const cmd = validateLiveCommand(command);
+    return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });
+  }
+
+  async runLiveAction(key) {
+    const cmd = CS_ACTION_CMDS[key];
+    if (!cmd) throw badSetting(`unknown live action: ${key}`);
+    return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });
   }
 }

@@ -16,17 +16,8 @@ const BUCKET = 'gamertown-backups';
 // A backup "name" = the object filename minus its extension.
 export const NAME_RE = /^[a-zA-Z0-9_-]{1,128}$/;
 
-export function badSetting(msg) {
-  const e = new Error(msg);
-  e.code = 'BAD_SETTING';
-  return e;
-}
-
-export function notFound(msg) {
-  const e = new Error(msg);
-  e.code = 'NOT_FOUND';
-  return e;
-}
+import { badSetting, notFound } from './errors.js';
+export { badSetting, notFound };
 
 export function r2Dir(prefix) { return `${REMOTE}:${BUCKET}/${prefix}/`; }
 export function r2Path(prefix, name, ext) { return `${REMOTE}:${BUCKET}/${prefix}/${name}${ext}`; }

@@ -128,7 +128,7 @@ node src/cli.js delete-user
 > the panel pairs it with a restart so a GMOD workshop collection actually mounts.
 > A game wired for profiles trims its `getSettings` to operations only (or just the
 > live-map block) so config doesn't double-render beside the Profiles panel. See
-> `SERVER_PROFILES_PLAN.md` and the CLAUDE.md GMOD gotchas.
+> the CLAUDE.md GMOD gotchas.
 
 ## What's not here yet
 

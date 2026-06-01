@@ -8,6 +8,7 @@
 import { BaseConnector } from './base.js';
 import { validateLiveCommand } from '../rcon.js';
 import * as backups from '../backups.js';
+import { badSetting, SAFE_NAME_RE } from '../errors.js';
 
 const DIR = '/home/miles/MinecraftServer';
 const PROPS = `${DIR}/server.properties`;
@@ -34,7 +35,6 @@ function setProp(text, key, value) {
   const line = `${key}=${value}`;
   return re.test(text) ? text.replace(re, () => line) : text.replace(/\n*$/, '') + `\n${line}\n`;
 }
-const badSetting = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
 
 const GAMEMODES    = ['survival', 'creative', 'adventure', 'spectator'];
 const DIFFICULTIES = ['peaceful', 'easy', 'normal', 'hard'];
@@ -192,15 +192,14 @@ export class MinecraftConnector extends BaseConnector {
   }
 
   async setSettings(values = {}) {
-    const bad = msg => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
     const { section, saveName } = values;
 
-    if (!section) throw bad('section is required');
-    if (!saveName || typeof saveName !== 'string' || !saveName.trim()) throw bad('world name is required');
+    if (!section) throw badSetting('section is required');
+    if (!saveName || typeof saveName !== 'string' || !saveName.trim()) throw badSetting('world name is required');
 
     const cleanName = saveName.trim();
-    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(cleanName)) {
-      throw bad('world name may only contain letters, digits, underscores, and hyphens (max 64 chars)');
+    if (!SAFE_NAME_RE.test(cleanName)) {
+      throw badSetting('world name may only contain letters, digits, underscores, and hyphens (max 64 chars)');
     }
 
     if (section === 'loadWorld') {
@@ -231,11 +230,11 @@ export class MinecraftConnector extends BaseConnector {
       const cpRes = await this.runShell(`cp -r "${src}" "${dest}"`, {
         asUser: 'miles', timeoutMs: 60_000,
       });
-      if (cpRes.exitCode !== 0) throw bad(`backup failed: ${cpRes.stderr || cpRes.stdout}`);
+      if (cpRes.exitCode !== 0) throw badSetting(`backup failed: ${cpRes.stderr || cpRes.stdout}`);
       return { ok: true, action: 'saveAs', world: cleanName, source: currentWorld };
     }
 
-    throw bad(`unknown section: ${section}`);
+    throw badSetting(`unknown section: ${section}`);
   }
 
   // ── startup-config profiles ─────────────────────────────────────────────────
@@ -257,7 +256,7 @@ export class MinecraftConnector extends BaseConnector {
   validateProfileSettings(s = {}) {
     const out = {};
     out.world = String(s.world ?? '').trim();
-    if (out.world && !/^[a-zA-Z0-9_-]{1,64}$/.test(out.world)) throw badSetting('invalid world name');
+    if (out.world && !SAFE_NAME_RE.test(out.world)) throw badSetting('invalid world name');
     out.gamemode   = GAMEMODES.includes(s.gamemode) ? s.gamemode : 'survival';
     out.difficulty = DIFFICULTIES.includes(s.difficulty) ? s.difficulty : 'normal';
     const intIn = (v, lo, hi, label) => {

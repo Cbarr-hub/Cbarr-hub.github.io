@@ -282,37 +282,6 @@ test('CS getSettings returns the map block for the live change-map (config now i
   assert.equal(s.gameMode, undefined); // game mode + config moved to the Profiles panel
 });
 
-test('CS setSettings: stock map clears the workshop override', async () => {
-  const writes = {};
-  const svc = createServerService({ client: csClient((f, c) => { writes[f.endsWith('/cfg/cs2server.cfg') ? 'game' : 'inst'] = c; }) });
-  await svc.setSettings('counterstrike', { map: 'de_nuke', gameMode: 'deathmatch', maxPlayers: 12 });
-  assert.equal(getCvar(writes.game, 'map'), 'de_nuke');
-  assert.equal(getCvar(writes.game, 'host_workshop_map'), '');     // cleared
-  assert.equal(getCvar(writes.game, 'game_alias'), 'deathmatch');
-  assert.equal(getVar(writes.inst, 'maxplayers'), '12');
-});
-
-test('CS setSettings: workshop selection and ID override set host_workshop_map', async () => {
-  let game1 = '';
-  const svc1 = createServerService({ client: csClient((f, c) => { if (f.endsWith('/cfg/cs2server.cfg')) game1 = c; }) });
-  await svc1.setSettings('counterstrike', { map: 'ws:123456' });
-  assert.equal(getCvar(game1, 'host_workshop_map'), '123456');
-
-  let game2 = '';
-  const svc2 = createServerService({ client: csClient((f, c) => { if (f.endsWith('/cfg/cs2server.cfg')) game2 = c; }) });
-  await svc2.setSettings('counterstrike', { map: 'de_dust2', workshopId: '999' }); // override wins
-  assert.equal(getCvar(game2, 'host_workshop_map'), '999');
-});
-
-test('CS setSettings rejects bad values', async () => {
-  const svc = createServerService({ client: csClient() });
-  await assert.rejects(() => svc.setSettings('counterstrike', { gameMode: 'bogus' }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('counterstrike', { maxPlayers: 999 }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('counterstrike', { map: 'de nuke; rm' }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('counterstrike', { workshopId: 'abc' }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('counterstrike', { hostname: 'a"b' }), (e) => e.code === 'BAD_SETTING');
-});
-
 // ── CS catalog + config library (Phase 2) ─────────────────────────────────────────
 test('CS map catalog: add, rename, delete via the service', async () => {
   const svc = createServerService({ client: csClient(), db: testDb() });
@@ -345,31 +314,6 @@ test('CS config library: CRUD + unique name + validation', async () => {
 
   await svc.deleteConfig('counterstrike', c.id);
   await assert.rejects(async () => svc.getConfig('counterstrike', c.id), (e) => e.code === 'NOT_FOUND');
-});
-
-test('CS setSettings deploys the selected config to active.cfg and execs it', async () => {
-  const writes = {};
-  const svc = createServerService({ client: csClient((f, c) => { writes[f] = c; }), db: testDb() });
-  const cfg = await svc.createConfig('counterstrike', { name: 'bhop', body: 'sv_autobunnyhopping 1\n' });
-
-  await svc.setSettings('counterstrike', { map: 'de_dust2', configId: cfg.id });
-
-  const activeKey = Object.keys(writes).find((k) => k.endsWith('/cfg/gamertown/active.cfg'));
-  assert.equal(writes[activeKey], 'sv_autobunnyhopping 1\n');             // body deployed
-  const gameKey = Object.keys(writes).find((k) => k.endsWith('/cfg/cs2server.cfg'));
-  assert.match(writes[gameKey], /^[ \t]*exec gamertown\/active[ \t]*$/m);  // exec line added
-  const instKey = Object.keys(writes).find((k) => k.endsWith('/cs2server/cs2server.cfg'));
-  assert.equal(getVar(writes[instKey], 'gt_active_config'), String(cfg.id)); // selection recorded
-});
-
-test('CS setSettings with configId="" clears the active config', async () => {
-  const writes = {};
-  const svc = createServerService({ client: csClient((f, c) => { writes[f] = c; }), db: testDb() });
-  await svc.setSettings('counterstrike', { configId: '' });
-  const activeKey = Object.keys(writes).find((k) => k.endsWith('/cfg/gamertown/active.cfg'));
-  assert.equal(writes[activeKey], '');
-  const instKey = Object.keys(writes).find((k) => k.endsWith('/cs2server/cs2server.cfg'));
-  assert.equal(getVar(writes[instKey], 'gt_active_config'), '');
 });
 
 test('non-CS servers reject catalog + config ops as unsupported', async () => {
@@ -734,36 +678,6 @@ test('GMOD getSettings returns just the map block for the live change-map (confi
   assert.equal(s.map.current, 'ttt_minecraft_b5');  // from instance defaultmap
   assert.ok(Array.isArray(s.map.stock));
   assert.equal(s.sections, undefined);              // TTT config moved to the Profiles panel
-});
-
-test('GMOD setSettings writes cvars to server.cfg, vars to instance cfg, sanitizes mapcycle', async () => {
-  const { client, writes } = gmodClient();
-  const svc = createServerService({ client, db: testDb() });
-  await svc.setSettings('gmod', {
-    section: 'ttt', map: 'ttt_rooftops_a3', maxPlayers: 24, workshopCollection: '123456',
-    roundLimit: 8, traitorPct: 0.3, traitorMax: 4, useMapcycle: '1',
-    mapcycle: 'ttt_rooftops_a3\n// comment\n\nttt_67thway_v3\n',
-  });
-  const instWrite = writes.find((w) => w.path.includes('config-lgsm'));
-  assert.match(instWrite.content, /defaultmap="ttt_rooftops_a3"/);
-  assert.match(instWrite.content, /maxplayers="24"/);
-  assert.match(instWrite.content, /wscollectionid="123456"/);
-  const cfgWrite = writes.find((w) => w.path.endsWith('/cfg/gmodserver.cfg'));
-  assert.match(cfgWrite.content, /ttt_round_limit "8"/);
-  assert.match(cfgWrite.content, /ttt_traitor_pct "0.3"/);
-  assert.match(cfgWrite.content, /ttt_always_use_mapcycle "1"/);
-  const cycleWrite = writes.find((w) => w.path.endsWith('/mapcycle.txt'));
-  assert.equal(cycleWrite.content, 'ttt_rooftops_a3\nttt_67thway_v3\n'); // comment + blank dropped
-});
-
-test('GMOD setSettings rejects bad map names, out-of-range knobs, bad collection id', async () => {
-  const { client } = gmodClient();
-  const svc = createServerService({ client, db: testDb() });
-  await assert.rejects(() => svc.setSettings('gmod', { map: 'Bad Map!' }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('gmod', { traitorPct: 5 }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('gmod', { maxPlayers: 999 }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('gmod', { workshopCollection: 'abc' }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => svc.setSettings('gmod', { mapcycle: 'ok_map\nbad map' }), (e) => e.code === 'BAD_SETTING');
 });
 
 test('GMOD live RCON gates on rcon_password and builds a safe argv', async () => {

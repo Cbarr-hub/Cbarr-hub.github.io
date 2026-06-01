@@ -6,6 +6,8 @@
 // this class to declare their config-file whitelist and `update()` recipe — all
 // game knowledge lives in the subclass, never in the service or route layers.
 
+import { badSetting, notFound, notSupported, duplicateError } from '../errors.js';
+
 export class BaseConnector {
   /**
    * @param {object} server  registry entry { id, name, vmid }
@@ -168,16 +170,16 @@ export class BaseConnector {
   // ── persisted catalog + config library (Phase 2; Counter-Strike only today) ──
   // DB-backed lists a connector may expose via this.store. Default: unsupported,
   // so non-CS servers reject these cleanly instead of NPE-ing on a null store.
-  listMaps()     { throw unsupportedCapability('a workshop map catalog'); }
-  syncMaps()     { throw unsupportedCapability('workshop map sync'); }
-  addMap()       { throw unsupportedCapability('a workshop map catalog'); }
-  renameMap()    { throw unsupportedCapability('a workshop map catalog'); }
-  deleteMap()    { throw unsupportedCapability('a workshop map catalog'); }
-  listConfigs()  { throw unsupportedCapability('a config library'); }
-  getConfig()    { throw unsupportedCapability('a config library'); }
-  createConfig() { throw unsupportedCapability('a config library'); }
-  updateConfig() { throw unsupportedCapability('a config library'); }
-  deleteConfig() { throw unsupportedCapability('a config library'); }
+  listMaps()     { throw notSupported('a workshop map catalog'); }
+  syncMaps()     { throw notSupported('workshop map sync'); }
+  addMap()       { throw notSupported('a workshop map catalog'); }
+  renameMap()    { throw notSupported('a workshop map catalog'); }
+  deleteMap()    { throw notSupported('a workshop map catalog'); }
+  listConfigs()  { throw notSupported('a config library'); }
+  getConfig()    { throw notSupported('a config library'); }
+  createConfig() { throw notSupported('a config library'); }
+  updateConfig() { throw notSupported('a config library'); }
+  deleteConfig() { throw notSupported('a config library'); }
 
   // ── startup-config profiles ──────────────────────────────────────────────────
   // A profile is the full, named, structured startup config a server boots as.
@@ -191,10 +193,10 @@ export class BaseConnector {
   async profileSchema()            { return { groups: [] }; }
   defaultProfileSettings()         { return null; }
   validateProfileSettings(s)       { return s ?? {}; }
-  async applyProfileSettings()     { throw unsupportedCapability('profiles'); }
-  async captureProfileSettings()   { throw unsupportedCapability('profiles'); }
+  async applyProfileSettings()     { throw notSupported('profiles'); }
+  async captureProfileSettings()   { throw notSupported('profiles'); }
 
-  #requireStore() {
+  requireStore() {
     if (!this.store) {
       const e = new Error('persistence store is not configured');
       e.code = 'NOT_CONFIGURED';
@@ -206,7 +208,7 @@ export class BaseConnector {
   // List profiles (+ the active profile id). Seeds a "Default" the first time so
   // the list is never empty — only when the connector defines defaults.
   listProfiles() {
-    const store = this.#requireStore();
+    const store = this.requireStore();
     if (store.countProfiles(this.server.id) === 0) {
       const def = this.defaultProfileSettings();
       if (def) {
@@ -221,41 +223,41 @@ export class BaseConnector {
   }
 
   getProfile(id) {
-    const p = this.#requireStore().getProfile(this.server.id, id);
-    if (!p) throw notFoundErr('profile');
+    const p = this.requireStore().getProfile(this.server.id, id);
+    if (!p) throw notFound('profile not found');
     return p;
   }
 
   createProfile({ name, settings } = {}) {
-    const store = this.#requireStore();
+    const store = this.requireStore();
     const nm = validProfileName(name);
     const st = this.validateProfileSettings(settings ?? this.defaultProfileSettings() ?? {});
     try { return store.createProfile(this.server.id, { name: nm, settings: st }); }
-    catch (e) { throw mapDuplicateProfile(e, nm); }
+    catch (e) { throw duplicateError(e, nm, 'profile'); }
   }
 
   updateProfile(id, { name, settings } = {}) {
-    const store = this.#requireStore();
+    const store = this.requireStore();
     const patch = {};
     if (name !== undefined) patch.name = validProfileName(name);
     if (settings !== undefined) patch.settings = this.validateProfileSettings(settings);
     let updated;
     try { updated = store.updateProfile(this.server.id, id, patch); }
-    catch (e) { throw mapDuplicateProfile(e, patch.name); }
-    if (!updated) throw notFoundErr('profile');
+    catch (e) { throw duplicateError(e, patch.name, 'profile'); }
+    if (!updated) throw notFound('profile not found');
     return updated;
   }
 
   deleteProfile(id) {
-    if (!this.#requireStore().deleteProfile(this.server.id, id)) throw notFoundErr('profile');
+    if (!this.requireStore().deleteProfile(this.server.id, id)) throw notFound('profile not found');
     return { ok: true };
   }
 
   // Write a saved profile onto the box as the active startup config.
   async applyProfile(id) {
-    const store = this.#requireStore();
+    const store = this.requireStore();
     const p = store.getProfile(this.server.id, id);
-    if (!p) throw notFoundErr('profile');
+    if (!p) throw notFound('profile not found');
     await this.applyProfileSettings(p.settings, id);
     store.setActiveProfile(this.server.id, id);
     return { ok: true, id, name: p.name };
@@ -263,19 +265,19 @@ export class BaseConnector {
 
   // Snapshot the box's current startup files into a new named profile.
   async captureProfile(name) {
-    const store = this.#requireStore();
+    const store = this.requireStore();
     const nm = validProfileName(name);
     const settings = await this.captureProfileSettings();
     try { return store.createProfile(this.server.id, { name: nm, settings }); }
-    catch (e) { throw mapDuplicateProfile(e, nm); }
+    catch (e) { throw duplicateError(e, nm, 'profile'); }
   }
 
   // ── offsite backups (Phase 4; Factorio + Minecraft via rclone → R2) ──────────
   // Point-in-time archives pushed off the VM. Default: unsupported (e.g. CS).
-  listBackups()   { throw unsupportedCapability('backups'); }
-  createBackup()  { throw unsupportedCapability('backups'); }
-  restoreBackup() { throw unsupportedCapability('backups'); }
-  deleteBackup()  { throw unsupportedCapability('backups'); }
+  listBackups()   { throw notSupported('backups'); }
+  createBackup()  { throw notSupported('backups'); }
+  restoreBackup() { throw notSupported('backups'); }
+  deleteBackup()  { throw notSupported('backups'); }
 
   // ── live commands (Phase 3) ─────────────────────────────────────────────────
   // Runtime control of a running server. getLive() advertises whether live
@@ -286,35 +288,12 @@ export class BaseConnector {
   async runLiveAction() { const e = new Error('live actions are not supported for this server'); e.code = 'NO_RCON'; throw e; }
 }
 
-function unsupportedCapability(what) {
-  const err = new Error(`this server has no ${what}`);
-  err.code = 'NOT_SUPPORTED';
-  return err;
-}
-
-function notFoundErr(what) {
-  const err = new Error(`${what} not found`);
-  err.code = 'NOT_FOUND';
-  return err;
-}
-
 function validProfileName(name) {
   const nm = String(name ?? '').trim();
   if (!/^[A-Za-z0-9 _-]{1,48}$/.test(nm)) {
-    const e = new Error('profile name must be 1–48 chars: letters, digits, spaces, _ or -');
-    e.code = 'BAD_SETTING';
-    throw e;
+    throw badSetting('profile name must be 1–48 chars: letters, digits, spaces, _ or -');
   }
   return nm;
-}
-
-function mapDuplicateProfile(e, name) {
-  if (/UNIQUE/.test(e?.message || '')) {
-    const x = new Error(`a profile named "${name}" already exists`);
-    x.code = 'BAD_SETTING';
-    return x;
-  }
-  return e;
 }
 
 // Map Proxmox's qemu status payload to our normalized shape.

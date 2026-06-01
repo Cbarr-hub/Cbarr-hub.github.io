@@ -221,7 +221,7 @@ and never needs root on the host.
 **Startup config = named "Profiles"** (all four games): a profile is the structured
 startup config the server boots as, stored in SQLite (`server_profiles` +
 `server_active_profile`, migration 003); live RCON/console commands are the separate
-ephemeral layer. Design + per-game details → [`SERVER_PROFILES_PLAN.md`](SERVER_PROFILES_PLAN.md).
+ephemeral layer. Per-game details live in each connector + the CLAUDE.md gotchas.
 
 ### Architecture (layers, infra → UI)
 

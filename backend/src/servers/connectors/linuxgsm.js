@@ -14,7 +14,7 @@ export class LinuxGsmConnector extends BaseConnector {
   gsmDir = '';         // e.g. /home/miles/csserver
   gsmScript = '';      // e.g. cs2server
 
-  #gsm(action, timeoutMs, awaitAgentMs = 0) {
+  runGsm(action, timeoutMs, awaitAgentMs = 0) {
     return this.runShell(`cd ${this.gsmDir} && ./${this.gsmScript} ${action}`, {
       asUser: this.gsmUser,
       timeoutMs,
@@ -36,25 +36,25 @@ export class LinuxGsmConnector extends BaseConnector {
   // Start/restart may be fired right after a Start VM, so wait out the guest
   // agent's post-boot warm-up (up to 45s) instead of erroring immediately.
   async startGame() {
-    await this.#gsm('start', 120_000, 45_000);
+    await this.runGsm('start', 120_000, 45_000);
     return { ok: true };
   }
 
   async stopGame() {
-    await this.#gsm('stop', 120_000);
+    await this.runGsm('stop', 120_000);
     return { ok: true };
   }
 
   async restartGame() {
-    await this.#gsm('restart', 180_000, 45_000);
+    await this.runGsm('restart', 180_000, 45_000);
     return { ok: true };
   }
 
   // LinuxGSM `update` validates/updates server files via SteamCMD, then we
   // restart the instance so the new build is live.
   async update() {
-    const upd = await this.#gsm('update', 600_000);
-    const restart = await this.#gsm('restart', 120_000);
+    const upd = await this.runGsm('update', 600_000);
+    const restart = await this.runGsm('restart', 120_000);
     return { steps: [{ name: 'update', ...upd }, { name: 'restart', ...restart }] };
   }
 }

@@ -1,5 +1,5 @@
 // Persistence for the game-server control panel: the Steam Workshop map catalog
-// and the reusable game-state config library (see SERVER_PANEL_PLAN.md, Phase 1).
+// and the reusable game-state config library.
 //
 // Pure DB access over better-sqlite3 — no Fastify, no Proxmox, no game knowledge.
 // One store is created per app from the shared DB and injected into the

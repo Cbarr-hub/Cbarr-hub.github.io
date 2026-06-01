@@ -137,6 +137,16 @@ export async function dbGetAllGames() {
   return (await api('/games')) ?? [];
 }
 
+// ── reviews (testimony registry) ──────────────────────────────────────────────
+
+export async function dbGetReviews() {
+  return (await api('/reviews')) ?? [];
+}
+
+export async function dbAddReview({ name, rating, message }) {
+  return api('/reviews', { method: 'POST', body: { name, rating, message } });
+}
+
 // ── game-server control (servers page, admin-only) ────────────────────────────
 
 export async function dbGetServers() {

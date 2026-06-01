@@ -29,6 +29,7 @@ import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVars } from '../cfgvars.js';
 import { getCvar, setCvars } from '../cvars.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
+import { badSetting, MAP_NAME_RE } from '../errors.js';
 
 const DIR        = '/home/miles/gmodserver';
 const GARRYSMOD  = `${DIR}/serverfiles/garrysmod`;
@@ -52,13 +53,11 @@ const GMOD_LIVE_ACTIONS = [
 ];
 const GMOD_ACTION_CMDS = { players: 'status' };
 
-const MAP_RE = /^[a-z0-9_]{1,64}$/;
 
 // Maps that ship with the base install, so they're always loadable even with no
 // workshop collection — the safe floor for defaults + the boot-map guard.
 const STOCK_ALWAYS = ['gm_construct', 'gm_flatgrass'];
 
-const badSetting = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
 
 // TTT cvar field specs (key in server.cfg, UI label, numeric bounds). pct fields
 // are 0..1 fractions; the rest are integers. Kept as data so getSettings builds
@@ -145,66 +144,6 @@ export class GmodConnector extends LinuxGsmConnector {
     };
   }
 
-  async setSettings(values = {}) {
-    const { section } = values;
-    if (section && section !== 'ttt') throw badSetting(`unknown section: ${section}`);
-
-    // ── instance cfg: map / players / workshop collection ──
-    const instVars = {};
-    if (values.map !== undefined) {
-      const map = String(values.map).trim();
-      if (!MAP_RE.test(map)) throw badSetting(`invalid map name: ${map}`);
-      instVars.defaultmap = map;
-    }
-    if (values.maxPlayers !== undefined) {
-      const mp = Number(values.maxPlayers);
-      if (!Number.isInteger(mp) || mp < 1 || mp > 128) throw badSetting('maxPlayers must be 1–128');
-      instVars.maxplayers = String(mp);
-    }
-    if (values.workshopCollection !== undefined) {
-      const id = String(values.workshopCollection).trim();
-      if (id !== '' && !/^\d{1,20}$/.test(id)) throw badSetting('workshop collection id must be digits');
-      instVars.wscollectionid = id;
-    }
-    if (Object.keys(instVars).length) {
-      let inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
-      inst = setVars(inst, instVars);
-      await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, inst);
-    }
-
-    // ── server.cfg: TTT cvars + mapcycle toggle ──
-    const cvars = {};
-    for (const f of TTT_FIELDS) {
-      if (values[f.key] === undefined) continue;
-      const n = Number(values[f.key]);
-      if (Number.isNaN(n)) throw badSetting(`${f.label} must be a number`);
-      if (n < f.min || n > f.max) throw badSetting(`${f.label} must be ${f.min}–${f.max}`);
-      if (f.int && !Number.isInteger(n)) throw badSetting(`${f.label} must be a whole number`);
-      cvars[f.cvar] = String(n);
-    }
-    if (values.useMapcycle !== undefined) {
-      cvars.ttt_always_use_mapcycle = String(values.useMapcycle) === '0' ? '0' : '1';
-    }
-    if (Object.keys(cvars).length) {
-      let game = (await this.client.agentFileRead(this.vmid, SERVER_CFG)).content ?? '';
-      game = setCvars(game, cvars);
-      await this.client.agentFileWrite(this.vmid, SERVER_CFG, game);
-    }
-
-    // ── mapcycle.txt: sanitized list of map names ──
-    if (values.mapcycle !== undefined) {
-      const lines = String(values.mapcycle).split('\n')
-        .map((l) => l.trim())
-        .filter((l) => l && !l.startsWith('//'));
-      for (const l of lines) {
-        if (!MAP_RE.test(l)) throw badSetting(`invalid map in cycle: ${l}`);
-      }
-      await this.client.agentFileWrite(this.vmid, MAPCYCLE, lines.join('\n') + (lines.length ? '\n' : ''));
-    }
-
-    return { ok: true, applied: { section: 'ttt' } };
-  }
-
   // ── startup-config profiles ─────────────────────────────────────────────────
   // A GMOD profile is the whole TTT startup config: starting map + ordered
   // rotation, the ttt_* gameplay cvars, player slots, and the workshop collection.
@@ -246,7 +185,7 @@ export class GmodConnector extends LinuxGsmConnector {
 
     const raw = Array.isArray(s.mapcycle) ? s.mapcycle : String(s.mapcycle ?? '').split('\n');
     const cycle = raw.map((l) => String(l).trim()).filter((l) => l && !l.startsWith('//'));
-    for (const l of cycle) if (!MAP_RE.test(l)) throw badSetting(`invalid map in cycle: ${l}`);
+    for (const l of cycle) if (!MAP_NAME_RE.test(l)) throw badSetting(`invalid map in cycle: ${l}`);
     out.mapcycle = cycle;
 
     return out;
@@ -383,7 +322,7 @@ export class GmodConnector extends LinuxGsmConnector {
   async runLiveAction(key, value) {
     if (key === 'change_map') {
       const v = String(value ?? '').trim();
-      if (!MAP_RE.test(v)) throw badSetting(`invalid map: ${v}`);
+      if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
       return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: `changelevel ${v}` });
     }
     const cmd = GMOD_ACTION_CMDS[key];

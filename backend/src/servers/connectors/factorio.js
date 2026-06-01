@@ -19,6 +19,7 @@ import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVar } from '../cfgvars.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
 import * as backups from '../backups.js';
+import { badSetting, SAFE_NAME_RE } from '../errors.js';
 
 const BK_PREFIX = 'factorio';
 const BK_EXT    = '.zip';
@@ -35,8 +36,6 @@ const VISIBILITY_OPTS = [
   { value: 'lan',    label: 'LAN only' },
 ];
 
-const SAVE_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
-const badSetting = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
 
 // Live (RCON) curated actions — read-only commands validated to work headless.
 const FACTORIO_LIVE_ACTIONS = [
@@ -161,15 +160,14 @@ export class FactorioConnector extends LinuxGsmConnector {
   }
 
   async setSettings(values = {}) {
-    const bad = msg => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
     const { section, saveName } = values;
 
-    if (!section) throw bad('section is required');
-    if (!saveName || typeof saveName !== 'string' || !saveName.trim()) throw bad('save name is required');
+    if (!section) throw badSetting('section is required');
+    if (!saveName || typeof saveName !== 'string' || !saveName.trim()) throw badSetting('save name is required');
 
     const cleanName = saveName.trim();
-    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(cleanName)) {
-      throw bad('save name may only contain letters, digits, underscores, and hyphens (max 64 chars)');
+    if (!SAFE_NAME_RE.test(cleanName)) {
+      throw badSetting('save name may only contain letters, digits, underscores, and hyphens (max 64 chars)');
     }
 
     // ── Copy current world state to a named save ────────────────────────────
@@ -182,13 +180,13 @@ export class FactorioConnector extends LinuxGsmConnector {
       const source = await this.#latestAutosave()
         ?? (currName ? `${SAVES_DIR}/${currName}.zip` : null);
 
-      if (!source) throw bad('no autosave or active save found to copy from');
+      if (!source) throw badSetting('no autosave or active save found to copy from');
 
       const dest   = `${SAVES_DIR}/${cleanName}.zip`;
       const cpRes  = await this.runShell(`cp "${source}" "${dest}"`, {
         asUser: this.gsmUser, timeoutMs: 30_000,
       });
-      if (cpRes.exitCode !== 0) throw bad(`copy failed: ${cpRes.stderr || cpRes.stdout}`);
+      if (cpRes.exitCode !== 0) throw badSetting(`copy failed: ${cpRes.stderr || cpRes.stdout}`);
 
       return { ok: true, action: 'saveAs', saveName: cleanName, source };
     }
@@ -214,13 +212,13 @@ export class FactorioConnector extends LinuxGsmConnector {
         enemies      = 'normal',
       } = values;
 
-      if (!VALID_PRESET.has(preset))      throw bad(`invalid preset: ${preset}`);
-      if (seed !== '' && !/^\d{1,10}$/.test(String(seed))) throw bad('seed must be a number or blank');
-      if (!VALID_START.has(startingArea)) throw bad(`invalid startingArea`);
-      if (!VALID_DENSITY.has(oreFrequency)) throw bad(`invalid oreFrequency`);
-      if (!VALID_DENSITY.has(oreSize))    throw bad(`invalid oreSize`);
-      if (!VALID_DENSITY.has(oreRichness)) throw bad(`invalid oreRichness`);
-      if (!VALID_ENEMY.has(enemies))      throw bad(`invalid enemies`);
+      if (!VALID_PRESET.has(preset))      throw badSetting(`invalid preset: ${preset}`);
+      if (seed !== '' && !/^\d{1,10}$/.test(String(seed))) throw badSetting('seed must be a number or blank');
+      if (!VALID_START.has(startingArea)) throw badSetting(`invalid startingArea`);
+      if (!VALID_DENSITY.has(oreFrequency)) throw badSetting(`invalid oreFrequency`);
+      if (!VALID_DENSITY.has(oreSize))    throw badSetting(`invalid oreSize`);
+      if (!VALID_DENSITY.has(oreRichness)) throw badSetting(`invalid oreRichness`);
+      if (!VALID_ENEMY.has(enemies))      throw badSetting(`invalid enemies`);
 
       const oreCtrl   = { frequency: oreFrequency, size: oreSize, richness: oreRichness };
       const enemyCtrl = enemies === 'none'
@@ -247,13 +245,8 @@ export class FactorioConnector extends LinuxGsmConnector {
       const wasActive = vmStatus.status === 'running';
       const steps     = [];
 
-      const lgsm = (action, ms = 120_000) =>
-        this.runShell(`cd "${DIR}" && ./${this.gsmScript} ${action}`, {
-          asUser: this.gsmUser, timeoutMs: ms,
-        });
-
       if (wasActive) {
-        const stopRes = await lgsm('stop');
+        const stopRes = await this.runGsm('stop', 120_000);
         steps.push({ name: 'stop', ...stopRes });
         // Give the OS a moment to release the exclusive lock after the process exits.
         await new Promise(r => setTimeout(r, 3_000));
@@ -278,7 +271,7 @@ export class FactorioConnector extends LinuxGsmConnector {
       if (createResult.exitCode !== 0) {
         // Recovery-restart the previous world so the server isn't left stopped.
         if (wasActive) {
-          const restartRes = await lgsm('start').catch(e => ({ exitCode: 1, stdout: '', stderr: e.message }));
+          const restartRes = await this.runGsm('start', 120_000).catch(e => ({ exitCode: 1, stdout: '', stderr: e.message }));
           steps.push({ name: 'start (recovery)', ...restartRes });
         }
         // Return steps rather than throwing so the full Factorio output is visible
@@ -293,14 +286,14 @@ export class FactorioConnector extends LinuxGsmConnector {
       await this.client.agentFileWrite(this.vmid, LGSM_CFG, updatedCfg);
 
       if (wasActive) {
-        const startRes = await lgsm('start');
+        const startRes = await this.runGsm('start', 120_000);
         steps.push({ name: 'start', ...startRes });
       }
 
       return { ok: true, action: 'generate', saveName: cleanName, steps };
     }
 
-    throw bad(`unknown section: ${section}`);
+    throw badSetting(`unknown section: ${section}`);
   }
 
   // ── startup-config profiles ─────────────────────────────────────────────────
@@ -319,7 +312,7 @@ export class FactorioConnector extends LinuxGsmConnector {
   validateProfileSettings(s = {}) {
     const out = {};
     out.saveName = String(s.saveName ?? '').trim();
-    if (out.saveName && !SAVE_NAME_RE.test(out.saveName)) throw badSetting('invalid world name');
+    if (out.saveName && !SAFE_NAME_RE.test(out.saveName)) throw badSetting('invalid world name');
     out.serverName  = String(s.serverName ?? '').slice(0, 200);
     out.description = String(s.description ?? '').slice(0, 500);
     const mp = Number(s.maxPlayers);
@@ -398,7 +391,7 @@ export class FactorioConnector extends LinuxGsmConnector {
     const m = rawParams.match(/--start-server\s+\S*\/([^/"\s]+)\.zip/);
     const currentSave = m?.[1] || getVar(lgsmText, 'savename') || '';
     return this.validateProfileSettings({
-      saveName: SAVE_NAME_RE.test(currentSave) ? currentSave : '',
+      saveName: SAFE_NAME_RE.test(currentSave) ? currentSave : '',
       serverName: j.name ?? '',
       description: j.description ?? '',
       maxPlayers: Number.isInteger(j.max_players) ? j.max_players : 0,

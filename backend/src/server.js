@@ -14,6 +14,7 @@ import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
 import balancesRoutes from './routes/balances.js';
 import forumRoutes from './routes/forum.js';
+import reviewsRoutes from './routes/reviews.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import eventsRoutes from './routes/events.js';
 import gamesRoutes from './routes/games.js';
@@ -81,6 +82,7 @@ export async function buildApp(env = loadEnv()) {
   await app.register(meRoutes,   { prefix: '/api' });
   await app.register(balancesRoutes,   { prefix: '/api/balances' });
   await app.register(forumRoutes,      { prefix: '/api/forum' });
+  await app.register(reviewsRoutes,    { prefix: '/api/reviews' });
   await app.register(leaderboardRoutes,{ prefix: '/api/leaderboard' });
   await app.register(eventsRoutes,     { prefix: '/api/events' });
   await app.register(gamesRoutes,      { prefix: '/api/games' });

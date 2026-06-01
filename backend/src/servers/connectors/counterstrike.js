@@ -15,7 +15,7 @@
 //   maxplayers + gt_active_config live in the LGSM instance cfg.
 // Changes apply on the next server restart.
 //
-// Phase 2 additions (see SERVER_PANEL_PLAN.md):
+// Workshop-map catalog + config library (SQLite-backed):
 //   - The workshop-map catalog + reusable config library are persisted in SQLite
 //     (this.store), not hardcoded. Adding/renaming maps and editing configs are
 //     pure DB ops; getSettings reads the catalog to build the map dropdown.
@@ -27,6 +27,7 @@ import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVar } from '../cfgvars.js';
 import { getCvar, setCvars } from '../cvars.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
+import { badSetting, notFound, duplicateError, MAP_NAME_RE } from '../errors.js';
 
 const DIR          = '/home/miles/csserver';
 const CFG_DIR      = `${DIR}/serverfiles/game/csgo/cfg`;
@@ -73,8 +74,6 @@ const CS_ACTION_CMDS = {
   bunnyhop_off:  'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_staminamax 14; sv_airaccelerate 12',
 };
 
-const badSetting = (msg) => { const e = new Error(msg); e.code = 'BAD_SETTING'; return e; };
-const notFound   = (what) => { const e = new Error(`${what} not found`); e.code = 'NOT_FOUND'; return e; };
 
 export class CounterStrikeConnector extends LinuxGsmConnector {
   gsmUser = 'miles';
@@ -86,15 +85,6 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     'lgsm.cfg': INSTANCE_CFG,
     'lgsm-common.cfg': `${DIR}/lgsm/config-lgsm/cs2server/common.cfg`,
   };
-
-  #store() {
-    if (!this.store) {
-      const e = new Error('persistence store is not configured');
-      e.code = 'NOT_CONFIGURED';
-      throw e;
-    }
-    return this.store;
-  }
 
   async #listMaps() {
     try {
@@ -143,7 +133,7 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
       if (!/^\d{1,20}$/.test(id)) throw badSetting(`invalid workshop id: ${id}`);
       out.map = `ws:${id}`;
     } else {
-      if (!/^[a-z0-9_]{1,64}$/.test(map)) throw badSetting(`invalid map name: ${map}`);
+      if (!MAP_NAME_RE.test(map)) throw badSetting(`invalid map name: ${map}`);
       out.map = map;
     }
     if (!GAME_ALIASES[s.gameMode]) throw badSetting(`invalid game mode: ${s.gameMode}`);
@@ -249,81 +239,13 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     return { text: gameText.replace(/\n*$/, '') + `\nexec ${ACTIVE_EXEC}\n`, changed: true };
   }
 
-  // Write the selected config's body into active.cfg. configId '' / null clears
-  // it (empty file = no-op exec). Returns the id string to store for the UI.
-  async #deployConfig(configId) {
-    let body = '', selectedId = '';
-    if (configId !== '' && configId != null) {
-      const cfg = this.store?.getConfig(this.server.id, configId);
-      if (!cfg) throw badSetting(`unknown config: ${configId}`);
-      body = cfg.body || '';
-      selectedId = String(cfg.id);
-    }
-    await this.runShell(`mkdir -p "${GT_DIR}"`, { asUser: this.gsmUser, timeoutMs: 10_000 });
-    await this.client.agentFileWrite(this.vmid, ACTIVE_CFG, body);
-    return selectedId;
-  }
-
-  async setSettings(values = {}) {
-    const { map, workshopId, gameMode, maxPlayers, hostname, configId } = values;
-
-    if (gameMode !== undefined && !GAME_ALIASES[gameMode]) throw badSetting(`invalid game mode: ${gameMode}`);
-    const mp = maxPlayers === undefined ? undefined : Number(maxPlayers);
-    if (mp !== undefined && (!Number.isInteger(mp) || mp < 1 || mp > 64)) throw badSetting('maxPlayers must be 1–64');
-    if (workshopId !== undefined && workshopId !== '' && !/^\d{1,20}$/.test(workshopId)) throw badSetting(`invalid workshop id: ${workshopId}`);
-    if (hostname !== undefined && /["\n\r]/.test(hostname)) throw badSetting('server name may not contain quotes or newlines');
-
-    // Resolve the desired map source.
-    let wsId, stock;
-    if (workshopId) wsId = workshopId;
-    else if (typeof map === 'string' && map.startsWith('ws:')) wsId = map.slice(3);
-    else if (typeof map === 'string' && map) {
-      if (!/^[a-z0-9_]{1,64}$/.test(map)) throw badSetting(`invalid map name: ${map}`);
-      stock = map;
-    }
-    if (wsId !== undefined && !/^\d{1,20}$/.test(wsId)) throw badSetting(`invalid workshop id: ${wsId}`);
-
-    // ── game cfg (map / workshop / alias / hostname) + active-config exec line ──
-    let game = (await this.client.agentFileRead(this.vmid, GAME_CFG)).content ?? '';
-    const cvars = {};
-    if (wsId !== undefined) {
-      cvars.host_workshop_map = wsId;                 // overrides stock map
-    } else if (stock !== undefined) {
-      cvars.map = stock;
-      cvars.host_workshop_map = '';                   // clear workshop so stock map loads
-      cvars.host_workshop_collection = '';
-    }
-    if (gameMode !== undefined) cvars.game_alias = gameMode;
-    if (hostname !== undefined) cvars.hostname = hostname;
-
-    let gameChanged = false;
-    if (Object.keys(cvars).length) { game = setCvars(game, cvars); gameChanged = true; }
-    const ensured = await this.#ensureActiveExec(game);
-    game = ensured.text;
-    if (gameChanged || ensured.changed) await this.client.agentFileWrite(this.vmid, GAME_CFG, game);
-
-    // ── active config deploy (only when configId is present in the request) ──
-    let selectedConfigId;
-    if ('configId' in values) selectedConfigId = await this.#deployConfig(configId);
-
-    // ── instance cfg (maxplayers + active config id) ──
-    if (mp !== undefined || selectedConfigId !== undefined) {
-      let inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
-      if (mp !== undefined) inst = setVar(inst, 'maxplayers', String(mp));
-      if (selectedConfigId !== undefined) inst = setVar(inst, 'gt_active_config', selectedConfigId);
-      await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, inst);
-    }
-
-    return { ok: true, applied: { map: stock, workshopMap: wsId, gameMode, maxPlayers: mp, hostname, configId: selectedConfigId } };
-  }
-
   // ── workshop map catalog (DB-backed) ────────────────────────────────────────
   listMaps() {
-    return this.#store().listWorkshopMaps(this.server.id);
+    return this.requireStore().listWorkshopMaps(this.server.id);
   }
 
   addMap({ workshopId, name } = {}) {
-    this.#store();
+    this.requireStore();
     const id = String(workshopId ?? '').trim();
     if (!/^\d{1,20}$/.test(id)) throw badSetting('workshop id must be 1–20 digits');
     const nm = this.#validMapName(name);
@@ -331,14 +253,14 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
   }
 
   renameMap(workshopId, name) {
-    this.#store();
+    this.requireStore();
     const nm = this.#validMapName(name);
-    if (!this.store.renameWorkshopMap(this.server.id, String(workshopId), nm)) throw notFound('workshop map');
+    if (!this.store.renameWorkshopMap(this.server.id, String(workshopId), nm)) throw notFound('workshop map not found');
     return this.store.getWorkshopMap(this.server.id, workshopId);
   }
 
   deleteMap(workshopId) {
-    if (!this.#store().deleteWorkshopMap(this.server.id, String(workshopId))) throw notFound('workshop map');
+    if (!this.requireStore().deleteWorkshopMap(this.server.id, String(workshopId))) throw notFound('workshop map not found');
     return { ok: true };
   }
 
@@ -352,28 +274,28 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
 
   // ── config library (DB-backed) ──────────────────────────────────────────────
   listConfigs() {
-    return this.#store().listConfigs(this.server.id);
+    return this.requireStore().listConfigs(this.server.id);
   }
 
   getConfig(id) {
-    const cfg = this.#store().getConfig(this.server.id, id);
-    if (!cfg) throw notFound('config');
+    const cfg = this.requireStore().getConfig(this.server.id, id);
+    if (!cfg) throw notFound('config not found');
     return cfg;
   }
 
   createConfig({ name, body } = {}) {
-    this.#store();
+    this.requireStore();
     const nm = this.#validConfigName(name);
     const b  = this.#validConfigBody(body);
     try {
       return this.store.createConfig(this.server.id, { name: nm, body: b });
     } catch (e) {
-      throw this.#mapDbErr(e, nm);
+      throw duplicateError(e, nm, 'config');
     }
   }
 
   updateConfig(id, { name, body } = {}) {
-    this.#store();
+    this.requireStore();
     const patch = {};
     if (name !== undefined) patch.name = this.#validConfigName(name);
     if (body !== undefined) patch.body = this.#validConfigBody(body);
@@ -381,14 +303,14 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     try {
       updated = this.store.updateConfig(this.server.id, id, patch);
     } catch (e) {
-      throw this.#mapDbErr(e, patch.name);
+      throw duplicateError(e, patch.name, 'config');
     }
-    if (!updated) throw notFound('config');
+    if (!updated) throw notFound('config not found');
     return updated;
   }
 
   deleteConfig(id) {
-    if (!this.#store().deleteConfig(this.server.id, id)) throw notFound('config');
+    if (!this.requireStore().deleteConfig(this.server.id, id)) throw notFound('config not found');
     return { ok: true };
   }
 
@@ -405,11 +327,6 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
     if (b.length > 100_000) throw badSetting('config body too large (max 100000 chars)');
     if (b.includes('\0')) throw badSetting('config body may not contain null bytes');
     return b;
-  }
-
-  #mapDbErr(e, name) {
-    if (/UNIQUE/.test(e?.message || '')) return badSetting(`a config named "${name}" already exists`);
-    return e;
   }
 
   // ── live commands (Phase 3; CS2 Source RCON on the game port) ────────────────
@@ -453,7 +370,7 @@ export class CounterStrikeConnector extends LinuxGsmConnector {
       if (!/^\d{1,20}$/.test(id)) throw badSetting(`invalid workshop id: ${id}`);
       cmd = `host_workshop_map ${id}`;
     } else {
-      if (!/^[a-z0-9_]{1,64}$/.test(v)) throw badSetting(`invalid map: ${v}`);
+      if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
       cmd = `changelevel ${v}`;
     }
     return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });

@@ -5,6 +5,9 @@
 # macOS junk
 .DS_Store
 
+# Logs
+*.log
+
 # Local secrets — NEVER commit (this is a public *.github.io repo)
 SECRETS.local.md
 *.local

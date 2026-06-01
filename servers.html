@@ -188,12 +188,7 @@
     .bk-row .bk-label { color: #ddd; font-size: 12px; word-break: break-all; }
     .bk-row .bk-meta { color: #999; font-size: 10px; margin-left: auto; white-space: nowrap; }
     .bk-row button { flex: none; }
-    /* ── CS startup panel ── */
-    details.cs-advanced { margin-top: 10px; border-top: 1px dashed #3a3a3a; padding-top: 6px; }
-    details.cs-advanced summary { color: #7bb85f; font-size: 11px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
-    [data-cs-add] { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-    [data-cs-add] input { flex: 1 1 120px; min-width: 0; }
-    .qs-fields .retro-btn, [data-cs-add] .retro-btn { padding: 2px 8px; }
+    .qs-fields .retro-btn { padding: 2px 8px; }
     .qs-fields .inline { display: flex; gap: 6px; align-items: center; }
     .qs-fields .inline select { flex: 1; min-width: 0; }
     /* ── Runtime (live) panel ── */
@@ -1568,10 +1563,9 @@
         } catch { return panelReady(qs, false) }
         if (!data) return panelReady(qs, false)
 
-        // Counter-Strike now uses the generic Profiles panel for its startup
-        // config; getSettings only returns the map block (for the live change-map),
-        // so this falls through to the no-op below. (renderCsPanel is retained but
-        // unused.)
+        // Counter-Strike and GMOD use the generic Profiles panel for startup
+        // config; their getSettings only returns the map block (for the live
+        // change-map), so this falls through to the no-op below.
 
         if (!data.fields?.length && !data.sections?.length) return panelReady(qs, false)
 
@@ -1620,210 +1614,6 @@
 
         // mark loaded and let updateStatus decide visibility
         panelReady(qs)
-      }
-
-      // ── Counter-Strike startup panel ──────────────────────────────────────
-      async function csReload(selectMap) {
-        try {
-          const data = await dbGetServerSettings(id)
-          if (data?.game === 'counterstrike') renderCsPanel(data, selectMap)
-        } catch (e) { setErr(e.message) }
-      }
-
-      function renderCsPanel(data, selectMap) {
-        const m = data.map || { stock: [], workshop: [], current: '' }
-        const current = (selectMap && selectMap !== '__add__') ? selectMap : (m.current || '')
-
-        const mapOpts =
-          '<optgroup label="Stock">' +
-            m.stock.map(n => `<option value="${esc(n)}"${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('') +
-          '</optgroup>' +
-          (m.workshop.length
-            ? '<optgroup label="Workshop">' +
-                m.workshop.map(w => {
-                  const v = `ws:${w.id}`
-                  return `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(w.name)}</option>`
-                }).join('') +
-              '</optgroup>'
-            : '') +
-          '<option value="__add__">＋ Add workshop map…</option>'
-
-        const modeOpts = data.gameMode.options.map(o =>
-          `<option value="${esc(o.value)}"${o.value === data.gameMode.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
-
-        const cfgSel = data.configs?.selectedId ?? ''
-        const cfgOpts = '<option value="">(none)</option>' +
-          (data.configs?.options || []).map(c =>
-            `<option value="${esc(c.id)}"${String(c.id) === String(cfgSel) ? ' selected' : ''}>${esc(c.name)}</option>`).join('')
-
-        qs.innerHTML = `
-          <div class="panel-title">Startup <span class="qs-note">applies on restart</span></div>
-          <div class="qs-fields">
-            <label>Map</label>
-            <div>
-              <div class="inline">
-                <select data-cs-map>${mapOpts}</select>
-                <button class="retro-btn" data-cs-rename>Rename</button>
-                <button class="retro-btn danger" data-cs-remove>Remove</button>
-              </div>
-              <div data-cs-add style="display:none;margin-top:6px">
-                <input type="text" data-cs-add-id placeholder="Workshop ID (digits)" />
-                <input type="text" data-cs-add-name placeholder="Map name" />
-                <button class="retro-btn" data-cs-add-save>Save Map</button>
-                <button class="retro-btn" data-cs-add-cancel>Cancel</button>
-              </div>
-            </div>
-
-            <label>Game Mode</label>
-            <select data-cs-mode>${modeOpts}</select>
-
-            <label>Config</label>
-            <div class="inline">
-              <select data-cs-config>${cfgOpts}</select>
-              <button class="retro-btn" data-cs-manage>Manage…</button>
-            </div>
-
-            <label>Max Players</label>
-            <input type="number" data-cs-max min="1" max="64" value="${esc(data.maxPlayers ?? 10)}" />
-          </div>
-
-          <div data-cs-editor style="display:none"></div>
-
-          <div class="panel-row">
-            <button class="retro-btn" data-cs-apply>Apply</button>
-            <span class="qs-note">${esc(data.note || '')}</span>
-          </div>
-
-          <details class="cs-advanced">
-            <summary>Advanced</summary>
-            <div class="qs-fields" style="margin-top:6px">
-              <label>Server Name</label>
-              <input type="text" data-cs-hostname value="${esc(data.hostname ?? '')}" />
-            </div>
-            <div class="qs-note-block">Shown in the CS2 server browser.</div>
-          </details>`
-
-        const $ = (sel) => qs.querySelector(sel)
-        const mapSel   = $('[data-cs-map]')
-        const addBox   = $('[data-cs-add]')
-        const renameBtn = $('[data-cs-rename]')
-        const removeBtn = $('[data-cs-remove]')
-        const isWs = (v) => typeof v === 'string' && v.startsWith('ws:')
-
-        function syncMapActions() {
-          const ws = isWs(mapSel.value)
-          renameBtn.disabled = !ws
-          removeBtn.disabled = !ws
-          addBox.style.display = mapSel.value === '__add__' ? 'flex' : 'none'
-        }
-        syncMapActions()
-        mapSel.addEventListener('change', () => {
-          syncMapActions()
-          if (mapSel.value === '__add__') $('[data-cs-add-id]').focus()
-        })
-
-        $('[data-cs-add-cancel]').addEventListener('click', () => {
-          mapSel.value = (current && current !== '__add__') ? current : (m.stock[0] || '')
-          syncMapActions()
-        })
-        $('[data-cs-add-save]').addEventListener('click', async () => {
-          const wsid = $('[data-cs-add-id]').value.trim()
-          const nm   = $('[data-cs-add-name]').value.trim()
-          setErr('')
-          try { await dbAddServerMap(id, wsid, nm); await csReload(`ws:${wsid}`) }
-          catch (e) { setErr(e.message) }
-        })
-
-        renameBtn.addEventListener('click', async () => {
-          const wsid = mapSel.value.slice(3)
-          const cur = m.workshop.find(w => w.id === wsid)
-          const nm = prompt('Rename workshop map:', cur?.name || '')
-          if (nm == null) return
-          setErr('')
-          try { await dbRenameServerMap(id, wsid, nm.trim()); await csReload(mapSel.value) }
-          catch (e) { setErr(e.message) }
-        })
-        removeBtn.addEventListener('click', async () => {
-          const wsid = mapSel.value.slice(3)
-          const cur = m.workshop.find(w => w.id === wsid)
-          if (!confirm(`Remove "${cur?.name || wsid}" from the catalog? (does not delete it from Steam)`)) return
-          setErr('')
-          try { await dbDeleteServerMap(id, wsid); await csReload() }
-          catch (e) { setErr(e.message) }
-        })
-
-        // config library editor
-        $('[data-cs-manage]').addEventListener('click', () => {
-          const ed = $('[data-cs-editor]')
-          if (ed.style.display === 'none') { ed.style.display = 'block'; renderConfigEditor(data.configs?.options || []) }
-          else ed.style.display = 'none'
-        })
-        function renderConfigEditor(options) {
-          const ed = $('[data-cs-editor]')
-          const listOpts = '<option value="__new__">＋ New config</option>' +
-            options.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')
-          ed.innerHTML = `
-            <div class="qs-sep"></div>
-            <div class="qs-section-title">Saved Configs</div>
-            <div class="panel-row"><select data-ce-list>${listOpts}</select></div>
-            <div class="qs-fields">
-              <label>Name</label>
-              <input type="text" data-ce-name placeholder="bunnyhop" />
-              <label>Commands</label>
-              <textarea class="cfg" data-ce-body placeholder="sv_cheats 1&#10;sv_autobunnyhopping 1&#10;sv_enablebunnyhopping 1"></textarea>
-            </div>
-            <div class="panel-row">
-              <button class="retro-btn" data-ce-save>Save Config</button>
-              <button class="retro-btn danger" data-ce-delete>Delete</button>
-            </div>`
-          const list = ed.querySelector('[data-ce-list]')
-          const nameEl = ed.querySelector('[data-ce-name]')
-          const bodyEl = ed.querySelector('[data-ce-body]')
-          const delBtn = ed.querySelector('[data-ce-delete]')
-          async function loadInto(val) {
-            if (val === '__new__') { nameEl.value = ''; bodyEl.value = ''; delBtn.disabled = true; return }
-            delBtn.disabled = false
-            try { const c = await dbGetServerConfigBody(id, val); nameEl.value = c.name; bodyEl.value = c.body }
-            catch (e) { setErr(e.message) }
-          }
-          list.addEventListener('change', () => loadInto(list.value))
-          loadInto('__new__')
-          ed.querySelector('[data-ce-save]').addEventListener('click', (e) => {
-            const nm = nameEl.value.trim(), body = bodyEl.value
-            withBtn(e.currentTarget, `Save config "${nm}"`, async () => {
-              if (list.value === '__new__') await dbCreateServerConfig(id, nm, body)
-              else await dbUpdateServerConfig(id, list.value, { name: nm, body })
-              await csReload(mapSel.value === '__add__' ? undefined : mapSel.value)
-              logLine(`Config "${nm}" saved ✓`)
-            }).catch(() => {})
-          })
-          delBtn.addEventListener('click', (e) => {
-            if (list.value === '__new__') return
-            if (!confirm('Delete this config?')) return
-            withBtn(e.currentTarget, 'Delete config', async () => {
-              await dbDeleteServerConfig(id, list.value)
-              await csReload(mapSel.value === '__add__' ? undefined : mapSel.value)
-              logLine('Config deleted ✓')
-            }).catch(() => {})
-          })
-        }
-
-        // apply (map + mode + config + players + hostname)
-        $('[data-cs-apply]').addEventListener('click', async () => {
-          if (mapSel.value === '__add__') { setErr('finish adding the workshop map first (Save Map or Cancel)'); return }
-          const cfgVal = $('[data-cs-config]').value
-          const payload = {
-            map: mapSel.value,
-            gameMode: $('[data-cs-mode]').value,
-            maxPlayers: Number($('[data-cs-max]').value),
-            hostname: $('[data-cs-hostname]').value,
-            configId: cfgVal === '' ? '' : Number(cfgVal),
-          }
-          withBtn($('[data-cs-apply]'), 'Apply settings', async () => {
-            await dbSaveServerSettings(id, payload)
-            logLine('Startup settings saved ✓ — restart (or use Runtime → Apply Config) to apply')
-          }).catch(() => {})
-        })
       }
 
       qsSave.addEventListener('click', async () => {

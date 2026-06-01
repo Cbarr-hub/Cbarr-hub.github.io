@@ -20,7 +20,7 @@ def readpkt(s):
     ln = b""
     while len(ln) < 4:
         c = s.recv(4 - len(ln))
-        if not c: sys.exit("rcon: connection closed")
+        if not c: raise EOFError("closed")
         ln += c
     n = struct.unpack("<i", ln)[0]
     d = b""
@@ -36,15 +36,26 @@ except Exception as e:
     sys.exit("rcon: connect failed: %s" % e)
 s.settimeout(8)
 s.sendall(pkt(1, 3, password))
-while True:
-    rid, rtyp, body = readpkt(s)
-    if rtyp == 2: break
+try:
+    while True:
+        rid, rtyp, body = readpkt(s)
+        if rtyp == 2: break
+except EOFError:
+    sys.exit("rcon: connection closed")
 if rid == -1:
     sys.exit("rcon: auth failed")
 if command:
     s.sendall(pkt(2, 2, command))
-    rid, rtyp, body = readpkt(s)
-    sys.stdout.write(body)
+    out = []
+    s.settimeout(1.5)  # first reply; many commands (exec, sv_*) send none
+    try:
+        while True:
+            rid, rtyp, body = readpkt(s)
+            out.append(body)
+            s.settimeout(0.3)  # drain any follow-up packets, then stop on quiet
+    except Exception:
+        pass
+    sys.stdout.write("".join(out))
 s.close()`;
 
 const PYTHON = '/usr/bin/python3';

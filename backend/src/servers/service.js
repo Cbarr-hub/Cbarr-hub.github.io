@@ -155,6 +155,9 @@ export function createServerService({ client, publicHost = '', db = null }) {
     listMaps(id) {
       return connectorFor(id).listMaps();
     },
+    syncMaps(id) {
+      return connectorFor(id).syncMaps();
+    },
     addMap(id, body) {
       return connectorFor(id).addMap(body);
     },

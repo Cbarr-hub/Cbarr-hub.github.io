@@ -219,6 +219,17 @@ export default async function serversRoutes(app) {
     catch (err) { if (sendErr(err, reply)) return; throw err; }
   });
 
+  // Install collection maps into the single garrysmod/maps/ source (GMOD). Static
+  // path declared before '/:workshopId' so it can't be shadowed.
+  app.post('/:id/maps/sync', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: { params: { type: 'object', properties: { id: ID_PARAM }, required: ['id'] } },
+  }, async (req, reply) => {
+    try { return await svc.syncMaps(req.params.id); }
+    catch (err) { if (sendErr(err, reply)) return; throw err; }
+  });
+
   app.patch('/:id/maps/:workshopId', {
     preHandler: requireAdmin,
     onRequest: app.csrfProtection,

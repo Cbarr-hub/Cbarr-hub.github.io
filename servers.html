@@ -455,7 +455,7 @@
       dbGetServers, dbGetServerStatus, dbServerAction,
       dbListServerConfig, dbReadServerConfig, dbWriteServerConfig, dbUpdateServer,
       dbGetServerSettings, dbSaveServerSettings,
-      dbAddServerMap, dbRenameServerMap, dbDeleteServerMap,
+      dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps,
       dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
       dbListServerBackups, dbCreateServerBackup, dbRestoreServerBackup, dbDeleteServerBackup,
@@ -1290,6 +1290,11 @@
           return `<label class="ml-label">${esc(f.label)}</label>`
             + `<div class="maplist" data-pf="${esc(f.key)}" data-pt="maplist">${maplistHtml(f)}</div>` + help
         }
+        if (f.type === 'mapsync') {
+          // action button (not a settings value) — installs collection maps into the list
+          return `<label class="ml-label">${esc(f.label)}</label>`
+            + `<div class="maplist"><button type="button" class="retro-btn" data-mapsync>⟳ Sync from Collection</button></div>` + help
+        }
         const attrs = [
           f.min != null ? `min="${f.min}"` : '',
           f.max != null ? `max="${f.max}"` : '',
@@ -1464,6 +1469,19 @@
           if (f.type === 'maplist') wireMaplist(f)
           if (f.type === 'select' && f.addWorkshop) wireMapCatalog(f)
         }))
+
+        // Sync maps from collection → installs them into the single maps source,
+        // then refresh the schema's map options (keeping current edits).
+        profBody.querySelector('[data-mapsync]')?.addEventListener('click', (e) => {
+          const btn = e.currentTarget
+          withBtn(btn, 'Sync maps', async () => {
+            readProfileForm()
+            const r = await dbSyncServerMaps(id)
+            P.schema = await dbGetProfileSchema(id)
+            renderProfiles()
+            logLine(`Synced maps from collection ✓ — ${(r?.maps || []).length} installed`)
+          }).catch(() => {})
+        })
       }
 
       // CS map field: the "＋ Workshop Map" inline form adds a Workshop map to the

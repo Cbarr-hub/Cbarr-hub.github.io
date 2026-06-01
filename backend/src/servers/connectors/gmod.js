@@ -40,6 +40,10 @@ const MAPCYCLE   = `${GARRYSMOD}/mapcycle.txt`;
 const INSTANCE_CFG = `${DIR}/lgsm/config-lgsm/gmodserver/gmodserver.cfg`;
 const COMMON_CFG   = `${DIR}/lgsm/config-lgsm/gmodserver/common.cfg`;
 const MAPS_DIR   = `${GARRYSMOD}/maps`;
+// Workshop collection maps land in ONE of two spots depending on the downloader:
+// the legacy in-process cache (cache/srcds/<id>.gma) OR the SteamCMD workshop path
+// (steam_cache/content/4000/<id>/*.gma). Both must be scanned for map discovery.
+const STEAM_WS   = `${DIR}/serverfiles/steam_cache/content/4000`;
 
 // GMOD serves Source RCON on the game port (27066 — see registry).
 const RCON_PORT = 27066;
@@ -81,29 +85,15 @@ export class GmodConnector extends LinuxGsmConnector {
     'lgsm-common.cfg': COMMON_CFG,
   };
 
-  // List available ttt_* maps. Two sources, unioned: maps extracted under
-  // garrysmod/maps/, AND maps inside downloaded Steam Workshop addons (which mount
-  // straight from .gma in the cache and are never written to maps/). The .gma
-  // file list embeds each `maps/<name>.bsp` path, so grep pulls them out without
-  // unpacking. This is what populates both the Startup map select and the live
-  // change-map control with the collection's maps.
-  // Maps offered to the panel = what will actually LOAD on the next boot:
-  //   - stock .bsp maps under garrysmod/maps/ (always present: gm_construct, …)
-  //   - workshop maps from the mounted collection cache, but ONLY when a
-  //     wscollectionid is set. An empty collection mounts 0 addons, so those
-  //     cached .gma maps can't load — offering them is what let a profile pick an
-  //     unmountable boot map and brick startup. So the list is collection-driven.
+  // The SINGLE source of truth for available maps: installed .bsp files under
+  // garrysmod/maps/ (stock gm_construct/gm_flatgrass + whatever syncMaps() has
+  // extracted from the collection). No cache reconciliation — collection maps only
+  // appear here once installed via syncMaps.
   async #listMaps() {
-    const inst = await this.client.agentFileRead(this.vmid, INSTANCE_CFG)
-      .then((r) => r.content ?? '').catch(() => '');
-    const collectionSet = !!(getVar(inst, 'wscollectionid') || '').trim();
     try {
-      const cacheCmd = collectionSet
-        ? `LANG=C grep -ahoE 'maps/[A-Za-z0-9_]+\\.bsp' ${GARRYSMOD}/cache/srcds/*.gma 2>/dev/null;`
-        : '';
       const res = await this.runShell(
-        `{ ls -1 ${MAPS_DIR}/*.bsp 2>/dev/null; ${cacheCmd} } | sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
-        { asUser: this.gsmUser, timeoutMs: 20_000 },
+        `ls -1 ${MAPS_DIR}/*.bsp 2>/dev/null | sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
+        { asUser: this.gsmUser, timeoutMs: 15_000 },
       );
       const names = (res.stdout || '').split('\n')
         .map((l) => l.trim())
@@ -112,6 +102,29 @@ export class GmodConnector extends LinuxGsmConnector {
     } catch {
       return [];
     }
+  }
+
+  // Install collection maps as the single source of truth. GMOD scatters downloaded
+  // workshop content across two locations/formats — legacy addons as
+  // cache/srcds/<id>.gma and modern ones as steam_cache/content/4000/<id>/*.gma — so
+  // there is no single existing place with every map. syncMaps extracts each
+  // downloaded map's maps/*.bsp into garrysmod/maps/ (the engine's canonical map
+  // dir), which #listMaps then reads as the ONE source. These TTT map addons are
+  // self-contained (packed .bsp), so an extracted map loads with no mount
+  // dependency. Idempotent (cp -n). Returns the refreshed installed-map list.
+  async syncMaps() {
+    const gmad = `${DIR}/serverfiles/bin/gmad_linux`;
+    const script = [
+      'tmp=$(mktemp -d) || exit 1',
+      `for g in ${GARRYSMOD}/cache/srcds/*.gma ${STEAM_WS}/*/*.gma; do`,
+      '  [ -e "$g" ] || continue',
+      `  rm -rf "$tmp/x"; "${gmad}" extract -file "$g" -out "$tmp/x" >/dev/null 2>&1 || continue`,
+      `  find "$tmp/x" -name '*.bsp' -exec cp -n {} ${MAPS_DIR}/ ';'`,
+      'done',
+      'rm -rf "$tmp"',
+    ].join('\n');
+    await this.runShell(script, { asUser: this.gsmUser, timeoutMs: 300_000 });
+    return { ok: true, maps: await this.#listMaps() };
   }
 
   // Profiles own the startup config (the Profiles panel). getSettings is kept only
@@ -257,7 +270,9 @@ export class GmodConnector extends LinuxGsmConnector {
           fields: [
             { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
               placeholder: 'Steam Workshop collection id',
-              help: 'Steam stores & manages these maps. Set this, build the rotation, then Apply — that restarts the server so Steam downloads + mounts the collection.' },
+              help: 'Steam stores & manages these maps. Set this, build the rotation, then Apply — that restarts the server so Steam downloads the collection.' },
+            { key: 'syncMaps', label: 'Workshop Maps', type: 'mapsync',
+              help: 'Added a map to the collection? Restart Hosting to download it, then Sync to install it into the list below.' },
             { key: 'mapcycle', label: 'Map Rotation', type: 'maplist', custom: true, options: mapOpts,
               help: 'The server boots into the FIRST map and (with auto-rotate on) advances down the list after each round/time limit. Type collection map names; gm_construct is the always-available fallback.' },
             { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },

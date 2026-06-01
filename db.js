@@ -195,6 +195,11 @@ export async function dbAddServerMap(id, workshopId, name) {
   return api(`/servers/${encodeURIComponent(id)}/maps`, { method: 'POST', body: { workshopId, name } });
 }
 
+// Install collection maps into the single maps source (GMOD). Returns { ok, maps }.
+export async function dbSyncServerMaps(id) {
+  return api(`/servers/${encodeURIComponent(id)}/maps/sync`, { method: 'POST' });
+}
+
 export async function dbRenameServerMap(id, workshopId, name) {
   return api(`/servers/${encodeURIComponent(id)}/maps/${encodeURIComponent(workshopId)}`, { method: 'PATCH', body: { name } });
 }

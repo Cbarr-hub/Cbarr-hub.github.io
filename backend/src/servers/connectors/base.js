@@ -169,6 +169,7 @@ export class BaseConnector {
   // DB-backed lists a connector may expose via this.store. Default: unsupported,
   // so non-CS servers reject these cleanly instead of NPE-ing on a null store.
   listMaps()     { throw unsupportedCapability('a workshop map catalog'); }
+  syncMaps()     { throw unsupportedCapability('workshop map sync'); }
   addMap()       { throw unsupportedCapability('a workshop map catalog'); }
   renameMap()    { throw unsupportedCapability('a workshop map catalog'); }
   deleteMap()    { throw unsupportedCapability('a workshop map catalog'); }

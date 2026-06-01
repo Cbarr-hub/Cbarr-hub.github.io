@@ -210,6 +210,14 @@ test('gmod: profileSchema groups Maps/Gameplay with collection-driven fields', a
   assert.ok(mapGroup.fields.some((f) => f.key === 'mapcycle' && f.type === 'maplist' && f.custom));
   assert.ok(!mapGroup.fields.some((f) => f.key === 'map')); // no separate start-map field
   assert.ok(mapGroup.fields.some((f) => f.key === 'useMapcycle' && f.type === 'bool'));
+  assert.ok(mapGroup.fields.some((f) => f.type === 'mapsync')); // the Sync-from-collection action
+});
+
+test('gmod: syncMaps runs the extract and returns the installed map list', async () => {
+  const { conn } = gmod();
+  const r = await conn.syncMaps();
+  assert.equal(r.ok, true);
+  assert.ok(Array.isArray(r.maps));
 });
 
 // ── Factorio connector: schema / validate / apply / capture ──────────────────────

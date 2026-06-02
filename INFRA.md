@@ -34,10 +34,18 @@
 | 101 | Factorio-Server | 6 GB | 50 GB | Stopped |
 | 102 | Minecraft-Server | 16 GB | 40 GB | Stopped |
 | 104 | Garrys-Mod-Server | 6 GB | 40 GB | Running |
+| 105 | Prop-Hunt-Server | 6 GB | 40 GB | Running |
 
 > CT 103 is the Gamertown web app (LXC), so the GMOD game VM is 104.
 > VM 104 was built from the Ubuntu 24.04 cloud image + cloud-init (login user
 > `miles`), unlike 100–102 which were manual ISO installs.
+> VM 105 (Prop Hunt) was **full-cloned from 104** (same GMOD/srcds + CS:S install,
+> new MAC `BC:24:11:30:FD:10`, IP 192.168.1.246), then reconfigured for the Prop
+> Hunt: X2Z gamemode on port 27067 — so it runs independently of TTT and didn't need
+> a fresh ~6 GB install. **Pending go-live:** the X2Z gamemode + `ph_` maps still need
+> installing by Workshop item id (panel **Sync** → connector `syncMaps`); until then
+> `phserver.service` is configured + enabled but not started (`prop_hunt` isn't built
+> into GMOD), and the 27067 port-forward isn't added yet.
 
 Start a VM: `qm start <vmid>`  
 Stop a VM: `qm stop <vmid>`
@@ -131,6 +139,7 @@ Configured via Firewall → NAT/Gaming at http://192.168.1.254
 | Factorio | 34197 | factorio-ubuntu | TCP/UDP |
 | Minecraft | 25565 | minecraft-server | TCP/UDP |
 | Garry's Mod (TTT) | 27066 | Garrys-Mod-Server (192.168.1.243) | TCP/UDP |
+| Prop Hunt | 27067 *(to add when going live)* | Prop-Hunt-Server (VM 105, MAC BC:24:11:30:FD:10) | TCP/UDP |
 | SSH | 22 | DESKTOP-CEDMDNJ | TCP |
 
 > **GMOD port note:** GMOD uses **27066** specifically because the Counter-Strike
@@ -336,6 +345,7 @@ All guests are **Ubuntu 24.04**, login user **`miles`**, on the LAN via DHCP.
 | 101 Factorio | `factorio-ubuntu` / .74 | LinuxGSM `fctrserver` | `/home/miles/fctrserver` | `./fctrserver start\|stop\|restart\|update` | `serverfiles/data/server-settings.json`, `lgsm/config-lgsm/fctrserver/{fctrserver,common}.cfg` |
 | 102 Minecraft | `minecraft-server` / .68 | plain + tmux | `/home/miles/MinecraftServer` | `tmux` session `minecraft` + `./start.sh` | `server.properties`, `whitelist.json`, `ops.json`, `banned-{players,ips}.json` |
 | 104 GMOD/TTT | `Garrys-Mod-Server` / .243 | LinuxGSM `gmodserver` | `/home/miles/gmodserver` | `./gmodserver start\|stop\|restart\|update` | **game cfg** `serverfiles/garrysmod/cfg/gmodserver.cfg` (TTT cvars + `rcon_password`), `serverfiles/garrysmod/mapcycle.txt`, `lgsm/config-lgsm/gmodserver/{gmodserver,common}.cfg` |
+| 105 Prop Hunt | `Prop-Hunt-Server` / DHCP (MAC `BC:24:11:30:FD:10`) | LinuxGSM `gmodserver` | `/home/miles/phserver` | `./gmodserver start\|stop\|restart\|update` | **game cfg** `serverfiles/garrysmod/cfg/gmodserver.cfg` (`ph_` cvars + `rcon_password`), `lgsm/config-lgsm/gmodserver/{gmodserver,common}.cfg`; gamemode `prop_hunt`, port 27067, `wscollectionid` empty (workshop installed by item id) |
 
 (IPs are DHCP — `.68/.74/.75/.243` at time of writing; match by MAC if they change:
 CS `BC:24:11:4B:15:79`, Factorio `BC:24:11:40:DF:F9`, Minecraft `BC:24:11:DD:8D:81`,

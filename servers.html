@@ -253,6 +253,8 @@
     .prof-manage .retro-btn { padding: 3px 9px; }
     /* ordered map-rotation list builder */
     .maplist { grid-column: 1 / -1; }
+    .prof-info { grid-column: 1 / -1; padding: 3px 0 4px; border-top: 1px solid #1e1e1e; }
+    .prof-info b { color: #b8d4a0; font-size: 11px; }
     .maplist-rows { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
     .maplist-row { display: flex; align-items: center; gap: 6px; background: #101410; border: 1px solid #2a2a2a; padding: 3px 6px; }
     .maplist-row .mi-idx { color: #5f8f4f; font-size: 10px; width: 18px; text-align: right; }
@@ -1236,6 +1238,11 @@
         const lid = `prof-${id}-${f.key}`
         const lbl = `<label for="${lid}">${esc(f.label)}</label>`
         const help = f.help ? `<div class="field-help">${esc(f.help)}</div>` : ''
+        if (f.type === 'info') {
+          // Read-only documentation row (no input, never collected on save).
+          const body = (f.help || '').split('\n').map(esc).join('<br>')
+          return `<div class="prof-info"><b>${esc(f.label)}</b><div class="field-help">${body}</div></div>`
+        }
         if (f.type === 'select') {
           // CS map field: a by-name pick-list (Workshop maps show their name, not
           // ws:id) plus an inline "add a Workshop map by id + name" form.

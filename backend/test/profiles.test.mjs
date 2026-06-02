@@ -233,73 +233,73 @@ test('gmod: syncMaps runs the extract and returns the installed map list', async
 });
 
 // ── Prop Hunt connector: schema / validate / apply / capture / live ──────────────
-test('prophunt: validateProfileSettings rejects bad values', () => {
+test('prophunt: validateProfileSettings rejects bad values + normalizes cvars', () => {
   const { conn } = prophunt();
   const base = conn.defaultProfileSettings();
   assert.throws(() => conn.validateProfileSettings({ ...base, maxPlayers: 999 }), /maxPlayers/);
   assert.throws(() => conn.validateProfileSettings({ ...base, propHuntMap: 'Bad Map!' }), /Prop Hunt map/);
-  assert.throws(() => conn.validateProfileSettings({ ...base, workshopItems: ['123', 'abc'] }), /workshop item id/);
-  assert.throws(() => conn.validateProfileSettings({ ...base, roundTime: 5 }), /Round Time/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, workshopCollection: 'abc' }), /collection id/);
+  // bool cvars normalize to '1'/'0'
+  const v = conn.validateProfileSettings({ ...base, kickNonAdmin: true, verboseLog: 0 });
+  assert.equal(v.kickNonAdmin, '1');
+  assert.equal(v.verboseLog, '0');
+  assert.equal(v.workshopCollection, '3737190377'); // default collection carried
 });
 
-test('prophunt: workshopItems accepts an array or a free-text list (deduped)', () => {
-  const { conn } = prophunt();
-  const base = conn.defaultProfileSettings();
-  assert.deepEqual(conn.validateProfileSettings({ ...base, workshopItems: '111\n222 333,444' }).workshopItems,
-    ['111', '222', '333', '444']);
-  assert.deepEqual(conn.validateProfileSettings({ ...base, workshopItems: ['9', '9', '8'] }).workshopItems, ['9', '8']);
-});
-
-test('prophunt: applyProfileSettings writes gamemode + ph_ boot map + cvars + active.cfg', async () => {
+test('prophunt: applyProfileSettings writes gamemode + map + collection + cvars + active.cfg', async () => {
   const { conn, client } = prophunt({ [PH_GAME]: 'rcon_password "x"\n', [PH_INST]: 'gamemode="terrortown"\n' });
-  await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), propHuntMap: 'ph_office',
-    maxPlayers: 24, roundTime: 300, rawConfig: 'ph_thirdperson 1\n' }, 9);
+  await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), propHuntMap: 'ph_office_fsg_v2',
+    maxPlayers: 24, kickNonAdmin: '1', rawConfig: 'phx_verbose 1\n' }, 9);
 
   const inst = client.files[PH_INST];
   assert.match(inst, /gamemode="prop_hunt"/);
-  assert.match(inst, /defaultmap="ph_office"/);
+  assert.match(inst, /defaultmap="ph_office_fsg_v2"/);
   assert.match(inst, /maxplayers="24"/);
-  assert.doesNotMatch(inst, /wscollectionid/);       // Apply must NOT touch the collection (set on the box)
+  assert.match(inst, /wscollectionid="3737190377"/); // collection mounted at boot
   assert.match(inst, /gt_active_profile="9"/);
 
   const game = client.files[PH_GAME];
-  assert.match(game, /ph_roundtime "300"/);
-  assert.match(game, /exec gamertown\/active/);      // escape-hatch exec ensured
-  assert.equal(client.files[PH_ACTIVE], 'ph_thirdperson 1\n');
+  assert.match(game, /ph_kick_non_admin_access "1"/);   // bool cvar applied
+  assert.match(game, /fretta_waitforplayers "1"/);      // default carried
+  assert.match(game, /exec gamertown\/active/);         // escape-hatch exec ensured
+  assert.equal(client.files[PH_ACTIVE], 'phx_verbose 1\n');
 });
 
-test('prophunt: applyProfileSettings requires a boot map', async () => {
+test('prophunt: applyProfileSettings requires a starting map', async () => {
   const { conn } = prophunt();
   await assert.rejects(() => conn.applyProfileSettings({ ...conn.defaultProfileSettings(), propHuntMap: '' }, 1),
-    /boot map/);
+    /starting map/);
 });
 
-test('prophunt: capture round-trips gamemode settings', async () => {
+test('prophunt: capture round-trips map/collection/players/cvars/rawConfig', async () => {
   const { conn } = prophunt({
-    [PH_INST]: 'gamemode="prop_hunt"\ndefaultmap="ph_islandhouse"\nmaxplayers="20"\n',
-    [PH_GAME]: 'ph_roundtime "180"\n',
-    [PH_ACTIVE]: 'ph_prop_lock 1\n',
+    [PH_INST]: 'gamemode="prop_hunt"\ndefaultmap="ph_islandhouse"\nmaxplayers="20"\nwscollectionid="3737190377"\n',
+    [PH_GAME]: 'ph_kick_non_admin_access "1"\n',
+    [PH_ACTIVE]: 'sv_gravity 300\n',
   });
   const c = await conn.captureProfileSettings();
   assert.equal(c.propHuntMap, 'ph_islandhouse');
+  assert.equal(c.workshopCollection, '3737190377');
   assert.equal(c.maxPlayers, 20);
-  assert.equal(c.roundTime, 180);
-  assert.equal(c.setupTime, 30);            // default carried through
-  assert.equal(c.rawConfig, 'ph_prop_lock 1\n');
+  assert.equal(c.kickNonAdmin, '1');
+  assert.equal(c.waitForPlayers, '1');      // default carried through
+  assert.equal(c.rawConfig, 'sv_gravity 300\n');
 });
 
-test('prophunt: profileSchema groups Map/Gameplay/Advanced with the workshop installer', async () => {
+test('prophunt: profileSchema groups Map/X2Z/Controls/Advanced', async () => {
   const { conn } = prophunt();
   const schema = await conn.profileSchema();
-  assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'gameplay', 'advanced']);
-  const mapGroup = schema.groups[0];
-  assert.ok(mapGroup.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select' && f.custom));
-  assert.ok(mapGroup.fields.some((f) => f.key === 'workshopItems' && f.type === 'textarea'));
-  assert.ok(mapGroup.fields.some((f) => f.type === 'mapsync'));
-  assert.ok(schema.groups[2].fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
+  assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'x2z', 'controls', 'advanced']);
+  const [mapG, x2zG, ctrlG, advG] = schema.groups;
+  assert.ok(mapG.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select' && f.custom));
+  assert.ok(mapG.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text'));
+  assert.ok(mapG.fields.some((f) => f.type === 'mapsync'));
+  assert.ok(x2zG.fields.every((f) => f.type === 'bool') && x2zG.fields.length >= 3);
+  assert.ok(ctrlG.fields.length >= 4 && ctrlG.fields.every((f) => f.type === 'info' && f.help));
+  assert.ok(advG.fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
 });
 
-test('prophunt: getLive gates on rcon_password; change_map + movement build RCON on 27067', async () => {
+test('prophunt: getLive + runLiveAction — change_map, next round, movement on 27067', async () => {
   const off = prophunt({ [PH_GAME]: '' });
   assert.equal((await off.conn.getLive()).available, false);
 
@@ -312,13 +312,15 @@ test('prophunt: getLive gates on rcon_password; change_map + movement build RCON
   assert.ok(live.actions.some((a) => a.key === 'next_round'));
   assert.ok(live.actions.some((a) => a.key === 'lowgrav_on'));
 
-  const res = await on.conn.runLiveAction('change_map', 'ph_factory');
+  const res = await on.conn.runLiveAction('change_map', 'ph_restaurant');
   assert.equal(res.output, 'players: 2');
   const c = calls.at(-1);
   assert.ok(c.command.includes('27067'));
-  assert.equal(c.command.at(-1), 'changelevel ph_factory');
+  assert.equal(c.command.at(-1), 'changelevel ph_restaurant');
   assert.equal(c.input, 'ph-secret');
 
+  await on.conn.runLiveAction('next_round');
+  assert.equal(calls.at(-1).command.at(-1), 'ph_force_end_round');   // real X2Z command
   await on.conn.runLiveAction('lowgrav_on');
   assert.equal(calls.at(-1).command.at(-1), 'sv_gravity 200');
 

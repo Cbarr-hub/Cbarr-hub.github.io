@@ -2,20 +2,21 @@
 // /home/miles/phserver) running the Prop Hunt: X2Z gamemode.
 //
 // Extends GmodConnector to reuse the GMOD machinery (path layout, map sync via
-// gmad, status/power, RCON transport) and overrides the gamemode semantics:
-//   - a profile boots ONE ph_ map under gamemode="prop_hunt" (no rotation);
-//   - the X2Z gamemode + ph_ maps + extras install by Workshop item ID via SteamCMD.
-//     Steam removed the source collections, so host_workshop_collection is bypassed
-//     (wscollectionid stays empty). syncMaps() downloads the active profile's item
-//     ids, extracts maps into garrysmod/maps/ and any gamemode into
-//     garrysmod/gamemodes/, and writes a resource.AddWorkshop autorun for clients.
+// gmad, status/power, RCON transport). Differences from TTT:
+//   - boots ONE ph_ map under gamemode="prop_hunt" (no rotation);
+//   - content mounts from the public Workshop collection 3737190377 (the X2Z
+//     gamemode ships the prop_hunt/base_phx folders + 7 ph_ maps + taunts + a
+//     loadout manager); clients auto-download via the collection.
+//   - X2Z gameplay tuning is mostly via the in-game X Menu (!phmenu), stored in
+//     garrysmod/data/phx_data. Only a handful of real server cvars exist (below);
+//     the panel exposes those + a Controls/Menus reference + the raw config editor.
 //
-// Layout mirrors VM 104, under /home/miles/phserver (own serverfiles, own ports):
+// Layout under /home/miles/phserver (own serverfiles, port 27067):
 //   instance cfg : lgsm/config-lgsm/gmodserver/gmodserver.cfg
-//     gamemode="prop_hunt"  defaultmap="ph_…"  maxplayers  wscollectionid="" (empty)
-//     port="27067"          gslt (dedicated token; set out-of-band, never committed)
+//     gamemode="prop_hunt"  defaultmap="ph_…"  maxplayers  wscollectionid="3737190377"
+//     port="27067"          gslt (dedicated; out-of-band)
 //   game cfg : serverfiles/garrysmod/cfg/gmodserver.cfg  (+servercfgfile)
-//     ph_* cvars + rcon_password + `exec gamertown/active`
+//     ph_*/phx_* cvars + rcon_password + `exec gamertown/active`
 //   escape hatch : cfg/gamertown/active.cfg  (free-text extra cvars; re-execable live)
 
 import { GmodConnector } from './gmod.js';
@@ -24,25 +25,42 @@ import { getCvar, setCvars } from '../cvars.js';
 import { rconCommand } from '../rcon.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
 
-const GAMEMODE = 'prop_hunt';
+const GAMEMODE   = 'prop_hunt';
+const COLLECTION = '3737190377';   // public X2Z collection (gamemode + maps + extras)
+const DEFAULT_MAP = 'ph_restaurant';
 
 // The managed config the game cfg execs last, holding the rawConfig body.
 const ACTIVE_EXEC  = 'gamertown/active';
 const EXEC_LINE_RE = /^[ \t]*exec[ \t]+gamertown\/active[ \t]*$/m;
 
-// Prop Hunt (X2Z) gameplay cvars. Data-driven like TTT_FIELDS so adding a tunable
-// later is a one-line change. Placeholder defaults — refine once X2Z is live.
-const PH_FIELDS = [
-  { cvar: 'ph_roundtime',        key: 'roundTime',   label: 'Round Time (s)',        def: 240, min: 30, max: 1800, int: true },
-  { cvar: 'ph_setuptime',        key: 'setupTime',   label: 'Hiding Time (s)',       def: 30,  min: 5,  max: 300,  int: true },
-  { cvar: 'ph_hunter_blindtime', key: 'hunterBlind', label: 'Hunter Blind Time (s)', def: 20,  min: 0,  max: 120,  int: true },
+// Real X2Z server cvars (from the gamemode's CreateConVar), all booleans (0/1).
+// Most gameplay tuning (round length, prop balance, taunts) is in the in-game X
+// Menu (!phmenu) → garrysmod/data/phx_data, not cvars.
+const PH_CVARS = [
+  { cvar: 'fretta_waitforplayers',      key: 'waitForPlayers', label: 'Wait for players before a round starts', def: 1 },
+  { cvar: 'ph_enable_team_itemspawner', key: 'teamItemSpawner', label: 'Enable team item spawners',             def: 1 },
+  { cvar: 'ph_kick_non_admin_access',   key: 'kickNonAdmin',   label: 'Kick non-admins who probe admin access',  def: 0 },
+  { cvar: 'phx_integrity_check',        key: 'integrityCheck', label: 'Addon-conflict integrity check (keep on)', def: 1 },
+  { cvar: 'phx_verbose',                key: 'verboseLog',     label: 'Verbose server logging',                   def: 0 },
 ];
 
-// Live (RCON) curated actions: next round, the four movement toggles, cheats, and
-// re-exec the deployed config. Command strings are tunable; sv_cheats-gated ones
-// flip cheats on as needed (this is a friend server).
+// Default controls + how to reach X2Z's in-game menus (shown read-only in the
+// "Controls & In-Game Menus" config section). Commands verified from the gamemode.
+const PH_CONTROLS = [
+  { key: 'doc_xmenu',    label: 'X Menu (settings / admin)', help: 'Type !phmenu in chat, or bind a key to "ph_x_menu". Round & gameplay options live here.' },
+  { key: 'doc_propmenu', label: 'Prop selection menu',       help: 'Type !propmenu, or the "ph_prop_menu" console command (prop locking / model picks).' },
+  { key: 'doc_taunts',   label: 'Taunt menu',                help: 'Bind a key to "ph_showtaunts" to taunt on demand (auto/random taunts also fire per round).' },
+  { key: 'doc_tp',       label: 'Toggle third-person',       help: 'Console command "ph_toggle_tp" — e.g. bind a key: bind p ph_toggle_tp' },
+  { key: 'doc_rtv',      label: 'Rock the Vote (map change)', help: 'Players type !rtv (or "rtv_start"). Admins can force a map vote with "mv_start".' },
+  { key: 'doc_unstuck',  label: 'Unstuck a prop',            help: 'Type !unstuck or !stuck in chat if a prop gets wedged in geometry.' },
+  { key: 'doc_forceend', label: 'Force end the round (admin)', help: 'Type !phforceend in chat, or "ph_force_end_round" (also the Runtime → Next Round button).' },
+  { key: 'doc_move',     label: 'Default movement',          help: 'WASD move · Space jump · Shift sprint · Ctrl crouch. Full prop controls + rotation binds are listed on the X Menu help page (F1).' },
+];
+
+// Live (RCON) curated actions — real X2Z console commands + generic movement toggles.
 const PH_LIVE_ACTIONS = [
   { key: 'next_round',   label: 'Next Round' },
+  { key: 'map_vote',     label: 'Start Map Vote' },
   { key: 'lowgrav_on',   label: 'Low Gravity On' },
   { key: 'lowgrav_off',  label: 'Low Gravity Off' },
   { key: 'speed_on',     label: 'Speed Boost On' },
@@ -57,7 +75,8 @@ const PH_LIVE_ACTIONS = [
   { key: 'players',      label: 'List Players' },
 ];
 const PH_ACTION_CMDS = {
-  next_round:   'ph_restartround',  // TODO: confirm X2Z's round-restart command on the box
+  next_round:   'ph_force_end_round',                                 // X2Z: force-ends the round → next
+  map_vote:     'mv_start',                                           // X2Z: start a map vote
   lowgrav_on:   'sv_gravity 200',
   lowgrav_off:  'sv_gravity 600',
   speed_on:     'sv_cheats 1; hl2_normspeed 320; hl2_sprintspeed 480',
@@ -72,15 +91,16 @@ const PH_ACTION_CMDS = {
   players:      'status',
 };
 
+const asBool = (v) => (v === 1 || v === '1' || v === true ? '1' : '0');
+
 export class PropHuntConnector extends GmodConnector {
   gsmDir = '/home/miles/phserver';
   mapPrefixes = ['ph_', 'gm_'];
 
   // ── editable config files (the "edit the mod config" surface) ─────────────────
-  // Inherits the GMOD set — the game cfg (`server.cfg`, where ph_/phx_ cvars go) and
-  // the LinuxGSM instance cfg (`lgsm.cfg`, where wscollectionid/gamemode/ports live) —
-  // and adds the live-execable extra-cvars file plus X2Z's editable data files
-  // (weapon loadouts, admin list). These open in the panel's Raw Config editor.
+  // Inherits the GMOD set (game cfg `server.cfg`, instance cfg `lgsm.cfg`) and adds
+  // the live-execable extra-cvars file plus X2Z's editable data files (weapon
+  // loadouts, admin list). These open in the panel's Raw Config editor.
   get configFiles() {
     const P = this.paths;
     return {
@@ -102,10 +122,10 @@ export class PropHuntConnector extends GmodConnector {
     return res;
   }
 
-  // ── startup-config profiles ───────────────────────────────────────────────────
+  // ── startup-config profile ────────────────────────────────────────────────────
   defaultProfileSettings() {
-    const d = { maxPlayers: 16, propHuntMap: 'ph_factory', workshopItems: [], rawConfig: '' };
-    for (const f of PH_FIELDS) d[f.key] = f.def;
+    const d = { propHuntMap: DEFAULT_MAP, workshopCollection: COLLECTION, maxPlayers: 16, rawConfig: '' };
+    for (const f of PH_CVARS) d[f.key] = asBool(f.def);
     return d;
   }
 
@@ -120,20 +140,11 @@ export class PropHuntConnector extends GmodConnector {
     if (ph !== '' && !MAP_NAME_RE.test(ph)) throw badSetting(`invalid Prop Hunt map: ${ph}`);
     out.propHuntMap = ph;
 
-    // Workshop items: an array, or a free-text list (newline/space/comma separated)
-    // of numeric Steam Workshop item ids (the gamemode + ph_ maps + extras).
-    const rawItems = Array.isArray(s.workshopItems) ? s.workshopItems : String(s.workshopItems ?? '').split(/[\s,]+/);
-    const items = rawItems.map((x) => String(x).trim()).filter(Boolean);
-    for (const id of items) if (!/^\d{1,20}$/.test(id)) throw badSetting(`invalid workshop item id: ${id}`);
-    out.workshopItems = [...new Set(items)];
+    const coll = String(s.workshopCollection ?? '').trim();
+    if (coll !== '' && !/^\d{1,20}$/.test(coll)) throw badSetting('workshop collection id must be digits');
+    out.workshopCollection = coll;
 
-    for (const f of PH_FIELDS) {
-      const n = Number(s[f.key] === undefined ? f.def : s[f.key]);
-      if (Number.isNaN(n)) throw badSetting(`${f.label} must be a number`);
-      if (n < f.min || n > f.max) throw badSetting(`${f.label} must be ${f.min}–${f.max}`);
-      if (f.int && !Number.isInteger(n)) throw badSetting(`${f.label} must be a whole number`);
-      out[f.key] = n;
-    }
+    for (const f of PH_CVARS) out[f.key] = asBool(s[f.key] === undefined ? f.def : s[f.key]);
 
     const raw = String(s.rawConfig ?? '');
     if (raw.length > 100_000) throw badSetting('extra cvars too large (max 100000 chars)');
@@ -147,35 +158,41 @@ export class PropHuntConnector extends GmodConnector {
     const discovered = await this.installedMaps();
     const phMaps = [...new Set(discovered.filter((m) => m.startsWith('ph_')))];
     const mapOpts = phMaps.map((m) => ({ value: m, label: m }));
-    const numField = (f) => ({ key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: 1 });
+    const boolField = (f) => ({ key: f.key, label: f.label, type: 'bool' });
+    const infoField = (c) => ({ key: c.key, label: c.label, type: 'info', help: c.help });
     return {
       groups: [
         {
           key: 'map', title: 'Map & Workshop',
           fields: [
-            { key: 'propHuntMap', label: 'Boot Map', type: 'select', custom: true, options: mapOpts,
-              help: 'The ph_ map the server boots into (e.g. ph_factory). Add ids below + Sync to install, or type a name.' },
-            { key: 'workshopItems', label: 'Extra Workshop Item IDs (optional)', type: 'textarea',
-              placeholder: '2176546751\n2850799895\n…',
-              help: 'Optional — extra Workshop item ids (one per line) to install on top of the mounted collection. The X2Z gamemode + ph_ maps come from the collection (wscollectionid, in lgsm.cfg); leave blank to use just the collection. Then Sync.' },
+            { key: 'propHuntMap', label: 'Starting Map', type: 'select', custom: true, options: mapOpts,
+              help: 'The ph_ map the server boots into (default ph_restaurant). Pick from the installed list or type a name; change maps live in the Runtime panel.' },
+            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
+              placeholder: '3737190377',
+              help: 'The Steam Workshop collection GMOD mounts at boot — the X2Z gamemode + ph_ maps + extras. Default 3737190377.' },
             { key: 'syncMaps', label: 'Sync Maps', type: 'mapsync',
-              help: 'Refresh the installed ph_ map list from the mounted Workshop collection (and download any extra item ids above).' },
+              help: 'Refresh the installed ph_ map list from the mounted collection (run after the collection changes + a restart).' },
             { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1 },
           ],
         },
         {
-          key: 'gameplay', title: 'Prop Hunt Gameplay',
-          fields: PH_FIELDS.map(numField),
+          key: 'x2z', title: 'X2Z Settings',
+          fields: PH_CVARS.map(boolField),
+          note: 'Round length, prop balance, taunts and most gameplay options are set in the in-game X Menu (!phmenu) — see Controls & In-Game Menus below. These are the server-side cvar toggles.',
+        },
+        {
+          key: 'controls', title: 'Controls & In-Game Menus',
+          fields: PH_CONTROLS.map(infoField),
         },
         {
           key: 'advanced', title: 'Advanced',
           fields: [
             { key: 'rawConfig', label: 'Extra cvars (deployed as a live-execable config)', type: 'textarea',
-              placeholder: 'ph_prop_lock 1\nph_thirdperson 1' },
+              placeholder: 'phx_verbose 1\nsv_gravity 600' },
           ],
         },
       ],
-      note: 'A profile is the startup config the server boots as (Prop Hunt: X2Z). The gamemode + maps mount from the Workshop collection (wscollectionid in lgsm.cfg). Apply saves the boot map + settings and restarts. Extra cvars deploy to gamertown/active.cfg (re-execable via Runtime → Apply Config).',
+      note: 'A profile is the startup config the server boots as (Prop Hunt: X2Z). The gamemode + maps mount from the Workshop collection. ',
     };
   }
 
@@ -183,28 +200,25 @@ export class PropHuntConnector extends GmodConnector {
     const s = this.validateProfileSettings(settings);
     const P = this.paths;
 
-    if (!s.propHuntMap) throw badSetting('pick a Prop Hunt boot map (e.g. ph_factory).');
+    if (!s.propHuntMap) throw badSetting('pick a starting map (e.g. ph_restaurant).');
 
-    // NOTE: wscollectionid is intentionally NOT written here. The server mounts its
-    // content from the public X2Z Workshop collection (3737190377) set in the instance
-    // cfg on the box (editable via the raw config editor); Apply must not clobber it.
     let inst = (await this.client.agentFileRead(this.vmid, P.instanceCfg)).content ?? '';
     inst = setVars(inst, {
       gamemode: GAMEMODE,
       defaultmap: s.propHuntMap,
       maxplayers: String(s.maxPlayers),
+      wscollectionid: s.workshopCollection,
       ...(profileId != null ? { gt_active_profile: String(profileId) } : {}),
     });
     await this.client.agentFileWrite(this.vmid, P.instanceCfg, inst);
 
     let game = (await this.client.agentFileRead(this.vmid, P.serverCfg)).content ?? '';
     const cvars = {};
-    for (const f of PH_FIELDS) cvars[f.cvar] = String(s[f.key]);
+    for (const f of PH_CVARS) cvars[f.cvar] = s[f.key];
     game = setCvars(game, cvars);
     if (!EXEC_LINE_RE.test(game)) game = game.replace(/\n*$/, '') + `\nexec ${ACTIVE_EXEC}\n`;
     await this.client.agentFileWrite(this.vmid, P.serverCfg, game);
 
-    // Deploy the extra-cvars block to gamertown/active.cfg (exec'd by the game cfg).
     await this.runShell(`mkdir -p "${P.garrysmod}/cfg/gamertown"`, { asUser: this.gsmUser, timeoutMs: 10_000 });
     await this.client.agentFileWrite(this.vmid, `${P.garrysmod}/cfg/gamertown/active.cfg`, s.rawConfig);
     return { ok: true };
@@ -217,72 +231,17 @@ export class PropHuntConnector extends GmodConnector {
       this.client.agentFileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
       this.client.agentFileRead(this.vmid, `${P.garrysmod}/cfg/gamertown/active.cfg`).then((r) => r.content ?? '').catch(() => ''),
     ]);
-    const num = (cvar, def) => {
-      const v = getCvar(game, cvar);
-      return v === undefined || v === '' ? def : Number(v);
-    };
     const doc = {
+      propHuntMap: (getVar(inst, 'defaultmap') || DEFAULT_MAP).trim(),
+      workshopCollection: (getVar(inst, 'wscollectionid') || COLLECTION).trim(),
       maxPlayers: Number(getVar(inst, 'maxplayers') || 16),
-      propHuntMap: (getVar(inst, 'defaultmap') || 'ph_factory').trim(),
-      workshopItems: [],   // installed by id; not derivable from the cfg
       rawConfig: active,
     };
-    for (const f of PH_FIELDS) doc[f.key] = num(f.cvar, f.def);
+    for (const f of PH_CVARS) {
+      const v = getCvar(game, f.cvar);
+      doc[f.key] = asBool(v === undefined || v === '' ? f.def : v);
+    }
     return this.validateProfileSettings(doc);
-  }
-
-  // ── workshop install by id (collections bypassed) ─────────────────────────────
-  // Steam removed the source collections, so instead of host_workshop_collection we
-  // download each item by id via SteamCMD (anonymous), stage the .gma where the GMOD
-  // map-extractor scans, install any gamemode folder into garrysmod/gamemodes/, and
-  // write the resource.AddWorkshop autorun so joining clients fetch the content.
-  // Wired to the panel's "Sync" action (POST /:id/maps/sync); ids come from the
-  // active profile.
-  async syncMaps() {
-    const P = this.paths;
-    const items = this.#activeWorkshopItems();
-
-    if (items.length) {
-      const steamcmd = '$HOME/.local/share/Steam/steamcmd/steamcmd.sh';
-      const dl = items.map((id) => `+workshop_download_item 4000 ${id}`).join(' ');
-      // Download (anonymous). 30-min budget — first run pulls the gamemode + maps.
-      await this.runShell(`${steamcmd} +login anonymous ${dl} +quit`, { asUser: this.gsmUser, timeoutMs: 1_800_000 });
-      // Stage downloaded .gma into the dir syncMaps scans, then install gamemode folders.
-      const wsDl = '$HOME/.local/share/Steam/steamapps/workshop/content/4000';
-      await this.runShell([
-        `mkdir -p "${P.steamWs}" "${P.garrysmod}/gamemodes"`,
-        `for d in ${wsDl}/*; do [ -d "$d" ] || continue; id=$(basename "$d");`,
-        `  mkdir -p "${P.steamWs}/$id"; cp -n "$d"/*.gma "${P.steamWs}/$id/" 2>/dev/null || true; done`,
-        'tmp=$(mktemp -d) || exit 1',
-        `for g in ${P.steamWs}/*/*.gma; do [ -e "$g" ] || continue;`,
-        `  rm -rf "$tmp/x"; "${P.gmad}" extract -file "$g" -out "$tmp/x" >/dev/null 2>&1 || continue;`,
-        `  [ -d "$tmp/x/gamemodes" ] && cp -rn "$tmp/x/gamemodes/." "${P.garrysmod}/gamemodes/" 2>/dev/null || true; done`,
-        'rm -rf "$tmp"',
-      ].join('\n'), { asUser: this.gsmUser, timeoutMs: 900_000 });
-      await this.#writeWorkshopAutorun(items);
-    }
-    // Extract maps (.bsp) into garrysmod/maps/ via the inherited GMOD sync.
-    return super.syncMaps();
-  }
-
-  #activeWorkshopItems() {
-    try {
-      const activeId = this.store?.getActiveProfileId(this.server.id);
-      if (!activeId) return [];
-      const p = this.store.getProfile(this.server.id, activeId);
-      const items = p?.settings?.workshopItems;
-      return Array.isArray(items) ? items.filter((id) => /^\d{1,20}$/.test(String(id))) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  async #writeWorkshopAutorun(items) {
-    const P = this.paths;
-    const lua = '-- Auto-generated by Gamertown — clients download these Workshop items on join.\n'
-      + items.map((id) => `resource.AddWorkshop("${id}")`).join('\n') + '\n';
-    await this.runShell(`mkdir -p "${P.garrysmod}/lua/autorun/server"`, { asUser: this.gsmUser, timeoutMs: 10_000 });
-    await this.client.agentFileWrite(this.vmid, `${P.garrysmod}/lua/autorun/server/gtown_workshop.lua`, lua);
   }
 
   // ── live commands (Source RCON on the game port) ──────────────────────────────
@@ -293,7 +252,7 @@ export class PropHuntConnector extends GmodConnector {
       available: true,
       actions: PH_LIVE_ACTIONS,
       changeMap: true,
-      commandHint: 'any GMOD console command, e.g. changelevel ph_factory, sv_gravity 200, status',
+      commandHint: 'any GMOD/X2Z console command, e.g. changelevel ph_office_fsg_v2, ph_force_end_round, mv_start, status',
     };
   }
 

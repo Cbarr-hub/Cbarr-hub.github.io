@@ -165,8 +165,8 @@ export class PropHuntConnector extends GmodConnector {
         {
           key: 'map', title: 'Map & Workshop',
           fields: [
-            { key: 'propHuntMap', label: 'Starting Map', type: 'select', custom: true, options: mapOpts,
-              help: 'The ph_ map the server boots into (default ph_restaurant). Pick from the installed list or type a name; change maps live in the Runtime panel.' },
+            { key: 'propHuntMap', label: 'Starting Map', type: 'select', options: mapOpts,
+              help: 'The ph_ map the server boots into (default ph_restaurant). Pick any installed map; change maps live in the Runtime panel.' },
             { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
               placeholder: '3737190377',
               help: 'The Steam Workshop collection GMOD mounts at boot — the X2Z gamemode + ph_ maps + extras. Default 3737190377.' },

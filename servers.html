@@ -419,6 +419,93 @@
       font-size: 10px;
       margin-top: 20px;
     }
+
+    /* ───────────────────────────────────────────────────────────────────────────
+       POLISH LAYER — visual refinement only. Overrides earlier rules via the
+       cascade; adds NO new DOM/selectors that JS depends on. Amplifies the existing
+       phosphor-green CRT-terminal identity (depth · glow · motion · scanlines).
+       ─────────────────────────────────────────────────────────────────────────── */
+    :root {
+      --gt-green: #42F527; --gt-green-soft: #7bb85f; --gt-amber: #c2a13a;
+      --gt-ink: #d4d4b8; --gt-line: #444;
+    }
+
+    /* smooth micro-interactions on everything interactive */
+    button.retro-btn, .copy-btn, .play-btn, .mini-btn, .tab, .qc-code,
+    .dash-tile, .qc-row, .prof-group > summary, details.rawcfg > summary,
+    .action-group, .srv {
+      transition: background .15s ease, color .15s ease, border-color .15s ease,
+                  box-shadow .2s ease, transform .08s ease;
+    }
+
+    /* buttons — subtle depth, phosphor hover bloom, crisp press */
+    button.retro-btn {
+      background: linear-gradient(#345c20, #284916);
+      border-color: #6fae53; border-radius: 2px; letter-spacing: .3px;
+      box-shadow: inset 0 1px 0 rgba(130,210,95,.18), 0 1px 2px rgba(0,0,0,.45);
+    }
+    button.retro-btn:hover:not(:disabled) {
+      background: linear-gradient(#447826, #356019); color: var(--gt-green);
+      border-color: var(--gt-green);
+      box-shadow: inset 0 1px 0 rgba(150,235,110,.25), 0 0 9px rgba(66,245,39,.35);
+    }
+    button.retro-btn:active:not(:disabled) {
+      transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,.5);
+    }
+    button.retro-btn:disabled { background: #2a2a2a; box-shadow: none; opacity: .6; }
+    button.retro-btn.danger { background: linear-gradient(#5a2020, #401616); border-color: #b85f5f; }
+    button.retro-btn.danger:hover:not(:disabled) {
+      background: linear-gradient(#7a2e2e, #5a2020); color: #ff8a8a; border-color: #ff8a8a;
+      box-shadow: inset 0 1px 0 rgba(255,130,130,.2), 0 0 9px rgba(255,90,90,.35);
+    }
+    .play-btn, .copy-btn { border-radius: 2px; }
+    .play-btn:hover { box-shadow: 0 0 9px rgba(66,245,39,.35); }
+
+    /* status dots — richer phosphor glow + a calm "live" breathing while hosting */
+    .dot.hosting { box-shadow: 0 0 7px var(--gt-green), 0 0 2px var(--gt-green); animation: gt-breathe 2.6s ease-in-out infinite; }
+    .dot.idle    { box-shadow: 0 0 6px var(--gt-amber); }
+    @keyframes gt-breathe { 0%,100% { box-shadow: 0 0 5px var(--gt-green); } 50% { box-shadow: 0 0 12px var(--gt-green), 0 0 3px var(--gt-green); } }
+
+    /* cards + grouped panels — layered depth, faint top hairline */
+    .srv { border-color: var(--gt-line); border-radius: 3px; background: linear-gradient(#242424,#1e1e1e); box-shadow: 0 2px 12px rgba(0,0,0,.4); }
+    .srv-head { background: linear-gradient(#202020,#161616); box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+    .server-actions, .action-group { border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255,255,255,.02); }
+    .action-group:hover { border-color: #4d4d4d; }
+    .panel-title, .tile-label, .action-group-title, .srv-section-head { text-shadow: 0 0 6px rgba(66,245,39,.12); }
+
+    /* tabs — clearer active underline + phosphor bloom */
+    .tab:hover { box-shadow: inset 0 -2px 0 rgba(123,184,95,.45); }
+    .tab.active { box-shadow: inset 0 -2px 0 var(--gt-green), 0 0 12px rgba(66,245,39,.16); }
+
+    /* terminal-inset feel for code/readouts; quick-connect row hover */
+    .qc-code, .stat-v, .load-chip, textarea.cfg, .cfg, [data-rt-cmd], .gauge-pct {
+      box-shadow: inset 0 1px 3px rgba(0,0,0,.5); border-radius: 2px;
+    }
+    .qc-row:hover { background: rgba(123,184,95,.05); }
+
+    /* dashboard depth + a faint CRT flicker on the brand glyph */
+    .dash { border-radius: 3px; box-shadow: 0 2px 14px rgba(0,0,0,.45); }
+    .dash-tile, .load-chip { border-radius: 3px; }
+    .brand-cloud { animation: gt-flicker 8s steps(1) infinite; }
+    @keyframes gt-flicker { 0%,95%,100% { opacity: 1; } 96% { opacity: .8; } 97% { opacity: 1; } 98.5% { opacity: .88; } }
+
+    .prof-group > summary:hover, details.rawcfg > summary:hover { color: var(--gt-green); }
+
+    /* whisper-subtle CRT atmosphere: fine scanlines + corner vignette.
+       Fixed, pointer-events:none (never blocks clicks); native dialogs/selects
+       still render above. Honors reduced-motion + respects readability. */
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9998;
+      background: repeating-linear-gradient(rgba(0,0,0,0) 0 2px, rgba(0,0,0,.045) 2px 3px);
+      opacity: .55;
+    }
+    body::after {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9997;
+      background: radial-gradient(125% 125% at 50% 38%, transparent 62%, rgba(0,0,0,.26) 100%);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dot.hosting, .brand-cloud { animation: none; }
+    }
   </style>
 </head>
 <body>
@@ -563,7 +650,7 @@
           <span class="qc-name">${esc(s.name)}</span>
           ${conn
             ? `<code class="qc-code">${esc(conn)}</code><button class="copy-btn qc-copy" data-qc-copy="${esc(conn)}">Copy</button>${launch
-                ? `<a class="play-btn" href="${esc(launch)}" title="Open the game and connect to this server">Launch</a>`
+                ? `<a class="play-btn" href="${esc(launch)}" title="Open the game and connect to this server">Launch via Steam</a>`
                 : ''}`
             : `<span class="qc-down">${esc(label.toLowerCase())} — no join address</span>`}
         </div>`
@@ -775,7 +862,7 @@
                 <div class="action-group-title">Maintenance</div>
                 <div class="action-group-note">Check status or run the configured updater.</div>
                 <button class="retro-btn" type="button" data-act="refresh">Refresh Status</button>
-                <button class="retro-btn" type="button" data-update>Update Server</button>
+                <button class="retro-btn" type="button" data-update${s.status === 'running' ? '' : ' disabled'} title="${s.status === 'running' ? 'Run the configured updater (validate + restart)' : 'Start the VM first — updates run inside the guest'}">Update Server</button>
               </section>
             </div>
           </div>
@@ -1692,6 +1779,16 @@
         hide('start', 'reboot', 'startGame')
       } else {
         show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'restartGame', 'refresh')
+      }
+
+      // The updater runs inside the guest (SteamCMD validate + restart), so it needs
+      // the VM powered on — disable it whenever the VM is off.
+      const upd = root.querySelector('[data-update]')
+      if (upd) {
+        upd.disabled = s.status !== 'running'
+        upd.title = upd.disabled
+          ? 'Start the VM first — updates run inside the guest'
+          : 'Run the configured updater (validate + restart)'
       }
 
       root.querySelectorAll('[data-action-group]').forEach(group => {

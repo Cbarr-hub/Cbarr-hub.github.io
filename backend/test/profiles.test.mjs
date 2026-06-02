@@ -291,7 +291,7 @@ test('prophunt: profileSchema groups Map/X2Z/Controls/Advanced', async () => {
   const schema = await conn.profileSchema();
   assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'x2z', 'controls', 'advanced']);
   const [mapG, x2zG, ctrlG, advG] = schema.groups;
-  assert.ok(mapG.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select' && f.custom));
+  assert.ok(mapG.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select'));
   assert.ok(mapG.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text'));
   assert.ok(mapG.fields.some((f) => f.type === 'mapsync'));
   assert.ok(x2zG.fields.every((f) => f.type === 'bool') && x2zG.fields.length >= 3);

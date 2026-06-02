@@ -42,10 +42,12 @@
 > VM 105 (Prop Hunt) was **full-cloned from 104** (same GMOD/srcds + CS:S install,
 > new MAC `BC:24:11:30:FD:10`, IP 192.168.1.246), then reconfigured for the Prop
 > Hunt: X2Z gamemode on port 27067 — so it runs independently of TTT and didn't need
-> a fresh ~6 GB install. **Pending go-live:** the X2Z gamemode + `ph_` maps still need
-> installing by Workshop item id (panel **Sync** → connector `syncMaps`); until then
-> `phserver.service` is configured + enabled but not started (`prop_hunt` isn't built
-> into GMOD), and the 27067 port-forward isn't added yet.
+> a fresh ~6 GB install. It mounts the **public** Workshop collection `3737190377`
+> (`wscollectionid`) — the Prop Hunt: X2Z gamemode (ships the `prop_hunt` folder) + 7
+> `ph_` maps + taunt packs + loadout manager — and boots `prop_hunt` on `ph_factory`.
+> The **27067 forward is live** (external A2S to `104.177.95.216:27067` returns
+> "Gamertown Prop Hunt"). dheagman's *other* PH/TTT collections (`3737136538`,
+> `3736674438`) remain removed by Steam — only `3737190377` resolves.
 
 Start a VM: `qm start <vmid>`  
 Stop a VM: `qm stop <vmid>`
@@ -139,7 +141,7 @@ Configured via Firewall → NAT/Gaming at http://192.168.1.254
 | Factorio | 34197 | factorio-ubuntu | TCP/UDP |
 | Minecraft | 25565 | minecraft-server | TCP/UDP |
 | Garry's Mod (TTT) | 27066 | Garrys-Mod-Server (192.168.1.243) | TCP/UDP |
-| Prop Hunt | 27067 *(to add when going live)* | Prop-Hunt-Server (VM 105, MAC BC:24:11:30:FD:10) | TCP/UDP |
+| Prop Hunt | 27067 | Prop-Hunt-Server (VM 105, MAC bc:24:11:30:fd:10) | TCP/UDP |
 | SSH | 22 | DESKTOP-CEDMDNJ | TCP |
 
 > **GMOD port note:** GMOD uses **27066** specifically because the Counter-Strike

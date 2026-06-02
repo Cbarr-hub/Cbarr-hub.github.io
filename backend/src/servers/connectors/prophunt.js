@@ -76,6 +76,32 @@ export class PropHuntConnector extends GmodConnector {
   gsmDir = '/home/miles/phserver';
   mapPrefixes = ['ph_', 'gm_'];
 
+  // ── editable config files (the "edit the mod config" surface) ─────────────────
+  // Inherits the GMOD set — the game cfg (`server.cfg`, where ph_/phx_ cvars go) and
+  // the LinuxGSM instance cfg (`lgsm.cfg`, where wscollectionid/gamemode/ports live) —
+  // and adds the live-execable extra-cvars file plus X2Z's editable data files
+  // (weapon loadouts, admin list). These open in the panel's Raw Config editor.
+  get configFiles() {
+    const P = this.paths;
+    return {
+      ...super.configFiles,
+      'active.cfg':  `${P.garrysmod}/cfg/gamertown/active.cfg`,
+      'phx-loadout': `${P.garrysmod}/data/phx_data/swep_manager/loadoutinfo.txt`,
+      'phx-admins':  `${P.garrysmod}/data/phx_data/admins.txt`,
+    };
+  }
+
+  // The QEMU guest agent writes as root; chown edited files back to the game user so
+  // the gamemode (running as miles) can keep updating its own data files afterward.
+  async writeConfig(name, content) {
+    const res = await super.writeConfig(name, content);
+    const path = this.configFiles[name];
+    if (path) {
+      await this.runShell(`chown ${this.gsmUser}:${this.gsmUser} "${path}"`, { timeoutMs: 10_000 }).catch(() => {});
+    }
+    return res;
+  }
+
   // ── startup-config profiles ───────────────────────────────────────────────────
   defaultProfileSettings() {
     const d = { maxPlayers: 16, propHuntMap: 'ph_factory', workshopItems: [], rawConfig: '' };
@@ -129,11 +155,11 @@ export class PropHuntConnector extends GmodConnector {
           fields: [
             { key: 'propHuntMap', label: 'Boot Map', type: 'select', custom: true, options: mapOpts,
               help: 'The ph_ map the server boots into (e.g. ph_factory). Add ids below + Sync to install, or type a name.' },
-            { key: 'workshopItems', label: 'Workshop Item IDs', type: 'textarea',
+            { key: 'workshopItems', label: 'Extra Workshop Item IDs (optional)', type: 'textarea',
               placeholder: '2176546751\n2850799895\n…',
-              help: 'One Steam Workshop item id per line — the Prop Hunt (X2Z) gamemode + ph_ maps + extras. Collections are bypassed (downloaded by id). Then Sync to install.' },
-            { key: 'syncMaps', label: 'Workshop Items', type: 'mapsync',
-              help: 'Download the item ids above via SteamCMD and install the maps + gamemode, then refresh the boot-map list.' },
+              help: 'Optional — extra Workshop item ids (one per line) to install on top of the mounted collection. The X2Z gamemode + ph_ maps come from the collection (wscollectionid, in lgsm.cfg); leave blank to use just the collection. Then Sync.' },
+            { key: 'syncMaps', label: 'Sync Maps', type: 'mapsync',
+              help: 'Refresh the installed ph_ map list from the mounted Workshop collection (and download any extra item ids above).' },
             { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1 },
           ],
         },
@@ -149,7 +175,7 @@ export class PropHuntConnector extends GmodConnector {
           ],
         },
       ],
-      note: 'A profile is the startup config the server boots as (Prop Hunt: X2Z). Apply saves it and restarts. The gamemode + maps install by Workshop item id (Steam collections are bypassed). Extra cvars deploy to gamertown/active.cfg (re-execable via Runtime → Apply Config).',
+      note: 'A profile is the startup config the server boots as (Prop Hunt: X2Z). The gamemode + maps mount from the Workshop collection (wscollectionid in lgsm.cfg). Apply saves the boot map + settings and restarts. Extra cvars deploy to gamertown/active.cfg (re-execable via Runtime → Apply Config).',
     };
   }
 
@@ -159,12 +185,14 @@ export class PropHuntConnector extends GmodConnector {
 
     if (!s.propHuntMap) throw badSetting('pick a Prop Hunt boot map (e.g. ph_factory).');
 
+    // NOTE: wscollectionid is intentionally NOT written here. The server mounts its
+    // content from the public X2Z Workshop collection (3737190377) set in the instance
+    // cfg on the box (editable via the raw config editor); Apply must not clobber it.
     let inst = (await this.client.agentFileRead(this.vmid, P.instanceCfg)).content ?? '';
     inst = setVars(inst, {
       gamemode: GAMEMODE,
       defaultmap: s.propHuntMap,
       maxplayers: String(s.maxPlayers),
-      wscollectionid: '',   // collections bypassed — content installed by id (syncMaps)
       ...(profileId != null ? { gt_active_profile: String(profileId) } : {}),
     });
     await this.client.agentFileWrite(this.vmid, P.instanceCfg, inst);

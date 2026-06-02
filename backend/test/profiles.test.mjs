@@ -259,7 +259,7 @@ test('prophunt: applyProfileSettings writes gamemode + ph_ boot map + cvars + ac
   assert.match(inst, /gamemode="prop_hunt"/);
   assert.match(inst, /defaultmap="ph_office"/);
   assert.match(inst, /maxplayers="24"/);
-  assert.match(inst, /wscollectionid=""/);          // collections bypassed
+  assert.doesNotMatch(inst, /wscollectionid/);       // Apply must NOT touch the collection (set on the box)
   assert.match(inst, /gt_active_profile="9"/);
 
   const game = client.files[PH_GAME];

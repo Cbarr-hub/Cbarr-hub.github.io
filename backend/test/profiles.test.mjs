@@ -8,6 +8,7 @@ import { GmodConnector } from '../src/servers/connectors/gmod.js';
 import { FactorioConnector } from '../src/servers/connectors/factorio.js';
 import { CounterStrikeConnector } from '../src/servers/connectors/counterstrike.js';
 import { MinecraftConnector } from '../src/servers/connectors/minecraft.js';
+import { PropHuntConnector } from '../src/servers/connectors/prophunt.js';
 
 // In-memory DB with all migrations applied. Deliberately does NOT set the
 // foreign_keys pragma (mirrors store.test.mjs) so the active-pointer cleanup is
@@ -43,6 +44,17 @@ function gmod(files) {
   const store = createServerStore(testDb());
   const client = fakeClient(files);
   return { conn: new GmodConnector(GMOD, client, store), store, client };
+}
+
+const PROPHUNT = { id: 'prophunt', name: 'Prop Hunt', vmid: 105, port: 27067, connect: 'cs' };
+const PH_INST   = '/home/miles/phserver/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
+const PH_GAME   = '/home/miles/phserver/serverfiles/garrysmod/cfg/gmodserver.cfg';
+const PH_ACTIVE = '/home/miles/phserver/serverfiles/garrysmod/cfg/gamertown/active.cfg';
+
+function prophunt(files) {
+  const store = createServerStore(testDb());
+  const client = fakeClient(files);
+  return { conn: new PropHuntConnector(PROPHUNT, client, store), store, client };
 }
 
 const FACTORIO = { id: 'factorio', name: 'Factorio', vmid: 101, port: 34197, connect: 'address' };
@@ -218,6 +230,114 @@ test('gmod: syncMaps runs the extract and returns the installed map list', async
   const r = await conn.syncMaps();
   assert.equal(r.ok, true);
   assert.ok(Array.isArray(r.maps));
+});
+
+// ── Prop Hunt connector: schema / validate / apply / capture / live ──────────────
+test('prophunt: validateProfileSettings rejects bad values', () => {
+  const { conn } = prophunt();
+  const base = conn.defaultProfileSettings();
+  assert.throws(() => conn.validateProfileSettings({ ...base, maxPlayers: 999 }), /maxPlayers/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, propHuntMap: 'Bad Map!' }), /Prop Hunt map/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, workshopItems: ['123', 'abc'] }), /workshop item id/);
+  assert.throws(() => conn.validateProfileSettings({ ...base, roundTime: 5 }), /Round Time/);
+});
+
+test('prophunt: workshopItems accepts an array or a free-text list (deduped)', () => {
+  const { conn } = prophunt();
+  const base = conn.defaultProfileSettings();
+  assert.deepEqual(conn.validateProfileSettings({ ...base, workshopItems: '111\n222 333,444' }).workshopItems,
+    ['111', '222', '333', '444']);
+  assert.deepEqual(conn.validateProfileSettings({ ...base, workshopItems: ['9', '9', '8'] }).workshopItems, ['9', '8']);
+});
+
+test('prophunt: applyProfileSettings writes gamemode + ph_ boot map + cvars + active.cfg', async () => {
+  const { conn, client } = prophunt({ [PH_GAME]: 'rcon_password "x"\n', [PH_INST]: 'gamemode="terrortown"\n' });
+  await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), propHuntMap: 'ph_office',
+    maxPlayers: 24, roundTime: 300, rawConfig: 'ph_thirdperson 1\n' }, 9);
+
+  const inst = client.files[PH_INST];
+  assert.match(inst, /gamemode="prop_hunt"/);
+  assert.match(inst, /defaultmap="ph_office"/);
+  assert.match(inst, /maxplayers="24"/);
+  assert.match(inst, /wscollectionid=""/);          // collections bypassed
+  assert.match(inst, /gt_active_profile="9"/);
+
+  const game = client.files[PH_GAME];
+  assert.match(game, /ph_roundtime "300"/);
+  assert.match(game, /exec gamertown\/active/);      // escape-hatch exec ensured
+  assert.equal(client.files[PH_ACTIVE], 'ph_thirdperson 1\n');
+});
+
+test('prophunt: applyProfileSettings requires a boot map', async () => {
+  const { conn } = prophunt();
+  await assert.rejects(() => conn.applyProfileSettings({ ...conn.defaultProfileSettings(), propHuntMap: '' }, 1),
+    /boot map/);
+});
+
+test('prophunt: capture round-trips gamemode settings', async () => {
+  const { conn } = prophunt({
+    [PH_INST]: 'gamemode="prop_hunt"\ndefaultmap="ph_islandhouse"\nmaxplayers="20"\n',
+    [PH_GAME]: 'ph_roundtime "180"\n',
+    [PH_ACTIVE]: 'ph_prop_lock 1\n',
+  });
+  const c = await conn.captureProfileSettings();
+  assert.equal(c.propHuntMap, 'ph_islandhouse');
+  assert.equal(c.maxPlayers, 20);
+  assert.equal(c.roundTime, 180);
+  assert.equal(c.setupTime, 30);            // default carried through
+  assert.equal(c.rawConfig, 'ph_prop_lock 1\n');
+});
+
+test('prophunt: profileSchema groups Map/Gameplay/Advanced with the workshop installer', async () => {
+  const { conn } = prophunt();
+  const schema = await conn.profileSchema();
+  assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'gameplay', 'advanced']);
+  const mapGroup = schema.groups[0];
+  assert.ok(mapGroup.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select' && f.custom));
+  assert.ok(mapGroup.fields.some((f) => f.key === 'workshopItems' && f.type === 'textarea'));
+  assert.ok(mapGroup.fields.some((f) => f.type === 'mapsync'));
+  assert.ok(schema.groups[2].fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
+});
+
+test('prophunt: getLive gates on rcon_password; change_map + movement build RCON on 27067', async () => {
+  const off = prophunt({ [PH_GAME]: '' });
+  assert.equal((await off.conn.getLive()).available, false);
+
+  const calls = [];
+  const on = prophunt({ [PH_GAME]: 'rcon_password "ph-secret"\n' });
+  on.client.agentExec = (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); };
+  on.client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'players: 2' });
+  const live = await on.conn.getLive();
+  assert.equal(live.available, true);
+  assert.ok(live.actions.some((a) => a.key === 'next_round'));
+  assert.ok(live.actions.some((a) => a.key === 'lowgrav_on'));
+
+  const res = await on.conn.runLiveAction('change_map', 'ph_factory');
+  assert.equal(res.output, 'players: 2');
+  const c = calls.at(-1);
+  assert.ok(c.command.includes('27067'));
+  assert.equal(c.command.at(-1), 'changelevel ph_factory');
+  assert.equal(c.input, 'ph-secret');
+
+  await on.conn.runLiveAction('lowgrav_on');
+  assert.equal(calls.at(-1).command.at(-1), 'sv_gravity 200');
+
+  await assert.rejects(() => on.conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => on.conn.runLiveAction('bogus_action'), /unknown live action/);
+});
+
+test('prophunt: syncMaps runs and returns the installed map list', async () => {
+  const { conn } = prophunt();
+  const r = await conn.syncMaps();
+  assert.equal(r.ok, true);
+  assert.ok(Array.isArray(r.maps));
+});
+
+test('prophunt: listProfiles seeds a Default the first time', () => {
+  const { conn } = prophunt();
+  const { profiles } = conn.listProfiles();
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].name, 'Default');
 });
 
 // ── Factorio connector: schema / validate / apply / capture ──────────────────────

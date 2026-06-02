@@ -27,6 +27,7 @@ export const SERVERS = [
   { id: 'counterstrike', name: 'Counter-Strike',     vmid: 100, connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
   { id: 'factorio',      name: 'Factorio',           vmid: 101, connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },
   { id: 'gmod',          name: "Garry's Mod (TTT)",  vmid: 104, connector: 'gmod',          port: 27066, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'prophunt',      name: 'Prop Hunt',          vmid: 105, connector: 'prophunt',      port: 27067, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
   { id: 'minecraft',     name: 'Minecraft',          vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
 ];
 

@@ -24,8 +24,10 @@ export class BaseConnector {
   get vmid() { return this.server.vmid; }
 
   // Subclasses override: the only guest paths this connector may read/write.
-  // Map of logical file name -> absolute path inside the VM.
-  configFiles = {};
+  // Map of logical file name -> absolute path inside the VM. A getter (not a
+  // field) so subclasses can override it with a computed getter (e.g. paths
+  // derived from this.gsmDir) without an instance field shadowing them.
+  get configFiles() { return {}; }
 
   // ── status ─────────────────────────────────────────────────────────────────
   async status() {

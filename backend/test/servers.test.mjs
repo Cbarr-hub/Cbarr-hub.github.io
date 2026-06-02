@@ -61,8 +61,9 @@ test('registry maps ids to the documented VMIDs', () => {
   assert.equal(getServer('factorio').vmid, 101);
   assert.equal(getServer('minecraft').vmid, 102);
   assert.equal(getServer('gmod').vmid, 104);
+  assert.equal(getServer('prophunt').vmid, 105);
   assert.equal(getServer('nope'), undefined);
-  assert.equal(listServers().length, 4);
+  assert.equal(listServers().length, 5);
 });
 
 // ── status normalization ────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ test('service without a client reports not-configured', async () => {
 test('listServers returns every server with normalized status', async () => {
   const svc = createServerService({ client: fakeClient() });
   const list = await svc.listServers();
-  assert.equal(list.length, 4);
+  assert.equal(list.length, 5);
   assert.ok(list.every((s) => s.status === 'running'));
   assert.equal(list.find((s) => s.id === 'factorio').vmid, 101);
 });

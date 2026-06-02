@@ -1,6 +1,15 @@
 // Garry's Mod connector — LinuxGSM instance `gmodserver`, running the
 // Trouble in Terrorist Town (terrortown) gamemode.
 //
+// This class also serves as the shared base for other GMOD-family gamemodes
+// (e.g. Prop Hunt — see prophunt.js). To make it subclassable, install paths are
+// derived from `this.gsmDir` via lazy getters (a frozen field would bake in the
+// parent's dir), the discoverable-map name prefixes are an overridable
+// `mapPrefixes`, and live RCON uses the registry game port (`this.server.port`).
+// A subclass points `gsmDir` at its own instance and overrides the gamemode
+// semantics (profile schema / apply / capture / live actions); the TTT specifics
+// below stay here.
+//
 // Verified layout (VM 104) — see INFRA.md "Game Server VMs":
 //   install dir : /home/miles/gmodserver   (owned by user `miles`)
 //   control     : ./gmodserver start|stop|restart|update   (run as miles)
@@ -31,33 +40,14 @@ import { getCvar, setCvars } from '../cvars.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
 
-const DIR        = '/home/miles/gmodserver';
-const GARRYSMOD  = `${DIR}/serverfiles/garrysmod`;
-// LinuxGSM launches srcds with `+servercfgfile gmodserver.cfg`, so the Source
-// game config (where TTT cvars + rcon_password live) is cfg/gmodserver.cfg —
-// NOT a server.cfg. Distinct from the LinuxGSM *instance* cfg of the same name.
-const SERVER_CFG = `${GARRYSMOD}/cfg/gmodserver.cfg`;
-const MAPCYCLE   = `${GARRYSMOD}/mapcycle.txt`;
-const INSTANCE_CFG = `${DIR}/lgsm/config-lgsm/gmodserver/gmodserver.cfg`;
-const COMMON_CFG   = `${DIR}/lgsm/config-lgsm/gmodserver/common.cfg`;
-const MAPS_DIR   = `${GARRYSMOD}/maps`;
-// Workshop collection maps land in ONE of two spots depending on the downloader:
-// the legacy in-process cache (cache/srcds/<id>.gma) OR the SteamCMD workshop path
-// (steam_cache/content/4000/<id>/*.gma). Both must be scanned for map discovery.
-const STEAM_WS   = `${DIR}/serverfiles/steam_cache/content/4000`;
-
-// GMOD serves Source RCON on the game port (27066 — see registry).
-const RCON_PORT = 27066;
-const GMOD_LIVE_ACTIONS = [
-  { key: 'players', label: 'List Players' },
-];
-const GMOD_ACTION_CMDS = { players: 'status' };
-
-
 // Maps that ship with the base install, so they're always loadable even with no
 // workshop collection — the safe floor for defaults + the boot-map guard.
 const STOCK_ALWAYS = ['gm_construct', 'gm_flatgrass'];
 
+const GMOD_LIVE_ACTIONS = [
+  { key: 'players', label: 'List Players' },
+];
+const GMOD_ACTION_CMDS = { players: 'status' };
 
 // TTT cvar field specs (key in server.cfg, UI label, numeric bounds). pct fields
 // are 0..1 fractions; the rest are integers. Kept as data so getSettings builds
@@ -74,29 +64,60 @@ const TTT_FIELDS = [
 
 export class GmodConnector extends LinuxGsmConnector {
   gsmUser = 'miles';
-  gsmDir = DIR;
+  gsmDir = '/home/miles/gmodserver';
   gsmScript = 'gmodserver';
 
-  configFiles = {
-    'server.cfg':      SERVER_CFG,
-    'mapcycle.txt':    MAPCYCLE,
-    'lgsm.cfg':        INSTANCE_CFG,
-    'lgsm-common.cfg': COMMON_CFG,
-  };
+  // The Source game-config basename, launched via `+servercfgfile`. NOT a server.cfg.
+  gameCfgName = 'gmodserver.cfg';
+  // Discoverable map-name prefixes (a subclass overrides, e.g. ph_ for Prop Hunt).
+  mapPrefixes = ['ttt_', 'gm_'];
+
+  // Install paths, derived from gsmDir so a subclass with a different instance dir
+  // gets the right paths (lazy getter — a field would freeze the parent's gsmDir).
+  get paths() {
+    const dir = this.gsmDir;
+    const garrysmod = `${dir}/serverfiles/garrysmod`;
+    const lgsm = `${dir}/lgsm/config-lgsm/${this.gsmScript}`;
+    return {
+      garrysmod,
+      serverCfg:   `${garrysmod}/cfg/${this.gameCfgName}`,
+      mapcycle:    `${garrysmod}/mapcycle.txt`,
+      mapsDir:     `${garrysmod}/maps`,
+      cacheSrcds:  `${garrysmod}/cache/srcds`,
+      instanceCfg: `${lgsm}/${this.gsmScript}.cfg`,
+      commonCfg:   `${lgsm}/common.cfg`,
+      // Workshop content lands in one of two spots depending on the downloader:
+      // the legacy in-process cache (cache/srcds) OR the SteamCMD workshop path.
+      steamWs:     `${dir}/serverfiles/steam_cache/content/4000`,
+      gmad:        `${dir}/serverfiles/bin/gmad_linux`,
+    };
+  }
+
+  get configFiles() {
+    const P = this.paths;
+    return {
+      'server.cfg':      P.serverCfg,
+      'mapcycle.txt':    P.mapcycle,
+      'lgsm.cfg':        P.instanceCfg,
+      'lgsm-common.cfg': P.commonCfg,
+    };
+  }
 
   // The SINGLE source of truth for available maps: installed .bsp files under
   // garrysmod/maps/ (stock gm_construct/gm_flatgrass + whatever syncMaps() has
   // extracted from the collection). No cache reconciliation — collection maps only
-  // appear here once installed via syncMaps.
-  async #listMaps() {
+  // appear here once installed via syncMaps. Filtered by `mapPrefixes`.
+  async installedMaps() {
     try {
+      const P = this.paths;
       const res = await this.runShell(
-        `ls -1 ${MAPS_DIR}/*.bsp 2>/dev/null | sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
+        `ls -1 ${P.mapsDir}/*.bsp 2>/dev/null | sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
         { asUser: this.gsmUser, timeoutMs: 15_000 },
       );
+      const re = new RegExp(`^(${this.mapPrefixes.join('|')})[a-z0-9_]*$`);
       const names = (res.stdout || '').split('\n')
         .map((l) => l.trim())
-        .filter((n) => /^(ttt_|gm_)[a-z0-9_]*$/.test(n));
+        .filter((n) => re.test(n));
       return [...new Set(names)].sort();
     } catch {
       return [];
@@ -108,36 +129,37 @@ export class GmodConnector extends LinuxGsmConnector {
   // cache/srcds/<id>.gma and modern ones as steam_cache/content/4000/<id>/*.gma — so
   // there is no single existing place with every map. syncMaps extracts each
   // downloaded map's maps/*.bsp into garrysmod/maps/ (the engine's canonical map
-  // dir), which #listMaps then reads as the ONE source. These TTT map addons are
-  // self-contained (packed .bsp), so an extracted map loads with no mount
+  // dir), which installedMaps() then reads as the ONE source. These TTT map addons
+  // are self-contained (packed .bsp), so an extracted map loads with no mount
   // dependency. Idempotent (cp -n). Returns the refreshed installed-map list.
   async syncMaps() {
-    const gmad = `${DIR}/serverfiles/bin/gmad_linux`;
+    const P = this.paths;
     const script = [
       'tmp=$(mktemp -d) || exit 1',
-      `for g in ${GARRYSMOD}/cache/srcds/*.gma ${STEAM_WS}/*/*.gma; do`,
+      `for g in ${P.cacheSrcds}/*.gma ${P.steamWs}/*/*.gma; do`,
       '  [ -e "$g" ] || continue',
-      `  rm -rf "$tmp/x"; "${gmad}" extract -file "$g" -out "$tmp/x" >/dev/null 2>&1 || continue`,
-      `  find "$tmp/x" -name '*.bsp' -exec cp -n {} ${MAPS_DIR}/ ';'`,
+      `  rm -rf "$tmp/x"; "${P.gmad}" extract -file "$g" -out "$tmp/x" >/dev/null 2>&1 || continue`,
+      `  find "$tmp/x" -name '*.bsp' -exec cp -n {} ${P.mapsDir}/ ';'`,
       'done',
       'rm -rf "$tmp"',
     ].join('\n');
     await this.runShell(script, { asUser: this.gsmUser, timeoutMs: 300_000 });
-    return { ok: true, maps: await this.#listMaps() };
+    return { ok: true, maps: await this.installedMaps() };
   }
 
   // Profiles own the startup config (the Profiles panel). getSettings is kept only
   // to feed the Runtime panel's live change-map dropdown with the loadable maps.
   async getSettings() {
+    const P = this.paths;
     const [inst, maps] = await Promise.all([
-      this.client.agentFileRead(this.vmid, INSTANCE_CFG).then((r) => r.content ?? '').catch(() => ''),
-      this.#listMaps(),
+      this.client.agentFileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.installedMaps(),
     ]);
     const defaultMap = (getVar(inst, 'defaultmap') || '').trim();
     const stock      = maps.filter((m) => STOCK_ALWAYS.includes(m));
     const collection = maps.filter((m) => !STOCK_ALWAYS.includes(m));
     return {
-      game: 'gmod',
+      game: this.server.id,
       // Stock vs collection maps as separate groups so the live change-map shows
       // two categories. GMOD maps are plain bsp names (no ws: ids).
       map: { stock: stock.length ? stock : STOCK_ALWAYS, collection, workshop: [], current: defaultMap },
@@ -192,7 +214,7 @@ export class GmodConnector extends LinuxGsmConnector {
   }
 
   async profileSchema() {
-    const discovered = await this.#listMaps();
+    const discovered = await this.installedMaps();
     // Always offer the stock fallback maps (gm_construct/gm_flatgrass), plus what
     // the collection has downloaded. The map fields are combos (custom:true) so a
     // collection map can be typed as the start map even before its first download.
@@ -231,6 +253,7 @@ export class GmodConnector extends LinuxGsmConnector {
 
   async applyProfileSettings(settings, profileId) {
     const s = this.validateProfileSettings(settings);
+    const P = this.paths;
 
     // The server boots into the FIRST map of the rotation (stock fallback if the
     // rotation is somehow empty). One ordered list drives both boot + rotation.
@@ -242,7 +265,7 @@ export class GmodConnector extends LinuxGsmConnector {
     // (the exact brick we hit). Block that; trust any map once a collection is set
     // (GMOD downloads + mounts it at boot before loading the map).
     if (!s.workshopCollection) {
-      const loadable = new Set([...(await this.#listMaps()), ...STOCK_ALWAYS]);
+      const loadable = new Set([...(await this.installedMaps()), ...STOCK_ALWAYS]);
       const missing = [...new Set(rotation)].filter((m) => !loadable.has(m));
       if (missing.length) {
         throw badSetting(
@@ -253,30 +276,31 @@ export class GmodConnector extends LinuxGsmConnector {
       }
     }
 
-    let inst = (await this.client.agentFileRead(this.vmid, INSTANCE_CFG)).content ?? '';
+    let inst = (await this.client.agentFileRead(this.vmid, P.instanceCfg)).content ?? '';
     inst = setVars(inst, {
       defaultmap: bootMap,
       maxplayers: String(s.maxPlayers),
       wscollectionid: s.workshopCollection,
       ...(profileId != null ? { gt_active_profile: String(profileId) } : {}),
     });
-    await this.client.agentFileWrite(this.vmid, INSTANCE_CFG, inst);
+    await this.client.agentFileWrite(this.vmid, P.instanceCfg, inst);
 
-    let game = (await this.client.agentFileRead(this.vmid, SERVER_CFG)).content ?? '';
+    let game = (await this.client.agentFileRead(this.vmid, P.serverCfg)).content ?? '';
     const cvars = { ttt_always_use_mapcycle: s.useMapcycle };
     for (const f of TTT_FIELDS) cvars[f.cvar] = String(s[f.key]);
     game = setCvars(game, cvars);
-    await this.client.agentFileWrite(this.vmid, SERVER_CFG, game);
+    await this.client.agentFileWrite(this.vmid, P.serverCfg, game);
 
-    await this.client.agentFileWrite(this.vmid, MAPCYCLE, rotation.join('\n') + '\n');
+    await this.client.agentFileWrite(this.vmid, P.mapcycle, rotation.join('\n') + '\n');
     return { ok: true };
   }
 
   async captureProfileSettings() {
+    const P = this.paths;
     const [game, inst, mapcycle] = await Promise.all([
-      this.client.agentFileRead(this.vmid, SERVER_CFG).then((r) => r.content ?? '').catch(() => ''),
-      this.client.agentFileRead(this.vmid, INSTANCE_CFG).then((r) => r.content ?? '').catch(() => ''),
-      this.client.agentFileRead(this.vmid, MAPCYCLE).then((r) => r.content ?? '').catch(() => ''),
+      this.client.agentFileRead(this.vmid, P.serverCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.client.agentFileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.client.agentFileRead(this.vmid, P.mapcycle).then((r) => r.content ?? '').catch(() => ''),
     ]);
     const num = (cvar, def) => {
       const v = getCvar(game, cvar);
@@ -298,13 +322,13 @@ export class GmodConnector extends LinuxGsmConnector {
   }
 
   // ── live commands (Source RCON on the game port, like CS2) ──
-  async #rconPassword() {
-    const game = await this.client.agentFileRead(this.vmid, SERVER_CFG).then((r) => r.content ?? '').catch(() => '');
+  async rconPassword() {
+    const game = await this.client.agentFileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
     return (getCvar(game, 'rcon_password') || '').trim();
   }
 
   async getLive() {
-    const pw = await this.#rconPassword();
+    const pw = await this.rconPassword();
     if (!pw) return { available: false, reason: 'RCON disabled — set rcon_password in server.cfg and restart' };
     return {
       available: true,
@@ -316,17 +340,17 @@ export class GmodConnector extends LinuxGsmConnector {
 
   async sendCommand(command) {
     const cmd = validateLiveCommand(command);
-    return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });
+    return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: cmd });
   }
 
   async runLiveAction(key, value) {
     if (key === 'change_map') {
       const v = String(value ?? '').trim();
       if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
-      return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: `changelevel ${v}` });
+      return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: `changelevel ${v}` });
     }
     const cmd = GMOD_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);
-    return rconCommand(this, { port: RCON_PORT, password: await this.#rconPassword(), command: cmd });
+    return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: cmd });
   }
 }

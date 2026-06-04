@@ -22,7 +22,6 @@
 import { GmodConnector } from './gmod.js';
 import { getVar, setVars } from '../cfgvars.js';
 import { getCvar, setCvars } from '../cvars.js';
-import { rconCommand } from '../rcon.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
 
 const GAMEMODE   = 'prop_hunt';
@@ -260,10 +259,10 @@ export class PropHuntConnector extends GmodConnector {
     if (key === 'change_map') {
       const v = String(value ?? '').trim();
       if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
-      return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: `changelevel ${v}` });
+      return this.runRcon(`changelevel ${v}`);
     }
     const cmd = PH_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);
-    return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: cmd });
+    return this.runRcon(cmd);
   }
 }

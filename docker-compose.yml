@@ -1,0 +1,53 @@
+# Gamertown — portable stack. `docker compose up --build` stands up the whole app
+# (Fastify backend + Caddy reverse proxy serving the static site) anywhere.
+#
+# Secrets come from a single host-side file outside the repo (default
+# /etc/gamertown/secrets.env, override with GT_SECRETS_FILE). Both files are
+# marked `required: false` so the stack still boots before they exist — the app
+# then degrades (e.g. PVE control → 503) instead of failing to start.
+
+services:
+  app:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - path: backend/.env
+        required: false
+      - path: ${GT_SECRETS_FILE:-/etc/gamertown/secrets.env}
+        required: false
+    environment:
+      NODE_ENV: production
+      # Bind all interfaces INSIDE the app container so the separate Caddy container
+      # can reach it as app:3000. The backend/.env default (127.0.0.1) is correct only
+      # for the single-host deploy where Caddy shares loopback; here they're separate
+      # containers. No host port is published (expose only), so :3000 stays private to
+      # the compose network.
+      HOST: 0.0.0.0
+    volumes:
+      - gt-data:/app/data        # SQLite DB + session-key — survives redeploys
+    expose:
+      - "3000"                   # internal only; Caddy reaches it as app:3000
+
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    restart: unless-stopped
+    env_file:
+      - path: ${GT_SECRETS_FILE:-/etc/gamertown/secrets.env}
+        required: false
+    ports:
+      - "443:443"                # AT&T blocks :80, so HTTPS only
+    volumes:
+      - caddy_data:/data         # issued certs — avoids Let's Encrypt re-issue
+      - caddy_config:/config
+      # Real TLS cert (e.g. the Cloudflare Origin cert) when CADDY_TLS points at it;
+      # absent → the Caddyfile's `tls internal` self-signed default applies.
+      - ${GT_CERTS_DIR:-/etc/gamertown/certs}:/etc/caddy/certs:ro
+    depends_on:
+      - app
+
+volumes:
+  gt-data:
+  caddy_data:
+  caddy_config:

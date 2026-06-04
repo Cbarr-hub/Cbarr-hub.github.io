@@ -113,17 +113,6 @@
   <button class="ad-close" type="button">X</button>
 </div>
 
-<!-- Auth Modal -->
-<div id="auth-overlay" class="auth-overlay hidden">
-  <div class="auth-modal">
-    <button class="auth-close" id="authClose">X</button>
-    <h2 class="auth-title">SIGN IN</h2>
-
-    <form id="loginForm" class="auth-form">
-      <div class="form-group">
-        <label for="loginUsername">USERNAME</label>
-        <input type="text" id="loginUsername" required autocomplete="username">
-      </div>
       <div class="form-group">
         <label for="loginPassword">PASSWORD</label>
         <input type="password" id="loginPassword" required autocomplete="current-password">
@@ -403,55 +392,6 @@
 })()
 </script>
 
-<script type="module">
-  import { dbFindUser } from './db.js';
-  import { loadSession } from './auth.js';
-
-  const authOverlay = document.getElementById('auth-overlay');
-  const authClose = document.getElementById('authClose');
-  const openSignIn = document.getElementById('openSignIn');
-  const openSignInSide = document.getElementById('openSignInSide');
-  const loginForm = document.getElementById('loginForm');
-  const loginStatus = document.getElementById('loginStatus');
-
-  const showModal = () => authOverlay.classList.remove('hidden');
-  const hideModal = () => authOverlay.classList.add('hidden');
-  const setStatus = (message, isError = false) => {
-    loginStatus.textContent = message;
-    loginStatus.className = 'auth-status' + (isError ? ' error' : ' success');
-  };
-
-  [openSignIn, openSignInSide].forEach(link => {
-    if (link) {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        showModal();
-      });
-    }
-  });
-
-  authClose.addEventListener('click', hideModal);
-
-  loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('loginUsername').value;
-    const password = document.getElementById('loginPassword').value;
-
-    setStatus('Signing in...');
-
-    try {
-      await dbFindUser(username, password);
-      setStatus('Signed in successfully');
-      setTimeout(() => location.reload(), 300);
-    } catch (err) {
-      setStatus(err.message || 'Invalid username or password', true);
-    }
-  });
-
-  if (!(await loadSession())) {
-    showModal();
-  }
-</script>
 
 </body>
 </html>

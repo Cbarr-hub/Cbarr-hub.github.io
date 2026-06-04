@@ -1,0 +1,26 @@
+# Build context for the Caddy image (Dockerfile.caddy, context = repo root).
+# Keep the served *.html / *.css / *.js / *.png — they ARE the site. Exclude
+# everything that must never be web-served or baked into an image.
+
+.git
+.github
+.claude
+.dockerignore
+
+# Backend source is served by the `app` container, not Caddy — keep it out of /srv.
+backend
+node_modules
+**/node_modules
+
+# Secrets must never enter any image (they live in the host secrets file).
+.env
+*.local
+.secrets
+SECRETS.local.md
+secrets.env
+
+# Build artifacts / junk
+Dockerfile*
+docker-compose*.yml
+*.log
+.DS_Store

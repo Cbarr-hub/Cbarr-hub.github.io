@@ -1,0 +1,58 @@
+# Gamertown reverse proxy + static site (container variant of backend/Caddyfile.example).
+#
+# Out of the box: SITE_ADDRESS=localhost + CADDY_TLS="tls internal" → self-signed, no
+# domain required. For production set in the host secrets file:
+#   SITE_ADDRESS=gamertown.solutions, www.gamertown.solutions
+#   CADDY_TLS=tls /etc/caddy/certs/gamertown.solutions.pem /etc/caddy/certs/gamertown.solutions.key
+# and bind-mount the certs to /etc/caddy/certs (see docker-compose.yml). This mirrors
+# the CT-103 production Caddy: a forward_auth gate, public assets, and long backup
+# timeouts — only the upstream is the `app` container instead of 127.0.0.1.
+
+{$SITE_ADDRESS:localhost} {
+	encode gzip
+
+	# Never serve backend source / infra files that ride along in the image.
+	@infra path /backend/* /Dockerfile* /docker-compose* /Caddyfile* /*.md
+	handle @infra {
+		respond 403
+	}
+
+	# Long-running backup streams (Factorio/MC tar→R2) need generous timeouts.
+	@backups path /api/servers/*/backups*
+	handle @backups {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 20m
+				read_timeout 20m
+				write_timeout 20m
+			}
+		}
+	}
+
+	# API → the backend container.
+	handle /api/* {
+		reverse_proxy app:3000
+	}
+
+	# Public assets (sign-in page + static media) served WITHOUT the auth gate.
+	@public path /signin.html *.css *.js *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2 *.ttf *.webp *.mp4
+	handle @public {
+		root * /srv
+		file_server
+	}
+
+	# Everything else is gated behind login: Caddy asks the app's /api/auth/gate,
+	# which returns 204 (logged in) or 302 → /signin.html.
+	handle {
+		forward_auth app:3000 {
+			uri /api/auth/gate
+		}
+		header Cache-Control "no-store"
+		root * /srv
+		try_files {path} {path}.html /index.html
+		file_server
+	}
+
+	# Self-signed by default; override CADDY_TLS for a real cert (see header).
+	{$CADDY_TLS:tls internal}
+}

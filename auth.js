@@ -17,14 +17,10 @@ export async function loadSession() {
 }
 
 export function getSession() {
-  // Synchronous best-effort: returns the cached username string (or null) for
-  // callers written before the backend existed. Always returns null on first
-  // call until loadSession() resolves — pages should await loadSession() on
-  // boot if they depend on it.
   return cachedSession?.username ?? null;
 }
 
-export async function requireAuth(redirectTo = 'index.html') {
+export async function requireAuth(redirectTo = 'signin.html') {
   const session = await loadSession();
   if (!session) {
     window.location.href = redirectTo;
@@ -60,7 +56,7 @@ export function updateNavbar(username) {
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await logout();
-    location.reload();
+    window.location.replace('/signin.html');
   });
 }
 

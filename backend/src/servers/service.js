@@ -48,13 +48,20 @@ export function normalizeNodeStatus(data) {
 /**
  * @param {object} deps
  * @param {import('../proxmox/client.js').ProxmoxClient|null} deps.client
- *        null when PVE isn't configured — every call then throws NOT_CONFIGURED.
+ *        Proxmox transport, or null when PVE isn't configured.
+ * @param {import('../docker/client.js').DockerClient|null} [deps.dockerClient]
+ *        Docker transport, or null when DOCKER_HOST isn't configured.
  * @param {import('better-sqlite3').Database|null} [deps.db]
  *        shared DB; backs the connectors' persisted catalog/config store.
+ *
+ * The service is "configured" if EITHER backend is wired; each server in the
+ * registry binds to its own backend and is skipped when that backend is absent.
  */
-export function createServerService({ client, publicHost = '', db = null }) {
+export function createServerService({ client, dockerClient = null, publicHost = '', db = null }) {
   const store = db ? createServerStore(db) : null;
-  const connectors = client ? buildConnectors(client, store) : null;
+  const connectors = (client || dockerClient)
+    ? buildConnectors({ proxmox: client, docker: dockerClient }, store)
+    : null;
 
   function connectorFor(id) {
     if (!connectors) {
@@ -83,15 +90,20 @@ export function createServerService({ client, publicHost = '', db = null }) {
   return {
     isConfigured: () => Boolean(connectors),
 
-    // Host-level dashboard: live resource snapshot of the Proxmox node itself.
-    // Returns { node: <name>, ...normalized } so the UI can render CPU/RAM/load
-    // gauges. Throws NOT_CONFIGURED when PVE isn't wired up.
+    // Host-level dashboard, backend-aware. With a Proxmox client it's the live PVE
+    // node snapshot (kind:'proxmox' — CPU/RAM/load gauges). Otherwise, with a Docker
+    // client, it's the Docker host/engine facts (kind:'docker'); the UI pairs that
+    // with the per-container cpu/mem it already gets from /api/servers. Throws
+    // NOT_CONFIGURED when neither backend is wired.
     async getNodeStatus() {
-      if (!client) {
-        throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
+      if (client) {
+        const data = await client.nodeStatus();
+        return { kind: 'proxmox', node: client.node, ...normalizeNodeStatus(data) };
       }
-      const data = await client.nodeStatus();
-      return { node: client.node, ...normalizeNodeStatus(data) };
+      if (dockerClient) {
+        return { kind: 'docker', ...(await dockerClient.nodeStatus()) };
+      }
+      throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
     },
 
     // List every server with its current status. Status failures are captured
@@ -102,8 +114,10 @@ export function createServerService({ client, publicHost = '', db = null }) {
       }
       return Promise.all(listServers().map(async (server) => {
         const meta = publicMeta(server);
+        const connector = connectors.get(server.id);
+        if (!connector) return { ...meta, status: 'unknown', reason: 'backend not configured' };
         try {
-          const status = await connectors.get(server.id).status();
+          const status = await connector.status();
           return { ...meta, ...status };
         } catch (err) {
           return { ...meta, status: 'unknown', error: err.message };

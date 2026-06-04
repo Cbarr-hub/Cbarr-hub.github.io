@@ -49,5 +49,12 @@ export function loadEnv(path = '.env') {
     // WAN IP or a domain). Dynamic on AT&T — update if it changes. Used only to
     // render the copy-pastable join strings on the control panel.
     PUBLIC_HOST: process.env.PUBLIC_HOST ?? '104.177.95.216',
+
+    // Docker Engine — powers the containerized game servers (registry entries
+    // with backend:'docker'). Blank disables the Docker backend (those servers
+    // are skipped), mirroring the PVE-blank degrade. Points at the scoped
+    // socket-proxy, e.g. "tcp://docker-proxy:2375".
+    DOCKER_HOST: process.env.DOCKER_HOST ?? '',
+    DOCKER_API_VERSION: process.env.DOCKER_API_VERSION ?? '',
   };
 }

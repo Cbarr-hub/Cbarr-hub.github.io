@@ -1,0 +1,21 @@
+# Caddy image: the Gamertown static site + Caddyfile baked in, plus a Caddy build
+# that includes the Cloudflare DNS module (needed for the Let's Encrypt DNS-01
+# challenge, since AT&T blocks inbound :80 so HTTP-01 is impossible).
+#
+# Baking the site in (rather than bind-mounting) is what makes the image portable.
+
+# ── build a Caddy binary with the cloudflare DNS provider ─────────────────────
+FROM caddy:2-builder AS builder
+RUN xcaddy build \
+    --with github.com/caddy-dns/cloudflare
+
+# ── runtime ───────────────────────────────────────────────────────────────────
+FROM caddy:2
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+
+# Reverse-proxy + static config.
+COPY Caddyfile /etc/caddy/Caddyfile
+
+# The served site = repo root, minus everything excluded by .dockerignore
+# (.git, backend source, node_modules, secrets, etc.).
+COPY . /srv

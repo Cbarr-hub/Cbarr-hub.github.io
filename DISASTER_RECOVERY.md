@@ -9,7 +9,7 @@ nothing but **the three things that live off the box**:
 |---|---|---|
 | **Code** | GitHub `Cbarr-hub/Cbarr-hub.github.io`, branch `main` | No — it's on GitHub |
 | **Data** | Cloudflare **R2** bucket `gamertown-backups` (app DB, game saves) | No — it's offsite |
-| **Secrets** | R2 (age-encrypted `secrets.env`) + **the age passphrase in your password manager** | Only if you lose the passphrase |
+| **Secrets** | R2 (age-encrypted secret bundle) + **the age passphrase in your password manager** | Only if you lose the passphrase |
 
 If you have GitHub access, your Cloudflare login, and the age passphrase, the whole
 stack is recoverable. Everything else (R2 keys, TLS cert, GSLTs) can be re-minted.
@@ -49,31 +49,29 @@ hypervisor, bare metal) works identically.
 
 ## 2. Where every secret lives (and what's backed up)
 
-⚠️ Secrets are split across **two host files**. Only the first is in the R2 backup today.
+Secrets sit in **two host files + the TLS cert dir**. `tools/secrets-backup.sh` bundles
+**all three** into one age-encrypted tar at
+`r2:gamertown-backups/secrets/secrets.tar.age` (run on demand; decrypt needs the
+passphrase from your password manager). Restore with `tools/secrets-restore.sh`.
 
-**A. `/etc/gamertown/secrets.env`** (root, `600`) — consumed by the **app + Caddy**
-(Compose `env_file`). 6 keys: `SITE_ADDRESS`, `CADDY_TLS`, and the four
-`*_RCON_PASSWORD` (Minecraft/CS2/GMOD/PropHunt).
-→ **Backed up:** age-encrypted to `r2:gamertown-backups/secrets/secrets.env.age`
-(run `tools/secrets-backup.sh`; decrypt needs the passphrase from your password
-manager). **Verified round-trips** (encrypt → R2 → decrypt == original).
+| Source | Path | Holds | In the bundle |
+|---|---|---|---|
+| App/Caddy env | `/etc/gamertown/secrets.env` (`600`) | `SITE_ADDRESS`, `CADDY_TLS`, 4× `*_RCON_PASSWORD` | ✅ |
+| Compose project env | `/root/gamertown/.env` | `GMOD_GSLT`, `PROPHUNT_GSLT`, `GMOD_WORKSHOP_COLLECTION`, `MC_LEVEL=world_GTown`, `SKIP_CSS`, dup RCON pw | ✅ |
+| TLS origin cert | `/etc/gamertown/certs/gamertown.solutions.{pem,key}` | Cloudflare Origin cert (the `.key` is sensitive) | ✅ |
 
-**B. `/root/gamertown/.env`** (the Compose project file) — interpolated into the
-**game containers** at `up`. Keys: `GMOD_GSLT`, `PROPHUNT_GSLT`,
-`GMOD_WORKSHOP_COLLECTION` (empty), `MC_LEVEL=world_GTown`, `SKIP_CSS=1`, plus
-duplicate `*_RCON_PASSWORD`.
-→ **NOT backed up.** On rebuild: copy the RCON passwords from `secrets.env`, set the
-config values above, and **regenerate the two GSLTs** at
-`steamgameservers.com` (appid **4000** for GMOD/Prop Hunt). GSLTs are free and
-disposable. `secrets.env.example` documents the full shape.
+Why two env files: the app/Caddy env loads via Compose `env_file`, while the project
+`.env` is what Compose reads for game-service **interpolation** (`${GMOD_GSLT}` etc.) —
+`env_file` can't feed interpolation, so they stay separate. `secrets.env.example`
+documents the env shape.
 
-**Not secrets-in-a-file (re-mint on rebuild):**
-- **R2 API keys** — live only in the keeper's `~/.config/rclone/rclone.conf`. To
-  *read the backups* after a total loss, mint a fresh **Object Read & Write** token
-  in the Cloudflare dashboard (R2 → Manage API tokens), scoped to `gamertown-backups`.
-- **TLS origin cert** — `/etc/gamertown/certs/gamertown.solutions.{pem,key}` (not
-  backed up; the `.key` is sensitive). Re-issue from Cloudflare → SSL/TLS → Origin
-  Server → Create Certificate. (Or keep your own copy in your password manager.)
+**Still re-mint on rebuild (not in any backup):**
+- **R2 API keys** — live only in the keeper's `~/.config/rclone/rclone.conf`. To *read
+  the backups* after a total loss, mint a fresh **Object Read & Write** token in the
+  Cloudflare dashboard (R2 → Manage API tokens), scoped to `gamertown-backups`.
+- **The age passphrase** — only in your password manager. Lose it and the bundle is
+  unrecoverable. (As a fallback the GSLTs + cert are *also* re-issuable — Steam appid
+  4000 / Cloudflare → SSL/TLS → Origin Server.)
 - **PVE token** — no longer used (the app runs pure-Docker); absent from `secrets.env`.
 
 ---
@@ -87,7 +85,7 @@ Bucket `gamertown-backups`, rclone remote `r2`. Restore reads, never writes the 
 | `app/gamertown_<ts>.sqlite` | app DB (users, sessions, **server Profiles**) | **nightly 04:00** (`gt-db-backup.timer`) | keep **7** |
 | `factorio/_active_<ts>.zip` | Factorio active save (~45 MB) | **nightly 04:00** | keep **3** |
 | `minecraft/world_GTown_<ts>.tar.gz` | MC world (~5.4 GB) | **on-demand only** (panel → Backups) | keep 1 |
-| `secrets/secrets.env.age` | age-encrypted `secrets.env` | **on-demand** (after editing secrets) | keep 1 |
+| `secrets/secrets.tar.age` | age-encrypted bundle (`secrets.env` + project `.env` + TLS cert) | **on-demand** (after editing secrets) | keep 1 |
 
 `<ts>` = UTC `YYYYMMDD_HHMMSS`. The nightly job is the host script
 `/usr/local/bin/gt-backup.sh`. ⚠️ **The MC world is NOT in the nightly** (too big for
@@ -116,18 +114,17 @@ rclone lsf r2:gamertown-backups/        # sanity check
 git clone https://github.com/Cbarr-hub/Cbarr-hub.github.io /root/gamertown
 ```
 
-**4. Restore secrets:**
+**4. Restore secrets + the TLS cert** in one shot — the bundle holds `secrets.env`, the
+project `.env`, and the origin cert:
 ```bash
-# secrets.env (file A) — from the age backup
-rclone copyto r2:gamertown-backups/secrets/secrets.env.age /tmp/s.age
-sudo install -D -m600 /dev/null /etc/gamertown/secrets.env
-age -d -o /etc/gamertown/secrets.env /tmp/s.age   # enter the passphrase; rm /tmp/s.age
-# project .env (file B) — rebuild by hand (RCON pw from secrets.env + new GSLTs)
-cp /root/gamertown/secrets.env.example /root/gamertown/.env   # then fill: GSLTs, RCON, MC_LEVEL=world_GTown, SKIP_CSS=1
+git clone https://github.com/Cbarr-hub/Cbarr-hub.github.io /root/gamertown   # if not already (step 3)
+/root/gamertown/tools/secrets-restore.sh --in-place        # enter the passphrase
+# → writes /etc/gamertown/secrets.env, /root/gamertown/.env, /etc/gamertown/certs/*
 ```
+(If the GSLTs ever need refreshing, regenerate at steamgameservers.com / appid 4000.)
 
-**5. Restore the TLS cert** to `/etc/gamertown/certs/gamertown.solutions.{pem,key}`
-(`600`) — re-issue from Cloudflare if you don't have a copy.
+**5. TLS cert** — already restored by the bundle in step 4. *(Fallback if you skipped the
+bundle: re-issue from Cloudflare → SSL/TLS → Origin Server → Create Certificate.)*
 
 **6. Bring the stack up** (creates the 8 volumes, builds images, starts installing
 game files):
@@ -184,25 +181,22 @@ curl -s https://gamertown.solutions/api/health     # {"ok":true}
 
 ## 6. Known DR gaps + recommended hardening
 
-Honest list of what *isn't* watertight today:
+Closed since the migration, and what's still loose:
 
-1. **Project `.env` (GSLTs) isn't backed up.** Recoverable (regenerate at Steam), but a
-   one-step DR would bundle `/root/gamertown/.env` + the origin cert into the age
-   backup alongside `secrets.env`. *Recommended:* extend `tools/secrets-backup.sh` to
-   `tar` all three → age → R2.
-2. **TLS origin key isn't backed up.** Re-issuable from Cloudflare; back it up if you'd
-   rather not re-issue under pressure.
-3. **MC world is on-demand only.** The nightly skips it (size). Push a fresh world
+- ✅ **Secret bundle (2026-06-04):** `tools/secrets-backup.sh` now tars `secrets.env` +
+  the project `.env` (GSLTs) + the TLS origin cert → one `secrets.tar.age`. Re-run it
+  (real terminal, passphrase) after editing any secret so R2 stays current.
+- ✅ **Keeper checkout reconciled (2026-06-04):** `/root/gamertown` is back on clean
+  `main`; `git pull` deploys work.
+
+Still loose:
+
+1. **MC world is on-demand only.** The nightly skips it (size). Push a fresh world
    snapshot from the panel periodically, or accept losing recent MC progress.
-4. **R2 keys live only on the keeper.** Fine (re-mint from Cloudflare), but it means R2
-   access itself depends on your Cloudflare login — keep that recoverable.
-5. **The age passphrase is the single point of failure** for `secrets.env`. If it's
-   lost, the offsite secret copy is unrecoverable. Keep it in your password manager.
-6. **Keeper checkout drift:** `/root/gamertown` currently runs on a stale local branch
-   with untracked migration files (its *running code* matches `main`, but `git pull`
-   won't work cleanly). Reconcile before the next deploy:
-   `git -C /root/gamertown fetch origin && git -C /root/gamertown checkout -f main`
-   (data is in volumes, so this is safe — it only touches tracked source files).
+2. **R2 keys live only on the keeper.** Fine (re-mint from Cloudflare), but R2 access
+   then depends on your Cloudflare login — keep that recoverable.
+3. **The age passphrase is the single point of failure** for the secret bundle. If it's
+   lost, the offsite copy is unrecoverable. Keep it in your password manager.
 
 ---
 
@@ -212,7 +206,7 @@ Honest list of what *isn't* watertight today:
 |---|---|
 | `/usr/local/bin/gt-backup.sh` + `gt-db-backup.timer` | nightly app-DB + Factorio → R2 (on the keeper) |
 | `tools/db-backup.sh` / `tools/db-restore.sh` | portable app-DB snapshot / restore (volume-aware) |
-| `tools/secrets-backup.sh` / `tools/secrets-restore.sh` | age-encrypt `secrets.env` → R2 / restore |
+| `tools/secrets-backup.sh` / `tools/secrets-restore.sh` | age-encrypt the secret **bundle** (`secrets.env` + project `.env` + TLS cert) → R2 / restore |
 | panel → **Backups** card | on-demand Factorio + Minecraft world archives |
 
 See `INFRA.md` for the live architecture, the BGW210 scripting recipe, and the R2

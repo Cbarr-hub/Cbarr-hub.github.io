@@ -660,7 +660,7 @@
       return `<div class="qc">
         <div class="qc-head">
           <span class="tile-label">Quick Connect</span>
-          <span class="fleet-summary"><b>${running}</b>/${servers.length} VMs up &middot; <b>${hosting}</b> hosting</span>
+          <span class="fleet-summary"><b>${running}</b>/${servers.length} up &middot; <b>${hosting}</b> hosting</span>
         </div>
         ${rows}
       </div>`
@@ -672,7 +672,53 @@
       })
     }
 
+    // Docker-backend dashboard: the host has no Proxmox-node live CPU/RAM, so show
+    // the engine/host facts (from /api/servers/node) as a header and a resource card
+    // PER CONTAINER, built from the cpu/mem the servers list already carries. Connect
+    // strings reuse the same fleetHtml() as the Proxmox dashboard.
+    function renderDockerDashboard(n) {
+      const host = document.getElementById('dashboard')
+      const known = servers.filter(s => s.status && s.status !== 'unknown')
+      const cards = known.map(s => {
+        const up = s.status === 'running'
+        const cpuPct = up && s.cpu != null ? s.cpu * 100 : 0
+        const memPct = up && s.maxmem ? (s.mem / s.maxmem) * 100 : 0
+        const { cls, label } = statusBits(s)
+        return `<div class="dash-tile">
+          <span class="tile-label"><span class="dot ${cls}"></span> ${esc(s.name)}</span>
+          ${up
+            ? gaugeHtml(cpuPct, cpuPct.toFixed(0) + '%', 'CPU') +
+              `<div class="stat-rows" style="margin-top:6px">
+                 <div class="stat-row"><span class="stat-k">Mem</span><span class="stat-v">${fmtBytes(s.mem)}${s.maxmem ? ' / ' + fmtBytes(s.maxmem) : ''}</span></div>
+                 ${s.maxmem ? `<div class="stat-row" style="border:none;padding:0">${barHtml(memPct)}</div>` : ''}
+                 <div class="stat-row"><span class="stat-k">Uptime</span><span class="stat-v">${esc((fmtUptime(s.uptime) || '—').replace(/^up /, ''))}</span></div>
+               </div>`
+            : `<div class="dash-sub">${esc(label.toLowerCase())}</div>`}
+        </div>`
+      }).join('')
+      host.innerHTML = `
+        <div class="dash-head">
+          <div>
+            <span class="dash-node">▣ DOCKER <span class="host">${esc(n.name || 'host')}</span></span>
+            <div class="dash-sub">${esc(n.ncpu ? n.ncpu + ' cores' : '')}${n.memTotal ? ' &middot; ' + fmtBytes(n.memTotal) + ' RAM' : ''}${n.os ? ' &middot; ' + esc(n.os) : ''}</div>
+          </div>
+          <div class="dash-sub" style="text-align:right">
+            ${n.engineVersion ? `<div><b>Docker ${esc(n.engineVersion)}</b></div>` : ''}
+            ${n.containersRunning != null ? `<div>${n.containersRunning}/${n.containers} containers up</div>` : ''}
+            ${n.kernel ? `<div>${esc(n.kernel)}</div>` : ''}
+          </div>
+        </div>
+        <div class="dash-grid">${cards || '<div class="dash-sub">no containers</div>'}</div>
+        ${fleetHtml()}
+        <div class="dash-head" style="margin:10px 0 0">
+          <span class="dash-refresh">live &middot; refreshes every 10s</span>
+          <span class="dash-refresh">updated ${new Date().toLocaleTimeString()}</span>
+        </div>`
+      wireQuickConnect()
+    }
+
     function renderDashboard(n) {
+      if (n && n.kind === 'docker') return renderDockerDashboard(n)
       const host = document.getElementById('dashboard')
       const cpuPct = n.cpu != null ? n.cpu * 100 : 0
       const memPct = (n.memory?.total) ? (n.memory.used / n.memory.total) * 100 : 0

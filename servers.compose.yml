@@ -20,6 +20,7 @@ services:
       CONTAINERS: 1          # inspect/list containers (status)
       EXEC: 1                # create/start exec (config read/write)
       POST: 1                # allow the POSTs that start/stop/exec/restart need
+      INFO: 1                # GET /info — host facts for the container dashboard (read-only)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
@@ -91,7 +92,55 @@ services:
       - "27015:27015"
       - "27015:27015/udp"
 
+  # Dockerized GMOD/TTT + Prop Hunt — LinuxGSM in a container, ONE image built from
+  # docker/gmod/Dockerfile (they differ only by env + volume). GMOD + CS:S content
+  # install into the /data volume on first boot (~minutes, one-time). Boot identity
+  # (GSLT/RCON/port/gamemode/collection/map) is env; the panel-managed profile (TTT/PH
+  # cvars, mapcycle) lives in the volume. RCON is reached internally as gmod:27066 /
+  # prophunt:27067 (NOT host-published); only the game ports are published.
+  gmod:
+    build: { context: ., dockerfile: docker/gmod/Dockerfile }
+    image: gamertown-gmod
+    container_name: gmod
+    restart: unless-stopped
+    stop_grace_period: 90s          # let LinuxGSM stop the server cleanly on SIGTERM
+    environment:
+      GAMEMODE: terrortown
+      PORT: "27066"
+      GSLT: ${GMOD_GSLT:-}
+      RCON_PASSWORD: ${GMOD_RCON_PASSWORD:?set GMOD_RCON_PASSWORD in the secrets file and pass --env-file}
+      WORKSHOP_COLLECTION: ${GMOD_WORKSHOP_COLLECTION:-}
+      DEFAULT_MAP: ${GMOD_DEFAULT_MAP:-gm_construct}
+      SKIP_CSS: ${SKIP_CSS:-}        # set 1 to skip the ~3GB CS:S pull (stock maps don't need it)
+    volumes:
+      - gmod-data:/data
+    ports:
+      - "27066:27066/tcp"
+      - "27066:27066/udp"
+
+  prophunt:
+    image: gamertown-gmod           # same image as gmod; only env + volume differ
+    build: { context: ., dockerfile: docker/gmod/Dockerfile }
+    container_name: prophunt
+    restart: unless-stopped
+    stop_grace_period: 90s
+    environment:
+      GAMEMODE: prop_hunt
+      PORT: "27067"
+      GSLT: ${PROPHUNT_GSLT:-}
+      RCON_PASSWORD: ${PROPHUNT_RCON_PASSWORD:?set PROPHUNT_RCON_PASSWORD in the secrets file and pass --env-file}
+      WORKSHOP_COLLECTION: ${PROPHUNT_WORKSHOP_COLLECTION:-3737190377}
+      DEFAULT_MAP: ${PROPHUNT_DEFAULT_MAP:-ph_restaurant}
+      SKIP_CSS: ${SKIP_CSS:-}
+    volumes:
+      - ph-data:/data
+    ports:
+      - "27067:27067/tcp"
+      - "27067:27067/udp"
+
 volumes:
   mc-data:
   factorio-data:
   cs2-data:
+  gmod-data:
+  ph-data:

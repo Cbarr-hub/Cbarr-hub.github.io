@@ -13,6 +13,8 @@ import { PropHuntConnector } from './prophunt.js';
 import { DockerMinecraftConnector } from './docker/minecraft.js';
 import { DockerFactorioConnector } from './docker/factorio.js';
 import { DockerCounterStrikeConnector } from './docker/counterstrike.js';
+import { DockerGmodConnector } from './docker/gmod.js';
+import { DockerPropHuntConnector } from './docker/prophunt.js';
 
 // connector key -> class, per backend. A backend's fallback (used when a server
 // names no custom connector) is its generic base connector.
@@ -28,6 +30,8 @@ const CONNECTOR_CLASSES = {
     minecraft: DockerMinecraftConnector,
     factorio: DockerFactorioConnector,
     counterstrike: DockerCounterStrikeConnector,
+    gmod: DockerGmodConnector,
+    prophunt: DockerPropHuntConnector,
   },
 };
 

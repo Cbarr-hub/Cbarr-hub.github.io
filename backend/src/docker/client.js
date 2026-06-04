@@ -119,6 +119,24 @@ export class DockerClient {
   stop(container)     { return this.#request('POST', this.#c(container, '/kill')); }    // hard (SIGKILL) — matches PVE stop
   reboot(container)   { return this.#request('POST', this.#c(container, '/restart')); }
 
+  // ── host/engine info (container dashboard) ──────────────────────────────────
+  // Docker has no Proxmox-node equivalent; /info gives static host facts (engine,
+  // OS, core count, total RAM, container counts) — no live host CPU%. The service
+  // pairs this with the per-container stats the UI already pulls from /api/servers.
+  async nodeStatus() {
+    const info = await this.#request('GET', '/info');
+    return {
+      name: info?.Name ?? null,
+      engineVersion: info?.ServerVersion ?? null,
+      os: info?.OperatingSystem ?? null,
+      kernel: info?.KernelVersion ?? null,
+      ncpu: info?.NCPU ?? null,
+      memTotal: info?.MemTotal ?? null,
+      containers: info?.Containers ?? null,
+      containersRunning: info?.ContainersRunning ?? null,
+    };
+  }
+
   // ── command execution (emulated guest-agent two-step) ───────────────────────
   // agentExec runs the command to completion and stashes the result; the matching
   // agentExecStatus then reports it as exited. This keeps BaseConnector.runCommand's

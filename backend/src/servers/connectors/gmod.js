@@ -338,19 +338,25 @@ export class GmodConnector extends LinuxGsmConnector {
     };
   }
 
+  // Run one RCON command, returning { output }. The TRANSPORT is overridable so the
+  // Docker subclass (docker/gmod.js) can reach the game port over TCP instead of the
+  // in-guest python client, while inheriting all the live-action command mapping below.
+  async runRcon(command) {
+    return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command });
+  }
+
   async sendCommand(command) {
-    const cmd = validateLiveCommand(command);
-    return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: cmd });
+    return this.runRcon(validateLiveCommand(command));
   }
 
   async runLiveAction(key, value) {
     if (key === 'change_map') {
       const v = String(value ?? '').trim();
       if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
-      return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: `changelevel ${v}` });
+      return this.runRcon(`changelevel ${v}`);
     }
     const cmd = GMOD_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);
-    return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command: cmd });
+    return this.runRcon(cmd);
   }
 }

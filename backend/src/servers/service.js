@@ -90,15 +90,20 @@ export function createServerService({ client, dockerClient = null, publicHost = 
   return {
     isConfigured: () => Boolean(connectors),
 
-    // Host-level dashboard: live resource snapshot of the Proxmox node itself.
-    // Returns { node: <name>, ...normalized } so the UI can render CPU/RAM/load
-    // gauges. Throws NOT_CONFIGURED when PVE isn't wired up.
+    // Host-level dashboard, backend-aware. With a Proxmox client it's the live PVE
+    // node snapshot (kind:'proxmox' — CPU/RAM/load gauges). Otherwise, with a Docker
+    // client, it's the Docker host/engine facts (kind:'docker'); the UI pairs that
+    // with the per-container cpu/mem it already gets from /api/servers. Throws
+    // NOT_CONFIGURED when neither backend is wired.
     async getNodeStatus() {
-      if (!client) {
-        throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
+      if (client) {
+        const data = await client.nodeStatus();
+        return { kind: 'proxmox', node: client.node, ...normalizeNodeStatus(data) };
       }
-      const data = await client.nodeStatus();
-      return { node: client.node, ...normalizeNodeStatus(data) };
+      if (dockerClient) {
+        return { kind: 'docker', ...(await dockerClient.nodeStatus()) };
+      }
+      throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
     },
 
     // List every server with its current status. Status failures are captured

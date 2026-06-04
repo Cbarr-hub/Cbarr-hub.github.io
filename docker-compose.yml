@@ -17,6 +17,12 @@ services:
         required: false
     environment:
       NODE_ENV: production
+      # Bind all interfaces INSIDE the app container so the separate Caddy container
+      # can reach it as app:3000. The backend/.env default (127.0.0.1) is correct only
+      # for the single-host deploy where Caddy shares loopback; here they're separate
+      # containers. No host port is published (expose only), so :3000 stays private to
+      # the compose network.
+      HOST: 0.0.0.0
     volumes:
       - gt-data:/app/data        # SQLite DB + session-key — survives redeploys
     expose:

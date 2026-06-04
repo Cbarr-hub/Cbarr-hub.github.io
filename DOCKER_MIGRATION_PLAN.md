@@ -34,12 +34,28 @@ Two implementation patches have now been applied to the repo:
   connectors/profile extraction for Minecraft and Factorio.
 - **Patch 2/2 complete:** added the Docker Counter-Strike 2 connector, extracted shared
   Counter-Strike profile/config logic, added CS2 Compose/env wiring, and added focused Docker CS2 tests.
-- **Verification so far:** both patches passed `git apply --check` before application, and
-  `git diff --check` is clean after application.
-- **Verification blocker:** backend tests could not complete locally because dependencies were not
-  installed; `npm ci` failed building `better-sqlite3` on Windows with Node v26.2.0 because no prebuilt
-  binary was available and Visual Studio C++ build tools were not installed. Use Node 20, or install the
-  Windows C++ build tools, then rerun `npm ci && npm test` from `backend`.
+- **Tests pass (blocker cleared):** all 124 backend tests pass on Linux/Node 20+ (the earlier failure
+  was a Windows/Node 26 `better-sqlite3` build issue, not a code issue). `git diff --check` clean.
+- **Live verification — PASSED end-to-end on a throwaway Docker host (VM), then torn down:**
+  - *Phase 1:* images build (native modules + `xcaddy`), `/api/health` ok via Caddy, static site +
+    try_files, infra files → 403, real CSRF→login→`/api/me`, and SQLite+session persistence across
+    `docker compose down && up`.
+  - *Phase 3:* the Minecraft `itzg` container, controlled with **no Proxmox in the loop** — `/api/servers`
+    routing, status, profile apply/capture, and live Source-RCON over TCP all verified against the real
+    container; the other (proxmox) servers correctly degrade to "backend not configured".
+  - *Hybrid:* the containerized app reads live Proxmox VM status read-only via the existing token.
+- **Four fixes from verification (two runtime-only, not catchable by static review):**
+  1. `docker-compose.yml` — bind the app to `HOST=0.0.0.0`; the `.env` default `127.0.0.1` is correct only
+     when Caddy shares the host, but as separate containers Caddy could not reach `app:3000` (every
+     `/api/*` was 502).
+  2. `servers.compose.yml` — pin `container_name` on the game services to match the registry `container`
+     locator; the Docker Engine API finds containers by name (else 404 "no such container").
+  3. `servers.compose.yml` — stop publishing Factorio RCON 27015 (reached on the compose network; also
+     collided with the CS2 host port 27015).
+  4. `backend/.env.example` — comment out `DOCKER_HOST` so running only the base compose doesn't point the
+     app at a proxy that isn't up (the servers overlay sets it).
+- **Remaining:** the real Minecraft world migration (copy VM 102's world into the container volume, boot,
+  validate, flip the registry entry; keep the VM as rollback), then choose the production Docker host.
 
 **Secrets decision (resolved with the user):** the goal is "secrets out of the repo, fewest moving
 parts." We evaluated Cloudflare Workers KV (the app's first instinct) but Cloudflare **Secrets Store**

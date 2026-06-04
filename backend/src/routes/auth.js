@@ -14,6 +14,13 @@ const loginSchema = {
 };
 
 export default async function authRoutes(app) {
+  // Called by Caddy forward_auth before serving any protected page.
+  // Returns 204 if the session is valid, 302 to /signin.html if not.
+  app.get('/gate', async (req, reply) => {
+    if (req.currentUser) return reply.code(204).send();
+    return reply.redirect(302, '/signin.html');
+  });
+
   app.post('/login', {
     schema: loginSchema,
     config: {

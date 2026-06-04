@@ -41,6 +41,9 @@ services:
     volumes:
       - caddy_data:/data         # issued certs — avoids Let's Encrypt re-issue
       - caddy_config:/config
+      # Real TLS cert (e.g. the Cloudflare Origin cert) when CADDY_TLS points at it;
+      # absent → the Caddyfile's `tls internal` self-signed default applies.
+      - ${GT_CERTS_DIR:-/etc/gamertown/certs}:/etc/caddy/certs:ro
     depends_on:
       - app
 

@@ -34,11 +34,11 @@
 // (optional `rconPort` overrides the itzg default 25575). Keep the VM powered off
 // as rollback; flipping back is the same one-line change.
 export const SERVERS = [
-  { id: 'counterstrike', name: 'Counter-Strike',     backend: 'proxmox', vmid: 100, connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
-  { id: 'factorio',      name: 'Factorio',           backend: 'proxmox', vmid: 101, connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },
-  { id: 'gmod',          name: 'TTT',                backend: 'proxmox', vmid: 104, connector: 'gmod',          port: 27066, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
-  { id: 'prophunt',      name: 'Prop Hunt',          backend: 'proxmox', vmid: 105, connector: 'prophunt',      port: 27067, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
-  { id: 'minecraft',     name: 'Minecraft',          backend: 'proxmox', vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
+  { id: 'counterstrike', name: 'Counter-Strike',     backend: 'docker', container: 'counterstrike', connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
+  { id: 'factorio',      name: 'Factorio',           backend: 'docker', container: 'factorio', connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },
+  { id: 'gmod',          name: 'TTT',                backend: 'docker', container: 'gmod', connector: 'gmod',          port: 27066, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'prophunt',      name: 'Prop Hunt',          backend: 'docker', container: 'prophunt', connector: 'prophunt',      port: 27067, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'minecraft',     name: 'Minecraft',          backend: 'docker', container: 'minecraft', connector: 'minecraft',     port: 25565, connect: 'address' },
 ];
 
 /** Render the copy-pastable join string for a server given the public host. */

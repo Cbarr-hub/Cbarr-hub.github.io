@@ -16,23 +16,28 @@ npm run dev
 Then serve the static site from the repo root at the same origin (any static
 server pointed at `..`) or use Caddy with the example Caddyfile.
 
-## Production deploy outline
+## Production deploy (Docker — current)
 
-1. Install Node 20 LTS on the server.
-2. Create a dedicated user (`gamertown`) and clone the repo into
-   `/srv/gamertown`. The static site is the repo root; the backend lives in
-   `backend/`.
-3. `cd /srv/gamertown/backend && npm ci --omit=dev`
-4. Copy `.env.example` to `.env`, edit values (keep `HOST=127.0.0.1` so only
-   Caddy can reach it).
-5. `npm run migrate`
-6. `node src/cli.js create-admin` — supply username, display name, password.
-7. Install the systemd unit from `systemd/gamertown.service.example` to
-   `/etc/systemd/system/gamertown.service`, then
-   `systemctl enable --now gamertown`.
-8. Install Caddy. Drop `Caddyfile.example` into `/etc/caddy/Caddyfile` (edit
-   the domain). `systemctl reload caddy`.
-9. Point DNS at the box. Caddy will obtain TLS automatically.
+Production runs as a **`docker compose` stack on the keeper** (Proxmox VM 106): the app
++ Caddy are containers and secrets come from a host file. See
+[`../INFRA.md`](../INFRA.md) → *Current architecture* and
+[`../DISASTER_RECOVERY.md`](../DISASTER_RECOVERY.md) for the full picture.
+
+```bash
+# on the keeper, from /root/gamertown
+docker compose -f docker-compose.yml -f servers.compose.yml -f mc-mem.override.yml up -d --build
+docker exec -it gamertown-app-1 npm run migrate
+docker exec -it gamertown-app-1 node src/cli.js create-admin
+```
+
+The app binds `HOST=0.0.0.0` **inside its container** (so the separate Caddy container
+can reach it); the host publishes only Caddy's `:443`. Runtime secrets load from
+`/etc/gamertown/secrets.env` via Compose `env_file` — never committed.
+
+> **Legacy single-box deploy (pre-Docker, retired with CT 103):** Node 20 + a
+> `gamertown` user + clone to `/srv/gamertown` + `npm ci --omit=dev` + the
+> `systemd/gamertown.service.example` unit (`HOST=127.0.0.1`) + Caddy from
+> `Caddyfile.example`, DNS at the box.
 
 ## CLI
 
@@ -97,25 +102,28 @@ node src/cli.js delete-user
 | POST   | `/api/servers/:id/profiles/:profileId/apply` | admin |
 
 > Backups (Factorio + Minecraft only) are point-in-time archives pushed offsite to
-> Cloudflare R2 via `rclone` running on the game VM — see `INFRA.md` → "Offsite
-> backups (rclone → R2)". `GET` returns `{ available, backups[], reason? }`;
-> `available:false` means rclone/R2 isn't configured on that VM yet. Counter-Strike
-> returns 404 (`NOT_SUPPORTED`). The app never stores R2 credentials.
+> Cloudflare R2 via `rclone` on the keeper — see [`../DISASTER_RECOVERY.md`](../DISASTER_RECOVERY.md)
+> and `INFRA.md` → "Offsite backups (rclone → R2)". `GET` returns
+> `{ available, backups[], reason? }`; `available:false` means rclone/R2 isn't
+> configured. Counter-Strike returns 404 (`NOT_SUPPORTED`). The app never stores R2
+> credentials. (Nightly app-DB + Factorio backups also run from a host systemd timer.)
 
-> `GET /api/servers/node` is a host-level snapshot of the Proxmox node itself
-> (CPU/RAM/swap/rootfs/loadavg/uptime + kernel & PVE versions) powering the
-> servers-page dashboard. It maps to PVE `GET /nodes/:node/status`, which needs
-> `Sys.Audit` on `/nodes/<node>` — a grant **separate** from the VM-scoped
-> `ServerCtl` role (see `INFRA.md` → "Proxmox setup", step 4). Without it the
-> endpoint returns 502 and the dashboard shows "host stats unavailable".
+> `GET /api/servers/node` is the host snapshot powering the servers-page dashboard and
+> is **backend-aware**: on the Docker backend (current) it returns `{kind:'docker', …}`
+> from the Docker Engine `/info` (engine/OS/kernel + container counts, via the
+> socket-proxy with `INFO=1`) plus a CPU/RAM aggregate of the containers; on the legacy
+> Proxmox backend it returned `{kind:'proxmox', …}` from PVE `GET /nodes/:node/status`
+> (which needed `Sys.Audit` on `/nodes/<node>`). The UI branches on `kind`
+> (`servers.html` `renderDashboard`).
 
-> Game servers are wired in `src/servers/registry.js` (id → VMID) with a connector
-> per game in `src/servers/connectors/`: Counter-Strike (100), Factorio (101),
-> Minecraft (102), and **Garry's Mod / TTT (104)**. GMOD reuses the LinuxGSM +
-> Source-RCON pattern — `getSettings`/`setSettings` expose the TTT knobs (map,
-> workshop collection, round/time limits, traitor & detective ratios + caps, map
-> cycle) and the Runtime panel drives it live over RCON. See `INFRA.md` →
-> "Game Server VMs" for the in-guest layout.
+> Game servers are wired in `src/servers/registry.js` — each entry carries a
+> `backend: 'proxmox'|'docker'` flag + a locator (VMID or container name) and a
+> connector in `src/servers/connectors/` (Docker variants under `connectors/docker/`).
+> **All five — Counter-Strike, Factorio, Minecraft, Garry's Mod / TTT, Prop Hunt — now
+> run as Docker containers.** GMOD/PH reuse the LinuxGSM + Source-RCON pattern;
+> `getSettings`/profiles expose the TTT/PH knobs (map, workshop collection, round/time
+> limits, ratios + caps, map cycle) and the Runtime panel drives them live over RCON
+> (TCP). See `INFRA.md` → *Current architecture*.
 
 > **Startup-config profiles** (`server_profiles` + `server_active_profile`,
 > migration 003) are named, structured startup configs per server — the durable
@@ -123,8 +131,8 @@ node src/cli.js delete-user
 > `BaseConnector` (list/get/create/update/delete/apply/capture + an auto-seeded
 > "Default"); each game supplies five hooks (`profileSchema`,
 > `defaultProfileSettings`, `validateProfileSettings`, `applyProfileSettings`,
-> `captureProfileSettings`). **All four games (GMOD, Factorio, CS, Minecraft) are
-> wired.** `…/apply` writes the config onto the VM and marks the profile active;
+> `captureProfileSettings`). **All five games (GMOD, Prop Hunt, Factorio, CS, Minecraft)
+> are wired.** `…/apply` writes the config + marks the profile active;
 > the panel pairs it with a restart so a GMOD workshop collection actually mounts.
 > A game wired for profiles trims its `getSettings` to operations only (or just the
 > live-map block) so config doesn't double-render beside the Profiles panel. See

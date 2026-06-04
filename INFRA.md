@@ -1,7 +1,53 @@
 # Gamertown Infrastructure
 
-**Last updated:** 2026-05-31  
-**Status:** Live
+**Last updated:** 2026-06-04  
+**Status:** Live — **migrated to a single Docker host ("the keeper").**
+
+> **Disaster recovery → [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md)** — rebuild from GitHub + R2 + the age passphrase.
+
+---
+
+## Current architecture (Docker on keeper VM 106)
+
+As of **2026-06-04** all of Gamertown — website, app, and the five game servers — runs
+as one **`docker compose` stack** on a single host, the "keeper":
+
+| Thing | Value |
+|---|---|
+| Keeper | Proxmox **VM 106** `gamertown-docker` — 192.168.1.241, MAC `bc:24:11:62:f5:5d` (4 cores / 12 GB / 160 GB) |
+| Role | Docker host. The PVE box `pve` (192.168.1.109) is **only** the hypervisor — no Docker on it. |
+| Enter | `ssh root@192.168.1.241` (passwordless from `pve`) · `qm guest exec 106 -- …` |
+| Repo / stack | `/root/gamertown` (branch `main`); compose project `gamertown` = `docker-compose.yml` + `servers.compose.yml` + `mc-mem.override.yml` + project `.env` |
+| Containers (8) | `gamertown-app-1` (Fastify), `gamertown-caddy-1` (Caddy :443), `gamertown-docker-proxy-1` (read-only Docker API → dashboard), `minecraft`, `gmod`, `prophunt`, `counterstrike`, `factorio` — all `restart: unless-stopped` |
+| State (volumes) | `gamertown_gt-data` (app DB + session-key), `_mc-data`, `_factorio-data`, `_gmod-data`, `_ph-data`, `_cs2-data`, `_caddy_data`, `_caddy_config` |
+| Edge | `gamertown.solutions` via **Cloudflare** → BGW210 `:443` forward → keeper. Caddy terminates TLS with a **Cloudflare Origin cert** (`/etc/gamertown/certs/`) + gates the site with `forward_auth` → `/api/auth/gate`. No tunnel. |
+| Secrets | `/etc/gamertown/secrets.env` (app/Caddy) + `/root/gamertown/.env` (game interpolation) — neither in git. → DR doc |
+| Backups | nightly host timer `gt-db-backup.timer` → `/usr/local/bin/gt-backup.sh` (app DB + Factorio → R2); MC world + the age-encrypted secret bundle (`secrets.tar.age`) on-demand. → DR doc |
+
+**Per-game backend flag.** Each registry entry carries `backend: 'proxmox' | 'docker'`;
+all five are now `docker`, with a `DockerClient` that duck-types the old `ProxmoxClient`
+surface so the connectors are reused almost unchanged. RCON is spoken **over TCP**
+(`backend/src/servers/rcon-tcp.js`) instead of in-guest `python3`.
+
+**Deploy:** on the keeper, `git pull` in `/root/gamertown`, then
+`docker compose -f docker-compose.yml -f servers.compose.yml -f mc-mem.override.yml up -d --build`.
+*(The keeper checkout may need a one-time `git checkout -f main` to reconcile post-migration — see the DR doc §6.)*
+
+**Forwarded ports** (BGW210 → keeper MAC, so they follow it across DHCP): **443**
+(HTTPS), **25565** (Minecraft), **27066** (GMOD/TTT), **27067** (Prop Hunt),
+**27000–27039** (CS), **34197** (Factorio).
+
+---
+
+> ## ⚠️ Legacy reference (pre-Docker — before 2026-06-04)
+>
+> Everything below describes the **previous Proxmox topology**: CT 103 (web app) + one
+> VM per game (100/101/102/104/105), reached via the PVE API token. Those guests were
+> **destroyed at cutover** — this is kept for history and for the recipes that still
+> apply (just inside containers now): **BGW210 port-forward scripting**, **R2 backup
+> mechanics**, and the **per-game config specifics** (CS/Factorio/GMOD cvars + save
+> layouts). Read `pct exec 103` / `qm` / `/home/miles/<game>server` as their container
+> equivalents.
 
 ---
 

@@ -93,3 +93,28 @@ export async function deleteBackup(conn, { asUser, prefix, name, ext }) {
   if (res.exitCode !== 0) throw badSetting(`delete failed: ${res.stderr || res.stdout}`);
   return { ok: true, action: 'delete', name };
 }
+
+// Retention: keep only the newest `keep` archives under a prefix, delete the rest.
+// Count-based (not age-based), so it lives in-app rather than as an R2 lifecycle
+// rule. Called right after a successful upload. Best-effort by design — a prune
+// failure must NEVER fail the backup that just succeeded, so it swallows errors,
+// and `protect` (the just-created name) is never eligible for deletion as a guard
+// against clock/ModTime ordering surprises.
+export const KEEP_LATEST = 1;
+
+export async function pruneBackups(conn, { asUser, prefix, ext, keep = KEEP_LATEST, protect = null }) {
+  try {
+    const { available, backups: entries } = await listBackups(conn, { asUser, prefix, ext });
+    if (!available) return { pruned: [] };
+    // listBackups returns newest-first; everything past `keep` is stale.
+    const stale = entries.slice(keep).filter((e) => e.name !== protect);
+    const pruned = [];
+    for (const e of stale) {
+      const res = await conn.runShell(`rclone deletefile "${r2Path(prefix, e.name, ext)}"`, { asUser, timeoutMs: 30_000 });
+      if (res.exitCode === 0) pruned.push(e.name);
+    }
+    return { pruned };
+  } catch {
+    return { pruned: [] };
+  }
+}

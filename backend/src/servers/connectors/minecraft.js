@@ -380,12 +380,16 @@ export class MinecraftConnector extends BaseConnector {
     const name = `${backups.safeBase(world, 'world')}_${backups.timestamp()}`;
     const dest = backups.r2Path(BK_PREFIX, name, BK_EXT);
     // Stream tar → R2 in one pipe; no temp file, no agent-stdout payload.
+    // 15-min ceiling: the live world is multi-GB and uploads at home-uplink speed,
+    // so 5 min has little headroom as it grows. See the Caddy backups exception.
     const res = await this.runShell(
       `tar -czf - -C "${DIR}" "${world}" | rclone rcat "${dest}"`,
-      { asUser: 'miles', timeoutMs: 300_000 },
+      { asUser: 'miles', timeoutMs: 900_000 },
     );
     if (res.exitCode !== 0) throw backups.badSetting(`backup upload failed: ${res.stderr || res.stdout}`);
-    return { ok: true, action: 'backup', name };
+    // Retention: keep only the newest archive (auto-prune the rest).
+    const { pruned } = await backups.pruneBackups(this, { asUser: 'miles', prefix: BK_PREFIX, ext: BK_EXT, protect: name });
+    return { ok: true, action: 'backup', name, pruned };
   }
 
   async restoreBackup(name) {
@@ -407,7 +411,7 @@ export class MinecraftConnector extends BaseConnector {
     // 2. Download + extract into a staging dir (don't touch the live world yet).
     const stage = await this.runShell(
       `rm -rf "${STAGING}" && mkdir -p "${STAGING}" && rclone cat "${obj}" | tar -xzf - -C "${STAGING}"`,
-      { asUser: 'miles', timeoutMs: 300_000 },
+      { asUser: 'miles', timeoutMs: 900_000 },
     );
     steps.push({ name: 'download + extract', ...stage });
 

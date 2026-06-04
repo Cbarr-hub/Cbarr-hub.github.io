@@ -423,7 +423,10 @@ export class FactorioConnector extends LinuxGsmConnector {
     if (!source) throw backups.badSetting('no autosave or active save found to back up');
 
     const name = `${backups.safeBase(currName, 'save')}_${backups.timestamp()}`;
-    return backups.uploadFile(this, { asUser: this.gsmUser, source, prefix: BK_PREFIX, name, ext: BK_EXT });
+    const result = await backups.uploadFile(this, { asUser: this.gsmUser, source, prefix: BK_PREFIX, name, ext: BK_EXT });
+    // Retention: keep only the newest archive (auto-prune the rest).
+    const { pruned } = await backups.pruneBackups(this, { asUser: this.gsmUser, prefix: BK_PREFIX, ext: BK_EXT, protect: name });
+    return { ...result, pruned };
   }
 
   async restoreBackup(name) {

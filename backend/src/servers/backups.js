@@ -34,6 +34,21 @@ export function safeBase(raw, fallback) {
   return /^[a-zA-Z0-9_-]{1,64}$/.test(raw || '') ? raw : fallback;
 }
 
+// Backups embed their UTC creation time in the name as `_YYYYMMDD_HHMMSS` (set at
+// upload time — see timestamp()). That is the authoritative ordering/age key:
+// object ModTime is NOT reliable, because rclone preserves the *source* file's
+// mtime on copy uploads (e.g. a Factorio autosave written days ago), so ModTime
+// doesn't reflect when the backup was actually taken.
+export function nameTimestamp(name) {
+  const m = /(\d{8})_(\d{6})$/.exec(name || '');
+  if (!m) return null;
+  const [, d, t] = m;
+  const iso = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T` +
+              `${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4, 6)}Z`;
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? null : { iso, ms };
+}
+
 // True when rclone is installed and an `r2:` remote is configured on the VM.
 export async function rcloneReady(conn, asUser) {
   try {
@@ -63,9 +78,16 @@ export async function listBackups(conn, { asUser, prefix, ext }) {
     .filter((e) => !e.IsDir && typeof e.Name === 'string' && e.Name.endsWith(ext))
     .map((e) => {
       const name = e.Name.slice(0, -ext.length);
-      return { name, label: name, size: e.Size ?? null, createdAt: e.ModTime ?? null };
+      const ts = nameTimestamp(name);
+      // Prefer the name-embedded creation time; fall back to ModTime if absent.
+      return {
+        name, label: name, size: e.Size ?? null,
+        createdAt: ts ? ts.iso : (e.ModTime ?? null),
+        sortMs: ts ? ts.ms : (Date.parse(e.ModTime ?? '') || 0),
+      };
     })
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    .sort((a, b) => b.sortMs - a.sortMs)        // newest first, authoritative
+    .map(({ sortMs, ...rest }) => rest);        // drop the internal sort key
 
   return { available: true, backups };
 }

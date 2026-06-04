@@ -523,22 +523,41 @@ the same posture as RCON passwords. Counter-Strike has no backups (404).
 - **Restore:** Factorio downloads the zip into `serverfiles/saves/` as a loadable
   save (then "Load Existing World" — no restart). Minecraft is destructive, so it
   stops the service → swaps the world dir in place → restarts.
+- **Retention (auto-prune):** after every successful upload the connector keeps
+  only the **newest** archive per game prefix (`KEEP_LATEST=1` in `backups.js`) and
+  deletes the rest — best-effort, never fails the backup. Ordering/age key off the
+  `_YYYYMMDD_HHMMSS` **embedded in the name**, NOT object ModTime: rclone preserves
+  the *source* file's mtime on copy uploads, so a Factorio backup would otherwise
+  inherit its autosave's (old) mtime and sort wrong. Keeps offsite usage ≈ one MC
+  snapshot (~5 GB) + the latest Factorio save (~45 MB) — inside R2's free 10 GB tier.
+- **Big-MC timeout:** the MC backup streams `tar -czf - | rclone rcat`, holding one
+  HTTP request open for the whole upload. Backend timeout is **900 s** (15 min), and
+  a Caddy `@backups` matcher (`path /api/servers/*/backups*`, placed **before**
+  `/api/*` in the `gamertown_common` snippet) raises proxy timeouts to 20 min so
+  Caddy can't cut a long backup. Measured: `world_GTown` 8 GB raw → **5.07 GB** gzip,
+  uploads in **~2.6 min** at ~190 Mbps up. If it ever outgrows the window, move to an
+  async job or incremental region-file sync.
 
-**One-time setup (per game VM, 101 + 102) — required before the panel works:**
+**Configured — LIVE since 2026-06-04 (VMs 101 + 102).** Account `f3dc82ce…`, bucket
+`gamertown-backups`, R2 API token = *Object Read & Write* scoped to that bucket; keys
+live only in each VM's `~/.config/rclone/rclone.conf` + the gitignored
+`SECRETS.local.md`. To rebuild on a new game VM:
 
-1. In the Cloudflare dashboard: create R2 bucket `gamertown-backups` and an R2 API
-   token (Access Key ID + Secret) scoped to it; note the account endpoint
-   `https://<accountid>.r2.cloudflarestorage.com`.
-2. On the VM as `miles`: install rclone (`sudo apt install rclone` or the official
-   script) and `rclone config` a remote named **`r2`** — type `s3`, provider
-   `Cloudflare`, with that endpoint + keys. Config lands at
-   `/home/miles/.config/rclone/rclone.conf`. **Keep the keys out of this repo** —
-   note them in the gitignored `SECRETS.local.md` if anywhere.
-3. Verify: `runuser -u miles -- rclone lsd r2:gamertown-backups` lists the bucket.
+1. Cloudflare dash → R2 → create bucket `gamertown-backups` + an **Object Read &
+   Write** API token scoped to it (Access Key ID + Secret — shown **once**); note the
+   account endpoint `https://<accountid>.r2.cloudflarestorage.com`.
+2. On the VM (root, via guest agent): install **rclone**, then write
+   `/home/miles/.config/rclone/rclone.conf` — remote `r2`, `type=s3`,
+   `provider=Cloudflare`, endpoint + keys, `no_check_bucket=true` — owner `miles`,
+   mode 600. ⚠️ **rclone must be recent (we run 1.74.2).** Ubuntu 24.04's stock
+   **1.60.1 returns `501 NotImplemented`** on R2 streaming `rcat`, breaking the
+   Minecraft backup — `curl -fsSL https://rclone.org/install.sh | bash` to upgrade.
+3. Verify: `runuser -u miles -- rclone lsd r2:gamertown-backups` plus a write/delete
+   round-trip (`rcat`/`copyto` → `lsf` → `deletefile`).
 
-Until this is done, the backend degrades gracefully: `GET /api/servers/:id/backups`
-returns `{ available:false, reason:"rclone/R2 not configured on this VM" }` and the
-panel shows that message instead of erroring.
+If rclone/R2 isn't configured the backend still degrades gracefully:
+`GET /api/servers/:id/backups` → `{ available:false, reason:"rclone/R2 not configured
+on this VM" }` and the panel shows that instead of erroring.
 
 **CS quick settings (map / workshop map / game mode / name / max players):**
 `servers.html` shows a structured editor backed by

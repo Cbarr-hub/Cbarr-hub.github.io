@@ -40,12 +40,14 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
     let buf = Buffer.alloc(0);
     let authed = false;
     let out = '';
+    let idle = null;
     let settled = false;
 
     const finish = (err, val) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(idle);
       socket.destroy();
       err ? reject(err) : resolve(val);
     };
@@ -71,11 +73,16 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
             authed = true;
             socket.write(encode(CMD_ID, 2, command));
             socket.write(encode(END_ID, 2, '')); // sentinel: its echo ends the response
+            // Fallback for servers that DON'T echo the empty sentinel (e.g. Factorio):
+            // finish once the response stream has gone quiet.
+            idle = setTimeout(() => finish(null, out), 700);
           }
           continue;
         }
         if (id === END_ID) { finish(null, out); return; }
         out += body;
+        clearTimeout(idle);
+        idle = setTimeout(() => finish(null, out), 700);
       }
     });
   });

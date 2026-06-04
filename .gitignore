@@ -12,5 +12,7 @@
 SECRETS.local.md
 *.local
 .secrets
-.env             # runtime env (root project .env has GSLTs; backend/.env) — NOT .env.example
-secrets.env      # host secrets file, if ever copied into the repo dir
+# runtime env — root project .env has GSLTs, plus backend/.env (NOT .env.example)
+.env
+# host secrets file, if ever copied into the repo dir
+secrets.env

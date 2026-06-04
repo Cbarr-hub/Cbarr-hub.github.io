@@ -1,0 +1,8 @@
+# Build context for the backend image (Dockerfile, context = ./backend).
+node_modules
+data
+.env
+session-key
+*.log
+Dockerfile
+.dockerignore

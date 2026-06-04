@@ -8,6 +8,7 @@ import { openDb, runMigrations, purgeExpiredSessions } from './db.js';
 import { loadOrCreateSessionKey, SESSION_TTL_SECONDS } from './session.js';
 import { attachSession } from './middleware/auth.js';
 import { ProxmoxClient } from './proxmox/client.js';
+import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
 
 import authRoutes from './routes/auth.js';
@@ -69,8 +70,18 @@ export async function buildApp(env = loadEnv()) {
         rejectUnauthorized: env.PVE_TLS_REJECT_UNAUTHORIZED,
       })
     : null;
-  if (!proxmox) app.log.warn('PVE token not configured — /api/servers will return 503');
-  app.decorate('serverService', createServerService({ client: proxmox, publicHost: env.PUBLIC_HOST, db }));
+  if (!proxmox) app.log.warn('PVE token not configured — Proxmox-backed servers will be unavailable');
+
+  // Docker control: build a client only when DOCKER_HOST is set, otherwise pass
+  // null so docker-backed servers are simply skipped (same degrade as PVE).
+  const docker = env.DOCKER_HOST
+    ? new DockerClient({ host: env.DOCKER_HOST, apiVersion: env.DOCKER_API_VERSION || undefined })
+    : null;
+  if (!docker) app.log.warn('DOCKER_HOST not configured — Docker-backed servers will be unavailable');
+
+  app.decorate('serverService', createServerService({
+    client: proxmox, dockerClient: docker, publicHost: env.PUBLIC_HOST, db,
+  }));
 
   app.get('/api/health', async () => ({ ok: true }));
 

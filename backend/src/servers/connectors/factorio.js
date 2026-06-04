@@ -20,6 +20,7 @@ import { getVar, setVar } from '../cfgvars.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
 import * as backups from '../backups.js';
 import { badSetting, SAFE_NAME_RE } from '../errors.js';
+import * as fctrProfile from './factorio-profile.js';
 
 const BK_PREFIX = 'factorio';
 const BK_EXT    = '.zip';
@@ -30,12 +31,6 @@ const LGSM_CFG   = `${DIR}/lgsm/config-lgsm/fctrserver/fctrserver.cfg`;
 const COMMON_CFG = `${DIR}/lgsm/config-lgsm/fctrserver/common.cfg`;
 const FACTORIO   = `${DIR}/serverfiles/bin/x64/factorio`;
 const SERVER_SETTINGS = `${DIR}/serverfiles/data/server-settings.json`;
-
-const VISIBILITY_OPTS = [
-  { value: 'public', label: 'Public (listed) + LAN' },
-  { value: 'lan',    label: 'LAN only' },
-];
-
 
 // Live (RCON) curated actions — read-only commands validated to work headless.
 const FACTORIO_LIVE_ACTIONS = [
@@ -302,56 +297,13 @@ export class FactorioConnector extends LinuxGsmConnector {
   // autosave). Creating/copying/generating saves stays in Quick Settings (those
   // are operations on the save store, not config).
 
-  defaultProfileSettings() {
-    return {
-      saveName: '', serverName: 'Gamertown Factorio', description: '',
-      maxPlayers: 0, visibility: 'lan', password: '', autosaveInterval: 10,
-    };
-  }
-
-  validateProfileSettings(s = {}) {
-    const out = {};
-    out.saveName = String(s.saveName ?? '').trim();
-    if (out.saveName && !SAFE_NAME_RE.test(out.saveName)) throw badSetting('invalid world name');
-    out.serverName  = String(s.serverName ?? '').slice(0, 200);
-    out.description = String(s.description ?? '').slice(0, 500);
-    const mp = Number(s.maxPlayers);
-    if (!Number.isInteger(mp) || mp < 0 || mp > 500) throw badSetting('max players must be 0–500 (0 = unlimited)');
-    out.maxPlayers = mp;
-    out.visibility = s.visibility === 'public' ? 'public' : 'lan';
-    out.password = String(s.password ?? '').slice(0, 100);
-    const ai = Number(s.autosaveInterval);
-    if (!Number.isInteger(ai) || ai < 1 || ai > 240) throw badSetting('autosave interval must be 1–240 minutes');
-    out.autosaveInterval = ai;
-    return out;
-  }
+  defaultProfileSettings()    { return fctrProfile.defaultProfileSettings(); }
+  validateProfileSettings(s)  { return fctrProfile.validateProfileSettings(s); }
 
   async profileSchema() {
     const saves = await this.#listSaves();
     const saveOpts = [{ value: '', label: '(keep current world)' }, ...saves.map(n => ({ value: n, label: n }))];
-    return {
-      groups: [
-        {
-          key: 'world', title: 'World',
-          fields: [
-            { key: 'saveName', label: 'Active World', type: 'select', options: saveOpts,
-              help: 'Which saved world the server loads on (re)start. Create/copy/generate worlds in Quick Settings below.' },
-          ],
-        },
-        {
-          key: 'server', title: 'Server Settings',
-          fields: [
-            { key: 'serverName',  label: 'Server Name',  type: 'text' },
-            { key: 'description', label: 'Description',   type: 'text' },
-            { key: 'maxPlayers',  label: 'Max Players (0 = unlimited)', type: 'number', min: 0, max: 500, step: 1 },
-            { key: 'visibility',  label: 'Visibility',    type: 'select', options: VISIBILITY_OPTS },
-            { key: 'password',    label: 'Game Password (blank = none)', type: 'text' },
-            { key: 'autosaveInterval', label: 'Autosave Interval (min)', type: 'number', min: 1, max: 240, step: 1 },
-          ],
-        },
-      ],
-      note: 'A profile is the startup config the server boots as. Changes apply on the next restart. Public visibility also needs a Factorio.com token in server-settings.json.',
-    };
+    return { groups: fctrProfile.profileGroups(saveOpts), note: fctrProfile.PROFILE_NOTE };
   }
 
   async applyProfileSettings(settings, profileId) {
@@ -361,12 +313,7 @@ export class FactorioConnector extends LinuxGsmConnector {
     const text = (await this.client.agentFileRead(this.vmid, SERVER_SETTINGS)).content ?? '';
     let json;
     try { json = JSON.parse(text || '{}'); } catch { json = {}; }
-    json.name              = s.serverName;
-    json.description        = s.description;
-    json.max_players        = s.maxPlayers;
-    json.visibility         = s.visibility === 'public' ? { public: true, lan: true } : { public: false, lan: true };
-    json.game_password      = s.password;
-    json.autosave_interval  = s.autosaveInterval;
+    fctrProfile.applyServerSettings(json, s);
     await this.client.agentFileWrite(this.vmid, SERVER_SETTINGS, JSON.stringify(json, null, 2) + '\n');
 
     // active world (optional) + on-box active-profile mirror, in the LGSM cfg
@@ -391,13 +338,8 @@ export class FactorioConnector extends LinuxGsmConnector {
     const m = rawParams.match(/--start-server\s+\S*\/([^/"\s]+)\.zip/);
     const currentSave = m?.[1] || getVar(lgsmText, 'savename') || '';
     return this.validateProfileSettings({
+      ...fctrProfile.captureServerSettings(j),
       saveName: SAFE_NAME_RE.test(currentSave) ? currentSave : '',
-      serverName: j.name ?? '',
-      description: j.description ?? '',
-      maxPlayers: Number.isInteger(j.max_players) ? j.max_players : 0,
-      visibility: j.visibility?.public ? 'public' : 'lan',
-      password: j.game_password ?? '',
-      autosaveInterval: Number.isInteger(j.autosave_interval) ? j.autosave_interval : 10,
     });
   }
 

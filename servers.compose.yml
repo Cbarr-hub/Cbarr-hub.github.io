@@ -1,0 +1,91 @@
+# Game-server containers + the Docker seam, layered on top of docker-compose.yml.
+#
+# Bring the whole thing up with BOTH files (and point compose's variable
+# interpolation at the host secrets file so ${MINECRAFT_RCON_PASSWORD} resolves):
+#
+#   docker compose --env-file /etc/gamertown/secrets.env \
+#     -f docker-compose.yml -f servers.compose.yml up -d --build
+#
+# To actually route the panel at the Minecraft CONTAINER (instead of the VM),
+# flip its registry entry to: backend:'docker', container:'minecraft' (port 25565).
+# Keep the Proxmox VM until you've validated the container — see registry.js.
+
+services:
+  # Scoped Docker Engine proxy. The app talks to THIS (read-only socket, minimal
+  # permissions) — never the raw /var/run/docker.sock, which is ~root on the host.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1          # inspect/list containers (status)
+      EXEC: 1                # create/start exec (config read/write)
+      POST: 1                # allow the POSTs that start/stop/exec/restart need
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # Overlay onto the base `app`: give it a path to the engine via the proxy.
+  app:
+    environment:
+      DOCKER_HOST: tcp://docker-proxy:2375
+    depends_on:
+      - docker-proxy
+
+  # Dockerized Minecraft (proof case). RCON is reachable by the app on the compose
+  # network as minecraft:25575; the game port is forwarded as today's 25565.
+  minecraft:
+    image: itzg/minecraft-server
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      EULA: "TRUE"
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD:?set MINECRAFT_RCON_PASSWORD in the secrets file and pass --env-file}
+    volumes:
+      - mc-data:/data        # world + server.properties — survives redeploys
+    ports:
+      - "25565:25565"
+
+  # Dockerized Factorio. SAVE_NAME=_active so the container always loads
+  # /factorio/saves/_active.zip — the connector stages the chosen world there. RCON
+  # is on 27015 (password auto-generated into /factorio/config/rconpw, which the
+  # app reads). To route the panel at it, flip the factorio registry entry to
+  # backend:'docker', container:'factorio'.
+  factorio:
+    image: factoriotools/factorio
+    restart: unless-stopped
+    environment:
+      SAVE_NAME: _active
+      GENERATE_NEW_SAVE: "true"   # first boot only; ignored once _active.zip exists
+      LOAD_LATEST_SAVE: "false"
+    volumes:
+      - factorio-data:/factorio   # saves + config + mods — survives redeploys
+    ports:
+      - "34197:34197/udp"         # game port (matches the registry)
+      - "27015:27015"             # RCON (internal use by the app)
+
+  # Dockerized Counter-Strike 2 (env-driven image). Boot config is ENV here (the
+  # connector pushes profile changes LIVE via RCON; persistent defaults are these
+  # vars). Needs a GSLT (SRCDS_TOKEN) for a public server. RCON password is shared
+  # with the app via the secrets file (CS2_RCON_PASSWORD).
+  counterstrike:
+    image: joedwards32/cs2
+    restart: unless-stopped
+    environment:
+      SRCDS_TOKEN: ${CS2_GSLT:-}
+      CS2_SERVERNAME: Gamertown
+      CS2_RCONPW: ${CS2_RCON_PASSWORD:?set CS2_RCON_PASSWORD in the secrets file and pass --env-file}
+      CS2_PORT: "27015"
+      CS2_MAXPLAYERS: "10"
+      CS2_GAMEALIAS: competitive
+      CS2_STARTMAP: de_dust2
+    volumes:
+      - cs2-data:/home/steam/cs2-dedicated
+    ports:
+      - "27015:27015"
+      - "27015:27015/udp"
+
+volumes:
+  mc-data:
+  factorio-data:
+  cs2-data:

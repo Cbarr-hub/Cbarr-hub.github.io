@@ -23,12 +23,22 @@
 // entry and the panel shows copy-only for it.
 // Array order drives the panel's tab order + Quick Connect list (Minecraft is
 // kept last for a cleaner layout). VMIDs stay bound to ids regardless of order.
+// `backend` selects the transport: 'proxmox' (locator = `vmid`) or 'docker'
+// (locator = `container`). It defaults to 'proxmox' when omitted. A server whose
+// backend client isn't configured is simply skipped, so a host can run a subset.
+//
+// To migrate a server from a VM to a container, flip its entry — e.g. once the
+// Minecraft container (servers.compose.yml) is validated, change minecraft to:
+//   { id:'minecraft', name:'Minecraft', backend:'docker', container:'minecraft',
+//     connector:'minecraft', port:25565, connect:'address' }
+// (optional `rconPort` overrides the itzg default 25575). Keep the VM powered off
+// as rollback; flipping back is the same one-line change.
 export const SERVERS = [
-  { id: 'counterstrike', name: 'Counter-Strike',     vmid: 100, connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
-  { id: 'factorio',      name: 'Factorio',           vmid: 101, connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },
-  { id: 'gmod',          name: 'TTT',                vmid: 104, connector: 'gmod',          port: 27066, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
-  { id: 'prophunt',      name: 'Prop Hunt',          vmid: 105, connector: 'prophunt',      port: 27067, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
-  { id: 'minecraft',     name: 'Minecraft',          vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
+  { id: 'counterstrike', name: 'Counter-Strike',     backend: 'proxmox', vmid: 100, connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
+  { id: 'factorio',      name: 'Factorio',           backend: 'proxmox', vmid: 101, connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },
+  { id: 'gmod',          name: 'TTT',                backend: 'proxmox', vmid: 104, connector: 'gmod',          port: 27066, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'prophunt',      name: 'Prop Hunt',          backend: 'proxmox', vmid: 105, connector: 'prophunt',      port: 27067, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'minecraft',     name: 'Minecraft',          backend: 'proxmox', vmid: 102, connector: 'minecraft',     port: 25565, connect: 'address' },
 ];
 
 /** Render the copy-pastable join string for a server given the public host. */

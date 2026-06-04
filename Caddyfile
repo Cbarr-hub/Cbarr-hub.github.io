@@ -1,0 +1,36 @@
+# Gamertown reverse proxy + static site (container variant of backend/Caddyfile.example).
+#
+# Runs out of the box: SITE_ADDRESS defaults to `localhost` and CADDY_TLS defaults
+# to `tls internal` → a self-signed cert, no domain required.
+#
+# For a real Let's Encrypt cert, set in the host secrets file:
+#   SITE_ADDRESS=your.domain
+#   CLOUDFLARE_API_TOKEN=<dns-edit token>
+#   CADDY_TLS=tls { dns cloudflare {env.CLOUDFLARE_API_TOKEN} }
+# DNS-01 (not HTTP-01) because AT&T blocks inbound :80. The cloudflare DNS module
+# is baked into the image by Dockerfile.caddy.
+
+{$SITE_ADDRESS:localhost} {
+	encode gzip
+
+	# API → the backend container (compose service name `app`).
+	handle /api/* {
+		reverse_proxy app:3000
+	}
+
+	# Never serve backend source / infra files that ride along in the image.
+	@infra path /backend/* /Dockerfile* /docker-compose* /Caddyfile* /*.md
+	handle @infra {
+		respond 403
+	}
+
+	# Static site — the repo root baked in at /srv.
+	handle {
+		root * /srv
+		try_files {path} {path}.html /index.html
+		file_server
+	}
+
+	# Self-signed by default; override CADDY_TLS for DNS-01 (see header).
+	{$CADDY_TLS:tls internal}
+}

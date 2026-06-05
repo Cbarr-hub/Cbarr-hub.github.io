@@ -141,6 +141,16 @@
       }
     }
 
+    /* container power row — replaces the old 3-group Game-Service / Virtual-Machine
+       / Maintenance layout (a single-purpose game container IS the game). */
+    .power-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .power-spacer { flex: 1 1 12px; min-width: 8px; }
+    button.retro-btn.warn { background: linear-gradient(#6a5a1a, #4a3f12); border-color: #c2a13a; }
+    button.retro-btn.warn:hover:not(:disabled) {
+      background: linear-gradient(#8a7424, #6a5a1a); color: #f0d878; border-color: #f0d878;
+      box-shadow: inset 0 1px 0 rgba(240,216,120,.2), 0 0 9px rgba(194,161,58,.35);
+    }
+
     .connbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
     .connbar .clbl { color: #7bb85f; font-size: 11px; font-weight: bold; }
     .connbar code {
@@ -1102,15 +1112,11 @@
     }
 
     const actionLabels = {
-      refresh: 'Refresh Status',
-      start: 'Start VM',
-      startGame: 'Start Hosting',
-      restartGame: 'Restart Hosting',
-      stopGame: 'Stop Hosting',
-      reboot: 'Restart VM',
-      shutdown: 'Shut Down',
+      refresh: 'Refresh',
+      start: 'Start',
+      reboot: 'Restart',
+      shutdown: 'Stop',
       stop: 'Force Stop',
-      update: 'Update Server'
     }
 
     function cardHtml(s) {
@@ -1128,33 +1134,18 @@
           </div>
         </div>
         <div class="srv-body">
-          <div class="server-actions" data-actions aria-label="Server actions">
+          <div class="server-actions" data-actions aria-label="Server power controls">
             <div class="action-status" data-action-status>
               <span class="action-spinner" aria-hidden="true"></span>
-              <span data-action-status-text>Choose an action below.</span>
+              <span data-action-status-text>Power controls for this game container.</span>
             </div>
-            <div class="action-groups">
-              <section class="action-group" data-action-group="game" aria-label="Game service actions">
-                <div class="action-group-title">Game Service</div>
-                <div class="action-group-note">Start or stop the playable server process.</div>
-                <button class="retro-btn" type="button" data-act="startGame">Start Hosting</button>
-                <button class="retro-btn" type="button" data-act="restartGame">Restart Hosting</button>
-                <button class="retro-btn danger" type="button" data-act="stopGame">Stop Hosting</button>
-              </section>
-              <section class="action-group" data-action-group="vm" aria-label="Virtual machine actions">
-                <div class="action-group-title">Virtual Machine</div>
-                <div class="action-group-note">Power controls for the whole server VM.</div>
-                <button class="retro-btn" type="button" data-act="start">Start VM</button>
-                <button class="retro-btn" type="button" data-act="reboot">Restart VM</button>
-                <button class="retro-btn" type="button" data-act="shutdown">Shut Down</button>
-                <button class="retro-btn danger" type="button" data-act="stop">Force Stop</button>
-              </section>
-              <section class="action-group" data-action-group="maintenance" aria-label="Maintenance actions">
-                <div class="action-group-title">Maintenance</div>
-                <div class="action-group-note">Check status or run the configured updater.</div>
-                <button class="retro-btn" type="button" data-act="refresh">Refresh Status</button>
-                <button class="retro-btn" type="button" data-update${s.status === 'running' ? '' : ' disabled'} title="${s.status === 'running' ? 'Run the configured updater (validate + restart)' : 'Start the VM first — updates run inside the guest'}">Update Server</button>
-              </section>
+            <div class="power-row">
+              <button class="retro-btn" type="button" data-act="start">▸ Start</button>
+              <button class="retro-btn" type="button" data-act="reboot">⟳ Restart</button>
+              <button class="retro-btn warn" type="button" data-act="shutdown" title="Graceful stop — disconnects players">■ Stop</button>
+              <button class="retro-btn danger" type="button" data-act="stop" title="Hard kill — can corrupt an in-progress save">⨯ Force Stop</button>
+              <span class="power-spacer"></span>
+              <button class="retro-btn" type="button" data-act="refresh">↻ Refresh</button>
             </div>
           </div>
           <div class="srv-err" data-err></div>
@@ -1300,8 +1291,8 @@
           finally { if (btn) btn.classList.remove('loading'); setBusy(false) }
           return
         }
-        if (act === 'stop' && !confirm('Force Stop pulls the power immediately and can corrupt an in-progress save. Continue?')) return
-        if (act === 'stopGame' && !confirm('Stop Hosting will kick all active players. Continue?')) return
+        if (act === 'stop' && !confirm('Force Stop hard-kills the container immediately and can corrupt an in-progress save. Continue?')) return
+        if (act === 'shutdown' && !confirm('Stop gracefully shuts the server down — active players will be disconnected. Continue?')) return
         const label = actionLabels[act] || 'Working'
         setErr(''); setBusy(true, `${label}...`); logLine(`${label}…`); if (btn) btn.classList.add('loading')
         try {
@@ -1797,7 +1788,7 @@
             await dbUpdateProfile(id, P.editId, { settings: P.values })
             const r = await dbApplyProfile(id, P.editId)
             logLine(`Applied "${r?.name}" ✓ — restarting to load it…`)
-            await dbServerAction(id, 'restartGame')
+            await dbServerAction(id, 'reboot')
             await new Promise(res => setTimeout(res, 2500))
             await refresh()
             logLine(`Restarted ✓ — now running "${r?.name}"`)
@@ -2038,19 +2029,6 @@
         } catch {}
       })()
 
-      // update recipe
-      const updateBtn = root.querySelector('[data-update]')
-      updateBtn.addEventListener('click', async () => {
-        if (!confirm('Run the update recipe? This may stop and restart the server.')) return
-        setErr(''); setBusy(true, 'Updating...'); updateBtn.classList.add('loading'); logLine('Update Server…')
-        try {
-          const res = await dbUpdateServer(id)
-          logLine('Update Server ✓', formatUpdate(res))
-          await refresh()
-        } catch (e) {
-          setErr(e.message); logLine(`Update Server — error: ${e.message}`)
-        } finally { updateBtn.classList.remove('loading'); setBusy(false) }
-      })
     }
 
     function updateStatus(root, s) {
@@ -2059,38 +2037,14 @@
       root.querySelector('.status .label').textContent = label
       root.querySelector('.status .meta').innerHTML = meta
 
-      const gs = s.gameStatus
+      // Container power model: a single-purpose game container IS the game, so the
+      // controls are just container power — running → Restart/Stop/Force-Stop;
+      // stopped → Start. Refresh is always available.
+      const running = s.status === 'running'
       const show = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = '' })
       const hide = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = 'none' })
-
-      if (gs === 'down') {
-        show('start', 'refresh')
-        hide('reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'restartGame')
-      } else if (gs === 'idle') {
-        show('startGame', 'shutdown', 'stop', 'refresh')
-        hide('start', 'reboot', 'stopGame', 'restartGame')
-      } else if (gs === 'hosting') {
-        show('stopGame', 'restartGame', 'shutdown', 'stop', 'refresh')
-        hide('start', 'reboot', 'startGame')
-      } else {
-        show('start', 'reboot', 'shutdown', 'stop', 'startGame', 'stopGame', 'restartGame', 'refresh')
-      }
-
-      // The updater runs inside the guest (SteamCMD validate + restart), so it needs
-      // the VM powered on — disable it whenever the VM is off.
-      const upd = root.querySelector('[data-update]')
-      if (upd) {
-        upd.disabled = s.status !== 'running'
-        upd.title = upd.disabled
-          ? 'Start the VM first — updates run inside the guest'
-          : 'Run the configured updater (validate + restart)'
-      }
-
-      root.querySelectorAll('[data-action-group]').forEach(group => {
-        const hasVisibleAction = Array.from(group.querySelectorAll('button'))
-          .some(button => button.style.display !== 'none')
-        group.hidden = !hasVisibleAction
-      })
+      if (running) { show('reboot', 'shutdown', 'stop', 'refresh'); hide('start') }
+      else { show('start', 'refresh'); hide('reboot', 'shutdown', 'stop') }
 
       // A panel is visible when its status gate matches AND it's either loaded or
       // still loading (so the "Loading…" placeholder shows in place, not blank).

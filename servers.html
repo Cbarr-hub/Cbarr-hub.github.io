@@ -271,6 +271,45 @@
     .maplist-add select { flex: 1; min-width: 0; }
     .maplist-empty { color: #777; font-size: 10px; font-style: italic; padding: 3px 0; }
 
+    /* ── Profile editor (Configuration section): toolbar · groups · action footer.
+       Consolidates profile management up top, the fields in the middle, and the
+       Save / Apply-&-Restart actions in a clear footer — a single top-to-bottom flow. ── */
+    .pf-toolbar {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+      padding: 8px 10px; margin-bottom: 10px; border: 1px solid #2f3f2a; border-radius: 3px;
+      background: linear-gradient(#1b211b, #161a16); box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .pf-select { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; }
+    .pf-lbl { color: var(--gt-green); font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; flex: none; }
+    .pf-select select { flex: 1; min-width: 80px; max-width: 260px; }
+    .pf-manage { display: flex; flex-wrap: wrap; gap: 5px; flex: none; }
+    .pf-manage .mini-btn { padding: 5px 9px; }
+    .mini-btn.loading { position: relative; color: transparent !important; pointer-events: none; }
+    .mini-btn.loading::after { content:''; position:absolute; left:50%; top:50%; width:9px; height:9px;
+      margin:-5px 0 0 -5px; border:2px solid rgba(123,184,95,.35); border-top-color:var(--gt-green);
+      border-radius:50%; animation: spin .7s linear infinite; }
+
+    .pf-groups { display: grid; gap: 8px; }
+    .prof-group { border-color: #283228; }
+    .prof-group > summary { background: linear-gradient(#1a201a, #161a16); }
+
+    .pf-actions {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 12px;
+      padding: 10px 12px; border: 1px solid #2f3f2a; border-radius: 3px;
+      background: linear-gradient(#181d18, #131613); box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
+    }
+    .pf-actions-btns { display: flex; gap: 8px; flex: none; }
+    .pf-actions-note { flex: 1 1 180px; color: #8a9a7a; font-size: 10px; line-height: 1.5; }
+    .pf-actions-note b { color: #b8d4a0; }
+    button.retro-btn.primary {
+      background: linear-gradient(#3f9a28, #2c6e1b); border-color: #5fd23a; color: #eafce4;
+      box-shadow: inset 0 1px 0 rgba(160,255,120,.30), 0 0 10px rgba(66,245,39,.22);
+    }
+    button.retro-btn.primary:hover:not(:disabled) {
+      background: linear-gradient(#4cb330, #3a8a22); color: #fff; border-color: #6fff44;
+      box-shadow: inset 0 1px 0 rgba(180,255,140,.40), 0 0 16px rgba(66,245,39,.45);
+    }
+
     /* collapsible raw-config section */
     details.rawcfg { border-top: 1px dashed #3a3a3a; margin-top: 8px; padding-top: 8px; }
     details.rawcfg > summary { color: #7bb85f; font-size: 11px; font-weight: bold; cursor: pointer;
@@ -1122,10 +1161,9 @@
 
           <!-- CONFIGURATION: everything persistent (profiles, quick settings, raw files) -->
           <div class="srv-section cfg" data-section style="display:none">
-            <div class="srv-section-head">Configuration <span>persistent — saved settings &amp; files, applied on (re)start</span></div>
+            <div class="srv-section-head">Configuration <span>the server's startup config — edit a profile, then Apply &amp; Restart to go live</span></div>
 
             <div class="panel profiles" data-profiles data-loading="1" style="display:none">
-              <div class="panel-title">Profiles <span class="qs-note">startup config — Apply, then Restart Hosting to boot into it</span></div>
               <div data-prof-body><div class="panel-ldg">Loading profiles…</div></div>
             </div>
 
@@ -1697,21 +1735,26 @@
           </details>`).join('')
 
         profBody.innerHTML = `
-          <div class="prof-bar">
-            <select data-prof-pick>${opts}</select>
-            <span class="prof-active${isActive ? '' : ' off'}">${isActive ? 'active' : 'not applied'}</span>
-            <button class="retro-btn" data-prof-apply title="Save your edits and restart the server to go live">Apply &amp; Restart</button>
-            <button class="retro-btn" data-prof-save title="Save your edits to this profile (no restart)">Save</button>
+          <div class="pf-toolbar">
+            <div class="pf-select">
+              <span class="pf-lbl">Profile</span>
+              <select data-prof-pick>${opts}</select>
+              <span class="prof-active${isActive ? '' : ' off'}">${isActive ? '● live' : '○ not applied'}</span>
+            </div>
+            <div class="pf-manage">
+              <button class="mini-btn" data-prof-new title="Create a new profile from defaults">＋ New</button>
+              <button class="mini-btn" data-prof-saveas title="Save the current edits as a new profile">⎘ Duplicate</button>
+              <button class="mini-btn" data-prof-capture title="Save the server's current live config as a new profile">⤓ Capture</button>
+              <button class="mini-btn x" data-prof-delete title="Delete this profile">🗑 Delete</button>
+            </div>
           </div>
-          ${groups}
-          <div class="qs-note-block">${esc(P.schema.note || '')}
-            <b>Apply &amp; Restart</b> = save + restart (go live). <b>Save</b> = store edits only.</div>
-          <div class="panel-row prof-manage">
-            <span class="qs-note">Profiles:</span>
-            <button class="retro-btn" data-prof-new title="Create a new profile from defaults">＋ New</button>
-            <button class="retro-btn" data-prof-saveas title="Save the current edits as a new profile">Duplicate</button>
-            <button class="retro-btn" data-prof-capture title="Save the server's current live config as a new profile">Capture from server</button>
-            <button class="retro-btn danger" data-prof-delete title="Delete this profile">Delete</button>
+          <div class="pf-groups">${groups}</div>
+          <div class="pf-actions">
+            <div class="pf-actions-btns">
+              <button class="retro-btn primary" data-prof-apply title="Save your edits, write them as the live startup config, and restart to load them">▶ Apply &amp; Restart</button>
+              <button class="retro-btn" data-prof-save title="Save your edits to this profile (no restart)">Save</button>
+            </div>
+            <div class="pf-actions-note">${P.schema.note ? esc(P.schema.note) + ' ' : ''}<b>Save</b> stores your edits · <b>Apply &amp; Restart</b> writes them live and reboots the server to load them.</div>
           </div>`
 
         wireProfileEvents()

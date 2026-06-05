@@ -45,6 +45,8 @@ services:
       EULA: "TRUE"
       ENABLE_RCON: "true"
       RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD:?set MINECRAFT_RCON_PASSWORD in the secrets file and pass --env-file}
+      MEMORY: "6G"                 # JVM heap
+      LEVEL: ${MC_LEVEL:-world}    # active world (from the project .env)
     volumes:
       - mc-data:/data        # world + server.properties — survives redeploys
     ports:

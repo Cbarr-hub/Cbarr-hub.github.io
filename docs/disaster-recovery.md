@@ -24,9 +24,9 @@ host is just the hypervisor, and DR onto *any* Docker host (cloud VM, another
 hypervisor, bare metal) works identically.
 
 - **Repo checkout:** `/root/gamertown` (branch `main`).
-- **Stack:** `docker compose` project **`gamertown`**, three files:
-  `docker-compose.yml` (app + Caddy) + `servers.compose.yml` (5 games) +
-  `mc-mem.override.yml`, with a project `.env` for interpolation.
+- **Stack:** `docker compose` project **`gamertown`**, two files:
+  `docker-compose.yml` (app + Caddy) + `servers.compose.yml` (5 games), with a
+  project `.env` for interpolation.
 - **8 containers:** `gamertown-app-1`, `gamertown-caddy-1`,
   `gamertown-docker-proxy-1`, `minecraft`, `gmod`, `prophunt`, `counterstrike`,
   `factorio`. All `restart: unless-stopped` (so they self-start on host boot — there
@@ -132,7 +132,7 @@ bundle: re-issue from Cloudflare → SSL/TLS → Origin Server → Create Certif
 game files):
 ```bash
 cd /root/gamertown
-docker compose -f docker-compose.yml -f servers.compose.yml -f mc-mem.override.yml up -d --build
+docker compose -f docker-compose.yml -f servers.compose.yml up -d --build
 ```
 
 **7. Restore the data into the volumes** (the game containers can keep installing

@@ -37,7 +37,6 @@ docker compose \
   --env-file "$secrets" --env-file "$projenv" --env-file "$envlocal" \
   -f "$REPO_ROOT/docker-compose.yml" \
   -f "$REPO_ROOT/servers.compose.yml" \
-  -f "$REPO_ROOT/mc-mem.override.yml" \
   -f "$REPO_ROOT/docker-compose.dev.yml" \
   "${args[@]}"
 code=$?

@@ -1,9 +1,0 @@
-# Minecraft heap + world override, layered last in the keeper deploy:
-#   docker compose -f docker-compose.yml -f servers.compose.yml -f mc-mem.override.yml up -d
-# Bumps the JVM heap and selects the active world via MC_LEVEL (from the project .env).
-# Tracked so the full stack is reproducible from git (see DISASTER_RECOVERY.md).
-services:
-  minecraft:
-    environment:
-      MEMORY: "6G"
-      LEVEL: "${MC_LEVEL:-world}"

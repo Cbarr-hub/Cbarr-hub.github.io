@@ -43,7 +43,7 @@ tests/                  test suite
 | Host ("keeper") | Proxmox **VM 106** `gamertown-docker`, 192.168.1.241, MAC `bc:24:11:62:f5:5d` — a Docker host. The PVE box `pve` (192.168.1.109) is just the hypervisor; no Docker runs on it. |
 | Enter the keeper | `ssh root@192.168.1.241` (passwordless from `pve`) or `qm guest exec 106 -- …` |
 | Repo checkout | `/root/gamertown` on the keeper (branch `main`) |
-| Stack | `docker compose` project `gamertown`: `docker-compose.yml` + `servers.compose.yml` + `mc-mem.override.yml` (+ project `.env`) |
+| Stack | `docker compose` project `gamertown`: `docker-compose.yml` + `servers.compose.yml` (+ project `.env`) |
 | App + proxy | `gamertown-app-1` (Fastify, `:3000` internal) behind `gamertown-caddy-1` (Caddy, `:443`) — separate containers |
 | Database | SQLite in volume `gamertown_gt-data` → `/var/lib/docker/volumes/gamertown_gt-data/_data/gamertown.sqlite` |
 | Secrets | `/etc/gamertown/secrets.env` (app/caddy) + `/root/gamertown/.env` (games) — see [`docs/disaster-recovery.md`](docs/disaster-recovery.md) |
@@ -57,7 +57,7 @@ tests/                  test suite
 ## Common operations
 
 All commands run **on the keeper** (`ssh root@192.168.1.241`, passwordless from `pve`).
-`COMPOSE="docker compose -f docker-compose.yml -f servers.compose.yml -f mc-mem.override.yml"` (run from `/root/gamertown`).
+`COMPOSE="docker compose -f docker-compose.yml -f servers.compose.yml"` (run from `/root/gamertown`).
 
 ```bash
 # Deploy a code update

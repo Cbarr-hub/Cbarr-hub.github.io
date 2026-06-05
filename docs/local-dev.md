@@ -190,7 +190,7 @@ docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev
 To replicate the **whole** production stack locally — the scoped `docker-proxy` (so the
 panel's game-server control works) plus all five game containers — use the
 `tools/dev.ps1` / `tools/dev.sh` wrapper. It layers `docker-compose.yml` +
-`servers.compose.yml` + `mc-mem.override.yml` + `docker-compose.dev.yml` and chains the
+`servers.compose.yml` + `docker-compose.dev.yml` and chains the
 three env sources compose needs for `${...}` interpolation (`secrets.env` + project
 `.env` + `.env.local`):
 
@@ -256,7 +256,7 @@ On the keeper (Proxmox VM 106):
 ```bash
 cd /root/gamertown
 git pull origin main
-COMPOSE="docker compose -f docker-compose.yml -f servers.compose.yml -f mc-mem.override.yml"
+COMPOSE="docker compose -f docker-compose.yml -f servers.compose.yml"
 $COMPOSE up -d --build
 ```
 

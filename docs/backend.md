@@ -25,7 +25,7 @@ Production runs as a **`docker compose` stack on the keeper** (Proxmox VM 106): 
 
 ```bash
 # on the keeper, from /root/gamertown
-docker compose -f docker-compose.yml -f servers.compose.yml -f mc-mem.override.yml up -d --build
+docker compose -f docker-compose.yml -f servers.compose.yml up -d --build
 docker exec -it gamertown-app-1 npm run migrate
 docker exec -it gamertown-app-1 node src/cli.js create-admin
 ```

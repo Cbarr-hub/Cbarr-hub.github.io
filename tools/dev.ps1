@@ -42,7 +42,6 @@ if (-not $composeArgs -or $composeArgs.Count -eq 0) { $composeArgs = @('up', '-d
     --env-file $secrets --env-file $projenv --env-file $envlocal `
     -f (Join-Path $repo 'docker-compose.yml') `
     -f (Join-Path $repo 'servers.compose.yml') `
-    -f (Join-Path $repo 'mc-mem.override.yml') `
     -f (Join-Path $repo 'docker-compose.dev.yml') `
     @composeArgs
 $code = $LASTEXITCODE

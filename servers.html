@@ -19,7 +19,7 @@
     a:visited { color: #7bb85f; }
     a:hover { color: #42F527; }
 
-    #wrap { padding: 10px 14px; max-width: 1080px; margin: 0 auto; width: auto; }
+    #wrap { padding: 10px 14px; max-width: 1240px; margin: 0 auto; width: auto; }
 
     .sec-head {
       background: #1e2e1e;
@@ -333,7 +333,7 @@
 
     /* radial gauges */
     .gauge { position: relative; width: 108px; height: 108px; }
-    .gauge svg { transform: rotate(-90deg); display: block; }
+    .gauge svg { transform: rotate(-90deg); display: block; width: 100%; height: 100%; }
     .gauge .track { stroke: #2a2a2a; }
     .gauge .fill { stroke: #42F527; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(66,245,39,0.6)); transition: stroke-dashoffset 0.6s ease, stroke 0.4s ease; }
     .gauge.warn .fill { stroke: #c2a13a; filter: drop-shadow(0 0 3px rgba(194,161,58,0.6)); }
@@ -531,8 +531,11 @@
     .gauge.sm .gauge-meta { font-size: 8px; margin-top: 0; }
 
     .entity-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px;
+      display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch;
     }
+    @media (max-width: 1180px) { .entity-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 760px)  { .entity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 480px)  { .entity-grid { grid-template-columns: 1fr; } }
     .entity {
       border: 1px solid #333; border-top: 2px solid #3a3a3a; border-radius: 3px;
       background: linear-gradient(#1c211c, #161616); padding: 10px; cursor: pointer;
@@ -557,13 +560,15 @@
     .entity.hosting .ent-state { color: var(--gt-green); text-shadow: 0 0 6px rgba(66,245,39,.4); }
     .entity.idle .ent-state { color: var(--gt-amber); }
 
-    .ent-meters { display: flex; align-items: center; gap: 12px; }
-    .ent-side { flex: 1; min-width: 0; display: grid; gap: 6px; }
-    .ent-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
-    .ent-k { color: #7bb85f; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
-    .ent-v { color: #d4d4b8; font-size: 11px; font-family: "Courier New", monospace; text-align: right;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ent-side .bar { box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+    /* per-game meters: clean aligned [label · bar · value] rows (no radial — the
+       radial gauges are reserved for the fleet TOTAL up top). */
+    .ent-meters { display: grid; gap: 7px; }
+    .meter { display: grid; grid-template-columns: 34px 1fr 60px; gap: 8px; align-items: center; }
+    .meter-k { color: #7bb85f; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .meter .bar { height: 7px; box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+    .meter-v { color: #d4d4b8; font-size: 10px; font-family: "Courier New", monospace; text-align: right;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meter.up .meter-up { grid-column: 2 / 4; color: #b8d4a0; font-size: 10px; font-family: "Courier New", monospace; }
 
     .ent-conn { display: flex; align-items: center; gap: 6px; }
     .ent-code { flex: 1; min-width: 0; background: #0f130f; border: 1px solid #2a2a2a; color: #b8d4a0;
@@ -577,7 +582,7 @@
     .ent-mini.play { color: #9fd0ff; border-color: #3f5a7a; background: #16202c; }
     .ent-mini.play:hover { color: #cfe8ff; border-color: #5f8fb8; background: #1e2f42; }
 
-    .ent-controls { display: flex; gap: 6px; align-items: center; }
+    .ent-controls { display: flex; gap: 6px; align-items: center; margin-top: auto; }
     .ent-btn { background: linear-gradient(#345c20,#284916); border: 1px solid #6fae53; color: #d4d4b8;
       font-size: 12px; line-height: 1; padding: 5px 10px; cursor: pointer; border-radius: 2px;
       font-family: Verdana, Arial, sans-serif; font-weight: bold;
@@ -806,12 +811,9 @@
             <span class="ent-state">${esc(label)}</span>
           </div>
           <div class="ent-meters">
-            ${gaugeHtml(cpuPct, up ? cpuPct.toFixed(0) + '%' : '—', 'CPU', 'sm')}
-            <div class="ent-side">
-              <div class="ent-stat"><span class="ent-k">Mem</span><span class="ent-v">${up ? fmtBytes(s.mem) + (s.maxmem ? ' / ' + fmtBytes(s.maxmem) : '') : '—'}</span></div>
-              ${up && s.maxmem ? barHtml(memPct) : '<div class="bar"></div>'}
-              <div class="ent-stat"><span class="ent-k">Up</span><span class="ent-v">${up ? esc((fmtUptime(s.uptime) || '—').replace(/^up /, '')) : 'offline'}</span></div>
-            </div>
+            <div class="meter"><span class="meter-k">CPU</span>${up ? barHtml(cpuPct) : '<div class="bar"></div>'}<span class="meter-v">${up ? cpuPct.toFixed(0) + '%' : '—'}</span></div>
+            <div class="meter" title="${up && s.maxmem ? esc(fmtBytes(s.mem) + ' / ' + fmtBytes(s.maxmem)) : ''}"><span class="meter-k">Mem</span>${up && s.maxmem ? barHtml(memPct) : '<div class="bar"></div>'}<span class="meter-v">${up ? fmtBytes(s.mem) : '—'}</span></div>
+            <div class="meter up"><span class="meter-k">Up</span><span class="meter-up">${up ? esc((fmtUptime(s.uptime) || '—').replace(/^up /, '')) : 'offline'}</span></div>
           </div>
           <div class="ent-conn">
             ${conn

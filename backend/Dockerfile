@@ -31,3 +31,19 @@ USER node
 
 EXPOSE 3000
 CMD ["node", "src/server.js"]
+
+# ── dev (live-reload; selected by docker-compose.dev.yml `target: dev`) ────────
+# Same compiled native modules as runtime, plus nodemon. Runs as root so it can
+# read the bind-mounted src and write the data volume. Uses --legacy-watch
+# (polling) because inotify file events do NOT cross Docker Desktop bind mounts
+# on Windows/macOS, so `node --watch` never fires there.
+FROM node:20-bookworm-slim AS dev
+WORKDIR /app
+ENV NODE_ENV=development
+COPY --from=builder /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+RUN npm install -g nodemon
+COPY src ./src
+RUN mkdir -p /app/data
+EXPOSE 3000
+CMD ["nodemon", "--legacy-watch", "--watch", "src", "--ext", "js,json,html", "src/server.js"]

@@ -8,7 +8,6 @@ import { ServerControlError } from '../servers/service.js';
 const ID_PARAM = { type: 'string', pattern: '^[a-z0-9-]{1,32}$' };
 const WS_PARAM = { type: 'string', pattern: '^[0-9]{1,20}$' };
 const CONFIG_ID_PARAM = { type: 'integer', minimum: 1 };
-const BACKUP_NAME_PARAM = { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,128}$' };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
 
 // Map a typed error code → HTTP status. Covers the ServerControlError codes plus
@@ -220,16 +219,6 @@ export default async function serversRoutes(app) {
   });
   route('post', '/:id/profiles/:profileId/apply', (req) => svc.applyProfile(req.params.id, req.params.profileId), {
     csrf: true, schema: P({ id: ID_PARAM, profileId: CONFIG_ID_PARAM }),
-  });
-
-  // ── offsite backups (Phase 4; Factorio + Minecraft via rclone → R2) ───────────
-  route('get', '/:id/backups', (req) => svc.listBackups(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('post', '/:id/backups', (req) => svc.createBackup(req.params.id), { csrf: true, schema: P({ id: ID_PARAM }) });
-  route('post', '/:id/backups/:name/restore', (req) => svc.restoreBackup(req.params.id, req.params.name), {
-    csrf: true, schema: P({ id: ID_PARAM, name: BACKUP_NAME_PARAM }),
-  });
-  route('delete', '/:id/backups/:name', (req) => svc.deleteBackup(req.params.id, req.params.name), {
-    csrf: true, schema: P({ id: ID_PARAM, name: BACKUP_NAME_PARAM }),
   });
 
   // ── live commands (Phase 3; RCON / console) ───────────────────────────────────

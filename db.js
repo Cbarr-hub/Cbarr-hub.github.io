@@ -239,23 +239,6 @@ export async function dbDeleteServerConfig(id, configId) {
   return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`, { method: 'DELETE' });
 }
 
-// ── offsite backups (Factorio + Minecraft → Cloudflare R2) ────────────────────
-export async function dbListServerBackups(id) {
-  return api(`/servers/${encodeURIComponent(id)}/backups`);
-}
-
-export async function dbCreateServerBackup(id) {
-  return api(`/servers/${encodeURIComponent(id)}/backups`, { method: 'POST' });
-}
-
-export async function dbRestoreServerBackup(id, name) {
-  return api(`/servers/${encodeURIComponent(id)}/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' });
-}
-
-export async function dbDeleteServerBackup(id, name) {
-  return api(`/servers/${encodeURIComponent(id)}/backups/${encodeURIComponent(name)}`, { method: 'DELETE' });
-}
-
 // ── live / runtime commands (RCON / console) ──────────────────────────────────
 export async function dbGetServerLive(id) {
   return api(`/servers/${encodeURIComponent(id)}/live`);

@@ -192,11 +192,6 @@
     .qs-sep { border-top: 1px dashed #3a3a3a; margin: 10px 0; }
     .qs-section-title { color: #7bb85f; font-size: 11px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
     .qs-note-block { color: #999; font-size: 10px; font-style: italic; margin-top: 8px; }
-    /* ── backups panel ── */
-    .bk-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px dashed #3a3a3a; }
-    .bk-row .bk-label { color: #ddd; font-size: 12px; word-break: break-all; }
-    .bk-row .bk-meta { color: #999; font-size: 10px; margin-left: auto; white-space: nowrap; }
-    .bk-row button { flex: none; }
     .qs-fields .retro-btn { padding: 2px 8px; }
     .qs-fields .inline { display: flex; gap: 6px; align-items: center; }
     .qs-fields .inline select { flex: 1; min-width: 0; }
@@ -213,12 +208,6 @@
     .rt-hint { color: #6a7a6a; font-size: 10px; font-style: italic; margin-top: 5px; }
     [data-rt-cmd] { flex: 1; min-width: 0; font-family: "Courier New", monospace; }
 
-    /* ── Backups (host-managed on Docker): read-only status note ── */
-    .bk-auto { display: grid; gap: 9px; }
-    .bk-auto-row { display: flex; gap: 10px; align-items: flex-start; color: #d4d4b8; font-size: 11px; line-height: 1.5; }
-    .bk-auto-icon { color: #d8bc5a; font-size: 17px; line-height: 1.1; flex: none; }
-    .bk-auto-row b { color: #f0d878; }
-    .bk-auto-note { color: #8a8a72; font-size: 10px; line-height: 1.5; }
     /* ── unified per-server console + per-button loading spinner ── */
     .console {
       background: #101410; border: 1px solid #2a2a2a; color: #b8d4a0;
@@ -353,7 +342,7 @@
       border-radius: 50%; animation: spin 0.7s linear infinite;
     }
 
-    /* card sections: group panels into Configuration / Runtime / Backups, each
+    /* card sections: group panels into Configuration / Runtime, each
        with a distinct accent so the conceptual areas are visually separated. */
     .srv-section { border-left: 3px solid #2a2a2a; padding-left: 12px; margin-top: 16px; }
     .srv-section-head { font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; }
@@ -362,8 +351,6 @@
     .srv-section.cfg .srv-section-head { color: #42F527; }
     .srv-section.rt  { border-left-color: #4f9fd0; }
     .srv-section.rt  .srv-section-head { color: #7fc0f0; }
-    .srv-section.bk  { border-left-color: #c2a13a; }
-    .srv-section.bk  .srv-section-head { color: #d8bc5a; }
     /* the section head already separates the group → drop the first panel's divider */
     .srv-section > .srv-section-head + .panel { border-top: none; margin-top: 6px; padding-top: 2px; }
 
@@ -708,7 +695,6 @@
       dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps,
       dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
-      dbListServerBackups, dbCreateServerBackup, dbRestoreServerBackup, dbDeleteServerBackup,
       dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile,
       dbUpdateProfile, dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
       dbGetNodeStatus,
@@ -1202,14 +1188,6 @@
             </div>
           </div>
 
-          <!-- BACKUPS: offsite snapshots -->
-          <div class="srv-section bk" data-section style="display:none">
-            <div class="srv-section-head">Backups <span>automated — weekly to Cloudflare R2, host-managed</span></div>
-            <div class="panel backups" data-backups data-loading="1" style="display:none">
-              <div data-bk-body><div class="panel-ldg">Loading backups…</div></div>
-            </div>
-          </div>
-
           <pre class="console" data-console style="display:none"></pre>
         </div>
       </div>`
@@ -1379,7 +1357,6 @@
       const qsNote = root.querySelector('[data-qs-note]')
       const qsSave = root.querySelector('[data-qs-save]')
       const rt = root.querySelector('[data-runtime]')
-      const bk = root.querySelector('[data-backups]')
 
       // Clear a panel's loading state and re-gate it. applicable=false → the panel
       // doesn't apply to this game (stays hidden); true → loaded, shows content.
@@ -1473,107 +1450,6 @@
         }
         body.querySelector('[data-rt-send]').addEventListener('click', send)
         cmdEl.addEventListener('keydown', e => { if (e.key === 'Enter') send() })
-      }
-
-      // ── backups (offsite, Cloudflare R2) panel ────────────────────────────
-      function fmtBytes(n) {
-        if (!Number.isFinite(n) || n <= 0) return ''
-        const u = ['B', 'KB', 'MB', 'GB']; let i = 0; let v = n
-        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
-        return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${u[i]}`
-      }
-      function fmtWhen(iso) {
-        if (!iso) return ''
-        const d = new Date(iso)
-        return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
-      }
-
-      function loadBackups() {
-        // Panel backups aren't wired on the Docker stack (the app holds no R2
-        // credentials) — every server's /backups returns 404, so DON'T probe the
-        // endpoint (the failed request just noises up the browser console). The
-        // world-having games get a read-only host-backup note; the rest stay hidden.
-        if (id === 'minecraft' || id === 'factorio') {
-          const noun = id === 'minecraft' ? 'world' : 'save'
-          bk.querySelector('[data-bk-body]').innerHTML =
-            `<div class="bk-auto">
-              <div class="bk-auto-row"><span class="bk-auto-icon">⛁</span>
-                <div>Backed up automatically — this ${noun} is pushed <b>weekly</b> to Cloudflare R2 by the host backup timer (newest 3 kept).</div></div>
-              <div class="bk-auto-note">Panel-triggered backups aren't available on the containerized stack — the app holds no R2 credentials. On-demand snapshots + restores are run host-side (see DISASTER_RECOVERY.md).</div>
-            </div>`
-          panelReady(bk)
-        } else {
-          panelReady(bk, false)
-        }
-      }
-
-      function renderBackups(data) {
-        const body = bk.querySelector('[data-bk-body]')
-        if (!data.available) {
-          body.innerHTML = `<div class="qs-note-block">${esc(data.reason || 'backups unavailable')}</div>`
-          return
-        }
-        const list = data.backups || []
-        const rows = list.length
-          ? list.map(b => {
-              const meta = [fmtWhen(b.createdAt), fmtBytes(b.size)].filter(Boolean).join(' · ')
-              return `<div class="bk-row" data-bk-name="${esc(b.name)}">
-                <span class="bk-label">${esc(b.label || b.name)}</span>
-                <span class="bk-meta">${esc(meta)}</span>
-                <button class="retro-btn" data-bk-restore>Restore</button>
-                <button class="retro-btn danger" data-bk-delete>Delete</button>
-              </div>`
-            }).join('')
-          : `<div class="qs-note-block">No backups yet.</div>`
-
-        const isMc = id === 'minecraft'
-        const noun = isMc ? 'world' : 'save'
-
-        body.innerHTML = `
-          <div class="panel-row">
-            <button class="retro-btn" data-bk-create>Create Backup</button>
-            <span class="qs-note">${list.length} backup${list.length === 1 ? '' : 's'} in R2</span>
-          </div>
-          <div class="qs-note-block">Uploads the current ${noun} to Cloudflare R2. Large ${noun}s can take several minutes — leave the page open until it finishes.</div>
-          ${rows}`
-
-        body.querySelector('[data-bk-create]').addEventListener('click', () => {
-          if (!confirm(`Create a new backup of the current ${noun} and upload it to Cloudflare R2?`)) return
-          withBtn(body.querySelector('[data-bk-create]'), 'Create Backup', async () => {
-            const r = await dbCreateServerBackup(id)
-            logLine(`Create Backup ✓ — ${r?.name || 'done'}`)
-            await loadBackups()
-          }).catch(() => {})
-        })
-
-        body.querySelectorAll('[data-bk-restore]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const name = btn.closest('.bk-row').dataset.bkName
-            const warn = isMc
-              ? `Restore "${name}"?\n\nThis STOPS the server, overwrites the live world, and restarts it. Current world state will be lost.`
-              : `Restore "${name}"?\n\nThis downloads the backup into your saves so you can pick it via "Load Existing World". It does not change the active world.`
-            if (!confirm(warn)) return
-            withBtn(btn, 'Restore', async () => {
-              const r = await dbRestoreServerBackup(id, name)
-              if (r?.steps) logLine(`Restore "${name}"`, formatUpdate(r))
-              else logLine(`Restore "${name}" ✓`, r?.note)
-              if (r?.ok === false) setErr('restore failed — see console')
-              if (isMc) { await new Promise(res => setTimeout(res, 1500)); await refresh() }
-            }).catch(() => {})
-          })
-        })
-
-        body.querySelectorAll('[data-bk-delete]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const name = btn.closest('.bk-row').dataset.bkName
-            if (!confirm(`Delete backup "${name}" from R2? This can't be undone.`)) return
-            withBtn(btn, 'Delete', async () => {
-              await dbDeleteServerBackup(id, name)
-              logLine(`Delete backup "${name}" ✓`)
-              await loadBackups()
-            }).catch(() => {})
-          })
-        })
       }
 
       function renderField(id, f) {
@@ -2048,7 +1924,6 @@
       loadProfiles()
       loadSettings()
       loadLive()
-      loadBackups()
 
       // Pull this server's fresh status on mount so the panel gates use current
       // data, not the cached page-load snapshot (else e.g. Minecraft's panel could
@@ -2095,15 +1970,12 @@
       if (qs) qs.style.display = (gs === 'hosting' && ready(qs)) ? 'block' : 'none'
       const rt = root.querySelector('[data-runtime]')
       if (rt) rt.style.display = (gs === 'hosting' && ready(rt)) ? 'block' : 'none'
-      // backups need only the VM up (guest agent + files), not the game process.
-      const bk = root.querySelector('[data-backups]')
-      if (bk) bk.style.display = (s.status === 'running' && ready(bk)) ? 'block' : 'none'
 
       // raw config files: editable whenever the VM is up.
       const rawcfg = root.querySelector('[data-rawcfg]')
       if (rawcfg) rawcfg.style.display = (s.status === 'running') ? 'block' : 'none'
 
-      // Each grouping section (Configuration / Runtime / Backups) shows only when
+      // Each grouping section (Configuration / Runtime) shows only when
       // at least one of its panels is visible — no empty bordered headers.
       root.querySelectorAll('[data-section]').forEach(sec => {
         const anyVisible = [...sec.querySelectorAll('.panel')].some(p => p.style.display !== 'none')

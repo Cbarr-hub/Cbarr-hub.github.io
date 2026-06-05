@@ -192,20 +192,6 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return connectorFor(id).captureProfile(name);
     },
 
-    // ── offsite backups (Phase 4; Factorio + Minecraft) ──────────────────────
-    listBackups(id) {
-      return connectorFor(id).listBackups();
-    },
-    createBackup(id) {
-      return connectorFor(id).createBackup();
-    },
-    restoreBackup(id, name) {
-      return connectorFor(id).restoreBackup(name);
-    },
-    deleteBackup(id, name) {
-      return connectorFor(id).deleteBackup(name);
-    },
-
     // ── live commands (Phase 3) ──────────────────────────────────────────────
     getLive(id) {
       return connectorFor(id).getLive();

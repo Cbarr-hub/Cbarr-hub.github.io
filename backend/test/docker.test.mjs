@@ -201,8 +201,8 @@ test('buildConnectors builds every docker-backed entry, and skips when no client
 // container-power model (Start/Restart/Stop). Codify what Docker connectors
 // actually support: the container IS the game, so the game-service actions alias
 // onto container power (no separate in-VM service to error on); and these
-// non-LinuxGSM images still have no in-panel updater and no panel-managed backups.
-test('non-LinuxGSM Docker connectors: container IS the game (game-service → container power; no updater / panel backup)', async () => {
+// non-LinuxGSM images still have no in-panel updater.
+test('non-LinuxGSM Docker connectors: container IS the game (game-service → container power; no updater)', async () => {
   const FX = { id: 'factorio', name: 'Factorio', backend: 'docker', container: 'factorio', port: 34197 };
   const CS = { id: 'counterstrike', name: 'CS', backend: 'docker', container: 'counterstrike', port: 27015 };
   const make = (Cls, server) => {
@@ -222,9 +222,8 @@ test('non-LinuxGSM Docker connectors: container IS the game (game-service → co
     // game-service actions map to container start/shutdown/reboot (never BAD_ACTION).
     await conn.startGame(); await conn.stopGame(); await conn.restartGame();
     assert.deepEqual(calls, ['start', 'shutdown', 'reboot']);
-    // …but still no in-panel updater and no panel-managed backups for these images.
+    // …but still no in-panel updater for these images.
     await assert.rejects(async () => conn.update(), (e) => e.code === 'NO_UPDATE_RECIPE');
-    assert.throws(() => conn.listBackups(), (e) => e.code === 'NOT_SUPPORTED');
   }
 });
 

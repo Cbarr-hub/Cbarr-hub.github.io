@@ -18,12 +18,14 @@ function testDb() {
 const CS = { id: 'counterstrike', name: 'Counter-Strike', backend: 'docker', container: 'cs2', port: 27015 };
 
 // ── shared pure module ──────────────────────────────────────────────────────────
-test('cs-profile validate: map (stock/ws), mode, maxPlayers', () => {
+test('cs-profile validate: map (stock/ws), mode, maxPlayers, hostname', () => {
   const base = cs.defaultProfileSettings();
   assert.equal(cs.validateProfileSettings({ ...base, map: 'ws:3071005299' }).map, 'ws:3071005299');
   assert.throws(() => cs.validateProfileSettings({ ...base, map: 'ws:abc' }), /workshop id/);
+  assert.throws(() => cs.validateProfileSettings({ ...base, map: 'Bad Map!' }), /invalid map/);
   assert.throws(() => cs.validateProfileSettings({ ...base, gameMode: 'nope' }), /game mode/);
   assert.throws(() => cs.validateProfileSettings({ ...base, maxPlayers: 99 }), /maxPlayers/);
+  assert.throws(() => cs.validateProfileSettings({ ...base, hostname: 'a"b' }), /server name/);
 });
 
 test('cs-profile buildChangeMapCmd: stock vs workshop vs invalid', () => {

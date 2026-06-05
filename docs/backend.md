@@ -34,11 +34,6 @@ The app binds `HOST=0.0.0.0` **inside its container** (so the separate Caddy con
 can reach it); the host publishes only Caddy's `:443`. Runtime secrets load from
 `/etc/gamertown/secrets.env` via Compose `env_file` — never committed.
 
-> **Legacy single-box deploy (pre-Docker, retired with CT 103):** Node 20 + a
-> `gamertown` user + clone to `/srv/gamertown` + `npm ci --omit=dev` + the
-> `systemd/gamertown.service.example` unit (`HOST=127.0.0.1`) + Caddy from
-> `Caddyfile.example`, DNS at the box.
-
 ## CLI
 
 ```sh
@@ -90,10 +85,6 @@ node src/cli.js delete-user
 | POST   | `/api/admin/users`                    | admin    |
 | DELETE | `/api/admin/users/:id`                | admin    |
 | GET    | `/api/servers/node`                   | admin    |
-| GET    | `/api/servers/:id/backups`            | admin    |
-| POST   | `/api/servers/:id/backups`            | admin    |
-| POST   | `/api/servers/:id/backups/:name/restore` | admin |
-| DELETE | `/api/servers/:id/backups/:name`      | admin    |
 | GET    | `/api/servers/:id/profiles`           | admin    |
 | GET    | `/api/servers/:id/profiles/schema`    | admin    |
 | POST   | `/api/servers/:id/profiles`           | admin    |
@@ -101,25 +92,19 @@ node src/cli.js delete-user
 | GET/PUT/DELETE | `/api/servers/:id/profiles/:profileId` | admin |
 | POST   | `/api/servers/:id/profiles/:profileId/apply` | admin |
 
-> Backups (Factorio + Minecraft only) are point-in-time archives pushed offsite to
-> Cloudflare R2 via `rclone` on the keeper — see [`disaster-recovery.md`](disaster-recovery.md)
-> and `infrastructure.md` → "Offsite backups (rclone → R2)". `GET` returns
-> `{ available, backups[], reason? }`; `available:false` means rclone/R2 isn't
-> configured. Counter-Strike returns 404 (`NOT_SUPPORTED`). The app never stores R2
-> credentials. (Nightly app-DB + Factorio backups also run from a host systemd timer.)
+> Backups are **not** an app feature — the app holds no R2 credentials. Production
+> backups (app DB + Factorio save + Minecraft world → Cloudflare R2) run from a host
+> systemd timer; see [`disaster-recovery.md`](disaster-recovery.md).
 
-> `GET /api/servers/node` is the host snapshot powering the servers-page dashboard and
-> is **backend-aware**: on the Docker backend (current) it returns `{kind:'docker', …}`
-> from the Docker Engine `/info` (engine/OS/kernel + container counts, via the
-> socket-proxy with `INFO=1`) plus a CPU/RAM aggregate of the containers; on the legacy
-> Proxmox backend it returned `{kind:'proxmox', …}` from PVE `GET /nodes/:node/status`
-> (which needed `Sys.Audit` on `/nodes/<node>`). The UI branches on `kind`
-> (`servers.html` `renderDashboard`).
+> `GET /api/servers/node` is the host snapshot powering the servers-page dashboard:
+> it returns `{kind:'docker', …}` from the Docker Engine `/info` (engine/OS/kernel +
+> container counts, via the socket-proxy with `INFO=1`) plus a CPU/RAM aggregate of the
+> containers. The UI renders it in `servers.html` `renderDashboard`.
 
 > Game servers are wired in `src/servers/registry.js` — each entry carries a
-> `backend: 'proxmox'|'docker'` flag + a locator (VMID or container name) and a
-> connector in `src/servers/connectors/` (Docker variants under `connectors/docker/`).
-> **All five — Counter-Strike, Factorio, Minecraft, Garry's Mod / TTT, Prop Hunt — now
+> `backend: 'docker'` flag + a container-name locator and a connector in
+> `src/servers/connectors/` (Docker variants under `connectors/docker/`).
+> **All five — Counter-Strike, Factorio, Minecraft, Garry's Mod / TTT, Prop Hunt —
 > run as Docker containers.** GMOD/PH reuse the LinuxGSM + Source-RCON pattern;
 > `getSettings`/profiles expose the TTT/PH knobs (map, workshop collection, round/time
 > limits, ratios + caps, map cycle) and the Runtime panel drives them live over RCON

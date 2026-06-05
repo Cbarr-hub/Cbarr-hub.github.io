@@ -8,7 +8,8 @@ Stack: **Fastify + SQLite + Caddy**, deployed as a **Docker stack on the keeper*
 Full infra details → [`INFRA.md`](INFRA.md)  
 Disaster recovery → [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md)  
 Backend API reference → [`backend/README.md`](backend/README.md)  
-Design system → [`GAMERTOWN_DESIGN_PLAN.md`](GAMERTOWN_DESIGN_PLAN.md)
+Design system → [`GAMERTOWN_DESIGN_PLAN.md`](GAMERTOWN_DESIGN_PLAN.md)  
+Local dev (Windows/macOS/Linux) → [`SETUP_LOCAL.md`](SETUP_LOCAL.md) — `tools/setup.*` (secrets from R2) + `tools/dev.*` (full stack, localhost/self-signed, live reload) + `tools/db-restore.*` (app DB for login)
 
 ---
 

@@ -1,0 +1,30 @@
+# Keep line endings sane across Windows/Linux checkouts.
+#
+# Shell scripts and container entrypoints RUN ON LINUX — they must be LF even when
+# the repo is cloned on Windows with core.autocrlf=true. Otherwise a CRLF shebang
+# (`#!/usr/bin/env bash\r`) breaks inside images: `/usr/bin/env: 'bash\r': No such
+# file or directory` (exit 127), which is what crash-looped the gmod/prophunt
+# containers built from a Windows working tree.
+*.sh            text eol=lf
+docker/gmod/entrypoint.sh text eol=lf
+Dockerfile*     text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Caddyfile*      text eol=lf
+
+# Windows-only helper scripts stay CRLF.
+*.ps1           text eol=crlf
+*.cmd           text eol=crlf
+*.bat           text eol=crlf
+
+# Binary assets — never munge.
+*.age   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.gz    binary
+*.zip   binary
+*.bsp   binary
+*.gma   binary

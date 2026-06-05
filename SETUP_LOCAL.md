@@ -2,6 +2,27 @@
 
 This guide walks through setting up Gamertown locally on your machine for parallel development.
 
+## Quickstart (dev, full stack)
+
+From a fresh clone, three commands stand up the whole stack **and a working login**:
+
+```powershell
+.\tools\setup.ps1        # 1. pull + decrypt secrets from R2 -> .env.local (age prompts for the passphrase)
+.\tools\dev.ps1          # 2. build + start the full stack (app, Caddy, docker-proxy, 5 game servers)
+.\tools\db-restore.ps1   # 3. restore the app DB from R2 (users) so you can log in
+```
+
+Then open **https://localhost** (accept the self-signed cert) and sign in.
+
+> **Why three steps:** `setup.ps1` restores **secrets** only. The app **database** is a
+> separate R2 backup, so without step 3 the DB is empty (no users) and login fails. The
+> app, login, Minecraft and Factorio are usable within minutes; CS2/GMOD/Prop Hunt
+> download their game files on first boot (CS2 is ~30GB).
+
+macOS/Linux equivalents: `tools/setup.sh`, `tools/dev.sh`, and `tools/db-restore.sh`
+(see [Database restore](#database-restore-required-for-login)). The rest of this guide
+explains each step and the other run modes.
+
 ## Prerequisites
 
 1. **Docker Desktop** (Windows/Mac) or Docker Engine (Linux)
@@ -154,13 +175,71 @@ How it differs from the production-equivalent run:
   Docker Desktop bind mounts on Windows/macOS — plain `node --watch` won't reload there.
 - **Secrets**: the same real bundle (via `.env.local`).
 
-> Note: game-server control is unavailable in dev (the app logs
-> `DOCKER_HOST not configured`) — it needs the scoped Docker socket-proxy + game
-> containers, which this override doesn't wire up. App / forum / UI work all function.
+> Note: this app-only override does **not** start the Docker socket-proxy or game
+> containers, so game-server control is unavailable here (the app logs
+> `DOCKER_HOST not configured`). App / forum / UI work all function. For game-server
+> control, use the full-stack wrapper below.
 
 Stop it:
 ```bash
 docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down
+```
+
+### Full stack with game servers (`tools/dev.ps1`)
+
+To replicate the **whole** production stack locally — the scoped `docker-proxy` (so the
+panel's game-server control works) plus all five game containers — use the
+`tools/dev.ps1` / `tools/dev.sh` wrapper. It layers `docker-compose.yml` +
+`servers.compose.yml` + `mc-mem.override.yml` + `docker-compose.dev.yml` and chains the
+three env sources compose needs for `${...}` interpolation (`secrets.env` + project
+`.env` + `.env.local`):
+
+```powershell
+.\tools\dev.ps1                  # up -d --build (default): full stack
+.\tools\dev.ps1 ps               # status
+.\tools\dev.ps1 logs -f app      # follow a service
+.\tools\dev.ps1 up -d minecraft  # just one game
+.\tools\dev.ps1 down             # stop everything
+```
+(Bash: `tools/dev.sh …`.)
+
+Notes:
+- The app reaches the engine only through the scoped `docker-proxy`
+  (`DOCKER_HOST=tcp://docker-proxy:2375`), never the raw socket.
+- Game containers are matched by **name** (`minecraft`, `factorio`, `counterstrike`,
+  `gmod`, `prophunt`), as the panel's registry expects.
+- **CS2** (`joedwards32/cs2`) is a **~30GB** Steam download — the container appears
+  quickly but takes a long time to become RCON-ready. Minecraft + Factorio come up in
+  minutes; GMOD/Prop Hunt build the shared `gamertown-gmod` image on first run.
+- `SKIP_CSS=1` (from the bundle) skips GMOD's ~3GB CS:S pull; set `$env:SKIP_CSS = "1"`
+  to force it if your env differs.
+
+### Database restore (required for login)
+
+`setup.ps1` restores **secrets**, not the app **database** — so a fresh stack boots with
+an empty DB and **no users**, and login fails. The DB is a separate R2 backup under the
+`app/` path. With the stack up (so the `gt-data` volume exists), pull the newest snapshot
+into it:
+
+```powershell
+.\tools\db-restore.ps1                                          # newest snapshot, auto-detects the volume
+.\tools\db-restore.ps1 -Name gamertown_YYYYMMDD_HHMMSS.sqlite   # a specific snapshot
+```
+
+It stops the app, drops the snapshot into the `gt-data` volume (clearing stale WAL/SHM),
+chowns it to the app uid, and restarts the app. Verify the users landed:
+
+```powershell
+docker exec <project>-app-1 node src/cli.js list-users
+```
+
+macOS/Linux: stop the app, then `GT_DATA_VOLUME=<project>_gt-data tools/db-restore.sh`,
+then start it. (`<project>` is the compose project name — the lowercased repo dir, e.g.
+`cbarr-hubgithubio`.)
+
+Need a brand-new account instead of a restore? Create one interactively:
+```bash
+docker exec -it <project>-app-1 node src/cli.js create-admin
 ```
 
 ## Linux notes (verified in a Debian container)

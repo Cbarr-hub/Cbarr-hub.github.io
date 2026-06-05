@@ -154,14 +154,44 @@ How it differs from the production-equivalent run:
   Docker Desktop bind mounts on Windows/macOS — plain `node --watch` won't reload there.
 - **Secrets**: the same real bundle (via `.env.local`).
 
-> Note: game-server control is unavailable in dev (the app logs
-> `DOCKER_HOST not configured`) — it needs the scoped Docker socket-proxy + game
-> containers, which this override doesn't wire up. App / forum / UI work all function.
+> Note: this app-only override does **not** start the Docker socket-proxy or game
+> containers, so game-server control is unavailable here (the app logs
+> `DOCKER_HOST not configured`). App / forum / UI work all function. For game-server
+> control, use the full-stack wrapper below.
 
 Stop it:
 ```bash
 docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down
 ```
+
+### Full stack with game servers (`tools/dev.ps1`)
+
+To replicate the **whole** production stack locally — the scoped `docker-proxy` (so the
+panel's game-server control works) plus all five game containers — use the
+`tools/dev.ps1` / `tools/dev.sh` wrapper. It layers `docker-compose.yml` +
+`servers.compose.yml` + `mc-mem.override.yml` + `docker-compose.dev.yml` and chains the
+three env sources compose needs for `${...}` interpolation (`secrets.env` + project
+`.env` + `.env.local`):
+
+```powershell
+.\tools\dev.ps1                  # up -d --build (default): full stack
+.\tools\dev.ps1 ps               # status
+.\tools\dev.ps1 logs -f app      # follow a service
+.\tools\dev.ps1 up -d minecraft  # just one game
+.\tools\dev.ps1 down             # stop everything
+```
+(Bash: `tools/dev.sh …`.)
+
+Notes:
+- The app reaches the engine only through the scoped `docker-proxy`
+  (`DOCKER_HOST=tcp://docker-proxy:2375`), never the raw socket.
+- Game containers are matched by **name** (`minecraft`, `factorio`, `counterstrike`,
+  `gmod`, `prophunt`), as the panel's registry expects.
+- **CS2** (`joedwards32/cs2`) is a **~30GB** Steam download — the container appears
+  quickly but takes a long time to become RCON-ready. Minecraft + Factorio come up in
+  minutes; GMOD/Prop Hunt build the shared `gamertown-gmod` image on first run.
+- `SKIP_CSS=1` (from the bundle) skips GMOD's ~3GB CS:S pull; set `$env:SKIP_CSS = "1"`
+  to force it if your env differs.
 
 ## Linux notes (verified in a Debian container)
 

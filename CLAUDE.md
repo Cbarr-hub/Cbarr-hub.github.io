@@ -20,9 +20,8 @@ backend/                Fastify backend
   src/
     routes/             API route handlers
     servers/            game server control (service, connectors, registry)
-      connectors/docker/  Docker-backed game connectors (current)
-    proxmox/            PVE API client (legacy backend, kept for the seam)
-    docker/             Docker API client (current backend)
+      connectors/docker/  Docker-backed game connectors
+    docker/             Docker API client (game-server control transport)
     cli.js              user management CLI
   data/                 SQLite DB + session key (gitignored)
   .env                  runtime config (gitignored)
@@ -82,13 +81,11 @@ docker exec -it gamertown-app-1 node src/cli.js list-users
 
 ## Known gotchas
 
-> **Post-migration framing (2026-06-04):** all five games + the app now run as **Docker containers on the keeper**, not Proxmox VMs. The game-config gotchas below still hold — same LinuxGSM / srcds / Minecraft under the hood — but read "VM 104/105" as the `gmod`/`prophunt` **containers**, in-guest paths like `/home/miles/<game>server` as paths **inside that container** (rooted at `/data`), and control as `docker` + **RCON-over-TCP** rather than `pct`/`qm`/in-guest `python3`. The pure-Proxmox items (`pct`/`qm`, **`safe.directory`**, **PVE API token privsep**) are **legacy** — the app no longer talks to Proxmox.
+> **Post-migration framing (2026-06-04):** all five games + the app now run as **Docker containers on the keeper**, not Proxmox VMs. The game-config gotchas below still hold — same LinuxGSM / srcds / Minecraft under the hood — but read "VM 104/105" as the `gmod`/`prophunt` **containers**, in-guest paths like `/home/miles/<game>server` as paths **inside that container** (rooted at `/data`), and control as `docker` + **RCON-over-TCP** rather than `pct`/`qm`/in-guest `python3`. The app no longer talks to Proxmox at all — the PVE API client, token, and `pct`/`qm` control path were removed at the migration (the retired topology lives in [`INFRA_LEGACY.md`](INFRA_LEGACY.md)).
 
 - **Port 80 blocked:** AT&T BGW210-700 reserves port 80 internally — cannot forward it. HTTPS only (443). Future Let's Encrypt setup requires DNS-01 challenge via Cloudflare, not HTTP-01.
 - **Factorio active save:** controlled by `startparameters` in `lgsm/config-lgsm/fctrserver/fctrserver.cfg`, NOT `savename`. Override the full `--start-server` line when switching worlds.
 - **Factorio 2.0 MapGenSize:** valid values are `none`, `very-low`, `low`, `normal`, `high`, `very-high`. `large`/`very-large` were removed in 2.0 and cause a hard crash.
-- **PVE API token privsep:** with `privsep=1`, effective rights = intersection of token ACLs AND user ACLs — both must be granted on each VM path.
-- **`safe.directory` flag:** required when running `git` as root via `pct exec` because the repo is owned by the `gamertown` service user.
 - **GMOD/TTT game cfg is `cfg/gmodserver.cfg`:** GMOD (VM 104) launches srcds with `+servercfgfile gmodserver.cfg`, so TTT cvars + `rcon_password` live in `serverfiles/garrysmod/cfg/gmodserver.cfg` — NOT a `server.cfg`. Don't confuse it with the identically-named LinuxGSM *instance* cfg at `lgsm/config-lgsm/gmodserver/gmodserver.cfg` (shell vars: `gamemode`, `defaultmap`, `maxplayers`, `port`, `wscollectionid`, `gslt`).
 - **TTT map autoplay needs `ttt_always_use_mapcycle 1`:** maps in `garrysmod/mapcycle.txt` only rotate (after `ttt_round_limit` rounds / `ttt_time_limit_minutes`) when this cvar is set. The engine reads `garrysmod/mapcycle.txt`, not the `cfg/` copy LinuxGSM ships.
 - **GMOD port is 27066, not 27015/27016:** the CS forward already claims 27000–27039 on the router, so GMOD binds + forwards 27066. The connector's RCON port and the registry join-string port must stay in sync.

@@ -1,5 +1,5 @@
 // Pure Counter-Strike 2 profile/validation logic + curated RCON actions, shared
-// by the Proxmox (LinuxGSM) and Docker connectors. Transport-agnostic: no file or
+// by the base (LinuxGSM) and Docker connectors. Transport-agnostic: no file or
 // container access here, just validation, the editor schema, and command builders.
 
 import { badSetting, MAP_NAME_RE } from '../errors.js';

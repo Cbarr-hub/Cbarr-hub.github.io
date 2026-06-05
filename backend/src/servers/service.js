@@ -4,7 +4,7 @@
 //   - validate a logical server id against the registry
 //   - dispatch the requested operation to that server's connector
 //   - normalize results and raise typed errors the route layer maps to HTTP
-// It knows nothing about Fastify, requests, auth, or Proxmox HTTP details.
+// It knows nothing about Fastify, requests, auth, or transport HTTP details.
 
 import { listServers, getServer, connectString, launchUrl } from './registry.js';
 import { buildConnectors } from './connectors/index.js';
@@ -20,47 +20,20 @@ export class ServerControlError extends Error {
 
 const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame']);
 
-// Shape Proxmox's `/nodes/{node}/status` payload into a stable, UI-friendly
-// dashboard object. Proxmox reports cpu as a 0..1 fraction and memory/rootfs in
-// bytes; we keep raw values and let the client render gauges. Everything is
-// defensively defaulted so a partial payload never blanks the whole dashboard.
-export function normalizeNodeStatus(data) {
-  const mem = data?.memory ?? {};
-  const swap = data?.swap ?? {};
-  const root = data?.rootfs ?? {};
-  const cpus = data?.cpuinfo?.cpus ?? null;
-  return {
-    uptime: data?.uptime ?? 0,                         // seconds
-    cpu: data?.cpu ?? null,                             // fraction 0..1
-    cpus,                                               // logical core count
-    cpuModel: data?.cpuinfo?.model ?? null,
-    loadavg: Array.isArray(data?.loadavg)               // ['0.10','0.20','0.30']
-      ? data.loadavg.map((n) => Number(n)).filter((n) => Number.isFinite(n))
-      : [],
-    memory: { total: mem.total ?? null, used: mem.used ?? null, free: mem.free ?? null },
-    swap: { total: swap.total ?? null, used: swap.used ?? null },
-    rootfs: { total: root.total ?? null, used: root.used ?? null },
-    kversion: data?.kversion ?? null,
-    pveversion: data?.pveversion ?? null,
-  };
-}
-
 /**
  * @param {object} deps
- * @param {import('../proxmox/client.js').ProxmoxClient|null} deps.client
- *        Proxmox transport, or null when PVE isn't configured.
  * @param {import('../docker/client.js').DockerClient|null} [deps.dockerClient]
  *        Docker transport, or null when DOCKER_HOST isn't configured.
  * @param {import('better-sqlite3').Database|null} [deps.db]
  *        shared DB; backs the connectors' persisted catalog/config store.
  *
- * The service is "configured" if EITHER backend is wired; each server in the
- * registry binds to its own backend and is skipped when that backend is absent.
+ * The service is "configured" when the Docker backend is wired; each server in
+ * the registry binds to its backend and is skipped when that backend is absent.
  */
-export function createServerService({ client, dockerClient = null, publicHost = '', db = null }) {
+export function createServerService({ dockerClient = null, publicHost = '', db = null }) {
   const store = db ? createServerStore(db) : null;
-  const connectors = (client || dockerClient)
-    ? buildConnectors({ proxmox: client, docker: dockerClient }, store)
+  const connectors = dockerClient
+    ? buildConnectors({ docker: dockerClient }, store)
     : null;
 
   function connectorFor(id) {
@@ -72,12 +45,12 @@ export function createServerService({ client, dockerClient = null, publicHost = 
     return c;
   }
 
-  // Shape a registry entry for the API (never leak internal-only fields beyond vmid).
+  // Shape a registry entry for the API — expose only public-facing fields (the
+  // container locator stays server-side).
   function publicMeta(server) {
     return {
       id: server.id,
       name: server.name,
-      vmid: server.vmid,
       connect: {
         host: publicHost,
         port: server.port,
@@ -90,16 +63,10 @@ export function createServerService({ client, dockerClient = null, publicHost = 
   return {
     isConfigured: () => Boolean(connectors),
 
-    // Host-level dashboard, backend-aware. With a Proxmox client it's the live PVE
-    // node snapshot (kind:'proxmox' — CPU/RAM/load gauges). Otherwise, with a Docker
-    // client, it's the Docker host/engine facts (kind:'docker'); the UI pairs that
-    // with the per-container cpu/mem it already gets from /api/servers. Throws
-    // NOT_CONFIGURED when neither backend is wired.
+    // Host-level dashboard: the Docker host/engine facts (kind:'docker'); the UI
+    // pairs that with the per-container cpu/mem it already gets from /api/servers.
+    // Throws NOT_CONFIGURED when the backend isn't wired.
     async getNodeStatus() {
-      if (client) {
-        const data = await client.nodeStatus();
-        return { kind: 'proxmox', node: client.node, ...normalizeNodeStatus(data) };
-      }
       if (dockerClient) {
         return { kind: 'docker', ...(await dockerClient.nodeStatus()) };
       }
@@ -132,7 +99,7 @@ export function createServerService({ client, dockerClient = null, publicHost = 
       return { ...publicMeta(server), ...status };
     },
 
-    // action ∈ start|shutdown|reboot|stop. Returns { ok, action } (Proxmox
+    // action ∈ start|shutdown|reboot|stop. Returns { ok, action } (the backend
     // returns a task id we don't surface yet).
     async doAction(id, action) {
       if (!POWER_ACTIONS.has(action)) {

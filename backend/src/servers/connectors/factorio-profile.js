@@ -1,4 +1,4 @@
-// Pure Factorio profile logic, shared by the Proxmox (VM/LinuxGSM) and Docker
+// Pure Factorio profile logic, shared by the base (VM/LinuxGSM) and Docker
 // (factoriotools) connectors. Transport-agnostic: it operates on the parsed
 // server-settings.json object + the structured settings doc, so each connector
 // just supplies read/write of that file and its own save/active-world handling.

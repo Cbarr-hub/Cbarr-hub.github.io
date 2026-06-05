@@ -1,5 +1,11 @@
 # Migrate Gamertown to a portable Docker stack (+ Docker host-driver)
 
+> **✅ Complete (2026-06-04).** This migration shipped: all five games + the app run as
+> Docker containers on the keeper (VM 106), the Proxmox control path was removed, and
+> `docker` → `main` merged (PR #5). Kept as the historical design record — current state is
+> in [`CLAUDE.md`](CLAUDE.md) / [`INFRA.md`](INFRA.md); the retired Proxmox topology is in
+> [`INFRA_LEGACY.md`](INFRA_LEGACY.md).
+
 ## Context
 
 Gamertown runs as the web app (static site + Fastify + SQLite + Caddy) in **LXC CT 103**,

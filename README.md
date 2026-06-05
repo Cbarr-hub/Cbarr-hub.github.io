@@ -3,14 +3,17 @@
 A live web app for a friend group — **forum, gambling/games, and a game-server control
 panel** — built on **Fastify + SQLite + Caddy** and deployed as a Docker stack on the keeper.
 
-**Docs:** [`CLAUDE.md`](CLAUDE.md) (operations quick-ref) ·
+**Docs:** [`SETUP_LOCAL.md`](SETUP_LOCAL.md) (run it locally) ·
+[`CLAUDE.md`](CLAUDE.md) (operations quick-ref) ·
 [`INFRA.md`](INFRA.md) (architecture) ·
 [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md) (backups + rebuild) ·
 [`backend/README.md`](backend/README.md) (backend API) ·
 [`GAMERTOWN_DESIGN_PLAN.md`](GAMERTOWN_DESIGN_PLAN.md) (frontend design system).
 
-Run the stack locally with `docker compose up --build`, then open the site over HTTPS
-(Caddy serves a self-signed cert in dev).
+**Run it locally:** `tools/setup.ps1` (Windows) or `tools/setup.sh` (macOS/Linux) pulls
+the secret bundle from R2, decrypts it, and writes `.env.local`; then
+`docker compose --env-file .env.local up --build`. Full walkthrough →
+[`SETUP_LOCAL.md`](SETUP_LOCAL.md).
 
 Everything below is the project's (deliberately absurdist) **design philosophy** — kept
 verbatim, not an operational spec.

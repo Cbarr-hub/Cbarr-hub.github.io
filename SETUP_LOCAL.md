@@ -59,13 +59,37 @@ bash tools/setup.sh
 ### 3. Start the app
 
 ```bash
-# Use the generated .env.local file
 docker compose --env-file .env.local up --build
 ```
 
-The app will be available at:
-- **https://localhost** (accept the self-signed cert warning)
-- Backend API: `https://localhost/api`
+This builds the backend + Caddy images and starts the stack with the **production**
+secrets and cert from the bundle, so Caddy serves `gamertown.solutions` with the real
+Cloudflare Origin cert — a faithful rehearsal of the keeper deploy.
+
+To reach it in a browser, map the domain to localhost in your hosts file
+(`C:\Windows\System32\drivers\etc\hosts` on Windows, `/etc/hosts` on macOS/Linux;
+needs admin/sudo):
+
+```
+127.0.0.1 gamertown.solutions www.gamertown.solutions
+```
+
+then open **https://gamertown.solutions**. The cert is a Cloudflare Origin cert
+(trusted by Cloudflare's edge, not your OS), so the browser will warn — expected for
+a local rehearsal.
+
+Quick health check (no hosts entry needed):
+```bash
+curl -sk --resolve gamertown.solutions:443:127.0.0.1 https://gamertown.solutions/api/health
+```
+
+Stop the stack when done:
+```bash
+docker compose --env-file .env.local down
+```
+
+> A lighter **dev-only** mode (localhost + self-signed `tls internal`, no hosts entry
+> or real cert) is a separate, simpler override — see *Dev environment* below once added.
 
 ## Troubleshooting
 

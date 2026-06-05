@@ -199,20 +199,30 @@ test('buildConnectors builds every docker-backed entry, and skips when no client
 // ── action surface the control panel relies on (container == game) ──────────────
 // The panel collapsed the old Game-Service / Virtual-Machine split into one
 // container-power model (Start/Restart/Stop). Codify what Docker connectors
-// actually support: the non-LinuxGSM images have no in-VM game service, no
-// in-panel updater, and no panel backups; GMOD aliases game-service → container.
-test('non-LinuxGSM Docker connectors: container IS the game (no game-service / updater / panel backup)', async () => {
+// actually support: the container IS the game, so the game-service actions alias
+// onto container power (no separate in-VM service to error on); and these
+// non-LinuxGSM images still have no in-panel updater and no panel-managed backups.
+test('non-LinuxGSM Docker connectors: container IS the game (game-service → container power; no updater / panel backup)', async () => {
   const FX = { id: 'factorio', name: 'Factorio', backend: 'docker', container: 'factorio', port: 34197 };
   const CS = { id: 'counterstrike', name: 'CS', backend: 'docker', container: 'counterstrike', port: 27015 };
-  const conns = [
-    new DockerMinecraftConnector(MC_DOCKER, fakeDockerClient()),
-    new DockerFactorioConnector(FX, fakeDockerClient()),
-    new DockerCounterStrikeConnector(CS, fakeDockerClient()),
-  ];
-  for (const conn of conns) {
-    for (const act of ['startGame', 'stopGame', 'restartGame']) {
-      await assert.rejects(async () => conn[act](), (e) => e.code === 'BAD_ACTION');
-    }
+  const make = (Cls, server) => {
+    const calls = [];
+    const client = fakeDockerClient();
+    client.start = () => { calls.push('start'); return Promise.resolve(); };
+    client.shutdown = () => { calls.push('shutdown'); return Promise.resolve(); };
+    client.reboot = () => { calls.push('reboot'); return Promise.resolve(); };
+    return { conn: new Cls(server, client), calls };
+  };
+  for (const [Cls, server] of [
+    [DockerMinecraftConnector, MC_DOCKER],
+    [DockerFactorioConnector, FX],
+    [DockerCounterStrikeConnector, CS],
+  ]) {
+    const { conn, calls } = make(Cls, server);
+    // game-service actions map to container start/shutdown/reboot (never BAD_ACTION).
+    await conn.startGame(); await conn.stopGame(); await conn.restartGame();
+    assert.deepEqual(calls, ['start', 'shutdown', 'reboot']);
+    // …but still no in-panel updater and no panel-managed backups for these images.
     await assert.rejects(async () => conn.update(), (e) => e.code === 'NO_UPDATE_RECIPE');
     assert.throws(() => conn.listBackups(), (e) => e.code === 'NOT_SUPPORTED');
   }
@@ -228,4 +238,44 @@ test('DockerGmod maps the game-service actions onto container power', async () =
   const conn = new DockerGmodConnector(GMOD, client);
   await conn.startGame(); await conn.stopGame(); await conn.restartGame();
   assert.deepEqual(calls, ['start', 'shutdown', 'reboot']);
+});
+
+// The Runtime panel's live change-map dropdown reads getSettings().map. CS uses the
+// generic Profiles panel for startup config, so its getSettings returns ONLY the map
+// block (stock + the saved workshop catalog) — no fields/sections (which would
+// double-render a Quick Settings panel).
+test('DockerCounterStrike.getSettings feeds the live change-map dropdown (stock + workshop)', async () => {
+  const CS = { id: 'counterstrike', name: 'CS', backend: 'docker', container: 'counterstrike', port: 27015 };
+  const store = {
+    listWorkshopMaps: () => [{ workshopId: '123', name: 'Assembly' }],
+    getActiveProfileId: () => 7,
+    getProfile: () => ({ id: 7, name: 'p', settings: { map: 'ws:123' } }),
+  };
+  const conn = new DockerCounterStrikeConnector(CS, fakeDockerClient(), store);
+  const s = await conn.getSettings();
+  assert.ok(Array.isArray(s.map.stock) && s.map.stock.length > 0); // stock maps present
+  assert.deepEqual(s.map.workshop, [{ id: '123', name: 'Assembly' }]); // saved workshop maps, by name
+  assert.equal(s.map.current, 'ws:123'); // current reflects the active profile's map
+  assert.equal(s.fields, undefined); // no Quick Settings double-render
+  assert.equal(s.sections, undefined);
+});
+
+// TTT should expose the SAME generic runtime buttons Prop Hunt does (gravity/speed/
+// bhop/slow-mo/cheats + list players), not just "List Players".
+test('DockerGmod (TTT) getLive exposes the Prop-Hunt-style runtime buttons', async () => {
+  const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
+  const prev = process.env.GMOD_RCON_PASSWORD;
+  process.env.GMOD_RCON_PASSWORD = 'secret';
+  try {
+    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+    const live = await conn.getLive();
+    assert.equal(live.available, true);
+    assert.equal(live.changeMap, true);
+    const keys = live.actions.map((a) => a.key);
+    for (const k of ['lowgrav_on', 'lowgrav_off', 'speed_on', 'bhop_on', 'slowmo_on', 'cheats_on', 'cheats_off', 'players']) {
+      assert.ok(keys.includes(k), `expected runtime action ${k}`);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD; else process.env.GMOD_RCON_PASSWORD = prev;
+  }
 });

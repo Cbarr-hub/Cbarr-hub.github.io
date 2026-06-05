@@ -37,6 +37,30 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     return rconExchange({ host: this.server.container, port: this.server.rconPort ?? 27015, password, command });
   }
 
+  // Profiles own the startup config (the Profiles panel), so getSettings exists
+  // only to feed the Runtime panel's live change-map dropdown — the SAME shape the
+  // VM/GMOD connectors return: stock maps + the saved workshop catalog (by name).
+  // Without this the dropdown is empty (the base default returns no `map` block).
+  // The container's boot map is env-driven (unreadable from a file), so `current`
+  // reflects the active profile's saved map when there is one.
+  async getSettings() {
+    const catalog = this.store ? this.store.listWorkshopMaps(this.server.id) : [];
+    let current = '';
+    if (this.store) {
+      const activeId = this.store.getActiveProfileId(this.server.id);
+      const active = activeId != null ? this.store.getProfile(this.server.id, activeId) : null;
+      if (active?.settings?.map) current = active.settings.map;
+    }
+    return {
+      game: 'counterstrike',
+      map: {
+        stock: csProfile.STOCK_FALLBACK,
+        workshop: catalog.map((w) => ({ id: w.workshopId, name: w.name })),
+        current,
+      },
+    };
+  }
+
   // ── startup-config profiles (shared validation/schema) ──────────────────────
   defaultProfileSettings()    { return csProfile.defaultProfileSettings(); }
   validateProfileSettings(s)  { return csProfile.validateProfileSettings(s); }

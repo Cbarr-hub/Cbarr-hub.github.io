@@ -109,6 +109,14 @@ straight to the passphrase prompt:
 
 These are **not** committed to git and are regenerated from R2 on each setup.
 
+## Linux notes (verified in a Debian container)
+
+- `setup.sh` must be run in an **interactive terminal**: `age` reads the passphrase
+  from `/dev/tty`, not stdin, so it can't run fully unattended. For unattended
+  disaster recovery, use an age **identity file** instead of a passphrase.
+- Debian's apt `rclone` (1.60.1) is new enough to **download/restore** from R2. The
+  keeper's 1.74.2 is only required for backup **uploads** (the `rcat` 501 gotcha).
+
 ## For production deployment
 
 On the keeper (Proxmox VM 106):

@@ -1488,14 +1488,11 @@
         return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
       }
 
-      async function loadBackups() {
-        let data
-        try { data = await dbListServerBackups(id) } catch { data = null }
-        // Functional panel backups (kept for any backend that supports them).
-        if (data && Array.isArray(data.backups)) { renderBackups(data); panelReady(bk); return }
-        // Docker: the app holds no R2 credentials, so panel backups aren't wired.
-        // The world-having games are backed up automatically host-side — surface
-        // that as a read-only note; the rest (regenerable installs) stay hidden.
+      function loadBackups() {
+        // Panel backups aren't wired on the Docker stack (the app holds no R2
+        // credentials) — every server's /backups returns 404, so DON'T probe the
+        // endpoint (the failed request just noises up the browser console). The
+        // world-having games get a read-only host-backup note; the rest stay hidden.
         if (id === 'minecraft' || id === 'factorio') {
           const noun = id === 'minecraft' ? 'world' : 'save'
           bk.querySelector('[data-bk-body]').innerHTML =

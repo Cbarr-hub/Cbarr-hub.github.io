@@ -75,8 +75,16 @@ The setup script attempts to auto-install these. If it fails:
 - **Linux**: Ensure you have `apt`, `yum`, or `pacman` available
 - **Windows**: Manually install rclone (https://rclone.org/install/) and age (https://github.com/FiloSottile/age/releases), then re-run the script
 
-### `Failed to decrypt secrets (wrong passphrase?)`
-Double-check your age passphrase from your password manager.
+### `Failed to decrypt secrets - wrong passphrase`
+The bundle is age **passphrase**-encrypted (scrypt). Double-check the passphrase
+from your password manager. The download is **cached** at `.secrets/bundle.age`,
+so just re-run the script — it skips the download and credential prompts and goes
+straight to the passphrase prompt:
+```powershell
+.\tools\setup.ps1            # retries against the cached bundle
+.\tools\setup.ps1 -Fresh     # forces a re-download + re-entry of R2 credentials
+```
+(Bash: `bash tools/setup.sh` / `bash tools/setup.sh --fresh`.)
 
 ### `403 Forbidden` / `Failed to download secrets from R2`
 - Confirm the **Secret Access Key** is the hex string only (a common mistake is

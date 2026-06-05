@@ -62,51 +62,66 @@ install_tool rclone rclone || exit 1
 install_tool age age || exit 1
 echo
 
-# ── R2 credentials → rclone config ────────────────────────────────────────────
-echo -e "${YELLOW}R2 Credentials${NC}"
-read -rp  "R2 Account ID: "        r2_account_id
-read -rp  "R2 Access Key ID: "     r2_access_key
-read -rsp "R2 Secret Access Key: " r2_secret_key
-echo; echo
-
-# For Cloudflare R2, rclone's S3 backend needs the account-scoped ENDPOINT URL.
-# There is no `account_id` key in the s3 backend — omitting the endpoint sends
-# requests to AWS (the 403). `region = auto` is what R2 expects.
-echo -e "${YELLOW}Configuring rclone...${NC}"
-r2_endpoint="https://${r2_account_id}.r2.cloudflarestorage.com"
-rclone config create r2 s3 \
-  provider Cloudflare \
-  access_key_id "$r2_access_key" \
-  secret_access_key "$r2_secret_key" \
-  endpoint "$r2_endpoint" \
-  region auto \
-  acl private \
-  --non-interactive >/dev/null
-echo -e "${GREEN}✓ rclone r2 remote configured${NC}"
-echo
-
-# ── secrets directory ─────────────────────────────────────────────────────────
+# ── secrets directory + bundle cache ──────────────────────────────────────────
 secrets_dir="$REPO_ROOT/.secrets"
 mkdir -p "$secrets_dir"
-echo -e "${GREEN}✓ Created secrets directory: $secrets_dir${NC}"
+bundle="$secrets_dir/bundle.age"   # cached encrypted download (gitignored)
+
+# ── R2 download (skipped when a cached bundle exists) ─────────────────────────
+# Re-running to retry a bad passphrase shouldn't re-download or re-prompt for R2
+# creds. The cached bundle is reused unless --fresh is passed.
+[ "${1:-}" = "--fresh" ] && rm -f "$bundle"
+
+if [ -f "$bundle" ]; then
+  echo -e "${GREEN}✓ Using cached bundle: $bundle  (pass --fresh to re-download)${NC}"
+else
+  # Reuse an existing rclone r2 remote unless --fresh; otherwise prompt. Creds live
+  # only in the rclone config (~/.config/rclone/rclone.conf) — never the repo.
+  if [ "${1:-}" != "--fresh" ] && rclone listremotes 2>/dev/null | grep -qx "r2:"; then
+    echo -e "${GREEN}✓ Reusing existing rclone 'r2' remote  (pass --fresh to re-enter credentials)${NC}"
+  else
+    echo -e "${YELLOW}R2 Credentials${NC}"
+    read -rp  "R2 Account ID: "        r2_account_id
+    read -rp  "R2 Access Key ID: "     r2_access_key
+    read -rsp "R2 Secret Access Key: " r2_secret_key
+    echo; echo
+    # For Cloudflare R2, rclone's S3 backend needs the account-scoped ENDPOINT URL.
+    # There is no `account_id` key in the s3 backend — omitting the endpoint sends
+    # requests to AWS (the 403). `region = auto` is what R2 expects.
+    echo -e "${YELLOW}Configuring rclone...${NC}"
+    r2_endpoint="https://${r2_account_id}.r2.cloudflarestorage.com"
+    rclone config create r2 s3 \
+      provider Cloudflare \
+      access_key_id "$r2_access_key" \
+      secret_access_key "$r2_secret_key" \
+      endpoint "$r2_endpoint" \
+      region auto \
+      acl private \
+      --non-interactive >/dev/null
+    echo -e "${GREEN}✓ rclone r2 remote configured${NC}"
+  fi
+  echo
+
+  echo -e "${YELLOW}Downloading secret bundle from R2...${NC}"
+  rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" "$bundle" || {
+    rm -f "$bundle"
+    echo -e "${RED}✗ Failed to download from R2 — check credentials/bucket access, then re-run with --fresh.${NC}"; exit 1; }
+  echo -e "${GREEN}✓ Downloaded encrypted secrets → cached at $bundle${NC}"
+fi
 echo
 
-# ── pull + decrypt + extract ──────────────────────────────────────────────────
-# The bundle (tools/secrets-backup.sh) stores paths relative to / — e.g.
-# etc/gamertown/secrets.env. Extract WITHOUT --strip-components so the tree is
-# preserved under .secrets/, then point GT_SECRETS_FILE at the real path.
-echo -e "${YELLOW}Pulling secrets from R2...${NC}"
-tmp_age="$(mktemp)"; tmp_tar="$(mktemp)"
-trap 'rm -f "$tmp_age" "$tmp_tar"' EXIT   # decrypted tar never lingers
+# ── decrypt + extract ──────────────────────────────────────────────────────────
+# The bundle (tools/secrets-backup.sh) is age scrypt (passphrase) encrypted and
+# stores paths relative to / — e.g. etc/gamertown/secrets.env. age prompts on the
+# controlling terminal (do NOT pipe a passphrase). Extract WITHOUT --strip-components
+# so the tree is preserved. The decrypted tar is removed on exit; the encrypted
+# bundle.age is kept as the retry cache.
+tmp_tar="$(mktemp)"
+trap 'rm -f "$tmp_tar"' EXIT
 
-rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" "$tmp_age" || {
-  echo -e "${RED}✗ Failed to download secrets from R2 — check the credentials and bucket access.${NC}"; exit 1; }
-echo -e "${GREEN}✓ Downloaded encrypted secrets${NC}"
-
-# age prompts on the controlling terminal — do NOT pipe a passphrase to it.
 echo -e "${YELLOW}Decrypting secrets (age will prompt for your passphrase)...${NC}"
-age -d -o "$tmp_tar" "$tmp_age" || {
-  echo -e "${RED}✗ Failed to decrypt secrets (wrong passphrase?)${NC}"; exit 1; }
+age -d -o "$tmp_tar" "$bundle" || {
+  echo -e "${RED}✗ Failed to decrypt — wrong passphrase. Re-run to try again (cached bundle, no re-download).${NC}"; exit 1; }
 echo -e "${GREEN}✓ Decrypted secrets${NC}"
 
 tar -xzf "$tmp_tar" -C "$secrets_dir" || {

@@ -1,9 +1,16 @@
 # Gamertown setup — one-time initialization for a fresh clone (PowerShell version).
-# Installs dependencies (rclone, age), prompts for R2 credentials, pulls the secret
+# Installs dependencies (rclone, age), configures the R2 remote, pulls the secret
 # bundle from R2, decrypts it (age prompts for the passphrase), and prepares the
 # environment for `docker compose up`.
 #
-# Usage: .\tools\setup.ps1   (from the repo root, in PowerShell)
+# The downloaded (still-encrypted) bundle is cached at .secrets\bundle.age, and an
+# existing rclone 'r2' remote is reused — so re-running to retry a bad passphrase
+# goes straight to the prompt with no re-download and no re-entering credentials.
+#
+# Usage:
+#   .\tools\setup.ps1            # normal run (reuses cache + remote if present)
+#   .\tools\setup.ps1 -Fresh     # force re-download + re-enter R2 credentials
+param([switch]$Fresh)
 
 $ErrorActionPreference = "Stop"
 
@@ -107,26 +114,46 @@ if (-not (Install-Rclone)) { exit 1 }
 if (-not (Install-Age))    { exit 1 }
 Write-Host ""
 
-# ── R2 credentials → rclone config ────────────────────────────────────────────
-Write-Status "R2 Credentials"
-$r2_account_id = (Read-Host "R2 Account ID").Trim()
-$r2_access_key = (Read-Host "R2 Access Key ID").Trim()
-$r2_secret_secure = Read-Host -AsSecureString "R2 Secret Access Key"
-$r2_secret_key = ([Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($r2_secret_secure))).Trim()
-Write-Host ""
+# ── secrets directory + bundle cache ──────────────────────────────────────────
+# $PSScriptRoot is tools/ ; the repo root is its parent.
+$repo_root   = Split-Path -Parent $PSScriptRoot
+$secrets_dir = Join-Path $repo_root ".secrets"
+$null = New-Item -ItemType Directory -Force -Path $secrets_dir
+$bundle = Join-Path $secrets_dir "bundle.age"   # cached encrypted download (gitignored)
 
-Write-Status "Configuring rclone..."
-try {
+# ── R2 download (skipped when a cached bundle exists) ─────────────────────────
+if ($Fresh -and (Test-Path $bundle)) { Remove-Item -Force $bundle }
+
+if (Test-Path $bundle) {
+    Write-Success "Using cached bundle: $bundle  (pass -Fresh to re-download)"
+} else {
+    # Configure the rclone r2 remote. Reuse an existing one unless -Fresh; otherwise
+    # prompt. Credentials live ONLY in %APPDATA%\rclone\rclone.conf — never the repo.
     $rclone_config_dir = Join-Path $env:APPDATA "rclone"
     $null = New-Item -ItemType Directory -Force -Path $rclone_config_dir
     $rclone_conf = Join-Path $rclone_config_dir "rclone.conf"
 
-    # For Cloudflare R2, rclone's S3 backend needs the account-scoped ENDPOINT URL.
-    # There is no `account_id` key in the s3 backend — that was the cause of the 403
-    # (requests fell through to AWS). `region = auto` is what R2 expects.
-    $r2_endpoint = "https://$r2_account_id.r2.cloudflarestorage.com"
-    $config = @"
+    $haveRemote = $false
+    if (-not $Fresh -and (Test-Path $rclone_conf)) {
+        $haveRemote = ((& rclone listremotes 2>$null) -contains "r2:")
+    }
+
+    if ($haveRemote) {
+        Write-Success "Reusing existing rclone 'r2' remote  (pass -Fresh to re-enter credentials)"
+    } else {
+        Write-Status "R2 Credentials"
+        $r2_account_id = (Read-Host "R2 Account ID").Trim()
+        $r2_access_key = (Read-Host "R2 Access Key ID").Trim()
+        $r2_secret_secure = Read-Host -AsSecureString "R2 Secret Access Key"
+        $r2_secret_key = ([Runtime.InteropServices.Marshal]::PtrToStringAuto(
+            [Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($r2_secret_secure))).Trim()
+        Write-Host ""
+
+        Write-Status "Configuring rclone..."
+        # For Cloudflare R2, rclone's S3 backend needs the account-scoped ENDPOINT URL.
+        # There is no `account_id` key in the s3 backend (that was the 403 cause).
+        $r2_endpoint = "https://$r2_account_id.r2.cloudflarestorage.com"
+        $config = @"
 [r2]
 type = s3
 provider = Cloudflare
@@ -136,41 +163,33 @@ endpoint = $r2_endpoint
 region = auto
 acl = private
 "@
-    Write-TextNoBom -Path $rclone_conf -Content $config
-    Write-Success "rclone r2 remote configured"
-} catch {
-    Write-Err "Failed to configure rclone: $_"
-    exit 1
+        Write-TextNoBom -Path $rclone_conf -Content $config
+        Write-Success "rclone r2 remote configured"
+    }
+    Write-Host ""
+
+    Write-Status "Downloading secret bundle from R2..."
+    & rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" $bundle
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $bundle)) {
+        if (Test-Path $bundle) { Remove-Item -Force $bundle }
+        Write-Err "Failed to download secrets from R2 - check credentials/bucket access, then re-run with -Fresh."
+        exit 1
+    }
+    Write-Success "Downloaded encrypted secrets -> cached at $bundle"
 }
 Write-Host ""
 
-# ── secrets directory ─────────────────────────────────────────────────────────
-# $PSScriptRoot is tools/ ; the repo root is its parent.
-$repo_root   = Split-Path -Parent $PSScriptRoot
-$secrets_dir = Join-Path $repo_root ".secrets"
-$null = New-Item -ItemType Directory -Force -Path $secrets_dir
-Write-Success "Created secrets directory: $secrets_dir"
-Write-Host ""
-
-# ── pull + decrypt + extract ──────────────────────────────────────────────────
-# The bundle (built by tools/secrets-backup.sh) stores paths relative to / —
-# e.g. etc/gamertown/secrets.env. We extract WITHOUT --strip-components so the
-# tree is preserved under .secrets/, then point GT_SECRETS_FILE at the real path.
-Write-Status "Pulling secrets from R2..."
-$tmp_age = [System.IO.Path]::GetTempFileName()
+# ── decrypt + extract ─────────────────────────────────────────────────────────
+# The bundle (built by tools/secrets-backup.sh) is age scrypt (passphrase) encrypted
+# and stores paths relative to / — e.g. etc/gamertown/secrets.env. age opens the
+# console for the passphrase prompt; do NOT pipe one to it (age reads the terminal,
+# not stdin). Extract WITHOUT --strip-components so the tree is preserved.
 $tmp_tar = [System.IO.Path]::GetTempFileName()
 $ok = $false
 try {
-    & rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" $tmp_age
-    if ($LASTEXITCODE -ne 0) { throw "Failed to download secrets from R2 - check the credentials and that the token can read the gamertown-backups bucket." }
-    Write-Success "Downloaded encrypted secrets"
-
-    # age opens the console directly for the passphrase prompt — do NOT pipe or
-    # redirect it. (Piping a passphrase to age's stdin does not work; age reads
-    # the controlling terminal.)
     Write-Status "Decrypting secrets (age will prompt for your passphrase)..."
-    & age -d -o $tmp_tar $tmp_age
-    if ($LASTEXITCODE -ne 0) { throw "Failed to decrypt secrets (wrong passphrase?)." }
+    & age -d -o $tmp_tar $bundle
+    if ($LASTEXITCODE -ne 0) { throw "Failed to decrypt secrets - wrong passphrase. Re-run to try again (the cached bundle means no re-download)." }
     Write-Success "Decrypted secrets"
 
     Write-Status "Extracting secrets..."
@@ -182,9 +201,9 @@ try {
 } catch {
     Write-Err $_
 } finally {
-    # finally always runs (incl. normal completion), so the DECRYPTED tar never
-    # lingers in %TEMP%.
-    Remove-Item -Force -ErrorAction SilentlyContinue $tmp_age, $tmp_tar
+    # The DECRYPTED tar never lingers (finally always runs). The still-ENCRYPTED
+    # bundle.age is intentionally kept as the retry cache.
+    Remove-Item -Force -ErrorAction SilentlyContinue $tmp_tar
 }
 if (-not $ok) { exit 1 }
 Write-Host ""

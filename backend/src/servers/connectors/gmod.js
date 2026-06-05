@@ -44,10 +44,37 @@ import { badSetting, MAP_NAME_RE } from '../errors.js';
 // workshop collection — the safe floor for defaults + the boot-map guard.
 const STOCK_ALWAYS = ['gm_construct', 'gm_flatgrass'];
 
+// Live (RCON) curated actions. These are generic Source-engine toggles that work
+// in ANY GMOD gamemode, so TTT gets the SAME runtime buttons Prop Hunt offers
+// (the X2Z-mod-specific Next Round / Map Vote / Apply Config in PH have no stock
+// TTT equivalent, so they're intentionally left out). The live change-map control
+// is rendered separately (changeMap: true below).
 const GMOD_LIVE_ACTIONS = [
-  { key: 'players', label: 'List Players' },
+  { key: 'lowgrav_on',   label: 'Low Gravity On' },
+  { key: 'lowgrav_off',  label: 'Low Gravity Off' },
+  { key: 'speed_on',     label: 'Speed Boost On' },
+  { key: 'speed_off',    label: 'Speed Boost Off' },
+  { key: 'bhop_on',      label: 'Bunnyhop On' },
+  { key: 'bhop_off',     label: 'Bunnyhop Off' },
+  { key: 'slowmo_on',    label: 'Slow-Mo On' },
+  { key: 'slowmo_off',   label: 'Slow-Mo Off' },
+  { key: 'cheats_on',    label: 'Cheats On' },
+  { key: 'cheats_off',   label: 'Cheats Off' },
+  { key: 'players',      label: 'List Players' },
 ];
-const GMOD_ACTION_CMDS = { players: 'status' };
+const GMOD_ACTION_CMDS = {
+  lowgrav_on:   'sv_gravity 200',
+  lowgrav_off:  'sv_gravity 600',
+  speed_on:     'sv_cheats 1; hl2_normspeed 320; hl2_sprintspeed 480',
+  speed_off:    'hl2_normspeed 190; hl2_sprintspeed 320',
+  bhop_on:      'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_airaccelerate 1000',
+  bhop_off:     'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_airaccelerate 12',
+  slowmo_on:    'sv_cheats 1; host_timescale 0.5',
+  slowmo_off:   'host_timescale 1',
+  cheats_on:    'sv_cheats 1',
+  cheats_off:   'sv_cheats 0',
+  players:      'status',
+};
 
 // TTT cvar field specs (key in server.cfg, UI label, numeric bounds). pct fields
 // are 0..1 fractions; the rest are integers. Kept as data so getSettings builds

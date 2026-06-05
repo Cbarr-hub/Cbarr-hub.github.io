@@ -20,4 +20,15 @@ export class DockerBaseConnector extends BaseConnector {
   // base (VM) default distinguishes "VM up" from "game process up"; for a
   // single-purpose game container there's no such gap.)
   async gameRunning() { return true; }
+
+  // …and because the container IS the game, "the game" lifecycle is just
+  // container power: start/stop/restart the game == start/stop/restart the
+  // container. So alias the game-service actions onto container power instead of
+  // letting the base throw BAD_ACTION ("restartGame not implemented") — that way
+  // any client that asks to restart/stop/start "the game" gets the sensible
+  // result for a single-purpose container. (GMOD/Prop Hunt do the same via
+  // dockerizeGmod, since their chain is the VM LinuxGSM connector, not this base.)
+  async startGame()   { await this.start();    return { ok: true, action: 'startGame' }; }
+  async stopGame()    { await this.shutdown(); return { ok: true, action: 'stopGame' }; }
+  async restartGame() { await this.reboot();   return { ok: true, action: 'restartGame' }; }
 }

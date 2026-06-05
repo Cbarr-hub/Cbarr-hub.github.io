@@ -10,9 +10,13 @@ panel** — built on **Fastify + SQLite + Caddy** and deployed as a Docker stack
 [`backend/README.md`](backend/README.md) (backend API) ·
 [`GAMERTOWN_DESIGN_PLAN.md`](GAMERTOWN_DESIGN_PLAN.md) (frontend design system).
 
-**Run it locally:** `tools/setup.ps1` (Windows) or `tools/setup.sh` (macOS/Linux) pulls
-the secret bundle from R2, decrypts it, and writes `.env.local`; then
-`docker compose --env-file .env.local up --build`. Full walkthrough →
+**Run it locally (dev):** from a fresh clone, three commands stand up the full stack
+with a working login —
+`tools/setup.ps1` (pull + decrypt secrets from R2),
+`tools/dev.ps1` (build + start app + Caddy + docker-proxy + 5 game servers, localhost
+self-signed + live reload), then
+`tools/db-restore.ps1` (restore the app DB so users exist) — then open
+`https://localhost`. macOS/Linux use the `.sh` equivalents. Full walkthrough →
 [`SETUP_LOCAL.md`](SETUP_LOCAL.md).
 
 Everything below is the project's (deliberately absurdist) **design philosophy** — kept

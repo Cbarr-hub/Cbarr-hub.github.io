@@ -2,6 +2,27 @@
 
 This guide walks through setting up Gamertown locally on your machine for parallel development.
 
+## Quickstart (dev, full stack)
+
+From a fresh clone, three commands stand up the whole stack **and a working login**:
+
+```powershell
+.\tools\setup.ps1        # 1. pull + decrypt secrets from R2 -> .env.local (age prompts for the passphrase)
+.\tools\dev.ps1          # 2. build + start the full stack (app, Caddy, docker-proxy, 5 game servers)
+.\tools\db-restore.ps1   # 3. restore the app DB from R2 (users) so you can log in
+```
+
+Then open **https://localhost** (accept the self-signed cert) and sign in.
+
+> **Why three steps:** `setup.ps1` restores **secrets** only. The app **database** is a
+> separate R2 backup, so without step 3 the DB is empty (no users) and login fails. The
+> app, login, Minecraft and Factorio are usable within minutes; CS2/GMOD/Prop Hunt
+> download their game files on first boot (CS2 is ~30GB).
+
+macOS/Linux equivalents: `tools/setup.sh`, `tools/dev.sh`, and `tools/db-restore.sh`
+(see [Database restore](#database-restore-required-for-login)). The rest of this guide
+explains each step and the other run modes.
+
 ## Prerequisites
 
 1. **Docker Desktop** (Windows/Mac) or Docker Engine (Linux)
@@ -192,6 +213,34 @@ Notes:
   minutes; GMOD/Prop Hunt build the shared `gamertown-gmod` image on first run.
 - `SKIP_CSS=1` (from the bundle) skips GMOD's ~3GB CS:S pull; set `$env:SKIP_CSS = "1"`
   to force it if your env differs.
+
+### Database restore (required for login)
+
+`setup.ps1` restores **secrets**, not the app **database** — so a fresh stack boots with
+an empty DB and **no users**, and login fails. The DB is a separate R2 backup under the
+`app/` path. With the stack up (so the `gt-data` volume exists), pull the newest snapshot
+into it:
+
+```powershell
+.\tools\db-restore.ps1                                          # newest snapshot, auto-detects the volume
+.\tools\db-restore.ps1 -Name gamertown_YYYYMMDD_HHMMSS.sqlite   # a specific snapshot
+```
+
+It stops the app, drops the snapshot into the `gt-data` volume (clearing stale WAL/SHM),
+chowns it to the app uid, and restarts the app. Verify the users landed:
+
+```powershell
+docker exec <project>-app-1 node src/cli.js list-users
+```
+
+macOS/Linux: stop the app, then `GT_DATA_VOLUME=<project>_gt-data tools/db-restore.sh`,
+then start it. (`<project>` is the compose project name — the lowercased repo dir, e.g.
+`cbarr-hubgithubio`.)
+
+Need a brand-new account instead of a restore? Create one interactively:
+```bash
+docker exec -it <project>-app-1 node src/cli.js create-admin
+```
 
 ## Linux notes (verified in a Debian container)
 

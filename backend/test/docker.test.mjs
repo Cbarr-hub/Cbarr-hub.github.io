@@ -4,6 +4,9 @@ import test from 'node:test';
 import { DockerClient } from '../src/docker/client.js';
 import { DockerBaseConnector } from '../src/servers/connectors/docker-base.js';
 import { DockerMinecraftConnector } from '../src/servers/connectors/docker/minecraft.js';
+import { DockerFactorioConnector } from '../src/servers/connectors/docker/factorio.js';
+import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/counterstrike.js';
+import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
 import { buildConnectors } from '../src/servers/connectors/index.js';
 
 // ── a fake fetch that records calls and returns canned Engine responses ─────────
@@ -191,4 +194,38 @@ test('buildConnectors builds every docker-backed entry, and skips when no client
   // No docker client → every entry is skipped (nothing to build).
   const none = buildConnectors({ docker: null });
   assert.equal(none.size, 0);
+});
+
+// ── action surface the control panel relies on (container == game) ──────────────
+// The panel collapsed the old Game-Service / Virtual-Machine split into one
+// container-power model (Start/Restart/Stop). Codify what Docker connectors
+// actually support: the non-LinuxGSM images have no in-VM game service, no
+// in-panel updater, and no panel backups; GMOD aliases game-service → container.
+test('non-LinuxGSM Docker connectors: container IS the game (no game-service / updater / panel backup)', async () => {
+  const FX = { id: 'factorio', name: 'Factorio', backend: 'docker', container: 'factorio', port: 34197 };
+  const CS = { id: 'counterstrike', name: 'CS', backend: 'docker', container: 'counterstrike', port: 27015 };
+  const conns = [
+    new DockerMinecraftConnector(MC_DOCKER, fakeDockerClient()),
+    new DockerFactorioConnector(FX, fakeDockerClient()),
+    new DockerCounterStrikeConnector(CS, fakeDockerClient()),
+  ];
+  for (const conn of conns) {
+    for (const act of ['startGame', 'stopGame', 'restartGame']) {
+      await assert.rejects(async () => conn[act](), (e) => e.code === 'BAD_ACTION');
+    }
+    await assert.rejects(async () => conn.update(), (e) => e.code === 'NO_UPDATE_RECIPE');
+    assert.throws(() => conn.listBackups(), (e) => e.code === 'NOT_SUPPORTED');
+  }
+});
+
+test('DockerGmod maps the game-service actions onto container power', async () => {
+  const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
+  const calls = [];
+  const client = fakeDockerClient();
+  client.start = () => { calls.push('start'); return Promise.resolve(); };
+  client.shutdown = () => { calls.push('shutdown'); return Promise.resolve(); };
+  client.reboot = () => { calls.push('reboot'); return Promise.resolve(); };
+  const conn = new DockerGmodConnector(GMOD, client);
+  await conn.startGame(); await conn.stopGame(); await conn.restartGame();
+  assert.deepEqual(calls, ['start', 'shutdown', 'reboot']);
 });

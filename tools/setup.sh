@@ -81,10 +81,24 @@ else
     echo -e "${GREEN}✓ Reusing existing rclone 'r2' remote  (pass --fresh to re-enter credentials)${NC}"
   else
     echo -e "${YELLOW}R2 Credentials${NC}"
-    read -rp  "R2 Account ID: "        r2_account_id
-    read -rp  "R2 Access Key ID: "     r2_access_key
+    # Account ID + Access Key ID are 32 hex chars; the Secret is 64. Validating up
+    # front catches typos (e.g. a dropped leading char) that otherwise only surface
+    # later as a TLS handshake failure against a bogus endpoint.
+    while :; do
+      read -rp "R2 Account ID: " r2_account_id
+      [[ "$r2_account_id" =~ ^[0-9a-fA-F]{32}$ ]] && break
+      echo "  Expected 32 hex chars (the part before .r2.cloudflarestorage.com); got ${#r2_account_id}. Try again." >&2
+    done
+    while :; do
+      read -rp "R2 Access Key ID: " r2_access_key
+      [[ "$r2_access_key" =~ ^[0-9a-fA-F]{32}$ ]] && break
+      echo "  Expected 32 hex chars; got ${#r2_access_key}. Try again." >&2
+    done
     read -rsp "R2 Secret Access Key: " r2_secret_key
     echo; echo
+    if [[ ! "$r2_secret_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
+      echo "  Warning: Secret Access Key is usually 64 hex chars; got ${#r2_secret_key}. If the download fails, re-run with --fresh." >&2
+    fi
     # For Cloudflare R2, rclone's S3 backend needs the account-scoped ENDPOINT URL.
     # There is no `account_id` key in the s3 backend — omitting the endpoint sends
     # requests to AWS (the 403). `region = auto` is what R2 expects.

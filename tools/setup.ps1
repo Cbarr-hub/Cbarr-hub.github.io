@@ -142,11 +142,30 @@ if (Test-Path $bundle) {
         Write-Success "Reusing existing rclone 'r2' remote  (pass -Fresh to re-enter credentials)"
     } else {
         Write-Status "R2 Credentials"
-        $r2_account_id = (Read-Host "R2 Account ID").Trim()
-        $r2_access_key = (Read-Host "R2 Access Key ID").Trim()
+        # Account ID + Access Key ID are 32 hex chars; the Secret is 64. Validating up
+        # front catches the easy typos (e.g. a dropped leading char), which otherwise
+        # only surface later as a TLS handshake failure against a bogus endpoint.
+        do {
+            $r2_account_id = (Read-Host "R2 Account ID").Trim()
+            if ($r2_account_id -notmatch '^[0-9a-fA-F]{32}$') {
+                Write-Host ("  Expected 32 hex chars (the part before .r2.cloudflarestorage.com); got " + $r2_account_id.Length + ". Try again.") -ForegroundColor Yellow
+            }
+        } while ($r2_account_id -notmatch '^[0-9a-fA-F]{32}$')
+
+        do {
+            $r2_access_key = (Read-Host "R2 Access Key ID").Trim()
+            if ($r2_access_key -notmatch '^[0-9a-fA-F]{32}$') {
+                Write-Host ("  Expected 32 hex chars; got " + $r2_access_key.Length + ". Try again.") -ForegroundColor Yellow
+            }
+        } while ($r2_access_key -notmatch '^[0-9a-fA-F]{32}$')
+
         $r2_secret_secure = Read-Host -AsSecureString "R2 Secret Access Key"
         $r2_secret_key = ([Runtime.InteropServices.Marshal]::PtrToStringAuto(
             [Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($r2_secret_secure))).Trim()
+        # Soft check (input is hidden, so warn rather than re-prompt): R2 secrets are 64 hex.
+        if ($r2_secret_key -notmatch '^[0-9a-fA-F]{64}$') {
+            Write-Host ("  Warning: Secret Access Key is usually 64 hex chars; got " + $r2_secret_key.Length + ". If the download fails, re-run with -Fresh.") -ForegroundColor Yellow
+        }
         Write-Host ""
 
         Write-Status "Configuring rclone..."

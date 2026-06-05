@@ -1,6 +1,6 @@
 // DockerBaseConnector — BaseConnector for servers whose backend is a container.
 //
-// The ONLY structural difference from a Proxmox connector is the locator: a
+// The ONLY structural difference from a VM connector is the locator: a
 // container name instead of a VMID. Because DockerClient duck-types the transport
 // surface BaseConnector consumes, everything else (status, power, exec, config
 // read/write, profiles) is inherited unchanged — `this.client` is just a
@@ -17,7 +17,7 @@ export class DockerBaseConnector extends BaseConnector {
   get vmid() { return this.server.container; }
 
   // The container IS the game: if it's running, the server is hosting. (The
-  // Proxmox default distinguishes "VM up" from "game process up"; for a
+  // base (VM) default distinguishes "VM up" from "game process up"; for a
   // single-purpose game container there's no such gap.)
   async gameRunning() { return true; }
 }

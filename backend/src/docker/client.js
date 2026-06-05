@@ -1,14 +1,14 @@
-// Pure transport layer for the Docker Engine API — the Docker sibling of
-// ProxmoxClient (../proxmox/client.js).
+// Pure transport layer for the Docker Engine API.
 //
-// It deliberately DUCK-TYPES the small ProxmoxClient surface that BaseConnector
+// It deliberately DUCK-TYPES the small transport surface that BaseConnector
 // consumes (statusCurrent / start / stop / shutdown / reboot / agentExec /
 // agentExecStatus / agentFileRead / agentFileWrite) and returns the SAME payload
-// shapes, so every connector, profile, config and RCON path works unchanged with
-// a container locator in the `vmid` argument position.
+// shapes (a qemu-status-shaped status object), so every connector, profile,
+// config and RCON path works unchanged with a container locator in the `vmid`
+// argument position.
 //
-// Like ProxmoxClient it knows nothing about games or Fastify, takes an injectable
-// `fetchImpl` for tests, and reaches the engine over the scoped socket-proxy
+// It knows nothing about games or Fastify, takes an injectable `fetchImpl` for
+// tests, and reaches the engine over the scoped socket-proxy
 // (DOCKER_HOST=tcp://docker-proxy:2375) — never the raw /var/run/docker.sock.
 
 import { Agent } from 'undici';
@@ -91,7 +91,7 @@ export class DockerClient {
   }
 
   // ── status ──────────────────────────────────────────────────────────────────
-  // Returns the Proxmox-qemu-shaped payload normalizeStatus() expects:
+  // Returns the qemu-shaped payload normalizeStatus() expects:
   //   { status: 'running'|'stopped', uptime, cpu, mem, maxmem }
   async statusCurrent(container) {
     const info = await this.#request('GET', this.#c(container, '/json'));
@@ -116,11 +116,11 @@ export class DockerClient {
   // ── power ───────────────────────────────────────────────────────────────────
   start(container)    { return this.#request('POST', this.#c(container, '/start')); }
   shutdown(container) { return this.#request('POST', this.#c(container, '/stop')); }    // graceful (SIGTERM→SIGKILL)
-  stop(container)     { return this.#request('POST', this.#c(container, '/kill')); }    // hard (SIGKILL) — matches PVE stop
+  stop(container)     { return this.#request('POST', this.#c(container, '/kill')); }    // hard (SIGKILL) — force off
   reboot(container)   { return this.#request('POST', this.#c(container, '/restart')); }
 
   // ── host/engine info (container dashboard) ──────────────────────────────────
-  // Docker has no Proxmox-node equivalent; /info gives static host facts (engine,
+  // Docker has no single "node status" equivalent; /info gives static host facts (engine,
   // OS, core count, total RAM, container counts) — no live host CPU%. The service
   // pairs this with the per-container stats the UI already pulls from /api/servers.
   async nodeStatus() {
@@ -240,7 +240,7 @@ function secondsSince(iso) {
 }
 
 // CPU as a 0..1 fraction from a stats sample (delta vs the previous sample),
-// matching Proxmox's cpu field. Returns null when it can't be computed.
+// matching the qemu cpu field. Returns null when it can't be computed.
 function cpuFraction(s) {
   const cpuDelta = (s?.cpu_stats?.cpu_usage?.total_usage ?? 0) - (s?.precpu_stats?.cpu_usage?.total_usage ?? 0);
   const sysDelta = (s?.cpu_stats?.system_cpu_usage ?? 0) - (s?.precpu_stats?.system_cpu_usage ?? 0);

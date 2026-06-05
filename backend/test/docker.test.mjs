@@ -38,7 +38,7 @@ function fakeFetch(routes) {
   return { fetchImpl, calls };
 }
 
-// ── DockerClient: status maps inspect (+stats) to the Proxmox shape ─────────────
+// ── DockerClient: status maps inspect (+stats) to the normalizeStatus shape ─────
 test('DockerClient.statusCurrent maps a running container to normalizeStatus shape', async () => {
   const startedAt = new Date(Date.now() - 60_000).toISOString();
   const { fetchImpl } = fakeFetch([
@@ -181,13 +181,14 @@ test('DockerMinecraftConnector.getLive is unavailable without an RCON password',
 });
 
 // ── factory wiring: backend selection ───────────────────────────────────────────
-test('buildConnectors skips a backend with no client, and picks the docker class', () => {
-  // Only a docker client → all proxmox-backed registry entries are skipped.
+test('buildConnectors builds every docker-backed entry, and skips when no client', () => {
   const docker = fakeDockerClient();
-  const onlyDocker = buildConnectors({ proxmox: null, docker });
-  assert.equal(onlyDocker.size, 0); // every default registry entry is proxmox-backed
+  // A docker client → all five (docker-backed) registry entries build.
+  const built = buildConnectors({ docker });
+  assert.equal(built.size, 5);
+  assert.ok(built.get('minecraft') instanceof DockerMinecraftConnector);
 
-  // Only a proxmox client → the 5 proxmox entries build, none crash.
-  const proxmoxOnly = buildConnectors({ proxmox: {}, docker: null });
-  assert.equal(proxmoxOnly.size, 5);
+  // No docker client → every entry is skipped (nothing to build).
+  const none = buildConnectors({ docker: null });
+  assert.equal(none.size, 0);
 });

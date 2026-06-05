@@ -110,13 +110,13 @@ test('config names are unique per server', () => {
 // ── wiring ───────────────────────────────────────────────────────────────────────
 test('buildConnectors injects the store into every connector', () => {
   const store = createServerStore(testDb());
-  const connectors = buildConnectors({ proxmox: /* client */ {} }, store);
+  const connectors = buildConnectors({ docker: /* client */ {} }, store);
   for (const c of connectors.values()) {
     assert.equal(c.store, store);
   }
 });
 
 test('buildConnectors tolerates a null store (no DB wired)', () => {
-  const connectors = buildConnectors({ proxmox: {} }, null);
+  const connectors = buildConnectors({ docker: {} }, null);
   assert.equal(connectors.get('counterstrike').store, null);
 });

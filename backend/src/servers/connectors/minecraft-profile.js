@@ -1,4 +1,4 @@
-// Pure server.properties profile logic, shared by the Proxmox (VM) and Docker
+// Pure server.properties profile logic, shared by the base (VM) and Docker
 // Minecraft connectors. Everything here is transport-agnostic: it operates on the
 // server.properties TEXT, so each connector just supplies read/write of that file
 // (via the guest agent on a VM, or `cat`/`tee` in a container).

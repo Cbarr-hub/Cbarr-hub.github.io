@@ -22,7 +22,7 @@ function testDb() {
   return db;
 }
 
-// Fake ProxmoxClient: an in-memory file map for agentFileRead/Write, plus a
+// Fake transport client: an in-memory file map for agentFileRead/Write, plus a
 // benign-success agentExec so runShell calls (e.g. CS's `mkdir`) work. Map-listing
 // helpers that grep see empty stdout → [] (no live box in tests).
 function fakeClient(files = {}) {

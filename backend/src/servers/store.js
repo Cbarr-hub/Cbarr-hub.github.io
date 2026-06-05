@@ -1,7 +1,7 @@
 // Persistence for the game-server control panel: the Steam Workshop map catalog
 // and the reusable game-state config library.
 //
-// Pure DB access over better-sqlite3 — no Fastify, no Proxmox, no game knowledge.
+// Pure DB access over better-sqlite3 — no Fastify, no transport, no game knowledge.
 // One store is created per app from the shared DB and injected into the
 // connectors (servers/service.js → connectors). Connectors call these methods;
 // the store never touches a VM. All ids are scoped by `serverId` (the registry

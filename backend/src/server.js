@@ -7,7 +7,6 @@ import { loadEnv } from './env.js';
 import { openDb, runMigrations, purgeExpiredSessions } from './db.js';
 import { loadOrCreateSessionKey, SESSION_TTL_SECONDS } from './session.js';
 import { attachSession } from './middleware/auth.js';
-import { ProxmoxClient } from './proxmox/client.js';
 import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
 
@@ -59,28 +58,16 @@ export async function buildApp(env = loadEnv()) {
 
   attachSession(app);
 
-  // Game-server control: build a Proxmox client only if a token is configured,
-  // otherwise pass null so /api/servers degrades to 503 instead of crashing.
-  const proxmox = env.PVE_API_URL && env.PVE_TOKEN_ID && env.PVE_TOKEN_SECRET
-    ? new ProxmoxClient({
-        apiUrl: env.PVE_API_URL,
-        node: env.PVE_NODE,
-        tokenId: env.PVE_TOKEN_ID,
-        tokenSecret: env.PVE_TOKEN_SECRET,
-        rejectUnauthorized: env.PVE_TLS_REJECT_UNAUTHORIZED,
-      })
-    : null;
-  if (!proxmox) app.log.warn('PVE token not configured — Proxmox-backed servers will be unavailable');
-
-  // Docker control: build a client only when DOCKER_HOST is set, otherwise pass
-  // null so docker-backed servers are simply skipped (same degrade as PVE).
+  // Game-server control: build a Docker client only when DOCKER_HOST is set,
+  // otherwise pass null so /api/servers degrades to 503 ("not configured")
+  // instead of crashing the backend.
   const docker = env.DOCKER_HOST
     ? new DockerClient({ host: env.DOCKER_HOST, apiVersion: env.DOCKER_API_VERSION || undefined })
     : null;
-  if (!docker) app.log.warn('DOCKER_HOST not configured — Docker-backed servers will be unavailable');
+  if (!docker) app.log.warn('DOCKER_HOST not configured — game-server control will be unavailable');
 
   app.decorate('serverService', createServerService({
-    client: proxmox, dockerClient: docker, publicHost: env.PUBLIC_HOST, db,
+    dockerClient: docker, publicHost: env.PUBLIC_HOST, db,
   }));
 
   app.get('/api/health', async () => ({ ok: true }));

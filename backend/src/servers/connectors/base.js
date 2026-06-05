@@ -1,6 +1,6 @@
 // BaseConnector: the generic capabilities every game server shares.
 //
-// A connector wraps one registry entry + the shared ProxmoxClient and exposes a
+// A connector wraps one registry entry + the shared transport client and exposes a
 // game-agnostic interface: status, power actions, guarded in-VM command
 // execution, and whitelisted config read/write. Game-specific connectors extend
 // this class to declare their config-file whitelist and `update()` recipe — all
@@ -10,8 +10,8 @@ import { badSetting, notFound, notSupported, duplicateError } from '../errors.js
 
 export class BaseConnector {
   /**
-   * @param {object} server  registry entry { id, name, vmid }
-   * @param {import('../../proxmox/client.js').ProxmoxClient} client
+   * @param {object} server  registry entry { id, name, container }
+   * @param {import('../../docker/client.js').DockerClient} client
    * @param {import('../store.js').createServerStore|null} [store]
    *        persisted catalog/config store; null when no DB is wired (e.g. tests).
    */
@@ -298,7 +298,7 @@ function validProfileName(name) {
   return nm;
 }
 
-// Map Proxmox's qemu status payload to our normalized shape.
+// Map the qemu/container status payload to our normalized shape.
 export function normalizeStatus(data) {
   const qmpStatus = data?.status ?? 'unknown'; // 'running' | 'stopped'
   return {

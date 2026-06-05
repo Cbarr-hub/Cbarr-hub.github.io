@@ -1,11 +1,10 @@
-// Single source of truth mapping a logical game-server id to its Proxmox VMID.
+// Single source of truth mapping a logical game-server id to its container.
 //
-// VMIDs MUST only ever come from this table — never from a request parameter.
-// The HTTP layer accepts an opaque `id` ("factorio"), looks it up here, and the
-// VMID never crosses the API boundary. That guarantees the control panel can
-// only ever touch these four VMs, no matter what a client sends.
-//
-// VMIDs are from INFRA.md: CS=100, Factorio=101, Minecraft=102, GMOD/TTT=104.
+// The locator (container name) MUST only ever come from this table — never from
+// a request parameter. The HTTP layer accepts an opaque `id` ("factorio"), looks
+// it up here, and the locator never crosses the API boundary. That guarantees the
+// control panel can only ever touch these five servers, no matter what a client
+// sends.
 //
 // `port` is the game's public (port-forwarded) port; `connect` picks how the
 // join string is rendered — 'cs' yields the in-console `connect host:port`
@@ -23,16 +22,10 @@
 // entry and the panel shows copy-only for it.
 // Array order drives the panel's tab order + Quick Connect list (Minecraft is
 // kept last for a cleaner layout). VMIDs stay bound to ids regardless of order.
-// `backend` selects the transport: 'proxmox' (locator = `vmid`) or 'docker'
-// (locator = `container`). It defaults to 'proxmox' when omitted. A server whose
-// backend client isn't configured is simply skipped, so a host can run a subset.
-//
-// To migrate a server from a VM to a container, flip its entry — e.g. once the
-// Minecraft container (servers.compose.yml) is validated, change minecraft to:
-//   { id:'minecraft', name:'Minecraft', backend:'docker', container:'minecraft',
-//     connector:'minecraft', port:25565, connect:'address' }
-// (optional `rconPort` overrides the itzg default 25575). Keep the VM powered off
-// as rollback; flipping back is the same one-line change.
+// `backend` selects the transport; all entries are 'docker' (locator = the
+// `container` name) and it defaults to 'docker'. A server whose backend client
+// isn't configured is simply skipped, so a host can run a subset. (An optional
+// `rconPort` overrides a game image's default RCON port, e.g. itzg's 25575.)
 export const SERVERS = [
   { id: 'counterstrike', name: 'Counter-Strike',     backend: 'docker', container: 'counterstrike', connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
   { id: 'factorio',      name: 'Factorio',           backend: 'docker', container: 'factorio', connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },

@@ -27,9 +27,23 @@ function Write-TextNoBom {
     [System.IO.File]::WriteAllText($Path, $Content, $enc)
 }
 
+# Re-read PATH from the registry into this process. A tool installed by winget/choco
+# during this session (or a previous one) lands on the *persisted* PATH, but the
+# current shell's $env:Path is a stale snapshot — so a fresh install isn't visible
+# until we refresh. Also include winget's shim dir explicitly.
+function Update-EnvPath {
+    $machine = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $user    = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $winget  = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"
+    $env:Path = (@($machine, $user, $winget) | Where-Object { $_ }) -join ';'
+}
+
 Write-Host "=== Gamertown Setup ===" -ForegroundColor Green
 Write-Host "This will install dependencies and configure your local environment to pull secrets from R2."
 Write-Host ""
+
+# Pick up anything installed in a prior shell before we check for it.
+Update-EnvPath
 
 # ── dependency install ────────────────────────────────────────────────────────
 function Install-Rclone {
@@ -37,24 +51,28 @@ function Install-Rclone {
     if (Test-Command rclone) { Write-Success "rclone already installed"; return $true }
 
     Write-Status "rclone not found. Attempting to install..."
+    # Pipe installer output to Out-Null: native stdout would otherwise become part
+    # of this function's return value, breaking the boolean check at the call site.
+    # Success is judged by Test-Command after a PATH refresh, not by exit code
+    # (winget's codes for already-installed/no-op are inconsistent).
     if (Test-Command winget) {
         Write-Status "Installing via winget..."
-        & winget install Rclone.Rclone -e --silent --accept-source-agreements --accept-package-agreements
-        if ($LASTEXITCODE -eq 0 -and (Test-Command rclone)) { Write-Success "rclone installed via winget"; return $true }
-        Write-Host "  winget install did not complete; trying Chocolatey..." -ForegroundColor Gray
+        & winget install Rclone.Rclone -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
+        Update-EnvPath
+        if (Test-Command rclone) { Write-Success "rclone installed via winget"; return $true }
+        Write-Host "  winget did not put rclone on PATH; trying Chocolatey..." -ForegroundColor Gray
     }
     if (Test-Command choco) {
         Write-Status "Installing via Chocolatey..."
-        & choco install rclone -y
-        if ($LASTEXITCODE -eq 0 -and (Test-Command rclone)) { Write-Success "rclone installed"; return $true }
+        & choco install rclone -y | Out-Null
+        Update-EnvPath
+        if (Test-Command rclone) { Write-Success "rclone installed"; return $true }
     }
 
     Write-Host ""
-    Write-Err "Could not auto-install rclone. Please install manually:"
-    Write-Host "  Option 1: winget install Rclone.Rclone"
-    Write-Host "  Option 2: https://rclone.org/install/"
-    Write-Host ""
-    Write-Host "If you just installed it, restart your shell so PATH refreshes, then re-run."
+    Write-Err "Could not auto-install rclone (or it isn't on PATH)."
+    Write-Host "  Try: winget install Rclone.Rclone   then open a NEW PowerShell and re-run."
+    Write-Host "  Or download: https://rclone.org/install/"
     return $false
 }
 
@@ -63,24 +81,25 @@ function Install-Age {
     if (Test-Command age) { Write-Success "age already installed"; return $true }
 
     Write-Status "age not found. Attempting to install..."
+    # See Install-Rclone for why output is suppressed and success is by Test-Command.
     if (Test-Command winget) {
         Write-Status "Installing via winget..."
-        & winget install FiloSottile.age -e --silent --accept-source-agreements --accept-package-agreements
-        if ($LASTEXITCODE -eq 0 -and (Test-Command age)) { Write-Success "age installed via winget"; return $true }
-        Write-Host "  winget install did not complete; trying Chocolatey..." -ForegroundColor Gray
+        & winget install FiloSottile.age -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
+        Update-EnvPath
+        if (Test-Command age) { Write-Success "age installed via winget"; return $true }
+        Write-Host "  winget did not put age on PATH; trying Chocolatey..." -ForegroundColor Gray
     }
     if (Test-Command choco) {
         Write-Status "Installing via Chocolatey..."
-        & choco install age -y
-        if ($LASTEXITCODE -eq 0 -and (Test-Command age)) { Write-Success "age installed"; return $true }
+        & choco install age -y | Out-Null
+        Update-EnvPath
+        if (Test-Command age) { Write-Success "age installed"; return $true }
     }
 
     Write-Host ""
-    Write-Err "Could not auto-install age. Please install manually:"
-    Write-Host "  Option 1: winget install FiloSottile.age"
-    Write-Host "  Option 2: https://github.com/FiloSottile/age/releases"
-    Write-Host ""
-    Write-Host "If you just installed it, restart your shell so PATH refreshes, then re-run."
+    Write-Err "Could not auto-install age (or it isn't on PATH)."
+    Write-Host "  Try: winget install FiloSottile.age   then open a NEW PowerShell and re-run."
+    Write-Host "  Or download: https://github.com/FiloSottile/age/releases"
     return $false
 }
 

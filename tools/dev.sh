@@ -30,12 +30,26 @@ done
 
 # Default action when no args given.
 if [ "$#" -eq 0 ]; then set -- up -d --build; fi
+args=("$@")
 
-exec docker compose \
+docker compose \
   --project-directory "$REPO_ROOT" \
   --env-file "$secrets" --env-file "$projenv" --env-file "$envlocal" \
   -f "$REPO_ROOT/docker-compose.yml" \
   -f "$REPO_ROOT/servers.compose.yml" \
   -f "$REPO_ROOT/mc-mem.override.yml" \
   -f "$REPO_ROOT/docker-compose.dev.yml" \
-  "$@"
+  "${args[@]}"
+code=$?
+
+# After a successful `up`, point the user at the local site.
+if [ "$code" -eq 0 ]; then
+  for a in "${args[@]}"; do
+    if [ "$a" = "up" ]; then
+      printf '\n  Gamertown (dev) is up -> https://localhost\n'
+      printf '  (accept the self-signed cert; logs: tools/dev.sh logs -f app)\n'
+      break
+    fi
+  done
+fi
+exit "$code"

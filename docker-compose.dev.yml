@@ -13,6 +13,9 @@
 #     rebuild. nodemon uses --legacy-watch (polling) because inotify events don't
 #     cross Docker Desktop bind mounts on Windows/macOS.
 #   - The app port is published to localhost for direct (non-TLS) API access.
+#   - PUBLIC_HOST=127.0.0.1 so the panel's game-server join strings point at this
+#     machine (e.g. `connect 127.0.0.1:27066`) instead of the production public IP
+#     (env.js defaults PUBLIC_HOST to 104.177.95.216 for the keeper).
 
 services:
   app:
@@ -21,6 +24,7 @@ services:
       target: dev
     environment:
       NODE_ENV: development
+      PUBLIC_HOST: 127.0.0.1   # join strings reference localhost in dev, not prod
     volumes:
       - ./backend/src:/app/src:ro   # live source; node_modules stay baked in the image
     ports:

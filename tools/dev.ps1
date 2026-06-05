@@ -45,4 +45,13 @@ if (-not $composeArgs -or $composeArgs.Count -eq 0) { $composeArgs = @('up', '-d
     -f (Join-Path $repo 'mc-mem.override.yml') `
     -f (Join-Path $repo 'docker-compose.dev.yml') `
     @composeArgs
-exit $LASTEXITCODE
+$code = $LASTEXITCODE
+
+# After a successful `up`, point the user at the local site.
+if ($code -eq 0 -and ($composeArgs -contains 'up')) {
+    Write-Host ""
+    Write-Host "  Gamertown (dev) is up -> " -NoNewline -ForegroundColor Green
+    Write-Host "https://localhost" -ForegroundColor Cyan
+    Write-Host "  (accept the self-signed cert; logs: .\tools\dev.ps1 logs -f app)" -ForegroundColor DarkGray
+}
+exit $code

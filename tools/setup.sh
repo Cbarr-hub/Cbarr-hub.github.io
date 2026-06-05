@@ -156,10 +156,9 @@ echo
 echo -e "${GREEN}=== Setup Complete ===${NC}"
 echo "Secrets pulled from R2 and decrypted to $secrets_dir."
 echo
-echo "Next steps:"
-echo "  1. docker compose --env-file .env.local up --build"
-echo "  2. Open https://localhost  (accept the self-signed cert warning)"
+echo "Next steps (full dev stack + login):"
+echo "  1. tools/dev.sh          # app + Caddy + docker-proxy + 5 game servers (localhost, self-signed, live reload)"
+echo "  2. tools/db-restore.sh   # restore the app DB from R2 so users exist (login)"
+echo "  3. Open https://localhost   # accept the self-signed cert"
 echo
-echo "Note: the bundle's secrets.env carries the production SITE_ADDRESS / CADDY_TLS,"
-echo "      so Caddy may serve the gamertown.solutions cert locally; the app still works"
-echo "      at https://localhost. Ask if you want a localhost-only compose override."
+echo "App-only / production-equivalent runs and other modes -> SETUP_LOCAL.md"

@@ -1,6 +1,6 @@
 # Gamertown Infrastructure
 
-**Last updated:** 2026-06-04  
+**Last updated:** 2026-06-05  
 **Status:** Live — **migrated to a single Docker host ("the keeper").**
 
 > **Disaster recovery → [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md)** — rebuild from GitHub + R2 + the age passphrase.
@@ -14,7 +14,7 @@ as one **`docker compose` stack** on a single host, the "keeper":
 
 | Thing | Value |
 |---|---|
-| Keeper | Proxmox **VM 106** `gamertown-docker` — 192.168.1.241, MAC `bc:24:11:62:f5:5d` (4 cores / 12 GB / 160 GB) |
+| Keeper | Proxmox **VM 106** `gamertown-docker` — 192.168.1.241, MAC `bc:24:11:62:f5:5d` (8 cores / 20 GB / 160 GB) |
 | Role | Docker host. The PVE box `pve` (192.168.1.109) is **only** the hypervisor — no Docker on it. |
 | Enter | `ssh root@192.168.1.241` (passwordless from `pve`) · `qm guest exec 106 -- …` |
 | Repo / stack | `/root/gamertown` (branch `main`); compose project `gamertown` = `docker-compose.yml` + `servers.compose.yml` + `mc-mem.override.yml` + project `.env` |

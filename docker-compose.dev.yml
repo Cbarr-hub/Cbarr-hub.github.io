@@ -1,0 +1,32 @@
+# Gamertown — DEV override. Live-reload backend + localhost self-signed TLS.
+#
+# Use ON TOP OF the base stack (it reuses the same secrets via .env.local):
+#   docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up --build
+#   → then open https://localhost  (accept the self-signed cert)
+#
+# Differences from production:
+#   - Caddy serves `localhost` with a self-signed cert (tls internal), so no hosts
+#     entry and no real Origin cert are needed. These `environment` values override
+#     the bundle's SITE_ADDRESS / CADDY_TLS (environment > env_file in compose).
+#   - The app is built from the Dockerfile `dev` stage (nodemon) with backend/src
+#     bind-mounted, so saving a source file restarts the server in-place — no
+#     rebuild. nodemon uses --legacy-watch (polling) because inotify events don't
+#     cross Docker Desktop bind mounts on Windows/macOS.
+#   - The app port is published to localhost for direct (non-TLS) API access.
+
+services:
+  app:
+    build:
+      context: ./backend
+      target: dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./backend/src:/app/src:ro   # live source; node_modules stay baked in the image
+    ports:
+      - "127.0.0.1:3000:3000"       # direct API access, e.g. http://localhost:3000/api/health
+
+  caddy:
+    environment:
+      SITE_ADDRESS: localhost
+      CADDY_TLS: tls internal

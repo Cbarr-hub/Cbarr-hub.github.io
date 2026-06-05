@@ -88,8 +88,8 @@ Stop the stack when done:
 docker compose --env-file .env.local down
 ```
 
-> A lighter **dev-only** mode (localhost + self-signed `tls internal`, no hosts entry
-> or real cert) is a separate, simpler override — see *Dev environment* below once added.
+> For active development, use the lighter **dev environment** (localhost + self-signed,
+> plus live reload) instead — see [Dev environment](#dev-environment-live-reload) below.
 
 ## Troubleshooting
 
@@ -132,6 +132,36 @@ straight to the passphrase prompt:
   into `.secrets/` (gitignored)
 
 These are **not** committed to git and are regenerated from R2 on each setup.
+
+## Dev environment (live reload)
+
+For active development, an override runs the backend under **nodemon** with your source
+bind-mounted and Caddy on **localhost** with a self-signed cert — save a file under
+`backend/src` and the server restarts automatically, no rebuild.
+
+```bash
+docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+Then open **https://localhost** (accept the self-signed cert). The API is also exposed
+directly at **http://localhost:3000** for non-TLS calls.
+
+How it differs from the production-equivalent run:
+- **Caddy**: `SITE_ADDRESS=localhost` + `CADDY_TLS=tls internal` override the bundle's
+  production values — no hosts entry, no real cert.
+- **App**: built from the Dockerfile `dev` stage (nodemon), `backend/src` bind-mounted.
+  nodemon uses `--legacy-watch` (**polling**) because inotify file events don't cross
+  Docker Desktop bind mounts on Windows/macOS — plain `node --watch` won't reload there.
+- **Secrets**: the same real bundle (via `.env.local`).
+
+> Note: game-server control is unavailable in dev (the app logs
+> `DOCKER_HOST not configured`) — it needs the scoped Docker socket-proxy + game
+> containers, which this override doesn't wire up. App / forum / UI work all function.
+
+Stop it:
+```bash
+docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.dev.yml down
+```
 
 ## Linux notes (verified in a Debian container)
 

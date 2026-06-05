@@ -24,16 +24,15 @@ cd Cbarr-hub.github.io
 ### 2. Run the setup script
 
 The setup script will:
-- Install rclone and age (if missing)
+- Install rclone and age (if missing — Windows via winget/Chocolatey)
 - Prompt for your R2 credentials (regenerate a token if needed)
-- Prompt for your age encryption passphrase
-- Pull encrypted secrets from R2
-- Decrypt them locally
-- Set up the environment
+- Pull the encrypted secret bundle from R2
+- Decrypt it locally (**age** prompts for the passphrase itself)
+- Generate `.env.local` for docker compose
 
 **Windows (PowerShell):**
 ```powershell
-pwsh tools\setup.ps1
+.\tools\setup.ps1
 ```
 
 **macOS/Linux (Bash):**
@@ -48,10 +47,14 @@ bash tools/setup.sh
 
 **You'll be prompted for:**
 
-- **R2 Account ID**: Found in your Cloudflare R2 settings
-- **R2 Access Key ID**: Generate a new one if needed (read-only scope is fine)
-- **R2 Secret Access Key**: Paired with the access key
-- **Age passphrase**: The decryption passphrase from your password manager
+- **R2 Account ID**: Found in your Cloudflare R2 settings (the hex string in your
+  S3 endpoint, `https://<account-id>.r2.cloudflarestorage.com`)
+- **R2 Access Key ID**: Generate a token if needed (read-only on the
+  `gamertown-backups` bucket is enough for a pull)
+- **R2 Secret Access Key**: the long hex string only — **not** the Account ID or
+  the S3 API URL shown alongside it
+- **Age passphrase**: prompted by `age` during decryption — paste the passphrase
+  from your password manager (input is hidden)
 
 ### 3. Start the app
 
@@ -75,11 +78,14 @@ The setup script attempts to auto-install these. If it fails:
 ### `Failed to decrypt secrets (wrong passphrase?)`
 Double-check your age passphrase from your password manager.
 
-### `R2 authentication failed`
-Verify your R2 credentials:
-- Account ID: visible in Cloudflare dashboard
-- Access Key: generate a new one with R2 permissions
-- Secret Key: only shown once; regenerate if lost
+### `403 Forbidden` / `Failed to download secrets from R2`
+- Confirm the **Secret Access Key** is the hex string only (a common mistake is
+  pasting the Account ID or S3 API URL into that field too).
+- Confirm the **Account ID** matches your S3 endpoint
+  (`https://<account-id>.r2.cloudflarestorage.com`).
+- Confirm the token has access to the `gamertown-backups` bucket.
+- Re-running the script overwrites `~/.config/rclone/rclone.conf` (or
+  `%APPDATA%\rclone\rclone.conf`) with fresh values, so just run it again.
 
 ### On Windows, `bash: tools/setup.sh: command not found`
 - Ensure you're in Git Bash or WSL, not PowerShell
@@ -87,8 +93,11 @@ Verify your R2 credentials:
 
 ## What the setup creates
 
-- **`.secrets/`** — Local decrypted secrets (gitignored)
-- **`.env.local`** — Environment file pointing to `.secrets/gamertown/secrets.env`
+- **`.secrets/`** — the decrypted bundle, tree preserved as
+  `.secrets/etc/gamertown/secrets.env`, `.secrets/root/gamertown/.env`,
+  `.secrets/etc/gamertown/certs/` (gitignored)
+- **`.env.local`** — env file with `GT_SECRETS_FILE` + `GT_CERTS_DIR` pointing
+  into `.secrets/` (gitignored)
 
 These are **not** committed to git and are regenerated from R2 on each setup.
 

@@ -1,169 +1,150 @@
 #!/usr/bin/env bash
 # Gamertown setup — one-time initialization for a fresh clone.
-# Installs dependencies (rclone, age), prompts for R2 credentials + age passphrase,
-# pulls secrets from R2, and prepares the environment for `docker compose up`.
+# Installs dependencies (rclone, age), prompts for R2 credentials, pulls the secret
+# bundle from R2, decrypts it (age prompts for the passphrase), and prepares the
+# environment for `docker compose up`.
 #
 # Usage: tools/setup.sh
 set -euo pipefail
 
 # Color output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
 echo -e "${GREEN}=== Gamertown Setup ===${NC}"
 echo "This will install dependencies and configure your local environment to pull secrets from R2."
 echo
 
+# Resolve repo root from the script's own location (not $PWD) so it works from anywhere.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
 # Detect OS
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  OS="linux"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-  OS="macos"
-elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-  OS="windows"
-else
-  OS="unknown"
-fi
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then OS="linux"
+elif [[ "$OSTYPE" == "darwin"* ]]; then OS="macos"
+elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then OS="windows"
+else OS="unknown"; fi
 
-# Function to install a tool
+# Install a tool via the platform package manager.
 install_tool() {
-  local cmd=$1
-  local pkg=$2
-
+  local cmd=$1 pkg=$2
   if command -v "$cmd" &>/dev/null; then
-    echo -e "${GREEN}✓ $cmd already installed${NC}"
-    return 0
+    echo -e "${GREEN}✓ $cmd already installed${NC}"; return 0
   fi
-
   echo -e "${YELLOW}Installing $cmd...${NC}"
-
   case $OS in
     linux)
-      if command -v apt &>/dev/null; then
-        sudo apt update && sudo apt install -y "$pkg"
-      elif command -v yum &>/dev/null; then
-        sudo yum install -y "$pkg"
-      elif command -v pacman &>/dev/null; then
-        sudo pacman -S "$pkg"
+      if   command -v apt    &>/dev/null; then sudo apt update && sudo apt install -y "$pkg"
+      elif command -v dnf    &>/dev/null; then sudo dnf install -y "$pkg"
+      elif command -v yum    &>/dev/null; then sudo yum install -y "$pkg"
+      elif command -v pacman &>/dev/null; then sudo pacman -S --noconfirm "$pkg"
       else
-        echo -e "${RED}✗ Could not auto-install $pkg on this Linux distribution${NC}"
-        echo "  Please install manually: https://rclone.org/install/ or https://github.com/FiloSottile/age/releases"
+        echo -e "${RED}✗ No supported package manager found${NC}"
+        echo "  Install manually: https://rclone.org/install/ or https://github.com/FiloSottile/age/releases"
         return 1
-      fi
-      ;;
+      fi ;;
     macos)
       if ! command -v brew &>/dev/null; then
-        echo -e "${RED}✗ Homebrew not found${NC}"
-        echo "  Install Homebrew first: https://brew.sh"
-        return 1
+        echo -e "${RED}✗ Homebrew not found${NC}"; echo "  Install Homebrew first: https://brew.sh"; return 1
       fi
-      brew install "$pkg"
-      ;;
+      brew install "$pkg" ;;
     windows)
-      echo -e "${YELLOW}On Windows, please install $cmd manually:${NC}"
-      if [ "$cmd" = "rclone" ]; then
-        echo "  https://rclone.org/install/ (use the Windows installer or Chocolatey)"
-      else
-        echo "  https://github.com/FiloSottile/age/releases (download the Windows binary)"
-      fi
-      echo "  Then re-run this script."
-      return 1
-      ;;
+      echo -e "${YELLOW}On Windows, prefer the PowerShell setup (tools\\setup.ps1), which auto-installs via winget.${NC}"
+      echo "  Or install $cmd manually, then re-run this script."
+      return 1 ;;
     *)
-      echo -e "${RED}✗ Unknown OS: $OSTYPE${NC}"
-      echo "  Please install $pkg manually and re-run this script."
-      return 1
-      ;;
+      echo -e "${RED}✗ Unknown OS: $OSTYPE${NC}"; echo "  Install $pkg manually and re-run."; return 1 ;;
   esac
-
-  if command -v "$cmd" &>/dev/null; then
-    echo -e "${GREEN}✓ $cmd installed${NC}"
-    return 0
-  else
-    echo -e "${RED}✗ Failed to install $cmd${NC}"
-    return 1
-  fi
+  command -v "$cmd" &>/dev/null && { echo -e "${GREEN}✓ $cmd installed${NC}"; return 0; }
+  echo -e "${RED}✗ Failed to install $cmd${NC}"; return 1
 }
 
-# Install dependencies
 install_tool rclone rclone || exit 1
 install_tool age age || exit 1
 echo
 
-# Prompt for R2 credentials
+# ── R2 credentials → rclone config ────────────────────────────────────────────
 echo -e "${YELLOW}R2 Credentials${NC}"
-read -p "R2 Account ID: " r2_account_id
-read -p "R2 Access Key ID: " r2_access_key
-read -sp "R2 Secret Access Key: " r2_secret_key
-echo
-echo
+read -rp  "R2 Account ID: "        r2_account_id
+read -rp  "R2 Access Key ID: "     r2_access_key
+read -rsp "R2 Secret Access Key: " r2_secret_key
+echo; echo
 
-# Set up rclone config (r2 remote)
+# For Cloudflare R2, rclone's S3 backend needs the account-scoped ENDPOINT URL.
+# There is no `account_id` key in the s3 backend — omitting the endpoint sends
+# requests to AWS (the 403). `region = auto` is what R2 expects.
 echo -e "${YELLOW}Configuring rclone...${NC}"
+r2_endpoint="https://${r2_account_id}.r2.cloudflarestorage.com"
 rclone config create r2 s3 \
   provider Cloudflare \
   access_key_id "$r2_access_key" \
   secret_access_key "$r2_secret_key" \
-  account_id "$r2_account_id" \
-  --non-interactive >/dev/null 2>&1 || true
-
+  endpoint "$r2_endpoint" \
+  region auto \
+  acl private \
+  --non-interactive >/dev/null
 echo -e "${GREEN}✓ rclone r2 remote configured${NC}"
 echo
 
-# Prompt for age passphrase
-echo -e "${YELLOW}Age Encryption${NC}"
-read -sp "Age passphrase (for decryption): " age_passphrase
-echo
-echo
-
-# Create secrets directory
-secrets_dir="${PWD}/.secrets"
+# ── secrets directory ─────────────────────────────────────────────────────────
+secrets_dir="$REPO_ROOT/.secrets"
 mkdir -p "$secrets_dir"
 echo -e "${GREEN}✓ Created secrets directory: $secrets_dir${NC}"
 echo
 
-# Pull and decrypt secrets from R2
+# ── pull + decrypt + extract ──────────────────────────────────────────────────
+# The bundle (tools/secrets-backup.sh) stores paths relative to / — e.g.
+# etc/gamertown/secrets.env. Extract WITHOUT --strip-components so the tree is
+# preserved under .secrets/, then point GT_SECRETS_FILE at the real path.
 echo -e "${YELLOW}Pulling secrets from R2...${NC}"
-tmp_age="$(mktemp)"
-tmp_tar="$(mktemp)"
-trap 'rm -f "$tmp_age" "$tmp_tar"' EXIT
+tmp_age="$(mktemp)"; tmp_tar="$(mktemp)"
+trap 'rm -f "$tmp_age" "$tmp_tar"' EXIT   # decrypted tar never lingers
 
-rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" "$tmp_age"
+rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" "$tmp_age" || {
+  echo -e "${RED}✗ Failed to download secrets from R2 — check the credentials and bucket access.${NC}"; exit 1; }
 echo -e "${GREEN}✓ Downloaded encrypted secrets${NC}"
 
-# Decrypt using age passphrase
-echo "$age_passphrase" | age -d -o "$tmp_tar" "$tmp_age" 2>/dev/null || {
-  echo -e "${RED}✗ Failed to decrypt secrets (wrong passphrase?)${NC}"
-  exit 1
-}
+# age prompts on the controlling terminal — do NOT pipe a passphrase to it.
+echo -e "${YELLOW}Decrypting secrets (age will prompt for your passphrase)...${NC}"
+age -d -o "$tmp_tar" "$tmp_age" || {
+  echo -e "${RED}✗ Failed to decrypt secrets (wrong passphrase?)${NC}"; exit 1; }
 echo -e "${GREEN}✓ Decrypted secrets${NC}"
 
-# Extract to .secrets directory
-tar -xzf "$tmp_tar" -C "$secrets_dir" --strip-components=2 || {
-  echo -e "${RED}✗ Failed to extract secrets${NC}"
-  exit 1
-}
+tar -xzf "$tmp_tar" -C "$secrets_dir" || {
+  echo -e "${RED}✗ Failed to extract secrets${NC}"; exit 1; }
 echo -e "${GREEN}✓ Extracted secrets${NC}"
 echo
 
-# Create .env file with GT_SECRETS_FILE pointing to the local secrets
-env_file="${PWD}/.env.local"
-cat > "$env_file" << EOF
-# Generated by tools/setup.sh
-GT_SECRETS_FILE=$secrets_dir/gamertown/secrets.env
-EOF
+# ── locate extracted secrets + certs ──────────────────────────────────────────
+secrets_env_path="$secrets_dir/etc/gamertown/secrets.env"
+if [ ! -f "$secrets_env_path" ]; then
+  echo -e "${RED}✗ Expected secrets file not found after extraction: $secrets_env_path${NC}"
+  echo "  Bundle layout may differ. Contents of $secrets_dir:"
+  find "$secrets_dir" -type f -printf '    %p\n'
+  exit 1
+fi
 
+# Ensure a certs dir exists so Caddy's compose bind-mount doesn't fail.
+certs_dir="$secrets_dir/etc/gamertown/certs"
+mkdir -p "$certs_dir"
+
+# ── write .env.local ──────────────────────────────────────────────────────────
+env_file="$REPO_ROOT/.env.local"
+cat > "$env_file" <<EOF
+# Generated by tools/setup.sh
+GT_SECRETS_FILE=$secrets_env_path
+GT_CERTS_DIR=$certs_dir
+EOF
 echo -e "${GREEN}✓ Created $env_file${NC}"
 echo
 
-# Summary
+# ── summary ───────────────────────────────────────────────────────────────────
 echo -e "${GREEN}=== Setup Complete ===${NC}"
-echo "Secrets have been pulled from R2 and decrypted locally."
+echo "Secrets pulled from R2 and decrypted to $secrets_dir."
 echo
 echo "Next steps:"
-echo "  1. Run: docker compose --env-file .env.local up --build"
-echo "  2. Access the app at: https://localhost"
-echo "  3. (Accept the self-signed cert warning)"
+echo "  1. docker compose --env-file .env.local up --build"
+echo "  2. Open https://localhost  (accept the self-signed cert warning)"
 echo
+echo "Note: the bundle's secrets.env carries the production SITE_ADDRESS / CADDY_TLS,"
+echo "      so Caddy may serve the gamertown.solutions cert locally; the app still works"
+echo "      at https://localhost. Ask if you want a localhost-only compose override."

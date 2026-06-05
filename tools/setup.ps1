@@ -1,179 +1,211 @@
 # Gamertown setup — one-time initialization for a fresh clone (PowerShell version).
-# Installs dependencies (rclone, age), prompts for R2 credentials + age passphrase,
-# pulls secrets from R2, and prepares the environment for `docker compose up`.
+# Installs dependencies (rclone, age), prompts for R2 credentials, pulls the secret
+# bundle from R2, decrypts it (age prompts for the passphrase), and prepares the
+# environment for `docker compose up`.
 #
-# Usage: pwsh tools\setup.ps1 (or right-click in folder, Open with PowerShell)
+# Usage: .\tools\setup.ps1   (from the repo root, in PowerShell)
 
 $ErrorActionPreference = "Stop"
 
-# Color output (PowerShell)
-function Write-Success { Write-Host "✓ $args" -ForegroundColor Green }
-function Write-Error { Write-Host "✗ $args" -ForegroundColor Red }
-function Write-Status { Write-Host $args -ForegroundColor Yellow }
+# ── helpers ───────────────────────────────────────────────────────────────────
+function Write-Success { Write-Host "[OK] $args" -ForegroundColor Green }
+function Write-Err     { Write-Host "[ERROR] $args" -ForegroundColor Red }
+function Write-Status  { Write-Host "[*] $args" -ForegroundColor Yellow }
 
-Write-Host "=== Gamertown Setup ===" -ForegroundColor Green
-Write-Host "This will install dependencies and configure your local environment to pull secrets from R2."
-Write-Host ""
-
-# Check for required tools
 function Test-Command {
     param([string]$Command)
     $null = Get-Command $Command -ErrorAction SilentlyContinue
     return $?
 }
 
+# Write UTF-8 WITHOUT a BOM. Windows PowerShell 5.1's `Set-Content -Encoding UTF8`
+# prepends a BOM, which corrupts the first line of an env file (docker --env-file)
+# and the [r2] section header in rclone.conf.
+function Write-TextNoBom {
+    param([string]$Path, [string]$Content)
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
+Write-Host "=== Gamertown Setup ===" -ForegroundColor Green
+Write-Host "This will install dependencies and configure your local environment to pull secrets from R2."
+Write-Host ""
+
+# ── dependency install ────────────────────────────────────────────────────────
 function Install-Rclone {
     Write-Status "Checking for rclone..."
+    if (Test-Command rclone) { Write-Success "rclone already installed"; return $true }
 
-    if (Test-Command rclone) {
-        Write-Success "rclone already installed"
-        return $true
+    Write-Status "rclone not found. Attempting to install..."
+    if (Test-Command winget) {
+        Write-Status "Installing via winget..."
+        & winget install Rclone.Rclone -e --silent --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -eq 0 -and (Test-Command rclone)) { Write-Success "rclone installed via winget"; return $true }
+        Write-Host "  winget install did not complete; trying Chocolatey..." -ForegroundColor Gray
+    }
+    if (Test-Command choco) {
+        Write-Status "Installing via Chocolatey..."
+        & choco install rclone -y
+        if ($LASTEXITCODE -eq 0 -and (Test-Command rclone)) { Write-Success "rclone installed"; return $true }
     }
 
-    Write-Status "rclone not found. Installing via Chocolatey..."
-
-    if (-not (Test-Command choco)) {
-        Write-Host ""
-        Write-Error "Chocolatey not installed. Please install rclone manually:"
-        Write-Host "  https://rclone.org/install/"
-        Write-Host "  (Use the Windows installer or Chocolatey)"
-        Write-Host ""
-        Write-Host "After installing, re-run this script."
-        return $false
-    }
-
-    try {
-        choco install rclone -y | Out-Null
-        Write-Success "rclone installed"
-        return $true
-    } catch {
-        Write-Error "Failed to install rclone: $_"
-        return $false
-    }
+    Write-Host ""
+    Write-Err "Could not auto-install rclone. Please install manually:"
+    Write-Host "  Option 1: winget install Rclone.Rclone"
+    Write-Host "  Option 2: https://rclone.org/install/"
+    Write-Host ""
+    Write-Host "If you just installed it, restart your shell so PATH refreshes, then re-run."
+    return $false
 }
 
 function Install-Age {
     Write-Status "Checking for age..."
+    if (Test-Command age) { Write-Success "age already installed"; return $true }
 
-    if (Test-Command age) {
-        Write-Success "age already installed"
-        return $true
+    Write-Status "age not found. Attempting to install..."
+    if (Test-Command winget) {
+        Write-Status "Installing via winget..."
+        & winget install FiloSottile.age -e --silent --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -eq 0 -and (Test-Command age)) { Write-Success "age installed via winget"; return $true }
+        Write-Host "  winget install did not complete; trying Chocolatey..." -ForegroundColor Gray
+    }
+    if (Test-Command choco) {
+        Write-Status "Installing via Chocolatey..."
+        & choco install age -y
+        if ($LASTEXITCODE -eq 0 -and (Test-Command age)) { Write-Success "age installed"; return $true }
     }
 
-    Write-Status "age not found. Installing via Chocolatey..."
-
-    if (-not (Test-Command choco)) {
-        Write-Host ""
-        Write-Error "Chocolatey not installed. Please install age manually:"
-        Write-Host "  https://github.com/FiloSottile/age/releases"
-        Write-Host "  (Download the Windows binary and add to PATH)"
-        Write-Host ""
-        Write-Host "After installing, re-run this script."
-        return $false
-    }
-
-    try {
-        choco install age -y | Out-Null
-        Write-Success "age installed"
-        return $true
-    } catch {
-        Write-Error "Failed to install age: $_"
-        return $false
-    }
+    Write-Host ""
+    Write-Err "Could not auto-install age. Please install manually:"
+    Write-Host "  Option 1: winget install FiloSottile.age"
+    Write-Host "  Option 2: https://github.com/FiloSottile/age/releases"
+    Write-Host ""
+    Write-Host "If you just installed it, restart your shell so PATH refreshes, then re-run."
+    return $false
 }
 
-# Install dependencies
 if (-not (Install-Rclone)) { exit 1 }
-if (-not (Install-Age)) { exit 1 }
+if (-not (Install-Age))    { exit 1 }
 Write-Host ""
 
-# Prompt for R2 credentials
+# ── R2 credentials → rclone config ────────────────────────────────────────────
 Write-Status "R2 Credentials"
-$r2_account_id = Read-Host "R2 Account ID"
-$r2_access_key = Read-Host "R2 Access Key ID"
-$r2_secret_key = Read-Host -AsSecureString "R2 Secret Access Key"
-$r2_secret_key_plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($r2_secret_key)
-)
+$r2_account_id = (Read-Host "R2 Account ID").Trim()
+$r2_access_key = (Read-Host "R2 Access Key ID").Trim()
+$r2_secret_secure = Read-Host -AsSecureString "R2 Secret Access Key"
+$r2_secret_key = ([Runtime.InteropServices.Marshal]::PtrToStringAuto(
+    [Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($r2_secret_secure))).Trim()
 Write-Host ""
 
-# Set up rclone config (r2 remote)
 Write-Status "Configuring rclone..."
 try {
-    & rclone config create r2 s3 `
-        provider Cloudflare `
-        access_key_id $r2_access_key `
-        secret_access_key $r2_secret_key_plain `
-        account_id $r2_account_id `
-        --non-interactive 2>&1 | Out-Null
+    $rclone_config_dir = Join-Path $env:APPDATA "rclone"
+    $null = New-Item -ItemType Directory -Force -Path $rclone_config_dir
+    $rclone_conf = Join-Path $rclone_config_dir "rclone.conf"
+
+    # For Cloudflare R2, rclone's S3 backend needs the account-scoped ENDPOINT URL.
+    # There is no `account_id` key in the s3 backend — that was the cause of the 403
+    # (requests fell through to AWS). `region = auto` is what R2 expects.
+    $r2_endpoint = "https://$r2_account_id.r2.cloudflarestorage.com"
+    $config = @"
+[r2]
+type = s3
+provider = Cloudflare
+access_key_id = $r2_access_key
+secret_access_key = $r2_secret_key
+endpoint = $r2_endpoint
+region = auto
+acl = private
+"@
+    Write-TextNoBom -Path $rclone_conf -Content $config
     Write-Success "rclone r2 remote configured"
 } catch {
-    Write-Error "Failed to configure rclone: $_"
+    Write-Err "Failed to configure rclone: $_"
     exit 1
 }
 Write-Host ""
 
-# Prompt for age passphrase
-Write-Status "Age Encryption"
-$age_passphrase = Read-Host -AsSecureString "Age passphrase (for decryption)"
-$age_passphrase_plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToCoTaskMemUnicode($age_passphrase)
-)
-Write-Host ""
-
-# Create secrets directory
-$secrets_dir = Join-Path $PSScriptRoot ".." ".secrets"
+# ── secrets directory ─────────────────────────────────────────────────────────
+# $PSScriptRoot is tools/ ; the repo root is its parent.
+$repo_root   = Split-Path -Parent $PSScriptRoot
+$secrets_dir = Join-Path $repo_root ".secrets"
 $null = New-Item -ItemType Directory -Force -Path $secrets_dir
 Write-Success "Created secrets directory: $secrets_dir"
 Write-Host ""
 
-# Pull and decrypt secrets from R2
+# ── pull + decrypt + extract ──────────────────────────────────────────────────
+# The bundle (built by tools/secrets-backup.sh) stores paths relative to / —
+# e.g. etc/gamertown/secrets.env. We extract WITHOUT --strip-components so the
+# tree is preserved under .secrets/, then point GT_SECRETS_FILE at the real path.
 Write-Status "Pulling secrets from R2..."
 $tmp_age = [System.IO.Path]::GetTempFileName()
 $tmp_tar = [System.IO.Path]::GetTempFileName()
-
+$ok = $false
 try {
-    # Download encrypted secrets
-    & rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" $tmp_age 2>&1 | Out-Null
+    & rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" $tmp_age
+    if ($LASTEXITCODE -ne 0) { throw "Failed to download secrets from R2 - check the credentials and that the token can read the gamertown-backups bucket." }
     Write-Success "Downloaded encrypted secrets"
 
-    # Decrypt using age passphrase
-    Write-Status "Decrypting secrets..."
-    $age_passphrase_plain | & age -d -o $tmp_tar $tmp_age 2>&1 | Out-Null
+    # age opens the console directly for the passphrase prompt — do NOT pipe or
+    # redirect it. (Piping a passphrase to age's stdin does not work; age reads
+    # the controlling terminal.)
+    Write-Status "Decrypting secrets (age will prompt for your passphrase)..."
+    & age -d -o $tmp_tar $tmp_age
+    if ($LASTEXITCODE -ne 0) { throw "Failed to decrypt secrets (wrong passphrase?)." }
     Write-Success "Decrypted secrets"
 
-    # Extract to .secrets directory
     Write-Status "Extracting secrets..."
-    tar -xzf $tmp_tar -C $secrets_dir --strip-components=2 2>&1 | Out-Null
+    & tar -xzf $tmp_tar -C $secrets_dir
+    if ($LASTEXITCODE -ne 0) { throw "Failed to extract secrets." }
     Write-Success "Extracted secrets"
+
+    $ok = $true
 } catch {
-    Write-Error "Failed to pull/decrypt secrets: $_"
-    exit 1
+    Write-Err $_
 } finally {
-    Remove-Item -Force -ErrorAction SilentlyContinue $tmp_age
-    Remove-Item -Force -ErrorAction SilentlyContinue $tmp_tar
+    # finally always runs (incl. normal completion), so the DECRYPTED tar never
+    # lingers in %TEMP%.
+    Remove-Item -Force -ErrorAction SilentlyContinue $tmp_age, $tmp_tar
 }
+if (-not $ok) { exit 1 }
 Write-Host ""
 
-# Create .env file with GT_SECRETS_FILE pointing to the local secrets
-$root_dir = Split-Path $PSScriptRoot
-$env_file = Join-Path $root_dir ".env.local"
-$secrets_env_path = Join-Path $secrets_dir "gamertown" "secrets.env"
+# ── locate the extracted secrets + certs ──────────────────────────────────────
+$secrets_env_path = Join-Path $secrets_dir "etc" | Join-Path -ChildPath "gamertown" | Join-Path -ChildPath "secrets.env"
+if (-not (Test-Path $secrets_env_path)) {
+    Write-Err "Expected secrets file not found after extraction: $secrets_env_path"
+    Write-Host "  The bundle layout may differ. Contents of ${secrets_dir}:"
+    Get-ChildItem -Recurse $secrets_dir | ForEach-Object { Write-Host "    $($_.FullName)" }
+    exit 1
+}
 
-@"
+# Caddy's compose service bind-mounts a certs dir; ensure one exists so the mount
+# doesn't fail on a host that never had /etc/gamertown/certs.
+$certs_dir = Join-Path $secrets_dir "etc" | Join-Path -ChildPath "gamertown" | Join-Path -ChildPath "certs"
+if (-not (Test-Path $certs_dir)) { $null = New-Item -ItemType Directory -Force -Path $certs_dir }
+
+# ── write .env.local (forward slashes, no BOM) ────────────────────────────────
+# docker compose --env-file is happier with forward slashes on Windows.
+$env_file        = Join-Path $repo_root ".env.local"
+$secrets_env_fwd = $secrets_env_path -replace '\\','/'
+$certs_dir_fwd   = $certs_dir -replace '\\','/'
+$env_content = @"
 # Generated by tools/setup.ps1
-GT_SECRETS_FILE=$secrets_env_path
-"@ | Out-File -FilePath $env_file -Encoding UTF8
-
+GT_SECRETS_FILE=$secrets_env_fwd
+GT_CERTS_DIR=$certs_dir_fwd
+"@
+Write-TextNoBom -Path $env_file -Content $env_content
 Write-Success "Created $env_file"
 Write-Host ""
 
-# Summary
+# ── summary ───────────────────────────────────────────────────────────────────
 Write-Host "=== Setup Complete ===" -ForegroundColor Green
-Write-Host "Secrets have been pulled from R2 and decrypted locally."
+Write-Host "Secrets pulled from R2 and decrypted to $secrets_dir."
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  1. Run: docker compose --env-file .env.local up --build"
-Write-Host "  2. Access the app at: https://localhost"
-Write-Host "  3. (Accept the self-signed cert warning)"
+Write-Host "  1. docker compose --env-file .env.local up --build"
+Write-Host "  2. Open https://localhost  (accept the self-signed cert warning)"
 Write-Host ""
+Write-Host "Note: the bundle's secrets.env carries the production SITE_ADDRESS / CADDY_TLS." -ForegroundColor Gray
+Write-Host "      Caddy may serve the gamertown.solutions cert locally; the app still works" -ForegroundColor Gray
+Write-Host "      at https://localhost. Ask if you want a localhost-only compose override." -ForegroundColor Gray

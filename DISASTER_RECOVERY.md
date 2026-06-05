@@ -82,15 +82,17 @@ Bucket `gamertown-backups`, rclone remote `r2`. Restore reads, never writes the 
 
 | Prefix | Contents | Schedule | Retention |
 |---|---|---|---|
-| `app/gamertown_<ts>.sqlite` | app DB (users, sessions, **server Profiles**) | **nightly 04:00** (`gt-db-backup.timer`) | keep **7** |
-| `factorio/_active_<ts>.zip` | Factorio active save (~45 MB) | **nightly 04:00** | keep **3** |
-| `minecraft/world_GTown_<ts>.tar.gz` | MC world (~5.4 GB) | **on-demand only** (panel → Backups) | keep 1 |
+| `app/gamertown_<ts>.sqlite` | app DB (users, sessions, **server Profiles**) | **weekly Mon 04:00** (`gt-db-backup.timer`) | keep **7** |
+| `factorio/_active_<ts>.zip` | Factorio active save (~45 MB) | **weekly Mon 04:00** | keep **3** |
+| `minecraft/<level>_<ts>.tar.gz` | MC world (`world_GTown`, ~5 GB gz) | **weekly Mon 04:00** | keep **3** |
 | `secrets/secrets.tar.age` | age-encrypted bundle (`secrets.env` + project `.env` + TLS cert) | **on-demand** (after editing secrets) | keep 1 |
 
-`<ts>` = UTC `YYYYMMDD_HHMMSS`. The nightly job is the host script
-`/usr/local/bin/gt-backup.sh`. ⚠️ **The MC world is NOT in the nightly** (too big for
-the free tier) — the newest snapshot is whatever you last pushed from the panel, so
-**refresh it before relying on it**; gameplay since that snapshot is not recoverable.
+`<ts>` = UTC `YYYYMMDD_HHMMSS`. The job is the host script `/usr/local/bin/gt-backup.sh`
+(vendored at `tools/gt-backup.sh`; unit files in `tools/systemd/`), run as host **root** —
+where rclone + the R2 keys live — so backups are **not** an in-app/panel feature (the app
+reaches the engine only through the scoped socket-proxy, with no path to R2). The MC world
+is flushed via the container's `rcon-cli` (`save-off` → `save-all flush` → tar → `save-on`)
+for a consistent snapshot.
 
 ---
 
@@ -168,9 +170,11 @@ curl -s https://gamertown.solutions/api/health     # {"ok":true}
 
 - **App DB corrupted / bad migration / fat-fingered data:**
   `tools/db-restore.sh [gamertown_YYYYMMDD_HHMMSS.sqlite]` — stop app, swap the DB in
-  `gt-data`, start. Defaults to the newest nightly snapshot (7 kept).
-- **A game save went bad:** panel → the server's **Backups** card → restore (Factorio
-  pulls a loadable save; Minecraft swaps the world dir in place).
+  `gt-data`, start. Defaults to the newest weekly snapshot (7 kept).
+- **A game save went bad:** restore from R2 by hand (there's no in-panel restore on
+  Docker). Factorio: `rclone copyto` the newest `factorio/_active_<ts>.zip` into the
+  `factorio-data` volume's `saves/`. Minecraft: see §4 step 7 (stop `minecraft`, extract
+  the newest `minecraft/<level>_<ts>.tar.gz` into `mc-data`, start).
 - **You edited `secrets.env`:** re-run the secrets backup so R2 stays current — **in a
   real terminal** (the `age -p` prompt needs a TTY, which the Claude `!` prompt lacks):
   `ssh -t root@192.168.1.241 'bash /root/gamertown/tools/secrets-backup.sh'`
@@ -188,15 +192,18 @@ Closed since the migration, and what's still loose:
   (real terminal, passphrase) after editing any secret so R2 stays current.
 - ✅ **Keeper checkout reconciled (2026-06-04):** `/root/gamertown` is back on clean
   `main`; `git pull` deploys work.
+- ✅ **MC world now backed up (2026-06-05):** the weekly `gt-backup.sh` includes the
+  Minecraft world (flushed via `rcon-cli`, keep 3) — no longer on-demand-only.
 
 Still loose:
 
-1. **MC world is on-demand only.** The nightly skips it (size). Push a fresh world
-   snapshot from the panel periodically, or accept losing recent MC progress.
-2. **R2 keys live only on the keeper.** Fine (re-mint from Cloudflare), but R2 access
+1. **R2 keys live only on the keeper.** Fine (re-mint from Cloudflare), but R2 access
    then depends on your Cloudflare login — keep that recoverable.
-3. **The age passphrase is the single point of failure** for the secret bundle. If it's
+2. **The age passphrase is the single point of failure** for the secret bundle. If it's
    lost, the offsite copy is unrecoverable. Keep it in your password manager.
+3. **Weekly cadence:** backups run weekly (Mon 04:00), so up to a week of app-DB / world
+   changes can be lost. Bump `OnCalendar` in `tools/systemd/gt-db-backup.timer` for more
+   frequent runs.
 
 ---
 
@@ -204,10 +211,9 @@ Still loose:
 
 | Tool | Purpose |
 |---|---|
-| `/usr/local/bin/gt-backup.sh` + `gt-db-backup.timer` | nightly app-DB + Factorio → R2 (on the keeper) |
+| `tools/gt-backup.sh` + `tools/systemd/gt-db-backup.{timer,service}` | **weekly** app-DB + Factorio save + Minecraft world → R2 (host root; installed at `/usr/local/bin/`) |
 | `tools/db-backup.sh` / `tools/db-restore.sh` | portable app-DB snapshot / restore (volume-aware) |
 | `tools/secrets-backup.sh` / `tools/secrets-restore.sh` | age-encrypt the secret **bundle** (`secrets.env` + project `.env` + TLS cert) → R2 / restore |
-| panel → **Backups** card | on-demand Factorio + Minecraft world archives |
 
 See `INFRA.md` for the live architecture, the BGW210 scripting recipe, and the R2
 backup mechanics; `CLAUDE.md` for the day-to-day ops and game-config gotchas.

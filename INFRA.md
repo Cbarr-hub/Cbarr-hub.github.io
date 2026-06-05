@@ -22,7 +22,7 @@ as one **`docker compose` stack** on a single host, the "keeper":
 | State (volumes) | `gamertown_gt-data` (app DB + session-key), `_mc-data`, `_factorio-data`, `_gmod-data`, `_ph-data`, `_cs2-data`, `_caddy_data`, `_caddy_config` |
 | Edge | `gamertown.solutions` via **Cloudflare** → BGW210 `:443` forward → keeper. Caddy terminates TLS with a **Cloudflare Origin cert** (`/etc/gamertown/certs/`) + gates the site with `forward_auth` → `/api/auth/gate`. No tunnel. |
 | Secrets | `/etc/gamertown/secrets.env` (app/Caddy) + `/root/gamertown/.env` (game interpolation) — neither in git. → DR doc |
-| Backups | nightly host timer `gt-db-backup.timer` → `/usr/local/bin/gt-backup.sh` (app DB + Factorio → R2); MC world + the age-encrypted secret bundle (`secrets.tar.age`) on-demand. → DR doc |
+| Backups | **weekly** host timer `gt-db-backup.timer` (Mon 04:00) → `/usr/local/bin/gt-backup.sh` (app DB + Factorio save + Minecraft world → R2); age-encrypted secret bundle (`secrets.tar.age`) on-demand. Host-driven (the app/containers hold no R2 keys). → DR doc |
 
 **Per-game backend flag.** Each registry entry carries `backend: 'docker'` + a `container`
 locator; the `DockerClient` duck-types the small transport surface the connectors consume,

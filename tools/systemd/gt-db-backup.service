@@ -1,0 +1,11 @@
+# Oneshot backup service driven by gt-db-backup.timer. Runs tools/gt-backup.sh
+# (installed at /usr/local/bin/gt-backup.sh) as host root, where rclone + the R2
+# credentials live. See DISASTER_RECOVERY.md.
+[Unit]
+Description=Gamertown backup (app DB + game worlds) to Cloudflare R2
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/gamertown
+ExecStart=/usr/local/bin/gt-backup.sh

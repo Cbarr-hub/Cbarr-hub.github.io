@@ -1,0 +1,13 @@
+# Weekly Gamertown backup timer. Install on the keeper:
+#   cp tools/systemd/gt-db-backup.{timer,service} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now gt-db-backup.timer
+[Unit]
+Description=Weekly Gamertown backup (app DB + Factorio + Minecraft) to Cloudflare R2
+
+[Timer]
+OnCalendar=Mon *-*-* 04:00:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

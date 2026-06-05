@@ -505,6 +505,103 @@
     @media (prefers-reduced-motion: reduce) {
       .dot.hosting, .brand-cloud { animation: none; }
     }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       FLEET DECK — the top "command deck": an aggregate header (host facts + two
+       fleet-total gauges) over one self-contained ENTITY per game (status · live
+       resources · join · quick power). Each entity is also the navigator → opens
+       that game's full management card below. Pure additive styling on the
+       existing phosphor-green CRT identity.
+       ───────────────────────────────────────────────────────────────────────── */
+    .fleet-header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 16px 24px; padding: 2px 2px 14px; border-bottom: 1px solid #2a2a2a; margin-bottom: 14px;
+    }
+    .fleet-id { min-width: 0; }
+    .fleet-id .dash-node { font-size: 14px; }
+    .fleet-id .dash-sub { margin-top: 3px; }
+    .fleet-gauges { display: flex; gap: 22px; }
+    .fleet-gauge { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .fleet-glabel { color: #7bb85f; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+      text-align: center; line-height: 1.55; }
+    .fleet-glabel b { color: #d4d4b8; font-family: "Courier New", monospace; letter-spacing: 0; text-transform: none; font-size: 11px; }
+
+    .gauge.sm { width: 76px; height: 76px; }
+    .gauge.sm .gauge-pct { font-size: 16px; }
+    .gauge.sm .gauge-meta { font-size: 8px; margin-top: 0; }
+
+    .entity-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px;
+    }
+    .entity {
+      border: 1px solid #333; border-top: 2px solid #3a3a3a; border-radius: 3px;
+      background: linear-gradient(#1c211c, #161616); padding: 10px; cursor: pointer;
+      display: flex; flex-direction: column; gap: 9px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.02), 0 2px 8px rgba(0,0,0,.35);
+      transition: border-color .15s, box-shadow .2s, transform .08s ease, background .15s;
+    }
+    .entity:hover { border-color: #4d4d4d; transform: translateY(-1px); box-shadow: 0 5px 16px rgba(0,0,0,.5); }
+    .entity:focus-visible { outline: none; border-color: var(--gt-green-soft); }
+    .entity.hosting { border-top-color: #2f7a22; }
+    .entity.idle    { border-top-color: #6a5a1a; }
+    .entity.active {
+      border-color: var(--gt-green); border-top-color: var(--gt-green);
+      background: linear-gradient(#1f271f, #171717);
+      box-shadow: 0 0 0 1px rgba(66,245,39,.32), 0 0 20px rgba(66,245,39,.12), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+
+    .ent-head { display: flex; align-items: center; gap: 7px; }
+    .ent-name { color: #d4d4b8; font-weight: bold; font-size: 13px; flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ent-state { color: #888; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .entity.hosting .ent-state { color: var(--gt-green); text-shadow: 0 0 6px rgba(66,245,39,.4); }
+    .entity.idle .ent-state { color: var(--gt-amber); }
+
+    .ent-meters { display: flex; align-items: center; gap: 12px; }
+    .ent-side { flex: 1; min-width: 0; display: grid; gap: 6px; }
+    .ent-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+    .ent-k { color: #7bb85f; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+    .ent-v { color: #d4d4b8; font-size: 11px; font-family: "Courier New", monospace; text-align: right;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ent-side .bar { box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+
+    .ent-conn { display: flex; align-items: center; gap: 6px; }
+    .ent-code { flex: 1; min-width: 0; background: #0f130f; border: 1px solid #2a2a2a; color: #b8d4a0;
+      padding: 3px 6px; font-family: "Courier New", monospace; font-size: 10px; border-radius: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+    .ent-down { flex: 1; color: #666; font-size: 10px; font-style: italic; }
+    .ent-mini { flex: none; background: #1f2a18; border: 1px solid #3f5a2f; color: #b8d4a0;
+      font-size: 11px; line-height: 1; padding: 4px 7px; cursor: pointer; border-radius: 2px;
+      font-family: Verdana, Arial, sans-serif; text-decoration: none; transition: background .15s, color .15s, border-color .15s; }
+    .ent-mini:hover { background: #2c3d20; color: var(--gt-green); border-color: #5f8f4f; }
+    .ent-mini.play { color: #9fd0ff; border-color: #3f5a7a; background: #16202c; }
+    .ent-mini.play:hover { color: #cfe8ff; border-color: #5f8fb8; background: #1e2f42; }
+
+    .ent-controls { display: flex; gap: 6px; align-items: center; }
+    .ent-btn { background: linear-gradient(#345c20,#284916); border: 1px solid #6fae53; color: #d4d4b8;
+      font-size: 12px; line-height: 1; padding: 5px 10px; cursor: pointer; border-radius: 2px;
+      font-family: Verdana, Arial, sans-serif; font-weight: bold;
+      box-shadow: inset 0 1px 0 rgba(130,210,95,.18), 0 1px 2px rgba(0,0,0,.45);
+      transition: background .15s, color .15s, border-color .15s, box-shadow .2s; }
+    .ent-btn:hover { color: var(--gt-green); border-color: var(--gt-green); box-shadow: 0 0 9px rgba(66,245,39,.35); }
+    .ent-btn.go { background: linear-gradient(#2f7a22,#236018); }
+    .ent-btn.x  { background: linear-gradient(#5a2020,#401616); border-color: #b85f5f; }
+    .ent-btn.x:hover { color: #ff8a8a; border-color: #ff8a8a; box-shadow: 0 0 9px rgba(255,90,90,.35); }
+    .ent-btn.manage { margin-left: auto; background: #1a1a1a; border-color: #3a3a3a; color: #9fbf8f; font-weight: normal; }
+    .ent-btn.manage:hover { color: var(--gt-green); border-color: #6fae53; box-shadow: none; }
+    .ent-btn.loading { position: relative; color: transparent !important; pointer-events: none; }
+    .ent-btn.loading::after { content:''; position:absolute; left:50%; top:50%; width:11px; height:11px;
+      margin:-6px 0 0 -6px; border:2px solid rgba(123,184,95,.35); border-top-color:var(--gt-green);
+      border-radius:50%; animation: spin .7s linear infinite; }
+
+    .dash-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px;
+      border-top: 1px dashed #242424; padding-top: 8px; }
+
+    @media (max-width: 560px) {
+      .fleet-header { justify-content: center; }
+      .fleet-gauges { gap: 18px; }
+      .entity-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -517,12 +614,12 @@
         <span class="brand-name">GamerTown<span class="brand-cloud">Cloud</span></span>
         <span class="brand-tag">game server control</span>
       </div>
-      <div class="sec-head">Proxmox Host</div>
+      <div class="sec-head">Fleet Status</div>
       <div id="dashboard" class="dash">
-        <div class="dash-err" style="font-style:italic;color:#999">loading host stats&hellip;</div>
+        <div class="dash-err" style="font-style:italic;color:#999">loading fleet&hellip;</div>
       </div>
 
-      <div class="sec-head">Game Servers</div>
+      <div class="sec-head">Server Control</div>
       <div id="server-list">
         <div style="padding:12px;color:#999;font-style:italic">loading...</div>
       </div>
@@ -558,6 +655,7 @@
     // ran → "Cannot access 'servers' before initialization".
     let servers = []
     let activeId = null
+    let lastNode = null   // last Docker host snapshot — lets the deck re-render without re-hitting /node
 
     // ── admin gate ─────────────────────────────────────────────
     const session = await loadSession()
@@ -599,11 +697,11 @@
 
     function sevClass(pct) { return pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : '' }
 
-    function gaugeHtml(pct, center, meta) {
+    function gaugeHtml(pct, center, meta, extraCls = '') {
       const p = Math.max(0, Math.min(100, pct || 0))
       const offset = GAUGE_C * (1 - p / 100)
       return `
-        <div class="gauge ${sevClass(p)}">
+        <div class="gauge ${sevClass(p)}${extraCls ? ' ' + extraCls : ''}">
           <svg width="108" height="108" viewBox="0 0 108 108">
             <circle class="track" cx="54" cy="54" r="46" fill="none" stroke-width="10"></circle>
             <circle class="fill" cx="54" cy="54" r="46" fill="none" stroke-width="10"
@@ -671,49 +769,150 @@
       })
     }
 
-    // Docker-backend dashboard: the host has no Proxmox-node live CPU/RAM, so show
-    // the engine/host facts (from /api/servers/node) as a header and a resource card
-    // PER CONTAINER, built from the cpu/mem the servers list already carries. Connect
-    // strings reuse the same fleetHtml() as the Proxmox dashboard.
-    function renderDockerDashboard(n) {
-      const host = document.getElementById('dashboard')
-      const known = servers.filter(s => s.status && s.status !== 'unknown')
-      const cards = known.map(s => {
-        const up = s.status === 'running'
-        const cpuPct = up && s.cpu != null ? s.cpu * 100 : 0
-        const memPct = up && s.maxmem ? (s.mem / s.maxmem) * 100 : 0
-        const { cls, label } = statusBits(s)
-        return `<div class="dash-tile">
-          <span class="tile-label"><span class="dot ${cls}"></span> ${esc(s.name)}</span>
-          ${up
-            ? gaugeHtml(cpuPct, cpuPct.toFixed(0) + '%', 'CPU') +
-              `<div class="stat-rows" style="margin-top:6px">
-                 <div class="stat-row"><span class="stat-k">Mem</span><span class="stat-v">${fmtBytes(s.mem)}${s.maxmem ? ' / ' + fmtBytes(s.maxmem) : ''}</span></div>
-                 ${s.maxmem ? `<div class="stat-row" style="border:none;padding:0">${barHtml(memPct)}</div>` : ''}
-                 <div class="stat-row"><span class="stat-k">Uptime</span><span class="stat-v">${esc((fmtUptime(s.uptime) || '—').replace(/^up /, ''))}</span></div>
-               </div>`
-            : `<div class="dash-sub">${esc(label.toLowerCase())}</div>`}
+    // Fleet "command deck" (Docker host). Instead of separate host tiles + a Quick
+    // Connect list, every game is ONE self-contained ENTITY — status, live CPU/mem,
+    // uptime, join string, and quick power — and the header rolls the per-container
+    // cpu/mem up into a single fleet-vs-host TOTAL. Each entity is also the
+    // navigator: click it to open that game's full management card below.
+    function fleetTotals(n) {
+      const run = servers.filter(s => s.status === 'running')
+      const cpuCores = run.reduce((a, s) => a + (s.cpu || 0), 0)   // sum of per-container "cores' worth"
+      const mem = run.reduce((a, s) => a + (s.mem || 0), 0)
+      return {
+        run: run.length,
+        cpuCores,
+        cpuPct: n?.ncpu ? (cpuCores / n.ncpu) * 100 : 0,
+        mem,
+        memPct: n?.memTotal ? (mem / n.memTotal) * 100 : 0,
+      }
+    }
+
+    function entityHtml(s) {
+      const { cls, label } = statusBits(s)
+      const up = s.status === 'running'
+      const cpuPct = up && s.cpu != null ? s.cpu * 100 : 0
+      const memPct = up && s.maxmem ? (s.mem / s.maxmem) * 100 : 0
+      const conn = s.connect?.string, launch = s.connect?.launch
+      const active = s.id === activeId
+      const controls = up
+        ? `<button class="ent-btn" data-ent-act="reboot" data-ent-id="${esc(s.id)}" title="Restart">⟳</button>
+           <button class="ent-btn x" data-ent-act="shutdown" data-ent-id="${esc(s.id)}" title="Stop">■</button>`
+        : `<button class="ent-btn go" data-ent-act="start" data-ent-id="${esc(s.id)}" title="Start">▸ Start</button>`
+      return `
+        <div class="entity ${cls}${active ? ' active' : ''}" data-entity="${esc(s.id)}" tabindex="0" role="button" aria-pressed="${active}" title="Manage ${esc(s.name)}">
+          <div class="ent-head">
+            <span class="dot ${cls}"></span>
+            <span class="ent-name">${esc(s.name)}</span>
+            <span class="ent-state">${esc(label)}</span>
+          </div>
+          <div class="ent-meters">
+            ${gaugeHtml(cpuPct, up ? cpuPct.toFixed(0) + '%' : '—', 'CPU', 'sm')}
+            <div class="ent-side">
+              <div class="ent-stat"><span class="ent-k">Mem</span><span class="ent-v">${up ? fmtBytes(s.mem) + (s.maxmem ? ' / ' + fmtBytes(s.maxmem) : '') : '—'}</span></div>
+              ${up && s.maxmem ? barHtml(memPct) : '<div class="bar"></div>'}
+              <div class="ent-stat"><span class="ent-k">Up</span><span class="ent-v">${up ? esc((fmtUptime(s.uptime) || '—').replace(/^up /, '')) : 'offline'}</span></div>
+            </div>
+          </div>
+          <div class="ent-conn">
+            ${conn
+              ? `<code class="ent-code" title="${esc(conn)}">${esc(conn)}</code>
+                 <button class="ent-mini" data-ent-copy="${esc(conn)}" title="Copy join string">⧉</button>
+                 ${launch ? `<a class="ent-mini play" href="${esc(launch)}" title="Launch via Steam">▶</a>` : ''}`
+              : `<span class="ent-down">no join address</span>`}
+          </div>
+          <div class="ent-controls">
+            ${controls}
+            <button class="ent-btn manage" data-ent-manage="${esc(s.id)}">Manage ▸</button>
+          </div>
         </div>`
-      }).join('')
-      host.innerHTML = `
-        <div class="dash-head">
-          <div>
+    }
+
+    function fleetHeaderHtml(n) {
+      const t = fleetTotals(n)
+      const cores = n.ncpu ? `${t.cpuCores.toFixed(2)} / ${n.ncpu} cores` : `${t.cpuCores.toFixed(2)} cores`
+      return `
+        <div class="fleet-header">
+          <div class="fleet-id">
             <span class="dash-node">▣ DOCKER <span class="host">${esc(n.name || 'host')}</span></span>
             <div class="dash-sub">${esc(n.ncpu ? n.ncpu + ' cores' : '')}${n.memTotal ? ' &middot; ' + fmtBytes(n.memTotal) + ' RAM' : ''}${n.os ? ' &middot; ' + esc(n.os) : ''}</div>
+            <div class="dash-sub">${n.engineVersion ? '<b>Docker ' + esc(n.engineVersion) + '</b>' : ''}${n.containersRunning != null ? (n.engineVersion ? ' &middot; ' : '') + n.containersRunning + '/' + n.containers + ' containers up' : ''}</div>
           </div>
-          <div class="dash-sub" style="text-align:right">
-            ${n.engineVersion ? `<div><b>Docker ${esc(n.engineVersion)}</b></div>` : ''}
-            ${n.containersRunning != null ? `<div>${n.containersRunning}/${n.containers} containers up</div>` : ''}
-            ${n.kernel ? `<div>${esc(n.kernel)}</div>` : ''}
+          <div class="fleet-gauges">
+            <div class="fleet-gauge">
+              ${gaugeHtml(t.cpuPct, t.cpuPct.toFixed(0) + '%', '')}
+              <span class="fleet-glabel">Fleet CPU<br><b>${cores}</b></span>
+            </div>
+            <div class="fleet-gauge">
+              ${gaugeHtml(t.memPct, t.memPct.toFixed(0) + '%', '')}
+              <span class="fleet-glabel">Fleet RAM<br><b>${fmtBytes(t.mem)} / ${fmtBytes(n.memTotal)}</b></span>
+            </div>
           </div>
-        </div>
-        <div class="dash-grid">${cards || '<div class="dash-sub">no containers</div>'}</div>
-        ${fleetHtml()}
-        <div class="dash-head" style="margin:10px 0 0">
+        </div>`
+    }
+
+    function renderDockerDashboard(n) {
+      lastNode = n
+      const host = document.getElementById('dashboard')
+      host.innerHTML = `
+        ${fleetHeaderHtml(n)}
+        <div class="entity-grid">${servers.map(entityHtml).join('') || '<div class="dash-sub">no servers</div>'}</div>
+        <div class="dash-foot">
           <span class="dash-refresh">live &middot; refreshes every 10s</span>
           <span class="dash-refresh">updated ${new Date().toLocaleTimeString()}</span>
         </div>`
-      wireQuickConnect()
+      wireEntities()
+    }
+
+    // Re-render the deck from current servers[] + the last host snapshot — used
+    // after an action / card refresh without re-hitting /node.
+    function renderTopFromState() { if (lastNode) renderDockerDashboard(lastNode) }
+
+    function wireEntities() {
+      const host = document.getElementById('dashboard')
+      host.querySelectorAll('[data-ent-copy]').forEach(b => b.addEventListener('click', e => {
+        e.stopPropagation(); copyToClipboard(b.dataset.entCopy, b)
+      }))
+      host.querySelectorAll('.ent-mini.play').forEach(a => a.addEventListener('click', e => e.stopPropagation()))
+      host.querySelectorAll('[data-ent-act]').forEach(b => b.addEventListener('click', e => {
+        e.stopPropagation(); entityAction(b.dataset.entId, b.dataset.entAct, b)
+      }))
+      host.querySelectorAll('[data-ent-manage]').forEach(b => b.addEventListener('click', e => {
+        e.stopPropagation(); selectServer(b.dataset.entManage)
+      }))
+      host.querySelectorAll('[data-entity]').forEach(card => {
+        const open = () => selectServer(card.dataset.entity)
+        card.addEventListener('click', open)
+        card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } })
+      })
+    }
+
+    // Open a game's full management card below the deck + highlight its entity.
+    function selectServer(id) {
+      if (!servers.some(s => s.id === id)) return
+      activeId = id
+      renderActiveCard()
+      renderTopFromState()
+      document.getElementById('server-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
+    // Quick power control from an entity — container start/restart/stop, which work
+    // on every game. Re-syncs the deck + the open card afterward.
+    async function entityAction(id, act, btn) {
+      if (act === 'shutdown' && !confirm('Stop this server now? Active players will be disconnected.')) return
+      if (btn) btn.classList.add('loading')
+      try {
+        await dbServerAction(id, act)
+        await new Promise(r => setTimeout(r, 1500))
+        try { servers = await dbGetServers() } catch {}
+        renderTopFromState()
+        const root = document.getElementById(`srv-${id}`)
+        const s = servers.find(x => x.id === id)
+        if (root && s) updateStatus(root, s)
+      } catch (e) {
+        alert(`${actionLabels[act] || act} failed: ${e.message}`)
+      } finally {
+        if (btn) btn.classList.remove('loading')
+      }
     }
 
     function renderDashboard(n) {
@@ -775,13 +974,19 @@
 
     async function refreshDashboard() {
       try {
-        const n = await dbGetNodeStatus()
+        // Pull host facts + the live per-game cpu/mem/status together so the deck's
+        // gauges + fleet total stay current (the servers list carries the stats).
+        const [n, all] = await Promise.all([
+          dbGetNodeStatus(),
+          dbGetServers().catch(() => null),
+        ])
+        if (Array.isArray(all)) servers = all
         renderDashboard(n)
       } catch (e) {
         const host = document.getElementById('dashboard')
-        // Keep any previously-rendered dashboard; only show error on first load.
-        if (host.querySelector('.dash-grid')) return
-        host.innerHTML = `<div class="dash-err">host stats unavailable: ${esc(e.message)}</div>`
+        // Keep any previously-rendered deck; only show error on first load.
+        if (host.querySelector('.entity-grid')) return
+        host.innerHTML = `<div class="dash-err">fleet stats unavailable: ${esc(e.message)}</div>`
       }
     }
 
@@ -814,8 +1019,8 @@
         return
       }
       if (!activeId || !servers.some(s => s.id === activeId)) activeId = servers[0].id
-      host.innerHTML = '<div class="tabbar" id="tabbar"></div><div id="active-card"></div>'
-      renderTabs()
+      // The fleet deck (above) is the navigator now — clicking an entity selects it.
+      host.innerHTML = '<div id="active-card"></div>'
       renderActiveCard()
     }
 
@@ -1025,7 +1230,7 @@
           servers = all
           const s = all.find(x => x.id === id)
           if (s) updateStatus(root, s)
-          renderTabs()        // keep the other tabs' status dots in sync
+          renderTopFromState()   // keep the fleet deck's status + resources in sync
           setErr(s?.error || '')
         } catch (e) { setErr(e.message) }
       }
@@ -1784,7 +1989,7 @@
           const i = servers.findIndex(x => x.id === id)
           if (i >= 0) servers[i] = { ...servers[i], ...fresh }
           updateStatus(root, servers[i] ?? fresh)
-          renderTabs()
+          renderTopFromState()
         } catch {}
       })()
 

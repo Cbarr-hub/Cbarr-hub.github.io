@@ -8,11 +8,9 @@ This guide walks through setting up Gamertown locally on your machine for parall
    - Download: https://www.docker.com/products/docker-desktop
    - Required for building and running containers
 
-2. **Git Bash** or **WSL** (on Windows, for running the setup script)
-   - Git Bash comes with Git for Windows
-   - Or use Windows Subsystem for Linux (WSL2) if available
-
 The setup script will automatically install **rclone** and **age** for you if they're missing.
+
+**On Windows:** If `rclone` or `age` fail to auto-install, you'll need [Chocolatey](https://chocolatey.org/install) or to install them manually.
 
 ## Setup Steps
 
@@ -26,18 +24,26 @@ cd Cbarr-hub.github.io
 ### 2. Run the setup script
 
 The setup script will:
+- Install rclone and age (if missing)
 - Prompt for your R2 credentials (regenerate a token if needed)
 - Prompt for your age encryption passphrase
 - Pull encrypted secrets from R2
 - Decrypt them locally
 - Set up the environment
 
-```bash
-# On Windows (Git Bash or WSL):
-bash tools/setup.sh
+**Windows (PowerShell):**
+```powershell
+pwsh tools\setup.ps1
+```
 
-# On macOS/Linux:
-./tools/setup.sh
+**macOS/Linux (Bash):**
+```bash
+bash tools/setup.sh
+```
+
+**Windows (Git Bash):**
+```bash
+bash tools/setup.sh
 ```
 
 **You'll be prompted for:**

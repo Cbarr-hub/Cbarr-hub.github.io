@@ -2040,6 +2040,7 @@
       // Container power model: a single-purpose game container IS the game, so the
       // controls are just container power — running → Restart/Stop/Force-Stop;
       // stopped → Start. Refresh is always available.
+      const gs = s.gameStatus    // still used by the panel-visibility gates below
       const running = s.status === 'running'
       const show = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = '' })
       const hide = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = 'none' })

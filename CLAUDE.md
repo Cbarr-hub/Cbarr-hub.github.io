@@ -5,11 +5,12 @@
 Gamertown is a live web app for a friend group: forum, gambling/games, game server control panel.
 Stack: **Fastify + SQLite + Caddy**, deployed as a **Docker stack on the keeper** — Proxmox VM 106 `gamertown-docker` (192.168.1.241). *(Migrated off the old Proxmox LXC CT 103 + per-game VMs on 2026-06-04.)*
 
-Full infra details → [`INFRA.md`](INFRA.md)  
-Disaster recovery → [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md)  
-Backend API reference → [`backend/README.md`](backend/README.md)  
-Design system → [`GAMERTOWN_DESIGN_PLAN.md`](GAMERTOWN_DESIGN_PLAN.md)  
-Local dev (Windows/macOS/Linux) → [`SETUP_LOCAL.md`](SETUP_LOCAL.md) — `tools/setup.*` (secrets from R2) + `tools/dev.*` (full stack, localhost/self-signed, live reload) + `tools/db-restore.*` (app DB for login)
+All prose docs live in [`docs/`](docs/) (index: [`docs/README.md`](docs/README.md)):
+Full infra details → [`docs/infrastructure.md`](docs/infrastructure.md)  
+Disaster recovery → [`docs/disaster-recovery.md`](docs/disaster-recovery.md)  
+Backend API reference → [`docs/backend.md`](docs/backend.md)  
+Design system → [`docs/design-system.md`](docs/design-system.md)  
+Local dev (Windows/macOS/Linux) → [`docs/local-dev.md`](docs/local-dev.md) — `tools/setup.*` (secrets from R2) + `tools/dev.*` (full stack, localhost/self-signed, live reload) + `tools/db-restore.*` (app DB for login)
 
 ---
 
@@ -28,6 +29,7 @@ backend/                Fastify backend
   .env                  runtime config (gitignored)
 docker-compose.yml      app + Caddy stack
 servers.compose.yml     the 5 game-server containers
+docs/                   all project documentation (infra, DR, local-dev, backend, design)
 tools/                  backup/restore scripts (db-*, secrets-*)
 tests/                  test suite
 ```
@@ -44,7 +46,7 @@ tests/                  test suite
 | Stack | `docker compose` project `gamertown`: `docker-compose.yml` + `servers.compose.yml` + `mc-mem.override.yml` (+ project `.env`) |
 | App + proxy | `gamertown-app-1` (Fastify, `:3000` internal) behind `gamertown-caddy-1` (Caddy, `:443`) — separate containers |
 | Database | SQLite in volume `gamertown_gt-data` → `/var/lib/docker/volumes/gamertown_gt-data/_data/gamertown.sqlite` |
-| Secrets | `/etc/gamertown/secrets.env` (app/caddy) + `/root/gamertown/.env` (games) — see [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md) |
+| Secrets | `/etc/gamertown/secrets.env` (app/caddy) + `/root/gamertown/.env` (games) — see [`docs/disaster-recovery.md`](docs/disaster-recovery.md) |
 | TLS / edge | `gamertown.solutions` via **Cloudflare** → BGW210 `:443` forward to the keeper; **Cloudflare Origin cert** + Caddy `forward_auth` gate (no tunnel) |
 | Public IP | `104.177.95.216` (AT&T dynamic — may change) |
 
@@ -82,7 +84,7 @@ docker exec -it gamertown-app-1 node src/cli.js list-users
 
 ## Known gotchas
 
-> **Post-migration framing (2026-06-04):** all five games + the app run as **Docker containers on the keeper**, not Proxmox VMs — controlled via `docker` + **RCON-over-TCP** (not `pct`/`qm`/in-guest `python3`). Each game uses a different upstream image, so layouts differ: **GMOD + Prop Hunt** are **LinuxGSM-in-a-container** (`docker/gmod`; paths rooted at `/data` — read old "VM 104/105" and `/home/miles/<game>server` as the `gmod`/`prophunt` containers under `/data`), **Factorio** is `factoriotools/factorio` (`/factorio`), **CS2** is `joedwards32/cs2`, **Minecraft** is `itzg/minecraft-server` (`/data`). The GMOD/TTT/PH gotchas below still hold (same srcds under the hood, paths under `/data`); per-image specifics are noted inline. The app no longer talks to Proxmox at all — the PVE API client/token and `pct`/`qm` control path were removed at the migration (retired topology → [`INFRA_LEGACY.md`](INFRA_LEGACY.md)).
+> **Post-migration framing (2026-06-04):** all five games + the app run as **Docker containers on the keeper**, not Proxmox VMs — controlled via `docker` + **RCON-over-TCP** (not `pct`/`qm`/in-guest `python3`). Each game uses a different upstream image, so layouts differ: **GMOD + Prop Hunt** are **LinuxGSM-in-a-container** (`docker/gmod`; paths rooted at `/data` — read old "VM 104/105" and `/home/miles/<game>server` as the `gmod`/`prophunt` containers under `/data`), **Factorio** is `factoriotools/factorio` (`/factorio`), **CS2** is `joedwards32/cs2`, **Minecraft** is `itzg/minecraft-server` (`/data`). The GMOD/TTT/PH gotchas below still hold (same srcds under the hood, paths under `/data`); per-image specifics are noted inline. The app no longer talks to Proxmox at all — the PVE API client/token and `pct`/`qm` control path were removed at the migration (retired Proxmox topology was removed from the tree on 2026-06-05; recover `INFRA_LEGACY.md` from git history if needed).
 
 - **Port 80 blocked:** AT&T BGW210-700 reserves port 80 internally — cannot forward it. HTTPS only (443). Future Let's Encrypt setup requires DNS-01 challenge via Cloudflare, not HTTP-01.
 - **Factorio active save:** the `factoriotools/factorio` container always loads `/factorio/saves/_active.zip` (`SAVE_NAME=_active` in `servers.compose.yml`). Switching worlds = copy the chosen save over `_active.zip` and restart (the panel's profile world-picker / **Save As** does this). The old LinuxGSM `startparameters`/`savename`/`--start-server` model no longer applies.
@@ -96,7 +98,7 @@ docker exec -it gamertown-app-1 node src/cli.js list-users
 - **Startup-config "Profiles" (servers panel):** named structured startup configs per server, stored in SQLite (`server_profiles` + `server_active_profile`, migration 003). A profile is what the server *boots as*; live RCON/console commands are ephemeral and never written back. Each connector implements `profileSchema`/`defaultProfileSettings`/`validateProfileSettings`/`applyProfileSettings`/`captureProfileSettings` on `BaseConnector` (generic lifecycle = list/get/create/update/delete/apply/capture + an auto-seeded "Default"). **All five games (GMOD, Prop Hunt, Factorio, CS, Minecraft) are wired for profiles.** For GMOD the rotation's **first map is the boot map** (no separate field), and the panel's **Apply = apply config + restart** so the collection actually mounts. The panel shows a **Profiles** panel (config) AND a **Quick Settings** panel (operations like Factorio Save As / Generate) together — a game can have one or both; a game wired for profiles trims its `getSettings` so config doesn't double-render.
 - **Servers panel power = the container model.** `servers.html` is a **fleet deck** (per-game tiles with live CPU/RAM + a fleet total) over a per-game management card. Power controls are container-level — **Start · Restart · Stop · Force Stop · Refresh** — with **no** separate "Game Service" buttons or in-panel "Update" (the container *is* the game, so on **every** Docker game `startGame`/`stopGame`/`restartGame` **alias to container power** — start/shutdown/reboot — never `BAD_ACTION`; `update` stays `NO_UPDATE_RECIPE` on the non-LinuxGSM images). GMOD/PH alias via `dockerizeGmod`; CS/Factorio/Minecraft alias on `DockerBaseConnector`. **Apply & Restart** reboots the container (which also remounts a GMOD workshop collection). **Backups aren't panel-managed** — the app holds no R2 keys, so the panel shows a read-only "backed up weekly by the host timer" status for **Minecraft + Factorio** only (the rest are regenerable). Codified in `backend/test/docker.test.mjs`.
 - **Prop Hunt = the `prophunt` container, port 27067.** Same `gamertown-gmod` image as TTT (built from `docker/gmod/Dockerfile`), but `GAMEMODE=prop_hunt` with its **own** `PROPHUNT_GSLT` so it runs alongside TTT. `PropHuntConnector` extends `GmodConnector` (paths derive from `gsmDir`=`/data`; `mapPrefixes=['ph_','gm_']`; RCON on the registry game port). **Workshop content mounts from the public Steam collection `3737190377`** (`wscollectionid` / `PROPHUNT_WORKSHOP_COLLECTION`) — GMOD downloads + mounts it at boot. The **Prop Hunt: X2Z** gamemode addon ships the `prop_hunt` (+ `base_phx`) folder, so `gamemode=prop_hunt` loads; the 7 `ph_` maps + taunt packs + loadout manager come along, and clients auto-download via the collection. `applyProfileSettings` deliberately does **NOT** write `wscollectionid` (so Apply can't break the mount). Edit X2Z config via the panel's **Raw Config** editor: `server.cfg`/`active.cfg` for `ph_`/`phx_` cvars, `lgsm.cfg` for the collection id/ports, plus X2Z's `phx-loadout`/`phx-admins` data files (chowned back to the in-container `miles` user after write). NOTE: `prop_hunt` is not built into GMOD (only base/sandbox/terrortown ship), so the collection mount is required to boot PH. **`3736674438` is a working TTT *maps* collection** (separate from PH) — verified 2026-06-04 to mount 5 `ttt_` maps (ttt_clue_se, ttt_diescraper, ttt_dolls, ttt_minecraft_b5, ttt_waterworld).
-- **Offsite backups → Cloudflare R2 (`gamertown-backups`, remote `r2`) are LIVE — host-driven.** A **host systemd timer** (`gt-db-backup.timer`, **weekly Mon 04:00** → `/usr/local/bin/gt-backup.sh`; vendored at [`tools/gt-backup.sh`](tools/gt-backup.sh) + [`tools/systemd/`](tools/systemd/)) pushes the **app DB** (`app/`, keep 7), the **Factorio active save** (`factorio/`, keep 3), and the **Minecraft world** (`minecraft/`, ~5 GB gz, keep 3 — flushed via the container's `rcon-cli` for a consistent snapshot). The **age-encrypted secret bundle** (`secrets/`) is on-demand (`tools/secrets-backup.sh`). rclone runs as host **root** (keys in `/root/.config/rclone/rclone.conf`); the repo/app/**containers never hold R2 keys** — so backups are the host timer's job, **not** an in-panel feature (the app reaches the engine only through the scoped socket-proxy, with no path to R2). **rclone must be ≥ ~1.66 (we run 1.74.2)** — stock **1.60.1 returns `501 NotImplemented` on R2 `rcat`**. Prune keeps the newest N by the `_YYYYMMDD_HHMMSS` **in the name**, NOT object ModTime. Full backup map + recovery → [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md).
+- **Offsite backups → Cloudflare R2 (`gamertown-backups`, remote `r2`) are LIVE — host-driven.** A **host systemd timer** (`gt-db-backup.timer`, **weekly Mon 04:00** → `/usr/local/bin/gt-backup.sh`; vendored at [`tools/gt-backup.sh`](tools/gt-backup.sh) + [`tools/systemd/`](tools/systemd/)) pushes the **app DB** (`app/`, keep 7), the **Factorio active save** (`factorio/`, keep 3), and the **Minecraft world** (`minecraft/`, ~5 GB gz, keep 3 — flushed via the container's `rcon-cli` for a consistent snapshot). The **age-encrypted secret bundle** (`secrets/`) is on-demand (`tools/secrets-backup.sh`). rclone runs as host **root** (keys in `/root/.config/rclone/rclone.conf`); the repo/app/**containers never hold R2 keys** — so backups are the host timer's job, **not** an in-panel feature (the app reaches the engine only through the scoped socket-proxy, with no path to R2). **rclone must be ≥ ~1.66 (we run 1.74.2)** — stock **1.60.1 returns `501 NotImplemented` on R2 `rcat`**. Prune keeps the newest N by the `_YYYYMMDD_HHMMSS` **in the name**, NOT object ModTime. Full backup map + recovery → [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
 
 ---
 
@@ -115,4 +117,4 @@ The app container also sets `HOST=0.0.0.0` (so Caddy reaches it across the compo
 network) + `NODE_ENV=production`; `backend/.env` still supplies the in-container
 defaults (`PORT`, `DB_PATH`, `SESSION_KEY_PATH`). `secrets.env.example` documents the
 shape. The old `PVE_*` token keys are **retired** (the app is pure-Docker now). Full
-secret map + recovery → [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md).
+secret map + recovery → [`docs/disaster-recovery.md`](docs/disaster-recovery.md).

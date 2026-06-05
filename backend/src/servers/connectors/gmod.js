@@ -10,7 +10,7 @@
 // semantics (profile schema / apply / capture / live actions); the TTT specifics
 // below stay here.
 //
-// Verified layout (VM 104) — see INFRA.md "Game Server VMs":
+// Verified layout (the gmod container, LinuxGSM under /data) — see CLAUDE.md § Known gotchas (GMOD):
 //   install dir : /home/miles/gmodserver   (owned by user `miles`)
 //   control     : ./gmodserver start|stop|restart|update   (run as miles)
 //

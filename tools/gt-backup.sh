@@ -7,7 +7,7 @@
 # are vendored alongside this script in tools/systemd/). rclone authenticates via the host's
 # /root/.config/rclone/rclone.conf (the `r2` remote) — no keys live here.
 # To deploy a change: copy this file to /usr/local/bin/gt-backup.sh on the keeper (chmod +x).
-# Full backup map + restore steps → DISASTER_RECOVERY.md.
+# Full backup map + restore steps → docs/disaster-recovery.md.
 set -euo pipefail
 TS=$(date -u +%Y%m%d_%H%M%S)
 TMP=$(mktemp); trap 'rm -f "$TMP"' EXIT

@@ -3,7 +3,7 @@
 **Last updated:** 2026-06-05  
 **Status:** Live — **migrated to a single Docker host ("the keeper").**
 
-> **Disaster recovery → [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md)** — rebuild from GitHub + R2 + the age passphrase.
+> **Disaster recovery → [`disaster-recovery.md`](disaster-recovery.md)** — rebuild from GitHub + R2 + the age passphrase.
 
 ---
 
@@ -42,15 +42,16 @@ so they're reused almost unchanged. RCON is spoken **over TCP**
 ## Legacy reference (pre-Docker topology)
 
 The previous **Proxmox topology** — CT 103 (web-app container) + per-game VMs
-(100/101/102/104/105), `pct`/`qm`, the PVE API token, in-guest paths — is archived in
-**[`INFRA_LEGACY.md`](INFRA_LEGACY.md)**. Those guests were destroyed at the 2026-06-04
-cutover, so the topology no longer applies, but the doc is kept for the **recipes that still
-hold inside the containers**: the **BGW210 port-forward scripting**, the **per-game config
-specifics** (CS / Factorio / GMOD cvars + save layouts), and the **R2 backup mechanics**.
+(100/101/102/104/105), `pct`/`qm`, the PVE API token, in-guest paths — was retired at the
+2026-06-04 cutover and removed from the tree. The current per-game config specifics (CS /
+Factorio / GMOD cvars + save layouts) all live in **[`../CLAUDE.md`](../CLAUDE.md) § Known
+gotchas**, which is the live source of truth. If you need the old BGW210 port-forward
+scripting or VM-era details, recover `INFRA_LEGACY.md` from git history (commits before
+2026-06-05).
 
 ## See also
 
-- **[`CLAUDE.md`](CLAUDE.md) § Critical infra facts** — canonical quick-reference for the
+- **[`../CLAUDE.md`](../CLAUDE.md) § Critical infra facts** — canonical quick-reference for the
   keeper / repo / stack / DB / secrets (this doc intentionally doesn't repeat that table).
-- **[`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md)** — R2 backup inventory + full rebuild.
-- **[`backend/README.md`](backend/README.md)** — the backend API + game-server control panel.
+- **[`disaster-recovery.md`](disaster-recovery.md)** — R2 backup inventory + full rebuild.
+- **[`backend.md`](backend.md)** — the backend API + game-server control panel.

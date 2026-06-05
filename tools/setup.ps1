@@ -264,4 +264,4 @@ Write-Host "  1. .\tools\dev.ps1          # app + Caddy + docker-proxy + 5 game 
 Write-Host "  2. .\tools\db-restore.ps1   # restore the app DB from R2 so users exist (login)"
 Write-Host "  3. Open https://localhost   # accept the self-signed cert"
 Write-Host ""
-Write-Host "App-only / production-equivalent runs and other modes -> SETUP_LOCAL.md" -ForegroundColor Gray
+Write-Host "App-only / production-equivalent runs and other modes -> docs/local-dev.md" -ForegroundColor Gray

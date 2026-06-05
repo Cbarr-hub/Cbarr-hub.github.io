@@ -175,4 +175,4 @@ echo "  1. tools/dev.sh          # app + Caddy + docker-proxy + 5 game servers (
 echo "  2. tools/db-restore.sh   # restore the app DB from R2 so users exist (login)"
 echo "  3. Open https://localhost   # accept the self-signed cert"
 echo
-echo "App-only / production-equivalent runs and other modes -> SETUP_LOCAL.md"
+echo "App-only / production-equivalent runs and other modes -> docs/local-dev.md"

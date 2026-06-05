@@ -153,8 +153,8 @@ Prop Hunt mounts collection `3737190377`).
 
 **8. Repoint the edge:**
 - **BGW210 forwards** → the new host's MAC: `443`, `25565` (MC), `27066` (GMOD),
-  `27067` (PH), `27000-27039` (CS), `34197` (Factorio). See
-  `INFRA.md` → *"Scripting the BGW210 port-forward"*.
+  `27067` (PH), `27000-27039` (CS), `34197` (Factorio) — see
+  [`infrastructure.md`](infrastructure.md) → *Forwarded ports*.
 - **Cloudflare DNS** for `gamertown.solutions` points at your WAN IP (unchanged unless
   AT&T re-leased it) — it's proxied, so the origin is just the :443 forward.
 
@@ -215,5 +215,5 @@ Still loose:
 | `tools/db-backup.sh` / `tools/db-restore.sh` | portable app-DB snapshot / restore (volume-aware) |
 | `tools/secrets-backup.sh` / `tools/secrets-restore.sh` | age-encrypt the secret **bundle** (`secrets.env` + project `.env` + TLS cert) → R2 / restore |
 
-See `INFRA.md` for the live architecture, the BGW210 scripting recipe, and the R2
-backup mechanics; `CLAUDE.md` for the day-to-day ops and game-config gotchas.
+See [`infrastructure.md`](infrastructure.md) for the live architecture and forwarded
+ports; [`../CLAUDE.md`](../CLAUDE.md) for the day-to-day ops and game-config gotchas.

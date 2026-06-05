@@ -3,12 +3,13 @@
 A live web app for a friend group — **forum, gambling/games, and a game-server control
 panel** — built on **Fastify + SQLite + Caddy** and deployed as a Docker stack on the keeper.
 
-**Docs:** [`SETUP_LOCAL.md`](SETUP_LOCAL.md) (run it locally) ·
+**📚 Docs:** everything lives in [`docs/`](docs/) — start at [`docs/README.md`](docs/README.md).
+Quick links: [`docs/local-dev.md`](docs/local-dev.md) (run it locally) ·
 [`CLAUDE.md`](CLAUDE.md) (operations quick-ref) ·
-[`INFRA.md`](INFRA.md) (architecture) ·
-[`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md) (backups + rebuild) ·
-[`backend/README.md`](backend/README.md) (backend API) ·
-[`GAMERTOWN_DESIGN_PLAN.md`](GAMERTOWN_DESIGN_PLAN.md) (frontend design system).
+[`docs/infrastructure.md`](docs/infrastructure.md) (architecture) ·
+[`docs/disaster-recovery.md`](docs/disaster-recovery.md) (backups + rebuild) ·
+[`docs/backend.md`](docs/backend.md) (backend API) ·
+[`docs/design-system.md`](docs/design-system.md) (frontend design system).
 
 **Run it locally (dev):** from a fresh clone, three commands stand up the full stack
 with a working login —
@@ -17,7 +18,7 @@ with a working login —
 self-signed + live reload), then
 `tools/db-restore.ps1` (restore the app DB so users exist) — then open
 `https://localhost`. macOS/Linux use the `.sh` equivalents. Full walkthrough →
-[`SETUP_LOCAL.md`](SETUP_LOCAL.md).
+[`docs/local-dev.md`](docs/local-dev.md).
 
 Everything below is the project's (deliberately absurdist) **design philosophy** — kept
 verbatim, not an operational spec.

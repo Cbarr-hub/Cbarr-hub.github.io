@@ -33,7 +33,7 @@ const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame
 export function createServerService({ dockerClient = null, publicHost = '', db = null }) {
   const store = db ? createServerStore(db) : null;
   // Register the hosted game servers in the `games` catalog (hosted=1) so the
-  // session collector + the Events tab can resolve a slug → game row. Cheap +
+  // session collector + the Events section can resolve a slug → game row. Cheap +
   // idempotent; keeps the registry the single source of truth.
   if (store) store.seedHostedGames(listServers());
   const connectors = dockerClient

@@ -18,32 +18,61 @@ test('steamId64 converts both notations (BigInt, beyond Number safe range)', () 
 });
 
 // ── Source `status` parser ───────────────────────────────────────────────────────
-test('parseSourceStatus reads names + SteamID64 from a GMOD status block', () => {
+test('parseSourceStatus reads names + SteamID64 from a GMOD status block, skipping the header row', () => {
   const out = [
     'hostname: Gamertown TTT',
     'version : 1.2.3',
     'players : 2 humans, 0 bots (16 max)',
-    '# userid name uniqueid connected ping loss state adr',
+    '# userid name uniqueid connected ping loss state adr', // header — not a player row
     '#  2 "Alice" STEAM_0:1:12345 05:30 60 0 active 192.168.1.5:27005',
     '#  3 "Bob"   [U:1:7654] 02:10 40 0 active 192.168.1.6:27005',
   ].join('\n');
-  const roster = parseSourceStatus(out);
-  assert.deepEqual(roster, [
-    { name: 'Alice', uid: '76561197960290419', identityKind: 'steam' },
-    { name: 'Bob', uid: steamId64('[U:1:7654]'), identityKind: 'steam' },
-  ]);
-});
-
-test('parseSourceStatus degrades to name-only when the SteamID is redacted (CS2)', () => {
-  const out = '#  4 "Carol"      active\nhostname: x';
   assert.deepEqual(parseSourceStatus(out), [
-    { name: 'Carol', uid: null, identityKind: 'steam' },
+    { name: 'Alice', uid: '76561197960290419', identityKind: 'steam', slot: '2' },
+    { name: 'Bob', uid: steamId64('[U:1:7654]'), identityKind: 'steam', slot: '3' },
   ]);
 });
 
-test('parseSourceStatus ignores empty input + header-only blocks', () => {
+test('parseSourceStatus takes the uniqueid positionally — a SteamID in the display name cannot spoof it', () => {
+  // The name embeds a STEAM_ token; the REAL uniqueid (after the closing quote) must win.
+  const out = '#  2 "STEAM_0:1:99999 lol" STEAM_0:1:12345 05:30 60 0 active 1.2.3.4:27005';
+  assert.deepEqual(parseSourceStatus(out), [
+    { name: 'STEAM_0:1:99999 lol', uid: '76561197960290419', identityKind: 'steam', slot: '2' },
+  ]);
+});
+
+test('parseSourceStatus drops BOT rows (no SteamID, not a real human)', () => {
+  const out = [
+    '#  2 "Alice" STEAM_0:1:12345 05:30 60 0 active 1.2.3.4:27005',
+    '#  5 "HardBot" BOT active',
+  ].join('\n');
+  assert.deepEqual(parseSourceStatus(out), [
+    { name: 'Alice', uid: '76561197960290419', identityKind: 'steam', slot: '2' },
+  ]);
+});
+
+test('parseSourceStatus degrades to name-only when the SteamID is redacted but the name is still quoted', () => {
+  // Models a redacted-but-quoted Source row (uid unresolved → null). The REAL CS2
+  // row shape is host-validated separately (see online-parse.js note) — if CS2 does
+  // not quote names, that case is covered by the next test.
+  assert.deepEqual(parseSourceStatus('#  4 "Carol"      active'), [
+    { name: 'Carol', uid: null, identityKind: 'steam', slot: '4' },
+  ]);
+});
+
+test('parseSourceStatus skips a player row with no quoted name (the unverified CS2 shape) instead of guessing', () => {
+  // Documents the known host-validation gap: an unquoted `#`-row yields NOTHING
+  // (vs. mis-parsing some other column as the name). A CS2-specific branch is added
+  // once we have a real `status` capture.
+  assert.deepEqual(parseSourceStatus('#  4 1234567 Carol 00:30 50 0 active'), []);
+});
+
+test('parseSourceStatus ignores headers, quoted hostnames, and quoted asset lines (no phantom entries)', () => {
   assert.deepEqual(parseSourceStatus(''), []);
   assert.deepEqual(parseSourceStatus('hostname: x\nplayers : 0 humans'), []);
+  // A quoted server name / map-asset line must NOT become a phantom player.
+  assert.deepEqual(parseSourceStatus('hostname: "Gamertown TTT"'), []);
+  assert.deepEqual(parseSourceStatus('spawngroups : loaded "[1: main {[0] | maps/de_dust2.vpk} ]"'), []);
 });
 
 // ── Minecraft log parser ─────────────────────────────────────────────────────────

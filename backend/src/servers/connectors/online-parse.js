@@ -35,25 +35,50 @@ export function player(name, uid, identityKind) {
   return { name: String(name), uid: uid ?? null, identityKind };
 }
 
-// A SteamID token in either notation, scanned for anywhere on a status line.
+// A SteamID token in either notation. Matched ONLY against the part of a player
+// row AFTER the (quoted) name — never the whole line — so a SteamID embedded in a
+// display name can't be mistaken for the real uniqueid (anti-spoof).
 const STEAMID_TOKEN = /(STEAM_[0-5]:[01]:\d+|\[U:1:\d+\])/;
 
+// A srcds player row begins with `#` then a numeric userid ("slot"), e.g.
+//   #  2 "Alice" STEAM_0:1:12345 05:30 60 0 active 1.2.3.4:27005
+// The column header `# userid name uniqueid …` has NO numeric userid, so it is
+// excluded — as are hostname:/map:/version:/players: and any quoted asset line
+// (e.g. CS2's `spawngroups : loaded "…"`), which previously produced phantom
+// roster entries when we anchored on "any quoted substring".
+const STATUS_ROW = /^#\s*(\d+)\s+(.+)$/;
+
 /**
- * Parse Source-engine `status` output into a roster. Token-anchored: a player
- * line carries a quoted "name" plus (usually) a SteamID token. GMOD/Prop Hunt
- * expose the SteamID → SteamID64; CS2 redacts it, so those rows degrade to
- * name-only (uid:null). Lines without a quoted name are ignored (headers, etc.).
+ * Parse Source-engine `status` output into a roster. Anchored on the `# <userid>`
+ * player rows (not arbitrary quoted text). GMOD/Prop Hunt expose the SteamID →
+ * SteamID64; CS2 redacts it, so a matched row degrades to name-only (uid:null).
+ * Returns one entry per player: `{ name, uid|null, identityKind:'steam', slot }`,
+ * where `slot` is the per-connection userid (reserved for disambiguating same-name
+ * players once the CS2 row format is host-validated).
  *
- * @returns {{name:string, uid:string|null, identityKind:'steam'}[]}
+ * NOTE (host validation): the exact CS2 (Source 2) `status` row shape is unverified
+ * and may not double-quote names. Legacy srcds (GMOD/Prop Hunt) always quotes the
+ * name, so those parse fully; a `#`-row without a quoted name is skipped here until
+ * a CS2-specific branch is added against a real capture (see docs Step 4 / the
+ * collector header).
+ *
+ * @returns {{name:string, uid:string|null, identityKind:'steam', slot:string}[]}
  */
 export function parseSourceStatus(output) {
   const out = [];
   for (const line of String(output ?? '').split('\n')) {
-    // Skip the "hostname:"/"players :" header rows — they carry no quoted name.
-    const name = line.match(/"([^"]*)"/);
-    if (!name) continue;
-    const tok = line.match(STEAMID_TOKEN);
-    out.push(player(name[1], tok ? steamId64(tok[1]) : null, 'steam'));
+    const row = STATUS_ROW.exec(line);
+    if (!row) continue;
+    const slot = row[1];
+    // srcds quotes the name. Take the uniqueid ONLY from the remainder after the
+    // closing quote (anti-spoof). No quoted name → unknown row shape, skip.
+    const nameMatch = /^"([^"]*)"\s*(.*)$/.exec(row[2]);
+    if (!nameMatch) continue;
+    const after = nameMatch[2].trim();
+    // BOT rows carry `BOT` in the uniqueid column instead of a SteamID — drop them.
+    if (/^BOT\b/.test(after)) continue;
+    const tok = after.match(STEAMID_TOKEN);
+    out.push({ ...player(nameMatch[1], tok ? steamId64(tok[1]) : null, 'steam'), slot });
   }
   return out;
 }

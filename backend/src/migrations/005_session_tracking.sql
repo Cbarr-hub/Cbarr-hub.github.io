@@ -1,8 +1,8 @@
-PRAGMA foreign_keys = ON;
-
 -- Player-session tracking. A host-side collector (tools/gt-session-tracker.mjs)
 -- records who joins/leaves each hosted game server; the app reads these for the
--- servers panel's "Events" tab. See docs/infrastructure.md.
+-- servers panel's standalone "Events" section. See docs/infrastructure.md.
+-- (No `PRAGMA foreign_keys` here — migrations run inside a transaction where that
+-- pragma is a no-op; openDb() enables FK enforcement on the live connection.)
 
 -- Reuse the existing party-games `games` table as the single game catalog: a
 -- `hosted` boolean separates the five game *servers* (hosted=1, seeded from the

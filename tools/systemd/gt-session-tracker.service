@@ -1,7 +1,7 @@
 # Player-session collector for the Gamertown game servers. Long-running host
 # service (NOT a timer) — it tails `docker logs` for Minecraft/Factorio and polls
 # RCON for the Source games, writing join/leave rows the app reads for the
-# servers panel's "Events" tab. Runs independent of the app container. See
+# servers panel's standalone "Events" section. Runs independent of the app container. See
 # tools/gt-session-tracker.mjs + docs/infrastructure.md.
 #
 # Install on the keeper:

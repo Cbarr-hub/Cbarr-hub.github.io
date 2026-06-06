@@ -129,10 +129,13 @@ export function createServerStore(db) {
         LIMIT ?`,
     ),
     listOpenSessions: db.prepare(
+      // Defensive LIMIT: open rows ≈ current players (tiny), but if reconciliation
+      // ever leaves orphans, cap the response rather than return it unbounded.
       `SELECT id, name, uid, identity_kind AS identityKind, joined_at, left_at, source
          FROM server_sessions
         WHERE game_id = ? AND left_at IS NULL
-        ORDER BY joined_at DESC`,
+        ORDER BY joined_at DESC
+        LIMIT 200`,
     ),
   };
 

@@ -260,7 +260,7 @@ export async function dbServerLiveAction(id, action, value) {
   return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body });
 }
 
-// ── player sessions (the "Events" tab; written host-side by the collector) ─────
+// ── player sessions (the standalone "Events" section; written host-side by the collector) ─
 export async function dbGetServerSessions(id, { limit } = {}) {
   const qs = limit ? `?limit=${encodeURIComponent(limit)}` : '';
   return (await api(`/servers/${encodeURIComponent(id)}/sessions${qs}`)) ?? [];

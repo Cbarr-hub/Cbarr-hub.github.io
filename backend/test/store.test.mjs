@@ -11,6 +11,7 @@ import { listServers } from '../src/servers/registry.js';
 // file/WAL setup which an in-memory DB doesn't need).
 function testDb() {
   const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON'); // match openDb so the new FK REFERENCES are exercised
   db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
     name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch())
   );`);
@@ -171,6 +172,11 @@ test('a rejoin updates the player name/last_seen without a duplicate player row'
   assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 1);
   assert.equal(db.prepare('SELECT name FROM players').get().name, 'Alice_2');
   assert.equal(store.listOpenSessions('gmod').length, 2);
+  // The RETURNING-on-conflict (DO UPDATE) path must link BOTH sessions to the one
+  // players row — this is what the whitelist-seed design hinges on.
+  const playerId = db.prepare('SELECT id FROM players').get().id;
+  const links = db.prepare('SELECT player_id FROM server_sessions ORDER BY id').all();
+  assert.deepEqual(links, [{ player_id: playerId }, { player_id: playerId }]);
 });
 
 test('a SteamID player spans games as ONE player row (whitelist seed)', () => {
@@ -180,6 +186,10 @@ test('a SteamID player spans games as ONE player row (whitelist seed)', () => {
   store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
   store.recordJoin('prophunt', steam('Alice', '76561197960290419'), 1100, 'rcon');
   assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 1);
+  // Both the gmod and prophunt sessions resolve to that single cross-game player row.
+  const playerId = db.prepare('SELECT id FROM players').get().id;
+  const links = db.prepare('SELECT player_id FROM server_sessions ORDER BY id').all();
+  assert.deepEqual(links, [{ player_id: playerId }, { player_id: playerId }]);
 });
 
 test('a null-uid session (CS2-redacted) records no player row', () => {

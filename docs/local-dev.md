@@ -242,6 +242,39 @@ Need a brand-new account instead of a restore? Create one interactively:
 docker exec -it <project>-app-1 node src/cli.js create-admin
 ```
 
+### Player-session collector (Events section) in dev
+
+The **Events** section on the servers panel is fed by `tools/gt-session-tracker.mjs`, which in
+production runs as a **host systemd service** (`gt-session-tracker.service`) — NOT a compose
+service. It needs full `docker` + direct DB-volume access, which the app (behind the scoped
+`docker-proxy`) deliberately can't reach. So the dev stack does **not** start it, and the Events
+section stays empty until you run the collector yourself.
+
+To exercise it locally, run it in a throwaway container that mirrors the keeper (host `docker` +
+`sqlite3` + the DB volume) on the compose network:
+
+```powershell
+docker run -d --name gt-tracker-dev `
+  --network <project>_default `
+  -v "${PWD}:/repo" `
+  -v /var/run/docker.sock:/var/run/docker.sock `
+  -v <project>_gt-data:/gtdata `
+  --env-file .secrets\etc\gamertown\secrets.env `
+  --env-file .secrets\root\gamertown\.env `
+  -e GT_DB_PATH=/gtdata/gamertown.sqlite -e GT_POLL_MS=15000 `
+  -w /repo docker:cli `
+  sh -c "apk add --no-cache nodejs sqlite >/dev/null && exec node tools/gt-session-tracker.mjs"
+
+docker logs -f gt-tracker-dev      # watch joins/leaves
+docker rm -f gt-tracker-dev        # stop it
+```
+
+(`<project>` is the compose project name — the lowercased repo dir, e.g. `cbarr-hubgithubio`.)
+Sessions appear when a player **joins after the collector starts** — the log tail uses
+`--tail=0`, so already-online players aren't backfilled. Minecraft/Factorio are read from
+`docker logs`; GMOD/Prop Hunt/CS2 from a 15s RCON `status` poll. The host needs `sqlite3 ≥ 3.38`
+(the collector probes this at startup).
+
 ## Linux notes (verified in a Debian container)
 
 - `setup.sh` must be run in an **interactive terminal**: `age` reads the passphrase

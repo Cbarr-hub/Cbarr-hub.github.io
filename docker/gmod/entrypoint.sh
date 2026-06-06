@@ -41,9 +41,15 @@ if [ -n "${SKIP_CSS:-}" ]; then
   log "SKIP_CSS set — skipping CS:S content (custom-map textures may be missing)"
 elif [ ! -d "$CSS_DIR/cstrike" ]; then
   log "downloading Counter-Strike: Source content (~3GB; one-time)…"
-  STEAMCMD="$SF/steamcmd/steamcmd.sh"
-  [ -x "$STEAMCMD" ] || STEAMCMD="$(command -v steamcmd || true)"
+  # LinuxGSM installs steamcmd under the game user's home (~/.steam/steamcmd), NOT in
+  # serverfiles — check that (and a couple of fallbacks) so CS:S actually downloads.
+  STEAMCMD=""
+  for c in "$SF/steamcmd/steamcmd.sh" "${HOME:-/data}/.steam/steamcmd/steamcmd.sh" \
+           /data/.steam/steamcmd/steamcmd.sh "$(command -v steamcmd || true)"; do
+    if [ -n "$c" ] && [ -x "$c" ]; then STEAMCMD="$c"; break; fi
+  done
   if [ -n "${STEAMCMD:-}" ] && [ -x "$STEAMCMD" ]; then
+    log "using steamcmd at $STEAMCMD"
     "$STEAMCMD" +force_install_dir "$CSS_DIR" +login anonymous +app_update 232330 validate +quit \
       || log "CS:S download returned non-zero (maps may have missing textures)"
   else

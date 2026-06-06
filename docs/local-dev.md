@@ -214,6 +214,41 @@ Notes:
 - `SKIP_CSS=1` (from the bundle) skips GMOD's ~3GB CS:S pull; set `$env:SKIP_CSS = "1"`
   to force it if your env differs.
 
+### Connecting to a dev game server (use your LAN IP, not `127.0.0.1`)
+
+Joining a dev game server from a game **client on the same machine** has two gotchas that
+don't exist in prod. Both are handled — but you must connect to your machine's **LAN IP,
+never `127.0.0.1`**:
+
+1. **Loopback is unreachable from the game client.** A Source/GMOD client binds its socket
+   to the host's LAN interface (you'll see `Network: IP 192.168.x.y` in the client console).
+   On Windows a socket bound to the LAN IP physically *cannot* send to `127.0.0.1` (loopback
+   is a separate interface), so every `connect 127.0.0.1:27066` packet is dropped before it
+   reaches Docker — the container sees zero packets. The published port also listens on
+   `0.0.0.0`, so the server **is** reachable at `<LAN-IP>:27066`.
+2. **VAC/Steam-auth fails over Docker NAT.** A normal (secure) server makes the client present
+   a Steam auth ticket that can't validate once the connection is NAT'd through the Docker
+   bridge. So the dev `gmod`/`prophunt` containers boot **LAN + insecure** (`LAN_INSECURE=1`
+   in `docker-compose.dev.yml` → the entrypoint appends `+sv_lan 1 -insecure` to LinuxGSM's
+   launch). The GSLT and Workshop content still work — the entrypoint reuses LinuxGSM's own
+   `startparameters` template, so `+sv_setsteamaccount` is untouched.
+
+**Make the panel emit the right join string** — set your LAN IP as `DEV_PUBLIC_HOST` in
+`.env.local`, and the panel's join links say `connect <LAN-IP>:27066` directly:
+
+```ini
+# .env.local  (find your IP via `ipconfig` or the client's "Network: IP …" line)
+DEV_PUBLIC_HOST=192.168.0.228
+```
+
+Then in the game console: `connect <LAN-IP>:27066` (TTT) · `:27067` (Prop Hunt). The same
+LAN-IP rule applies to any game client on this machine (CS2, Minecraft, Factorio). If a DHCP
+lease changes your IP, update `.env.local` (or set a DHCP reservation). `127.0.0.1` still
+works for the **web panel/API** (`https://localhost`) — only direct game-client UDP needs the
+LAN IP, and the host-side session collector + the panel's RCON control are unaffected (they
+reach the containers over the Docker network). **Prod is untouched:** `LAN_INSECURE` is never
+set there, so production servers stay VAC-secure and public players auth through Steam normally.
+
 ### Database restore (required for login)
 
 `setup.ps1` restores **secrets**, not the app **database** — so a fresh stack boots with

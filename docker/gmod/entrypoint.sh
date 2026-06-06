@@ -16,6 +16,7 @@ SF=/data/serverfiles
 GARRYS="$SF/garrysmod"
 GAME_CFG="$GARRYS/cfg/gmodserver.cfg"
 INST_CFG=/data/lgsm/config-lgsm/gmodserver/gmodserver.cfg
+DEFAULT_CFG=/data/lgsm/config-lgsm/gmodserver/_default.cfg
 COMMON_CFG=/data/lgsm/config-lgsm/gmodserver/common.cfg
 MOUNT_CFG="$GARRYS/cfg/mount.cfg"
 CSS_DIR="$SF/css-content"
@@ -99,6 +100,26 @@ if [ ! -f /data/.gt-seeded ]; then
   [ -n "${WORKSHOP_COLLECTION:-}" ] && seedvar "$INST_CFG" wscollectionid "$WORKSHOP_COLLECTION"
   [ -n "${DEFAULT_MAP:-}" ]         && seedvar "$INST_CFG" defaultmap "$DEFAULT_MAP"
   touch /data/.gt-seeded
+fi
+
+# ── 3b. Dev-only: LAN + insecure boot ─────────────────────────────────────────
+# A Source/GMOD client on the SAME host binds its socket to the host's LAN IP and
+# CANNOT send to 127.0.0.1 (loopback is a separate interface), and a VAC-secure
+# server would also reject the Steam-auth ticket once it arrives NAT'd. So in dev
+# (LAN_INSECURE=1) we boot the server LAN + insecure and connect to it by the host's
+# LAN IP — NOT 127.0.0.1. NEVER set LAN_INSECURE in production. See docs/local-dev.md.
+# We reuse LinuxGSM's OWN startparameters template (so +sv_setsteamaccount ${gslt}
+# and Workshop downloads stay intact) and just append the LAN/insecure flags.
+if [ -n "${LAN_INSECURE:-}" ]; then
+  base=$(grep -m1 '^startparameters=' "$DEFAULT_CFG" 2>/dev/null)
+  if [ -n "$base" ]; then
+    sed -i -e '/^startparameters=/d' -e '/^# LAN_INSECURE override/d' "$INST_CFG"
+    {
+      echo "# LAN_INSECURE override (dev only) — see docs/local-dev.md"
+      echo "${base%\"} +sv_lan 1 -insecure\""
+    } >> "$INST_CFG"
+    log "LAN_INSECURE: booting LAN + insecure (dev) — connect via the host LAN IP, not 127.0.0.1"
+  fi
 fi
 
 # ── 4. Foreground run (container == server) ───────────────────────────────────

@@ -13,9 +13,12 @@
 #     rebuild. nodemon uses --legacy-watch (polling) because inotify events don't
 #     cross Docker Desktop bind mounts on Windows/macOS.
 #   - The app port is published to localhost for direct (non-TLS) API access.
-#   - PUBLIC_HOST=127.0.0.1 so the panel's game-server join strings point at this
-#     machine (e.g. `connect 127.0.0.1:27066`) instead of the production public IP
-#     (env.js defaults PUBLIC_HOST to 104.177.95.216 for the keeper).
+#   - PUBLIC_HOST defaults to 127.0.0.1 (API/health on localhost), BUT a game client
+#     on THIS machine binds to the host LAN IP and CANNOT reach 127.0.0.1 through
+#     Docker NAT — so to actually join a game server set DEV_PUBLIC_HOST=<your LAN IP>
+#     in .env.local and the panel emits `connect <LAN-IP>:27066`. The gmod/prophunt
+#     containers also boot LAN/insecure (LAN_INSECURE=1) so there's no VAC / Steam-auth
+#     step to fail over NAT. See docs/local-dev.md.
 
 services:
   app:
@@ -24,7 +27,9 @@ services:
       target: dev
     environment:
       NODE_ENV: development
-      PUBLIC_HOST: 127.0.0.1   # join strings reference localhost in dev, not prod
+      # Set DEV_PUBLIC_HOST=<your LAN IP> in .env.local to join game servers from a
+      # client on this machine (127.0.0.1 is unreachable from a LAN-bound game client).
+      PUBLIC_HOST: ${DEV_PUBLIC_HOST:-127.0.0.1}
     volumes:
       - ./backend/src:/app/src:ro   # live source; node_modules stay baked in the image
     ports:
@@ -34,3 +39,16 @@ services:
     environment:
       SITE_ADDRESS: localhost
       CADDY_TLS: tls internal
+
+  # GMOD/TTT + Prop Hunt: boot LAN + insecure in dev so a game client on THIS machine
+  # can connect. A Source client binds to the host LAN IP and can't reach the server
+  # via Steam-auth over Docker NAT — connect by the host's LAN IP (DEV_PUBLIC_HOST),
+  # NOT 127.0.0.1. The GSLT/Workshop still work (the entrypoint keeps them). See
+  # docs/local-dev.md. NEVER set LAN_INSECURE on prod.
+  gmod:
+    environment:
+      LAN_INSECURE: "1"
+
+  prophunt:
+    environment:
+      LAN_INSECURE: "1"

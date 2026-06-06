@@ -256,6 +256,17 @@ export default async function serversRoutes(app) {
     },
   });
 
+  // ── player sessions (read-only; the host collector writes them) ───────────────
+  // Static '/sessions/online' is declared before '/sessions' for consistency with
+  // the file's static-before-parametric convention.
+  route('get', '/:id/sessions/online', (req) => svc.listOnlineSessions(req.params.id), { schema: P({ id: ID_PARAM }) });
+  route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, { limit: req.query.limit }), {
+    schema: {
+      ...P({ id: ID_PARAM }),
+      querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } } },
+    },
+  });
+
   // ── raw config files (Phase 3) ────────────────────────────────────────────────
   route('get', '/:id/config', (req) => svc.listConfig(req.params.id), { schema: P({ id: ID_PARAM }) });
   route('get', '/:id/config/:file', (req) => svc.readConfig(req.params.id, req.params.file), {

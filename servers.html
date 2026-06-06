@@ -426,6 +426,31 @@
     .stat-k { color: #7bb85f; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
     .stat-v { color: #d4d4b8; font-size: 11px; font-family: "Courier New", monospace; text-align: right; word-break: break-word; }
 
+    /* standalone Events section: player-session table (spans all servers) */
+    .events-panel { border: 1px solid #2a2a2a; background: #0d0f0c; margin-top: 14px; }
+    .events-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 10px; border-bottom: 1px solid #2a2a2a; background: #121512; }
+    .events-title { color: #42F527; font-size: 12px; font-weight: bold; letter-spacing: 1px; }
+    .events-spacer { flex: 1; }
+    .events-bar .retro-btn { padding: 2px 8px; }
+    .events-select { background: #101410; color: #b8d4a0; border: 1px solid #2a2a2a;
+      font-family: "Courier New", monospace; font-size: 11px; padding: 2px 6px; }
+    .events-body { padding: 10px; }
+    .event-table { display: flex; flex-direction: column; gap: 2px; }
+    .event-row { display: grid; grid-template-columns: 1.4fr 1.1fr 1.2fr 1.2fr 0.8fr; gap: 6px; align-items: baseline;
+      background: #101410; border: 1px solid #2a2a2a; padding: 4px 7px; font-size: 11px; }
+    .event-table.with-srv .event-row { grid-template-columns: 0.9fr 1.3fr 1.1fr 1.1fr 1.1fr 0.7fr; }
+    .event-row.online { border-color: #2f5f25; background: #0f140d; }
+    .event-thead { background: transparent; border: none; padding: 2px 7px;
+      color: #7bb85f; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+    .event-row .ev-name { color: #b8d4a0; font-weight: bold; min-width: 0; word-break: break-word; }
+    .event-row .ev-srv { color: #7bb85f; min-width: 0; word-break: break-word; }
+    .event-row .ev-id, .event-row .ev-in, .event-row .ev-out, .event-row .ev-dur {
+      color: #d4d4b8; font-family: "Courier New", monospace; }
+    .event-uid { cursor: help; border-bottom: 1px dotted #555; }
+    .event-none { color: #6a6a5a; }
+    .ev-online { color: #42F527; font-weight: bold; }
+
     /* horizontal bars (disk / load) */
     .bar { width: 100%; height: 8px; background: #2a2a2a; border: 1px solid #333; overflow: hidden; }
     .bar > span { display: block; height: 100%; background: #42F527; box-shadow: 0 0 6px rgba(66,245,39,0.5); transition: width 0.6s ease, background 0.4s ease; }
@@ -795,6 +820,7 @@
       dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
       dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
+      dbGetServerSessions,
       dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile,
       dbUpdateProfile, dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
       dbGetNodeStatus,
@@ -1173,8 +1199,10 @@
       }
       if (!activeId || !servers.some(s => s.id === activeId)) activeId = servers[0].id
       // The fleet deck (above) is the navigator now — clicking an entity selects it.
-      host.innerHTML = '<div id="active-card"></div>'
+      // The Events section is standalone (spans all servers), below the active card.
+      host.innerHTML = '<div id="active-card"></div><div id="events-section"></div>'
       renderActiveCard()
+      renderEventsSection()
     }
 
     function renderActiveCard() {
@@ -1183,6 +1211,117 @@
       if (!host || !s) return
       host.innerHTML = cardHtml(s)
       wireCard(s.id)
+    }
+
+    // ── standalone Events section (player sessions, spans all servers) ──────────
+    // Lives on its own below the active card so the per-game tabs stay uncramped.
+    // A host-side collector writes the join/leave rows; this just reads + displays.
+    let eventsFilter = 'all'      // 'all' | a server id
+    let eventsRows = []
+
+    const evClock = (sec) => sec ? new Date(sec * 1000).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }) : '—'
+    function evDur(s) {
+      const open = s.left_at == null
+      let n = Math.max(0, (open ? Math.floor(Date.now() / 1000) : s.left_at) - s.joined_at)
+      const h = Math.floor(n / 3600); n %= 3600
+      const m = Math.floor(n / 60); const sec = n % 60
+      const str = h ? `${h}h ${m}m` : m ? `${m}m ${sec}s` : `${sec}s`
+      return open ? `${str}+` : str
+    }
+    // SteamID64 / Mojang UUID are long — abbreviate for the table; full value on hover.
+    function evId(s) {
+      if (!s.uid) return '<span class="event-none" title="no native id (CS2 redacts SteamIDs)">—</span>'
+      const u = String(s.uid)
+      const abbr = u.length > 14 ? `${u.slice(0, 6)}…${u.slice(-4)}` : u
+      return `<span class="event-uid" title="${esc(u)}">${esc(abbr)}</span>`
+    }
+
+    function renderEventsSection() {
+      const host = document.getElementById('events-section')
+      if (!host) return
+      const opts = ['<option value="all">All servers</option>']
+        .concat(servers.map(s => `<option value="${esc(s.id)}"${eventsFilter === s.id ? ' selected' : ''}>${esc(s.name)}</option>`))
+        .join('')
+      host.innerHTML = `
+        <div class="events-panel">
+          <div class="events-bar">
+            <span class="events-title">▦ Player Events</span>
+            <span class="qs-note">Join/leave history collected on the host — independent of this page.</span>
+            <span class="events-spacer"></span>
+            <select class="events-select" data-ev-filter aria-label="Filter events by server">${opts}</select>
+            <button class="retro-btn" type="button" data-ev-refresh>↻ Refresh</button>
+          </div>
+          <div class="events-body" data-ev-body><div class="panel-ldg">Loading…</div></div>
+        </div>`
+      host.querySelector('[data-ev-filter]')?.addEventListener('change', (e) => {
+        eventsFilter = e.target.value
+        loadEventsSection()
+      })
+      host.querySelector('[data-ev-refresh]')?.addEventListener('click', (e) =>
+        withBtnBare(e.currentTarget, loadEventsSection))
+      loadEventsSection()
+    }
+
+    // Spinner-on-button wrapper for the standalone section (the per-card withBtn is
+    // scoped inside wireCard; this is the top-level equivalent for the Events bar).
+    async function withBtnBare(btn, fn) {
+      const prev = btn ? btn.disabled : false
+      if (btn) { btn.disabled = true; btn.classList.add('loading') }
+      try { return await fn() } finally { if (btn) { btn.disabled = prev; btn.classList.remove('loading') } }
+    }
+
+    async function loadEventsSection() {
+      const body = document.querySelector('#events-section [data-ev-body]')
+      if (!body) return
+      const showServer = eventsFilter === 'all'
+      try {
+        if (showServer) {
+          // Merge each server's recent sessions, tagging the source server.
+          const per = await Promise.all(servers.map(async (s) => {
+            const rows = await dbGetServerSessions(s.id, { limit: 100 }).catch(() => [])
+            return rows.map(r => ({ ...r, serverName: s.name }))
+          }))
+          eventsRows = per.flat().sort((a, b) => b.joined_at - a.joined_at)
+        } else {
+          const s = servers.find(x => x.id === eventsFilter)
+          const rows = await dbGetServerSessions(eventsFilter, { limit: 200 }).catch(() => [])
+          eventsRows = rows.map(r => ({ ...r, serverName: s?.name || eventsFilter }))
+        }
+      } catch (e) {
+        body.innerHTML = `<div class="qs-note-block">events unavailable: ${esc(e.message)}</div>`
+        return
+      }
+      renderEventsRows(showServer)
+    }
+
+    function renderEventsRows(showServer) {
+      const body = document.querySelector('#events-section [data-ev-body]')
+      if (!body) return
+      if (!eventsRows.length) {
+        body.innerHTML = '<div class="qs-note-block">No sessions recorded yet.</div>'
+        return
+      }
+      const srvCol = (txt) => showServer ? `<span class="ev-srv">${txt}</span>` : ''
+      const rows = eventsRows.map(s => `
+        <div class="event-row${s.left_at == null ? ' online' : ''}">
+          ${srvCol(esc(s.serverName))}
+          <span class="ev-name">${esc(s.name)}</span>
+          <span class="ev-id">${evId(s)}</span>
+          <span class="ev-in">${evClock(s.joined_at)}</span>
+          <span class="ev-out">${s.left_at == null ? '<span class="ev-online">online</span>' : evClock(s.left_at)}</span>
+          <span class="ev-dur">${evDur(s)}</span>
+        </div>`).join('')
+      body.innerHTML = `
+        <div class="event-table${showServer ? ' with-srv' : ''}">
+          <div class="event-row event-thead">
+            ${srvCol('Server')}
+            <span class="ev-name">Player</span><span class="ev-id">ID</span>
+            <span class="ev-in">Logged in</span><span class="ev-out">Logged out</span><span class="ev-dur">Duration</span>
+          </div>
+          ${rows}
+        </div>`
     }
 
     function statusBits(s) {

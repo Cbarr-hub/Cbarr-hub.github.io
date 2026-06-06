@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../src/db.js';
 import { createServerStore } from '../src/servers/store.js';
 import { buildConnectors } from '../src/servers/connectors/index.js';
+import { listServers } from '../src/servers/registry.js';
 
 // In-memory DB with all migrations applied (mirrors what openDb does, minus the
 // file/WAL setup which an in-memory DB doesn't need).
@@ -119,4 +120,94 @@ test('buildConnectors injects the store into every connector', () => {
 test('buildConnectors tolerates a null store (no DB wired)', () => {
   const connectors = buildConnectors({ docker: {} }, null);
   assert.equal(connectors.get('counterstrike').store, null);
+});
+
+// ── player-session tracking ──────────────────────────────────────────────────────
+const steam = (name, uid) => ({ name, uid, identityKind: 'steam' });
+
+test('seedHostedGames registers the five servers in games(hosted=1)', () => {
+  const db = testDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  const hosted = db.prepare('SELECT slug, identity_kind AS k FROM games WHERE hosted = 1 ORDER BY slug').all();
+  assert.deepEqual(hosted.map((r) => r.slug), ['counterstrike', 'factorio', 'gmod', 'minecraft', 'prophunt']);
+  assert.equal(hosted.find((r) => r.slug === 'minecraft').k, 'minecraft');
+  // idempotent re-seed doesn't duplicate
+  store.seedHostedGames(listServers());
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM games WHERE hosted = 1').get().n, 5);
+  // party-games rows are untouched (still hosted=0)
+});
+
+test('recordJoin opens a session + upserts the global player; closeSession ends it', () => {
+  const db = testDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+
+  const sid = store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
+  assert.ok(sid > 0);
+  let open = store.listOpenSessions('gmod');
+  assert.equal(open.length, 1);
+  assert.equal(open[0].name, 'Alice');
+  assert.equal(open[0].uid, '76561197960290419');
+  assert.equal(open[0].identityKind, 'steam');
+
+  // one players row, linked to the session
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 1);
+  assert.equal(db.prepare('SELECT player_id FROM server_sessions WHERE id = ?').get(sid).player_id != null, true);
+
+  assert.equal(store.closeSession(sid, 1600), true);
+  assert.equal(store.listOpenSessions('gmod').length, 0);
+  const all = store.listSessions('gmod');
+  assert.equal(all.length, 1);
+  assert.equal(all[0].left_at, 1600);
+});
+
+test('a rejoin updates the player name/last_seen without a duplicate player row', () => {
+  const db = testDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
+  store.recordJoin('gmod', steam('Alice_2', '76561197960290419'), 2000, 'rcon');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 1);
+  assert.equal(db.prepare('SELECT name FROM players').get().name, 'Alice_2');
+  assert.equal(store.listOpenSessions('gmod').length, 2);
+});
+
+test('a SteamID player spans games as ONE player row (whitelist seed)', () => {
+  const db = testDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
+  store.recordJoin('prophunt', steam('Alice', '76561197960290419'), 1100, 'rcon');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 1);
+});
+
+test('a null-uid session (CS2-redacted) records no player row', () => {
+  const db = testDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  const sid = store.recordJoin('counterstrike', steam('Carol', null), 1000, 'rcon');
+  assert.ok(sid > 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 0);
+  const row = db.prepare('SELECT player_id, uid FROM server_sessions WHERE id = ?').get(sid);
+  assert.equal(row.player_id, null);
+  assert.equal(row.uid, null);
+});
+
+test('closeAllOpenSessions reconciles every open row', () => {
+  const store = createServerStore(testDb());
+  store.seedHostedGames(listServers());
+  store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
+  store.recordJoin('minecraft', { name: 'Notch', uid: 'uuid-1', identityKind: 'minecraft' }, 1000, 'log');
+  assert.equal(store.closeAllOpenSessions(2000), 2);
+  assert.equal(store.listOpenSessions('gmod').length, 0);
+  assert.equal(store.listSessions('minecraft')[0].source, 'reconciled');
+});
+
+test('session methods on an unknown slug return [] / null instead of throwing', () => {
+  const store = createServerStore(testDb());
+  store.seedHostedGames(listServers());
+  assert.deepEqual(store.listSessions('nope'), []);
+  assert.deepEqual(store.listOpenSessions('nope'), []);
+  assert.equal(store.recordJoin('nope', steam('x', '1'), 1, 'rcon'), null);
 });

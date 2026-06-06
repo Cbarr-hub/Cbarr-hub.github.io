@@ -260,6 +260,12 @@ export async function dbServerLiveAction(id, action, value) {
   return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body });
 }
 
+// ── player sessions (the "Events" tab; written host-side by the collector) ─────
+export async function dbGetServerSessions(id, { limit } = {}) {
+  const qs = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+  return (await api(`/servers/${encodeURIComponent(id)}/sessions${qs}`)) ?? [];
+}
+
 // ── startup-config profiles (named, structured loadouts) ──────────────────────
 export async function dbListProfiles(id) {
   return api(`/servers/${encodeURIComponent(id)}/profiles`);

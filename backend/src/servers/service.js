@@ -32,6 +32,10 @@ const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame
  */
 export function createServerService({ dockerClient = null, publicHost = '', db = null }) {
   const store = db ? createServerStore(db) : null;
+  // Register the hosted game servers in the `games` catalog (hosted=1) so the
+  // session collector + the Events tab can resolve a slug → game row. Cheap +
+  // idempotent; keeps the registry the single source of truth.
+  if (store) store.seedHostedGames(listServers());
   const connectors = dockerClient
     ? buildConnectors({ docker: dockerClient }, store)
     : null;
@@ -204,6 +208,18 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     },
     runLiveAction(id, action, value) {
       return connectorFor(id).runLiveAction(action, value);
+    },
+
+    // ── player sessions (read-only; written host-side by the collector) ───────
+    // Validate the id against the registry (like getStatus) so an unknown server
+    // 404s instead of silently returning []. With no DB, sessions are empty.
+    listSessions(id, opts = {}) {
+      if (!getServer(id)) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
+      return store ? store.listSessions(id, opts) : [];
+    },
+    listOnlineSessions(id) {
+      if (!getServer(id)) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
+      return store ? store.listOpenSessions(id) : [];
     },
   };
 }

@@ -26,12 +26,16 @@
 // `container` name) and it defaults to 'docker'. A server whose backend client
 // isn't configured is simply skipped, so a host can run a subset. (An optional
 // `rconPort` overrides a game image's default RCON port, e.g. itzg's 25575.)
+// `identityKind` is the native id namespace each game exposes — the key that lets
+// one player record span games. SteamID64 is shared across the three Source games
+// (the cross-game whitelist seed); Minecraft uses the Mojang UUID; Factorio has
+// only an account name. Consumed by the session catalog seed + the host collector.
 export const SERVERS = [
-  { id: 'counterstrike', name: 'Counter-Strike',     backend: 'docker', container: 'counterstrike', connector: 'counterstrike', port: 27015, connect: 'cs',      steam: { appid: 730,    arg: '+connect' } },
-  { id: 'factorio',      name: 'Factorio',           backend: 'docker', container: 'factorio', connector: 'factorio',      port: 34197, connect: 'address', steam: { appid: 427520, arg: '--mp-connect' } },
-  { id: 'gmod',          name: 'TTT',                backend: 'docker', container: 'gmod', connector: 'gmod',          port: 27066, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
-  { id: 'prophunt',      name: 'Prop Hunt',          backend: 'docker', container: 'prophunt', connector: 'prophunt',      port: 27067, connect: 'cs',      steam: { appid: 4000,   arg: '+connect' } },
-  { id: 'minecraft',     name: 'Minecraft',          backend: 'docker', container: 'minecraft', connector: 'minecraft',     port: 25565, connect: 'address' },
+  { id: 'counterstrike', name: 'Counter-Strike',     backend: 'docker', container: 'counterstrike', connector: 'counterstrike', port: 27015, connect: 'cs',      identityKind: 'steam',     steam: { appid: 730,    arg: '+connect' } },
+  { id: 'factorio',      name: 'Factorio',           backend: 'docker', container: 'factorio', connector: 'factorio',      port: 34197, connect: 'address', identityKind: 'factorio',  steam: { appid: 427520, arg: '--mp-connect' } },
+  { id: 'gmod',          name: 'TTT',                backend: 'docker', container: 'gmod', connector: 'gmod',          port: 27066, connect: 'cs',      identityKind: 'steam',     steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'prophunt',      name: 'Prop Hunt',          backend: 'docker', container: 'prophunt', connector: 'prophunt',      port: 27067, connect: 'cs',      identityKind: 'steam',     steam: { appid: 4000,   arg: '+connect' } },
+  { id: 'minecraft',     name: 'Minecraft',          backend: 'docker', container: 'minecraft', connector: 'minecraft',     port: 25565, connect: 'address', identityKind: 'minecraft' },
 ];
 
 /** Render the copy-pastable join string for a server given the public host. */

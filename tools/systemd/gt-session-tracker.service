@@ -1,0 +1,29 @@
+# Player-session collector for the Gamertown game servers. Long-running host
+# service (NOT a timer) — it tails `docker logs` for Minecraft/Factorio and polls
+# RCON for the Source games, writing join/leave rows the app reads for the
+# servers panel's "Events" tab. Runs independent of the app container. See
+# tools/gt-session-tracker.mjs + docs/infrastructure.md.
+#
+# Install on the keeper:
+#   cp tools/systemd/gt-session-tracker.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now gt-session-tracker
+#   journalctl -u gt-session-tracker -f
+#
+# Needs `node` + `sqlite3` on the host. RCON passwords come from the same two
+# secrets files Compose injects into the containers.
+[Unit]
+Description=Gamertown player-session collector (docker logs + RCON -> SQLite)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/root/gamertown
+EnvironmentFile=/etc/gamertown/secrets.env
+EnvironmentFile=/root/gamertown/.env
+ExecStart=/usr/bin/node /root/gamertown/tools/gt-session-tracker.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

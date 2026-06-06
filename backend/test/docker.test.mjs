@@ -281,11 +281,12 @@ test('DockerGmod (TTT) getLive: binary toggles as buttons, ranges as slider cont
     for (const k of ['lowgrav_on', 'speed_on', 'slowmo_on']) {
       assert.ok(!keys.includes(k), `range action ${k} should be a slider now`);
     }
-    // …and present as range controls instead. The base gravity/speed/timescale
-    // sliders are always there; the redesign adds more (traitor_pct/round_limit),
-    // so assert inclusion rather than an exact list.
+    // …and present as range controls instead. gravity + timescale are the honest
+    // GMOD movement sliders (there's no working player-speed cvar — validated live),
+    // plus the redesign's traitor_pct/round_limit. Assert inclusion, not an exact list.
     const ctlKeys = (live.controls || []).map((c) => c.key);
-    for (const k of ['gravity', 'speed', 'timescale']) assert.ok(ctlKeys.includes(k), `expected slider ${k}`);
+    for (const k of ['gravity', 'timescale']) assert.ok(ctlKeys.includes(k), `expected slider ${k}`);
+    assert.ok(!ctlKeys.includes('speed'), 'player-speed slider removed (no GMOD cvar for it)');
     const gravity = live.controls.find((c) => c.key === 'gravity');
     assert.ok(gravity.min != null && gravity.max != null && gravity.step != null && gravity.default != null);
   } finally {

@@ -31,16 +31,18 @@ const MC_ACTION_CMDS = {
   list: 'list', save: 'save-all',
   day: 'time set day', night: 'time set night',
   clear: 'weather clear', rain: 'weather rain',
-  keepinv_on:  'gamerule keepInventory true',
-  keepinv_off: 'gamerule keepInventory false',
-  mobs_on:  'gamerule doMobSpawning true',
-  mobs_off: 'gamerule doMobSpawning false',
+  keepinv_on:  'gamerule keep_inventory true',
+  keepinv_off: 'gamerule keep_inventory false',
+  mobs_on:  'gamerule spawn_mobs true',
+  mobs_off: 'gamerule spawn_mobs false',
 };
 
 // Continuous live cvars → sliders. Each clamps to its bounds in runLiveAction.
-// NOTE: gamerule names use camelCase (randomTickSpeed / playersSleepingPercentage)
-// which is correct on current stable; 1.21.11+ snapshots switch to snake_case —
-// host-validate against the deployed VERSION.
+// NOTE: gamerule identifiers on the deployed build (validated live against
+// itzg/minecraft-server v26.1.2) are snake_case — keep_inventory, random_tick_speed,
+// players_sleeping_percentage — and mob spawning is the renamed `spawn_mobs` rule
+// (NOT do_mob_spawning). Re-validate with backend/test-live/rcon-smoke.mjs if the
+// pinned VERSION changes.
 const MC_LIVE_CONTROLS = [
   { key: 'time',       label: 'Time of Day',       min: 0, max: 24000, step: 1000, default: 6000 },
   { key: 'randomtick', label: 'Random Tick Speed', min: 0, max: 20,    step: 1,    default: 3 },
@@ -129,8 +131,8 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
   async runLiveAction(key, value) {
     // Range sliders (clamped to their bounds) come first, then keyed actions.
     if (key === 'time')       return { output: await this.#rcon(`time set ${clamp(value, 0, 24000, 6000)}`) };
-    if (key === 'randomtick') return { output: await this.#rcon(`gamerule randomTickSpeed ${clamp(value, 0, 20, 3)}`) };
-    if (key === 'sleeppct')   return { output: await this.#rcon(`gamerule playersSleepingPercentage ${clamp(value, 0, 100, 100)}`) };
+    if (key === 'randomtick') return { output: await this.#rcon(`gamerule random_tick_speed ${clamp(value, 0, 20, 3)}`) };
+    if (key === 'sleeppct')   return { output: await this.#rcon(`gamerule players_sleeping_percentage ${clamp(value, 0, 100, 100)}`) };
     const cmd = MC_ACTION_CMDS[key];
     if (!cmd) { const e = new Error(`unknown live action: ${key}`); e.code = 'BAD_SETTING'; throw e; }
     return { output: await this.#rcon(cmd) };

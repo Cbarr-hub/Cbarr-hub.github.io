@@ -65,8 +65,11 @@ export const GMOD_LIVE_ACTIONS = [
 export const GMOD_ACTION_CMDS = {
   restart_round: 'ttt_roundrestart',
   cleanup:       'gmod_admin_cleanup',
-  bhop_on:       'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_airaccelerate 1000',
-  bhop_off:      'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_airaccelerate 12',
+  // GMOD's Source engine has NO sv_autobunnyhopping/sv_enablebunnyhopping (those are
+  // CS2-only) — validated live, they error "Unknown command". The honest GMOD bhop is
+  // loose air control via sv_airaccelerate (high = bhop-friendly; 12 ≈ default).
+  bhop_on:       'sv_cheats 1; sv_airaccelerate 1000',
+  bhop_off:      'sv_airaccelerate 12',
   alltalk_on:    'sv_alltalk 1',
   alltalk_off:   'sv_alltalk 0',
   cheats_on:     'sv_cheats 1',
@@ -77,18 +80,20 @@ export const GMOD_ACTION_CMDS = {
 // Live RANGE controls — cvars whose value is a continuous range, rendered as a
 // slider in the Runtime panel. The connector turns the chosen value into the
 // RCON command via gmodRangeCmd(). Shared by TTT + Prop Hunt (both srcds).
+// NOTE: there is intentionally NO "player speed" control. GMOD has no server cvar
+// for walk speed (hl2_normspeed is HL2-only → "Unknown command" here, validated live;
+// sv_maxspeed only caps, and TTT/PH set speed in gamemode Lua), so a slider would be
+// misleading. Game Speed (host_timescale) + gravity are the honest movement knobs.
 export const GMOD_LIVE_CONTROLS = [
   { key: 'gravity',     label: 'Gravity',       min: 0,    max: 1000, step: 25,   default: 600,  suffix: '' },
-  { key: 'speed',       label: 'Player Speed',  min: 50,   max: 600,  step: 10,   default: 190,  suffix: '' },
   { key: 'timescale',   label: 'Game Speed',    min: 0.25, max: 3,    step: 0.25, default: 1,    suffix: '×' },
   // TTT next-round tuning (takes effect on the next round, not mid-round).
   { key: 'traitor_pct', label: 'Traitor Ratio', min: 0.05, max: 0.5,  step: 0.01, default: 0.25, suffix: '' },
   { key: 'round_limit', label: 'Rounds/Map',    min: 1,    max: 15,   step: 1,    default: 6,    suffix: '' },
 ];
 
-// Build the RCON command for a range control's chosen value. Speed sets walk +
-// sprint together (sprint = 1.5× walk); timescale needs sv_cheats. Clamps to the
-// control's bounds so an out-of-range value can't be injected.
+// Build the RCON command for a range control's chosen value. timescale needs
+// sv_cheats. Clamps to the control's bounds so an out-of-range value can't be injected.
 export function gmodRangeCmd(key, value) {
   const ctl = GMOD_LIVE_CONTROLS.find((c) => c.key === key);
   if (!ctl) return null;
@@ -97,7 +102,6 @@ export function gmodRangeCmd(key, value) {
   n = Math.min(ctl.max, Math.max(ctl.min, n));
   switch (key) {
     case 'gravity':     return `sv_gravity ${Math.round(n)}`;
-    case 'speed':       return `sv_cheats 1; hl2_normspeed ${Math.round(n)}; hl2_sprintspeed ${Math.round(n * 1.5)}`;
     case 'timescale':   return `sv_cheats 1; host_timescale ${n}`;
     case 'traitor_pct': return `ttt_traitor_pct ${n}`;
     case 'round_limit': return `ttt_round_limit ${Math.round(n)}`;

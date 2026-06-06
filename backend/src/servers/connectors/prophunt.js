@@ -92,8 +92,10 @@ const PH_ACTION_CMDS = {
   luckyballs_off: 'ph_enable_lucky_balls 0',
   autotaunt_on:   'ph_autotaunt_enabled 1',
   autotaunt_off:  'ph_autotaunt_enabled 0',
-  bhop_on:        'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_airaccelerate 1000',
-  bhop_off:       'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_airaccelerate 12',
+  // GMOD has no sv_*bunnyhopping cvars (CS2-only) — bhop is air control via
+  // sv_airaccelerate (validated live). See gmod.js GMOD_ACTION_CMDS.
+  bhop_on:        'sv_cheats 1; sv_airaccelerate 1000',
+  bhop_off:       'sv_airaccelerate 12',
   cheats_on:      'sv_cheats 1',
   cheats_off:     'sv_cheats 0',
   apply_config:   `exec ${ACTIVE_EXEC}`,

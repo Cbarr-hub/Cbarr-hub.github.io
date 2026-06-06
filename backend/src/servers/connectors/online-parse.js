@@ -40,36 +40,46 @@ export function player(name, uid, identityKind) {
 // display name can't be mistaken for the real uniqueid (anti-spoof).
 const STEAMID_TOKEN = /(STEAM_[0-5]:[01]:\d+|\[U:1:\d+\])/;
 
-// A srcds player row begins with `#` then a numeric userid ("slot"), e.g.
-//   #  2 "Alice" STEAM_0:1:12345 05:30 60 0 active 1.2.3.4:27005
+// A legacy-srcds (GMOD/Prop Hunt) player row begins with `#` then a numeric userid
+// ("slot"), e.g.  #  2 "Alice" STEAM_0:1:12345 05:30 60 0 active 1.2.3.4:27005
 // The column header `# userid name uniqueid …` has NO numeric userid, so it is
-// excluded — as are hostname:/map:/version:/players: and any quoted asset line
-// (e.g. CS2's `spawngroups : loaded "…"`), which previously produced phantom
-// roster entries when we anchored on "any quoted substring".
-const STATUS_ROW = /^#\s*(\d+)\s+(.+)$/;
+// excluded — as are hostname:/map:/version:/players: header lines.
+const LEGACY_ROW = /^#\s*(\d+)\s+(.+)$/;
+
+// The CS2 (Source 2) `status` lists players in a `---------players--------` block,
+// terminated by `#end`. Validated live against joedwards32/cs2:
+//   ---------players--------
+//     id     time ping loss      state   rate adr name
+//      0      BOT    0    0     active      0 'Solman'             ← bot
+//   65535 [NoChan]   0    0 challenging      0unknown ''           ← connecting slot
+//      2    02:05    0    0     active 786432 172.18.0.1:37738 'dheagman'  ← human
+//   #end
+// Names are SINGLE-quoted and last, the SteamID is redacted (→ uid:null), `BOT`
+// sits in the time column for bots, and connecting slots have an empty name `''`.
+const CS2_PLAYERS_MARKER = /-{2,}\s*players\s*-{2,}/i;
 
 /**
- * Parse Source-engine `status` output into a roster. Anchored on the `# <userid>`
- * player rows (not arbitrary quoted text). GMOD/Prop Hunt expose the SteamID →
- * SteamID64; CS2 redacts it, so a matched row degrades to name-only (uid:null).
- * Returns one entry per player: `{ name, uid|null, identityKind:'steam', slot }`,
- * where `slot` is the per-connection userid (reserved for disambiguating same-name
- * players once the CS2 row format is host-validated).
- *
- * NOTE (host validation): the exact CS2 (Source 2) `status` row shape is unverified
- * and may not double-quote names. Legacy srcds (GMOD/Prop Hunt) always quotes the
- * name, so those parse fully; a `#`-row without a quoted name is skipped here until
- * a CS2-specific branch is added against a real capture (see docs Step 4 / the
- * collector header).
- *
- * @returns {{name:string, uid:string|null, identityKind:'steam', slot:string}[]}
+ * Parse Source-engine `status` output into a roster of
+ * `{ name, uid|null, identityKind:'steam', slot }`. Dispatches on the two real
+ * formats (both validated live against the running containers):
+ *  • Legacy srcds — GMOD/Prop Hunt: `#<userid> "Name" <uniqueid> …`; the uniqueid is
+ *    a STEAM_/[U:1:] token → SteamID64; name double-quoted.
+ *  • Source 2 — CS2: the `--------players--------` block above; name single-quoted +
+ *    last, SteamID redacted (uid:null).
+ * BOT rows and empty-name slots are dropped in both. The uniqueid is taken only from
+ * the part after the name (legacy) / is absent (CS2), so a SteamID embedded in a
+ * display name cannot spoof it.
  */
 export function parseSourceStatus(output) {
+  const text = String(output ?? '');
+  return CS2_PLAYERS_MARKER.test(text) ? parseCs2Status(text) : parseLegacyStatus(text);
+}
+
+function parseLegacyStatus(text) {
   const out = [];
-  for (const line of String(output ?? '').split('\n')) {
-    const row = STATUS_ROW.exec(line);
+  for (const line of text.split('\n')) {
+    const row = LEGACY_ROW.exec(line);
     if (!row) continue;
-    const slot = row[1];
     // srcds quotes the name. Take the uniqueid ONLY from the remainder after the
     // closing quote (anti-spoof). No quoted name → unknown row shape, skip.
     const nameMatch = /^"([^"]*)"\s*(.*)$/.exec(row[2]);
@@ -78,7 +88,25 @@ export function parseSourceStatus(output) {
     // BOT rows carry `BOT` in the uniqueid column instead of a SteamID — drop them.
     if (/^BOT\b/.test(after)) continue;
     const tok = after.match(STEAMID_TOKEN);
-    out.push({ ...player(nameMatch[1], tok ? steamId64(tok[1]) : null, 'steam'), slot });
+    out.push({ ...player(nameMatch[1], tok ? steamId64(tok[1]) : null, 'steam'), slot: row[1] });
+  }
+  return out;
+}
+
+function parseCs2Status(text) {
+  const out = [];
+  let inBlock = false;
+  for (const line of text.split('\n')) {
+    if (CS2_PLAYERS_MARKER.test(line)) { inBlock = true; continue; }
+    if (!inBlock) continue;
+    if (/^\s*#?end\b/i.test(line)) break;        // end-of-block marker
+    if (/^\s*id\s+time\b/i.test(line)) continue;  // column header
+    // Name is the trailing single-quoted field; CS2 redacts the SteamID (name-only).
+    const nameMatch = /'([^']*)'\s*$/.exec(line);
+    if (!nameMatch || !nameMatch[1]) continue;    // no name / empty connecting slot
+    const before = line.slice(0, nameMatch.index);
+    if (/\bBOT\b/.test(before)) continue;         // bots aren't real players
+    out.push({ ...player(nameMatch[1], null, 'steam'), slot: (before.match(/\d+/) || [])[0] ?? null });
   }
   return out;
 }

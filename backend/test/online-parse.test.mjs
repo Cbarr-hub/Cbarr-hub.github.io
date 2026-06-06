@@ -75,6 +75,35 @@ test('parseSourceStatus ignores headers, quoted hostnames, and quoted asset line
   assert.deepEqual(parseSourceStatus('spawngroups : loaded "[1: main {[0] | maps/de_dust2.vpk} ]"'), []);
 });
 
+// ── CS2 (Source 2) `status` — captured live from joedwards32/cs2 ──────────────────
+test('parseSourceStatus reads the CS2 players block: human captured name-only, bot + empty slot dropped', () => {
+  const cs2 = [
+    'players  : 1 humans, 1 bots (0 max) (not hibernating) (unreserved)',
+    '---------spawngroups----',
+    'loaded spawngroup(  1)  : SV:  [1: de_dust2 | main lump | mapload]',
+    '---------players--------',
+    '  id     time ping loss      state   rate adr name',
+    "   0      BOT    0    0     active      0 'Solman'",
+    "65535 [NoChan]    0    0 challenging      0unknown ''",
+    "   2    02:05    0    0     active 786432 172.18.0.1:37738 'dheagman'",
+    '#end',
+  ].join('\n');
+  assert.deepEqual(parseSourceStatus(cs2), [
+    { name: 'dheagman', uid: null, identityKind: 'steam', slot: '2' },
+  ]);
+});
+
+test('parseSourceStatus returns [] for a CS2 server with only bots (no phantom from spawngroups)', () => {
+  const cs2 = [
+    '---------players--------',
+    '  id     time ping loss      state   rate adr name',
+    "   0      BOT    0    0     active      0 'Solman'",
+    "   3      BOT    0    0     active      0 'Enforcer'",
+    '#end',
+  ].join('\n');
+  assert.deepEqual(parseSourceStatus(cs2), []);
+});
+
 // ── Minecraft log parser ─────────────────────────────────────────────────────────
 test('parseMinecraftLog detects uuid / join / leave', () => {
   assert.deepEqual(

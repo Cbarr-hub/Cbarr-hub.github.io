@@ -59,13 +59,17 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 // (TEXT values single-quote-escaped). The canonical, tested SQL lives in
 // backend/src/servers/store.js — keep these in sync.
 const q = (v) => (v == null ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
-const BUSY = 'PRAGMA busy_timeout=5000;';
+// Set the busy timeout with the `.timeout` DOT-COMMAND, run before the SQL via -cmd.
+// NOT `PRAGMA busy_timeout=N;` prefixed onto the SQL: that pragma EMITS its value as
+// a result row, which in `-json` mode pollutes querySql() with a phantom {timeout:N}
+// row (and concatenates a second JSON array onto real results, breaking JSON.parse).
+const TIMEOUT_ARGS = ['-cmd', '.timeout 5000'];
 
 async function runSql(sql) {
-  await execFileP('sqlite3', [DB, BUSY + sql]);
+  await execFileP('sqlite3', [...TIMEOUT_ARGS, DB, sql]);
 }
 async function querySql(sql) {
-  const { stdout } = await execFileP('sqlite3', ['-json', DB, BUSY + sql]);
+  const { stdout } = await execFileP('sqlite3', ['-json', ...TIMEOUT_ARGS, DB, sql]);
   return stdout.trim() ? JSON.parse(stdout) : [];
 }
 

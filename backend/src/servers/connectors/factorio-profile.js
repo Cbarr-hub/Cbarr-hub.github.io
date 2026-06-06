@@ -12,14 +12,40 @@ export const VISIBILITY_OPTS = [
 
 export const PROFILE_NOTE =
   'A profile is the startup config the server boots as. Changes apply on the next restart. ' +
-  'Public visibility also needs a Factorio.com token in server-settings.json.';
+  'Public visibility also needs a Factorio.com token in server-settings.json. ' +
+  'World Rules (evolution / pollution / expansion / research cost) live in map-settings.json, ' +
+  'which is baked into a save at GENERATION — so they only affect a NEWLY generated world. ' +
+  'To change a running world, use the live Game Speed / Evolution controls.';
+
+// Embedded cvar reference for the Raw-Config power-tools sidebar (built from the
+// world-settings knobs above). name = the server-settings.json / map-settings.json
+// JSON key path; the UI uses it for autocomplete / docs only.
+export const FACTORIO_CVAR_REF = [
+  { name: 'name',                        type: 'text',   group: 'server-settings.json', help: 'Server name shown in the browser' },
+  { name: 'max_players',                 type: 'number', default: 0, min: 0, max: 500, group: 'server-settings.json', help: '0 = unlimited' },
+  { name: 'autosave_interval',           type: 'number', default: 10, min: 1, max: 240, group: 'server-settings.json', help: 'Minutes between autosaves' },
+  { name: 'auto_pause',                  type: 'bool',   default: 1, group: 'server-settings.json', help: 'Pause the game when no players are connected' },
+  { name: 'game_password',               type: 'text',   group: 'server-settings.json', help: 'Join password (blank = none)' },
+  { name: 'enemy_evolution.enabled',     type: 'bool',   default: 1, group: 'map-settings.json', help: 'Biter evolution (new world only)' },
+  { name: 'pollution.enabled',           type: 'bool',   default: 1, group: 'map-settings.json', help: 'Pollution spread (new world only)' },
+  { name: 'enemy_expansion.enabled',     type: 'bool',   default: 1, group: 'map-settings.json', help: 'Biter base expansion (new world only)' },
+  { name: 'difficulty_settings.technology_price_multiplier', type: 'number', default: 1, min: 0.25, max: 10, group: 'map-settings.json', help: 'Research cost multiplier (new world only)' },
+];
 
 export function defaultProfileSettings() {
   return {
     saveName: '', serverName: 'Gamertown Factorio', description: '',
     maxPlayers: 0, visibility: 'lan', password: '', autosaveInterval: 10,
+    // World rules — auto_pause lives in server-settings.json; the evolution /
+    // pollution / expansion / tech knobs live in map-settings.json (boot truth,
+    // only affects a NEWLY generated world — see PROFILE_NOTE).
+    autoPause: '1', evolutionEnabled: '1', pollutionEnabled: '1',
+    expansionEnabled: '1', techPriceMultiplier: 1,
   };
 }
+
+// '1' / '0' normalizer for the bool-ish world-rule toggles.
+const bool = (v) => (String(v) === '1' || v === true ? '1' : '0');
 
 export function validateProfileSettings(s = {}) {
   const out = {};
@@ -35,6 +61,14 @@ export function validateProfileSettings(s = {}) {
   const ai = Number(s.autosaveInterval);
   if (!Number.isInteger(ai) || ai < 1 || ai > 240) throw badSetting('autosave interval must be 1–240 minutes');
   out.autosaveInterval = ai;
+  // World rules.
+  out.autoPause        = bool(s.autoPause);
+  out.evolutionEnabled = bool(s.evolutionEnabled);
+  out.pollutionEnabled = bool(s.pollutionEnabled);
+  out.expansionEnabled = bool(s.expansionEnabled);
+  const tpm = Number(s.techPriceMultiplier);
+  if (!(tpm >= 0.25 && tpm <= 10)) throw badSetting('tech price multiplier must be 0.25–10');
+  out.techPriceMultiplier = tpm;
   return out;
 }
 
@@ -50,6 +84,22 @@ export function applyServerSettings(json, validated) {
     : { public: false, lan: true };
   json.game_password     = validated.password;
   json.autosave_interval = validated.autosaveInterval;
+  json.auto_pause        = validated.autoPause === '1';
+  return json;
+}
+
+// Materialize the validated world-rule knobs onto a parsed map-settings.json
+// object, returning the mutated object. map-settings.json is baked into the save
+// at GENERATION, so editing it only affects a NEWLY generated world — a running
+// world is changed via the live RCON /sc controls (see docker/factorio.js).
+export function applyMapSettings(json, validated) {
+  json.enemy_evolution = { ...(json.enemy_evolution || {}), enabled: validated.evolutionEnabled === '1' };
+  json.pollution       = { ...(json.pollution       || {}), enabled: validated.pollutionEnabled === '1' };
+  json.enemy_expansion = { ...(json.enemy_expansion || {}), enabled: validated.expansionEnabled === '1' };
+  json.difficulty_settings = {
+    ...(json.difficulty_settings || {}),
+    technology_price_multiplier: validated.techPriceMultiplier,
+  };
   return json;
 }
 
@@ -62,6 +112,19 @@ export function captureServerSettings(json = {}) {
     visibility: json.visibility?.public ? 'public' : 'lan',
     password: json.game_password ?? '',
     autosaveInterval: Number.isInteger(json.autosave_interval) ? json.autosave_interval : 10,
+    autoPause: json.auto_pause === false ? '0' : '1',
+  };
+}
+
+// Read the map-settings.json world rules back into a (pre-validation) settings doc.
+// The connector merges this over captureServerSettings (the two files are separate).
+export function captureMapSettings(json = {}) {
+  return {
+    evolutionEnabled: json.enemy_evolution?.enabled === false ? '0' : '1',
+    pollutionEnabled: json.pollution?.enabled       === false ? '0' : '1',
+    expansionEnabled: json.enemy_expansion?.enabled === false ? '0' : '1',
+    techPriceMultiplier: Number.isFinite(json.difficulty_settings?.technology_price_multiplier)
+      ? json.difficulty_settings.technology_price_multiplier : 1,
   };
 }
 
@@ -85,6 +148,17 @@ export function profileGroups(saveOpts) {
         { key: 'visibility',  label: 'Visibility',    type: 'select', options: VISIBILITY_OPTS },
         { key: 'password',    label: 'Game Password (blank = none)', type: 'text' },
         { key: 'autosaveInterval', label: 'Autosave Interval (min)', type: 'number', min: 1, max: 240, step: 1 },
+      ],
+    },
+    {
+      key: 'rules', title: 'World Rules',
+      fields: [
+        { key: 'autoPause',        label: 'Auto-pause when empty', type: 'bool' },
+        { key: 'evolutionEnabled', label: 'Biter Evolution',       type: 'bool' },
+        { key: 'pollutionEnabled', label: 'Pollution',             type: 'bool' },
+        { key: 'expansionEnabled', label: 'Biter Expansion',       type: 'bool' },
+        { key: 'techPriceMultiplier', label: 'Research Cost ×', type: 'number', min: 0.25, max: 10, step: 0.25,
+          help: 'World rules below are baked into a save at generation — they only affect a NEWLY generated world.' },
       ],
     },
   ];

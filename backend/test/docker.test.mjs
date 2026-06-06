@@ -200,9 +200,10 @@ test('buildConnectors builds every docker-backed entry, and skips when no client
 // The panel collapsed the old Game-Service / Virtual-Machine split into one
 // container-power model (Start/Restart/Stop). Codify what Docker connectors
 // actually support: the container IS the game, so the game-service actions alias
-// onto container power (no separate in-VM service to error on); and these
-// non-LinuxGSM images still have no in-panel updater.
-test('non-LinuxGSM Docker connectors: container IS the game (game-service → container power; no updater)', async () => {
+// onto container power (no separate in-VM service to error on); and every image
+// now has an in-panel updater (SteamCMD for the Steam games, re-download on
+// restart for the others) instead of NO_UPDATE_RECIPE.
+test('non-LinuxGSM Docker connectors: container IS the game (game-service → container power; updatable)', async () => {
   const FX = { id: 'factorio', name: 'Factorio', backend: 'docker', container: 'factorio', port: 34197 };
   const CS = { id: 'counterstrike', name: 'CS', backend: 'docker', container: 'counterstrike', port: 27015 };
   const make = (Cls, server) => {
@@ -222,8 +223,9 @@ test('non-LinuxGSM Docker connectors: container IS the game (game-service → co
     // game-service actions map to container start/shutdown/reboot (never BAD_ACTION).
     await conn.startGame(); await conn.stopGame(); await conn.restartGame();
     assert.deepEqual(calls, ['start', 'shutdown', 'reboot']);
-    // …but still no in-panel updater for these images.
-    await assert.rejects(async () => conn.update(), (e) => e.code === 'NO_UPDATE_RECIPE');
+    // …and update() now resolves (no NO_UPDATE_RECIPE).
+    const upd = await conn.update();
+    assert.ok(upd && upd.ok !== false, `${server.id} update should resolve`);
   }
 });
 
@@ -259,9 +261,10 @@ test('DockerCounterStrike.getSettings feeds the live change-map dropdown (stock 
   assert.equal(s.sections, undefined);
 });
 
-// TTT should expose the SAME generic runtime buttons Prop Hunt does (gravity/speed/
-// bhop/slow-mo/cheats + list players), not just "List Players".
-test('DockerGmod (TTT) getLive exposes the Prop-Hunt-style runtime buttons', async () => {
+// TTT exposes the genuinely-binary toggles as buttons (bhop/cheats + list players)
+// and the continuous cvars (gravity/speed/timescale) as slider CONTROLS, not the
+// old on/off button pairs.
+test('DockerGmod (TTT) getLive: binary toggles as buttons, ranges as slider controls', async () => {
   const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
   const prev = process.env.GMOD_RCON_PASSWORD;
   process.env.GMOD_RCON_PASSWORD = 'secret';
@@ -271,9 +274,40 @@ test('DockerGmod (TTT) getLive exposes the Prop-Hunt-style runtime buttons', asy
     assert.equal(live.available, true);
     assert.equal(live.changeMap, true);
     const keys = live.actions.map((a) => a.key);
-    for (const k of ['lowgrav_on', 'lowgrav_off', 'speed_on', 'bhop_on', 'slowmo_on', 'cheats_on', 'cheats_off', 'players']) {
+    for (const k of ['bhop_on', 'bhop_off', 'cheats_on', 'cheats_off', 'players']) {
       assert.ok(keys.includes(k), `expected runtime action ${k}`);
     }
+    // the old on/off range pairs are gone from the buttons…
+    for (const k of ['lowgrav_on', 'speed_on', 'slowmo_on']) {
+      assert.ok(!keys.includes(k), `range action ${k} should be a slider now`);
+    }
+    // …and present as range controls instead. The base gravity/speed/timescale
+    // sliders are always there; the redesign adds more (traitor_pct/round_limit),
+    // so assert inclusion rather than an exact list.
+    const ctlKeys = (live.controls || []).map((c) => c.key);
+    for (const k of ['gravity', 'speed', 'timescale']) assert.ok(ctlKeys.includes(k), `expected slider ${k}`);
+    const gravity = live.controls.find((c) => c.key === 'gravity');
+    assert.ok(gravity.min != null && gravity.max != null && gravity.step != null && gravity.default != null);
+  } finally {
+    if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD; else process.env.GMOD_RCON_PASSWORD = prev;
+  }
+});
+
+// The range sliders push a single value → an RCON command via runLiveAction(key, value).
+test('DockerGmod runLiveAction maps range keys to clamped cvar commands', async () => {
+  const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
+  const prev = process.env.GMOD_RCON_PASSWORD;
+  process.env.GMOD_RCON_PASSWORD = 'secret';
+  const sent = [];
+  try {
+    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+    conn.runRcon = async (command) => { sent.push(command); return { output: '' }; };
+    await conn.runLiveAction('gravity', '250');
+    await conn.runLiveAction('timescale', '0.5');
+    await conn.runLiveAction('gravity', '99999'); // clamps to max 1000
+    assert.equal(sent[0], 'sv_gravity 250');
+    assert.equal(sent[1], 'sv_cheats 1; host_timescale 0.5');
+    assert.equal(sent[2], 'sv_gravity 1000');
   } finally {
     if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD; else process.env.GMOD_RCON_PASSWORD = prev;
   }

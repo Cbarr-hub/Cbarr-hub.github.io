@@ -142,6 +142,9 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     addMap(id, body) {
       return connectorFor(id).addMap(body);
     },
+    importCollection(id, collectionId) {
+      return connectorFor(id).importCollection(collectionId);
+    },
     renameMap(id, workshopId, name) {
       return connectorFor(id).renameMap(workshopId, name);
     },

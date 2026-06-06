@@ -28,6 +28,8 @@ export function defaultProfileSettings() {
     world: '', gamemode: 'survival', difficulty: 'normal', maxPlayers: 20,
     motd: 'Gamertown', pvp: '1', hardcore: '0', whitelist: '0', onlineMode: '1',
     viewDistance: 10, spawnProtection: 16,
+    allowNether: '1', spawnMonsters: '1', commandBlocks: '0',
+    simulationDistance: 10, playerIdleTimeout: 0,
   };
 }
 
@@ -45,12 +47,17 @@ export function validateProfileSettings(s = {}) {
   out.maxPlayers      = intIn(s.maxPlayers, 1, 200, 'max players');
   out.viewDistance    = intIn(s.viewDistance, 3, 32, 'view distance');
   out.spawnProtection = intIn(s.spawnProtection, 0, 1000, 'spawn protection');
+  out.simulationDistance = intIn(s.simulationDistance ?? 10, 3, 32, 'simulation distance');
+  out.playerIdleTimeout  = intIn(s.playerIdleTimeout ?? 0, 0, 1440, 'idle timeout');
   const motd = String(s.motd ?? '');
   if (motd.length > 200 || /[\n\r]/.test(motd)) throw badSetting('motd must be ≤200 chars, single line');
   out.motd = motd;
   const bool = (v) => (String(v) === '1' || v === true ? '1' : '0');
   out.pvp = bool(s.pvp); out.hardcore = bool(s.hardcore);
   out.whitelist = bool(s.whitelist); out.onlineMode = bool(s.onlineMode);
+  out.allowNether   = bool(s.allowNether ?? '1');
+  out.spawnMonsters = bool(s.spawnMonsters ?? '1');
+  out.commandBlocks = bool(s.commandBlocks ?? '0');
   return out;
 }
 
@@ -71,6 +78,11 @@ export function applyProps(text, settings) {
   set('online-mode', s.onlineMode === '1' ? 'true' : 'false');
   set('view-distance', String(s.viewDistance));
   set('spawn-protection', String(s.spawnProtection));
+  set('allow-nether', s.allowNether === '1' ? 'true' : 'false');
+  set('spawn-monsters', s.spawnMonsters === '1' ? 'true' : 'false');
+  set('enable-command-block', s.commandBlocks === '1' ? 'true' : 'false');
+  set('simulation-distance', String(s.simulationDistance));
+  set('player-idle-timeout', String(s.playerIdleTimeout));
   return out;
 }
 
@@ -90,6 +102,11 @@ export function captureProps(text) {
     onlineMode: boolp('online-mode', '1'),
     viewDistance: nump('view-distance', 10),
     spawnProtection: nump('spawn-protection', 16),
+    allowNether: boolp('allow-nether', '1'),
+    spawnMonsters: boolp('spawn-monsters', '1'),
+    commandBlocks: boolp('enable-command-block', '0'),
+    simulationDistance: nump('simulation-distance', 10),
+    playerIdleTimeout: nump('player-idle-timeout', 0),
   });
 }
 
@@ -113,9 +130,14 @@ export function profileGroups(worldOpts) {
         { key: 'difficulty', label: 'Difficulty', type: 'select', options: enumOpts(DIFFICULTIES) },
         { key: 'hardcore',   label: 'Hardcore',   type: 'bool' },
         { key: 'pvp',        label: 'PvP',        type: 'bool' },
+        { key: 'allowNether',   label: 'Allow Nether',   type: 'bool' },
+        { key: 'spawnMonsters', label: 'Spawn Monsters', type: 'bool' },
+        { key: 'commandBlocks', label: 'Command Blocks',  type: 'bool' },
         { key: 'maxPlayers',      label: 'Max Players',   type: 'number', min: 1, max: 200, step: 1 },
         { key: 'viewDistance',    label: 'View Distance', type: 'number', min: 3, max: 32, step: 1 },
+        { key: 'simulationDistance', label: 'Simulation Distance', type: 'number', min: 3, max: 32, step: 1 },
         { key: 'spawnProtection', label: 'Spawn Protection (blocks)', type: 'number', min: 0, max: 1000, step: 1 },
+        { key: 'playerIdleTimeout',  label: 'Idle Kick (min, 0=off)', type: 'number', min: 0, max: 1440, step: 1 },
       ],
     },
     {
@@ -129,3 +151,25 @@ export function profileGroups(worldOpts) {
     },
   ];
 }
+
+// Reference catalog of the server.properties keys this connector manages — the
+// Raw Config tab reads it for autocomplete + inline docs (name is the on-disk
+// key, not the camelCase settings key). Booleans are 'true'/'false' in the file.
+export const CVAR_REF = [
+  { name: 'gamemode',             type: 'select', default: 'survival', group: 'gameplay', help: GAMEMODES.join(' / ') },
+  { name: 'difficulty',           type: 'select', default: 'normal',   group: 'gameplay', help: DIFFICULTIES.join(' / ') },
+  { name: 'hardcore',             type: 'bool',   default: 'false',    group: 'gameplay' },
+  { name: 'pvp',                  type: 'bool',   default: 'true',     group: 'gameplay' },
+  { name: 'allow-nether',         type: 'bool',   default: 'true',     group: 'gameplay' },
+  { name: 'spawn-monsters',       type: 'bool',   default: 'true',     group: 'gameplay' },
+  { name: 'enable-command-block', type: 'bool',   default: 'false',    group: 'gameplay' },
+  { name: 'max-players',          type: 'number', default: 20, min: 1, max: 200,  group: 'gameplay' },
+  { name: 'view-distance',        type: 'number', default: 10, min: 3, max: 32,   group: 'gameplay' },
+  { name: 'simulation-distance',  type: 'number', default: 10, min: 3, max: 32,   group: 'gameplay' },
+  { name: 'spawn-protection',     type: 'number', default: 16, min: 0, max: 1000, group: 'gameplay' },
+  { name: 'player-idle-timeout',  type: 'number', default: 0,  min: 0, max: 1440, group: 'gameplay', help: 'minutes; 0 = off' },
+  { name: 'white-list',           type: 'bool',   default: 'false',    group: 'access' },
+  { name: 'online-mode',          type: 'bool',   default: 'true',     group: 'access' },
+  { name: 'motd',                 type: 'text',   default: 'Gamertown', group: 'access' },
+  { name: 'level-name',           type: 'text',   default: 'world',    group: 'world' },
+];

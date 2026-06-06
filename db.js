@@ -201,8 +201,15 @@ export async function dbListServerMaps(id) {
   return (await api(`/servers/${encodeURIComponent(id)}/maps`)) ?? [];
 }
 
+// name is optional — omit it and the backend auto-fetches the Workshop title.
 export async function dbAddServerMap(id, workshopId, name) {
-  return api(`/servers/${encodeURIComponent(id)}/maps`, { method: 'POST', body: { workshopId, name } });
+  const body = name == null || name === '' ? { workshopId } : { workshopId, name };
+  return api(`/servers/${encodeURIComponent(id)}/maps`, { method: 'POST', body });
+}
+
+// Import every map in a public Steam Workshop collection (CS). Returns { ok, imported, maps }.
+export async function dbImportServerCollection(id, collectionId) {
+  return api(`/servers/${encodeURIComponent(id)}/maps/collection`, { method: 'POST', body: { collectionId } });
 }
 
 // Install collection maps into the single maps source (GMOD). Returns { ok, maps }.

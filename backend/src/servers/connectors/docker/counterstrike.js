@@ -17,12 +17,18 @@
 
 import { DockerBaseConnector } from '../docker-base.js';
 import * as csProfile from '../counterstrike-profile.js';
+import { fetchItemTitle, fetchCollectionMaps } from '../../steam-workshop.js';
 import { rconExchange } from '../../rcon-tcp.js';
 import { validateLiveCommand } from '../../rcon.js';
 import { badSetting, notFound, duplicateError } from '../../errors.js';
 
 // joedwards32/cs2 install/cfg layout (image-dependent — validate on the host).
 const CFG = '/home/steam/cs2-dedicated/game/csgo/cfg';
+
+// Steam Workshop titles are free-text (quotes, newlines, arbitrary length); the
+// catalog stores short display names, so coerce an auto-fetched title into one.
+const sanitizeAutoName = (title, id) =>
+  String(title ?? '').replace(/["\r\n]/g, '').trim().slice(0, 64) || `Workshop ${id}`;
 
 export class DockerCounterStrikeConnector extends DockerBaseConnector {
   configFiles = {
@@ -83,6 +89,11 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     const parts = [];
     if (s.hostname) parts.push(`hostname "${s.hostname}"`);
     parts.push(`game_alias ${s.gameMode}`);
+    // Structured Match-Rules cvars (bools as 0/1). Pushed before the map change so
+    // mp_roundtime_defuse etc. bite on the reload the changelevel/host_workshop_map triggers.
+    for (const f of csProfile.CS_CVAR_FIELDS) {
+      parts.push(`${f.cvar} ${f.bool ? (s[f.key] ? 1 : 0) : s[f.key]}`);
+    }
     parts.push(csProfile.buildChangeMapCmd(s.map)); // changelevel / host_workshop_map
     if (s.rawConfig) parts.push(...s.rawConfig.split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
     await this.#rcon(parts.join('; '));
@@ -100,11 +111,38 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
 
   // ── workshop map catalog (DB-backed; transport-agnostic) ────────────────────
   listMaps() { return this.requireStore().listWorkshopMaps(this.server.id); }
-  addMap({ workshopId, name } = {}) {
+  // Add one map. When `name` is omitted/blank the title is pulled from Steam
+  // (keyless Workshop lookup); a user-supplied name is validated as before.
+  async addMap({ workshopId, name } = {}) {
     this.requireStore();
     const id = String(workshopId ?? '').trim();
     if (!/^\d{1,20}$/.test(id)) throw badSetting('workshop id must be 1–20 digits');
-    return this.store.addWorkshopMap(this.server.id, { workshopId: id, name: csProfile.validMapName(name) });
+    const provided = String(name ?? '').trim();
+    const nm = provided
+      ? csProfile.validMapName(provided)
+      : sanitizeAutoName(await fetchItemTitle(id), id);
+    return this.store.addWorkshopMap(this.server.id, { workshopId: id, name: nm });
+  }
+  // Import every item in a public Steam Workshop collection into the catalog,
+  // names fetched automatically. Upserts (re-importing refreshes names), so it's
+  // safe to run repeatedly. Returns the count processed + the refreshed catalog.
+  async importCollection(collectionId) {
+    this.requireStore();
+    const maps = await fetchCollectionMaps(collectionId);
+    if (!maps.length) throw badSetting('that Workshop collection has no items.');
+    for (const m of maps) {
+      this.store.addWorkshopMap(this.server.id, { workshopId: m.workshopId, name: sanitizeAutoName(m.name, m.workshopId) });
+    }
+    const catalog = this.store.listWorkshopMaps(this.server.id);
+    // Unified collection-import shape (same as GMOD/PH so the panel renders identically).
+    // CS catalogs live — selectable immediately, no restart needed.
+    return {
+      ok: true,
+      imported: maps.length,
+      maps: catalog.map((w) => ({ value: `ws:${w.workshopId}`, label: w.name })),
+      requiresRestart: false,
+      note: 'Imported into the live catalog — selectable immediately; Apply changes the running map over RCON.',
+    };
   }
   renameMap(workshopId, name) {
     this.requireStore();
@@ -147,12 +185,28 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     return { ok: true };
   }
 
+  // ── update the game client (SteamCMD app_update, in-container) ───────────────
+  // joedwards32/cs2 ships SteamCMD; refresh the CS2 dedicated files in place, then
+  // the panel restarts the container to run the new build. CS2 is Steam appid 730
+  // (anonymous). Paths are image-specific — validate on the host.
+  async update() {
+    const cmd = '/home/steam/steamcmd/steamcmd.sh +force_install_dir /home/steam/cs2-dedicated '
+      + '+login anonymous +app_update 730 +quit';
+    const res = await this.runShell(cmd, { timeoutMs: 1_800_000 });
+    return {
+      ok: res.exitCode === 0,
+      note: 'CS2 files refreshed via SteamCMD — restart the server to run the new build.',
+      steps: [{ name: 'steamcmd +app_update 730', exitCode: res.exitCode, stdout: res.stdout, stderr: res.stderr }],
+    };
+  }
+
   // ── live commands (Source-RCON over TCP) ────────────────────────────────────
   async getLive() {
     if (!this.#password()) return { available: false, reason: 'CS2_RCON_PASSWORD is not set' };
     return {
       available: true,
       actions: csProfile.CS_LIVE_ACTIONS,
+      controls: csProfile.CS_LIVE_CONTROLS,
       changeMap: true,
       commandHint: 'any CS2 console command, e.g. bot_add, mp_warmup_end',
     };
@@ -164,6 +218,8 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
 
   async runLiveAction(key, value) {
     if (key === 'change_map') return { output: await this.#rcon(csProfile.buildChangeMapCmd(value)) };
+    const range = csProfile.csRangeCmd(key, value); // slider (clamped) before actions
+    if (range) return { output: await this.#rcon(range) };
     const cmd = csProfile.CS_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);
     return { output: await this.#rcon(cmd) };

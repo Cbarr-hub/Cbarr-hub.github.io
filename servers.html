@@ -180,7 +180,11 @@
     button.retro-btn.danger { background: #4a1a1a; border-color: #b85f5f; }
     button.retro-btn.danger:hover { background: #6a2a2a; color: #ff7777; }
 
-    .srv-err { color: #ff6666; font-size: 11px; margin-top: 6px; min-height: 14px; }
+    /* collapse the error row entirely when empty so it doesn't pad the gap
+       between the power controls and the first section below; only the rare
+       error case reserves space. */
+    .srv-err { color: #ff6666; font-size: 11px; }
+    .srv-err:not(:empty) { margin-top: 6px; min-height: 14px; }
 
     /* ── config / update panel (Phase 3) ── */
     .panel { border-top: 1px dashed #3a3a3a; margin-top: 8px; padding-top: 8px; }
@@ -207,6 +211,18 @@
     .rt-cmd-bar input { font-family: "Courier New", monospace; }
     .rt-hint { color: #6a7a6a; font-size: 10px; font-style: italic; margin-top: 5px; }
     [data-rt-cmd] { flex: 1; min-width: 0; font-family: "Courier New", monospace; }
+    /* live RANGE controls — slider rows for continuous cvars (gravity/speed/…) */
+    .rt-ranges { display: grid; gap: 8px; }
+    .rt-range { display: grid; grid-template-columns: 104px 1fr 58px auto; gap: 9px; align-items: center; }
+    .rt-range > label { color: #7bb85f; font-size: 11px; font-weight: bold; }
+    .rt-range input[type=range] { width: 100%; accent-color: #4f9fd0; cursor: pointer; }
+    .rt-range-val { color: #b8d4a0; font-family: "Courier New", monospace; font-size: 12px; text-align: right;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,.5); background: #141414; border: 1px solid #2a2a2a; border-radius: 2px; padding: 2px 5px; }
+    .rt-range .retro-btn { padding: 3px 11px; font-family: "Courier New", monospace; }
+    @media (max-width: 520px) {
+      .rt-range { grid-template-columns: 84px 1fr auto; }
+      .rt-range-val { display: none; }
+    }
 
     /* ── unified per-server console + per-button loading spinner ── */
     .console {
@@ -258,10 +274,14 @@
     .prof-grid .field-help { grid-column: 1 / -1; color: #777; font-size: 10px; font-style: italic; margin-top: -3px; }
     .prof-grid .ml-label { grid-column: 1 / -1; margin-top: 2px; }
     /* CS map field: by-name select + inline add-workshop form */
-    .mapcat .inline { display: flex; gap: 6px; align-items: center; }
-    .mapcat .inline select { flex: 1; min-width: 0; }
+    .mapcat .inline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .mapcat .inline select { flex: 1 1 160px; min-width: 0; }
     .mc-add { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .mc-add input { flex: 1 1 110px; min-width: 0; }
+    /* CS: import every map from a Steam Workshop collection (names auto-fetched) */
+    .mc-import { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .mc-import input { flex: 1 1 150px; min-width: 0; }
+    .mc-busy { color: #7fc0f0; font-size: 10px; font-style: italic; margin-top: 5px; }
     /* profile management row (New / Duplicate / Capture / Delete) */
     .prof-manage { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #2a2a2a; flex-wrap: wrap; }
     .prof-manage .retro-btn { padding: 3px 9px; }
@@ -345,6 +365,8 @@
     /* card sections: group panels into Configuration / Runtime, each
        with a distinct accent so the conceptual areas are visually separated. */
     .srv-section { border-left: 3px solid #2a2a2a; padding-left: 12px; margin-top: 16px; }
+    /* the first section sits right under the power controls — keep that gap tight */
+    .srv-body > .srv-section:first-of-type { margin-top: 10px; }
     .srv-section-head { font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; }
     .srv-section-head span { font-size: 10px; font-weight: normal; text-transform: none; letter-spacing: 0; font-style: italic; color: #777; margin-left: 8px; }
     .srv-section.cfg { border-left-color: #42F527; }
@@ -692,7 +714,7 @@
       dbGetServers, dbGetServerStatus, dbServerAction,
       dbListServerConfig, dbReadServerConfig, dbWriteServerConfig, dbUpdateServer,
       dbGetServerSettings, dbSaveServerSettings,
-      dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps,
+      dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
       dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
       dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile,
@@ -1147,14 +1169,23 @@
               <button class="retro-btn warn" type="button" data-act="shutdown" title="Graceful stop — disconnects players">■ Stop</button>
               <button class="retro-btn danger" type="button" data-act="stop" title="Hard kill — can corrupt an in-progress save">⨯ Force Stop</button>
               <span class="power-spacer"></span>
+              <button class="retro-btn" type="button" data-act="update" title="Update the game client (downloads the latest server build)">⬆ Update</button>
               <button class="retro-btn" type="button" data-act="refresh">↻ Refresh</button>
             </div>
           </div>
           <div class="srv-err" data-err></div>
 
+          <!-- RUNTIME: live commands to the running server (not persisted) -->
+          <div class="srv-section rt" data-section style="display:none">
+            <div class="srv-section-head">Runtime <span>live RCON — ephemeral, not saved; server must be running</span></div>
+            <div class="panel runtime" data-runtime data-loading="1" style="display:none">
+              <div data-rt-body><div class="panel-ldg">Loading runtime…</div></div>
+            </div>
+          </div>
+
           <!-- CONFIGURATION: everything persistent (profiles, quick settings, raw files) -->
           <div class="srv-section cfg" data-section style="display:none">
-            <div class="srv-section-head">Configuration <span>the server's startup config — edit a profile, then Apply &amp; Restart to go live</span></div>
+            <div class="srv-section-head">Configuration <span>the server's startup config — edit a profile, then Apply to go live</span></div>
 
             <div class="panel profiles" data-profiles data-loading="1" style="display:none">
               <div data-prof-body><div class="panel-ldg">Loading profiles…</div></div>
@@ -1178,14 +1209,6 @@
               </div>
               <textarea class="cfg" data-cfg-text placeholder="expand to load…" disabled></textarea>
             </details>
-          </div>
-
-          <!-- RUNTIME: live commands to the running server (not persisted) -->
-          <div class="srv-section rt" data-section style="display:none">
-            <div class="srv-section-head">Runtime <span>live RCON — ephemeral, not saved; server must be running</span></div>
-            <div class="panel runtime" data-runtime data-loading="1" style="display:none">
-              <div data-rt-body><div class="panel-ldg">Loading runtime…</div></div>
-            </div>
           </div>
 
           <pre class="console" data-console style="display:none"></pre>
@@ -1282,6 +1305,19 @@
           setErr(''); setBusy(true, 'Refreshing...'); if (btn) btn.classList.add('loading')
           try { await refresh(); logLine('Status refreshed') }
           catch (e) { setErr(e.message) }
+          finally { if (btn) btn.classList.remove('loading'); setBusy(false) }
+          return
+        }
+        if (act === 'update') {
+          if (!confirm('Update the game client now?\n\nThis downloads the latest server build and can take several minutes. The server may be unavailable while it updates.')) return
+          setErr(''); setBusy(true, 'Updating game client…'); logLine('Updating game client…'); if (btn) btn.classList.add('loading')
+          try {
+            const res = await dbUpdateServer(id)
+            const body = res?.steps ? formatUpdate(res) : ''
+            logLine(res?.ok === false ? 'Update finished with errors — see output' : 'Update ✓', body)
+            if (res?.note) logLine(res.note)
+            await refresh()
+          } catch (e) { setErr(e.message); logLine(`Update — error: ${e.message}`) }
           finally { if (btn) btn.classList.remove('loading'); setBusy(false) }
           return
         }
@@ -1386,6 +1422,23 @@
         const actions = (data.actions || []).map(a =>
           `<button class="retro-btn${a.danger ? ' danger' : ''}" data-rt-act="${esc(a.key)}">${esc(a.label)}</button>`).join('')
 
+        // live RANGE controls → sliders (e.g. gravity / player speed / game speed).
+        const controls = (data.controls || [])
+        const controlsHtml = controls.length ? `
+          <div class="rt-block">
+            <div class="rt-block-title">Live Tuning <span class="rt-live">live</span></div>
+            <div class="rt-ranges">${controls.map(c => {
+              const def = c.default ?? c.min ?? 0
+              return `<div class="rt-range">
+                <label for="rt-${esc(c.key)}">${esc(c.label)}</label>
+                <input id="rt-${esc(c.key)}" type="range" data-rt-range="${esc(c.key)}" min="${esc(c.min)}" max="${esc(c.max)}" step="${esc(c.step)}" value="${esc(def)}" />
+                <span class="rt-range-val" data-rt-rangeval="${esc(c.key)}">${esc(def)}${esc(c.suffix || '')}</span>
+                <button class="retro-btn" data-rt-set="${esc(c.key)}">Set</button>
+              </div>`
+            }).join('')}</div>
+            <div class="rt-hint">Drag a slider, then <b>Set</b> to push it to the running server (needs sv_cheats — toggled for you).</div>
+          </div>` : ''
+
         // optional live change-map control — map options reuse the Startup settings.
         let changeMapHtml = ''
         if (data.changeMap) {
@@ -1415,6 +1468,7 @@
             <div class="rt-block-title">Quick Actions</div>
             <div class="rt-actions">${actions}</div>
           </div>` : ''}
+          ${controlsHtml}
           ${changeMapHtml}
           <div class="rt-block">
             <div class="rt-block-title">Console</div>
@@ -1430,6 +1484,23 @@
           btn.addEventListener('click', () => withBtn(btn, btn.textContent.trim(), async () => {
             const r = await dbServerLiveAction(id, btn.dataset.rtAct)
             logLine(`> ${btn.textContent.trim()}`, r?.output)
+          }).catch(() => {}))
+        })
+
+        // range sliders: live value readout on drag; Set pushes it over RCON.
+        body.querySelectorAll('[data-rt-range]').forEach(slider => {
+          const key = slider.dataset.rtRange
+          const ctl = controls.find(c => c.key === key)
+          const valEl = body.querySelector(`[data-rt-rangeval="${key}"]`)
+          slider.addEventListener('input', () => { if (valEl) valEl.textContent = slider.value + (ctl?.suffix || '') })
+        })
+        body.querySelectorAll('[data-rt-set]').forEach(btn => {
+          const key = btn.dataset.rtSet
+          const slider = body.querySelector(`[data-rt-range="${key}"]`)
+          const ctl = controls.find(c => c.key === key)
+          btn.addEventListener('click', () => withBtn(btn, `Set ${ctl?.label || key}`, async () => {
+            const r = await dbServerLiveAction(id, key, String(slider.value))
+            logLine(`> ${ctl?.label || key} → ${slider.value}${ctl?.suffix || ''}`, r?.output)
           }).catch(() => {}))
         })
         const cm = body.querySelector('[data-rt-changemap]')
@@ -1533,19 +1604,32 @@
             const optsHtml = opts.map(o =>
               `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
             const isWs = String(v ?? '').startsWith('ws:')
+            const importBtn = f.addCollection
+              ? `<button type="button" class="mini-btn" data-mc-import-toggle title="Import every map from a Steam Workshop collection (names auto-fetched)">⤓ Import Collection</button>`
+              : ''
+            const importForm = f.addCollection
+              ? `<div class="mc-import" data-mc-import style="display:none">
+                  <input type="text" data-mc-collection placeholder="Collection ID (digits)" inputmode="numeric" />
+                  <button type="button" class="mini-btn" data-mc-collection-save>Import</button>
+                  <button type="button" class="mini-btn" data-mc-collection-cancel>Cancel</button>
+                </div>`
+              : ''
             return lbl + `
               <div class="mapcat" data-mapcat="${esc(f.key)}">
                 <div class="inline">
                   <select id="${lid}" data-pf="${esc(f.key)}" data-pt="text">${optsHtml}</select>
                   <button type="button" class="mini-btn" data-mc-toggle>＋ Workshop Map</button>
+                  ${importBtn}
                   <button type="button" class="mini-btn x" data-mc-remove title="Remove the selected Workshop map from your list"${isWs ? '' : ' disabled'}>Remove</button>
                 </div>
                 <div class="mc-add" data-mc-add style="display:none">
                   <input type="text" data-mc-id placeholder="Workshop ID (digits)" inputmode="numeric" />
-                  <input type="text" data-mc-name placeholder="Name (e.g. Assembly)" />
+                  <input type="text" data-mc-name placeholder="Name (optional — auto-filled from Steam)" />
                   <button type="button" class="mini-btn" data-mc-save>Add</button>
                   <button type="button" class="mini-btn" data-mc-cancel>Cancel</button>
                 </div>
+                ${importForm}
+                <div class="mc-busy" data-mc-busy style="display:none"></div>
               </div>` + help
           }
           // `custom` selects are combo inputs: pick a suggestion or type a value
@@ -1635,6 +1719,20 @@
             <div class="prof-grid">${(g.fields || []).map(profFieldHtml).join('')}</div>
           </details>`).join('')
 
+        // Apply semantics differ per game: restart-based (default — writes the
+        // startup config + reboots) vs live (CS — pushes over RCON, no restart;
+        // a restart would just revert to the compose env). The connector's schema
+        // declares `apply` for the live case.
+        const apply = P.schema.apply || {}
+        const liveApply = apply.mode === 'live'
+        const applyLabel = apply.label || '▶ Apply &amp; Restart'
+        const applyTitle = liveApply
+          ? 'Save your edits, then push them to the running server live over RCON (no restart)'
+          : 'Save your edits, write them as the live startup config, and restart to load them'
+        const applyNote = liveApply
+          ? `${apply.note ? esc(apply.note) + ' ' : ''}<b>Save</b> stores your edits · <b>${esc(apply.label || 'Apply Live')}</b> pushes them to the running server instantly.`
+          : `${P.schema.note ? esc(P.schema.note) + ' ' : ''}<b>Save</b> stores your edits · <b>Apply &amp; Restart</b> writes them live and reboots the server to load them.`
+
         profBody.innerHTML = `
           <div class="pf-toolbar">
             <div class="pf-select">
@@ -1652,10 +1750,10 @@
           <div class="pf-groups">${groups}</div>
           <div class="pf-actions">
             <div class="pf-actions-btns">
-              <button class="retro-btn primary" data-prof-apply title="Save your edits, write them as the live startup config, and restart to load them">▶ Apply &amp; Restart</button>
+              <button class="retro-btn primary" data-prof-apply title="${applyTitle}">${applyLabel}</button>
               <button class="retro-btn" data-prof-save title="Save your edits to this profile (no restart)">Save</button>
             </div>
-            <div class="pf-actions-note">${P.schema.note ? esc(P.schema.note) + ' ' : ''}<b>Save</b> stores your edits · <b>Apply &amp; Restart</b> writes them live and reboots the server to load them.</div>
+            <div class="pf-actions-note">${applyNote}</div>
           </div>`
 
         wireProfileEvents()
@@ -1690,18 +1788,27 @@
 
         onClick('[data-prof-apply]', (b) => {
           if (P.editId == null) return
-          if (!confirm('Apply this profile and restart the server now?\n\nThe server reloads with this config and briefly disconnects any players.')) return
-          withBtn(b, 'Apply & restart', async () => {
-            // persist pending edits, write the startup config, then restart so it
-            // fully takes effect (collection download/mount happens at boot).
+          const apply = P.schema.apply || {}
+          const liveApply = apply.mode === 'live'
+          const confirmMsg = apply.confirm
+            || 'Apply this profile and restart the server now?\n\nThe server reloads with this config and briefly disconnects any players.'
+          if (!confirm(confirmMsg)) return
+          withBtn(b, liveApply ? 'Apply live' : 'Apply & restart', async () => {
+            // persist pending edits, then apply. Restart-based games reboot so the
+            // config fully takes effect (collection download/mount at boot); live
+            // games (CS) push over RCON and must NOT restart (that reverts to env).
             readProfileForm()
             await dbUpdateProfile(id, P.editId, { settings: P.values })
             const r = await dbApplyProfile(id, P.editId)
-            logLine(`Applied "${r?.name}" ✓ — restarting to load it…`)
-            await dbServerAction(id, 'reboot')
-            await new Promise(res => setTimeout(res, 2500))
-            await refresh()
-            logLine(`Restarted ✓ — now running "${r?.name}"`)
+            if (liveApply) {
+              logLine(`Applied "${r?.name}" live ✓`)
+            } else {
+              logLine(`Applied "${r?.name}" ✓ — restarting to load it…`)
+              await dbServerAction(id, 'reboot')
+              await new Promise(res => setTimeout(res, 2500))
+              await refresh()
+              logLine(`Restarted ✓ — now running "${r?.name}"`)
+            }
             await reloadProfileList(P.editId)
           }).catch(() => {})
         })
@@ -1786,22 +1893,46 @@
         sel.addEventListener('change', syncRemove)
         syncRemove()
 
-        wrap.querySelector('[data-mc-toggle]')?.addEventListener('click', () => showAdd(addBox.style.display === 'none'))
+        // collection import form (CS) — declared first so the add toggle can hide it.
+        const importBox = wrap.querySelector('[data-mc-import]')
+        const collEl = wrap.querySelector('[data-mc-collection]')
+        const busyEl = wrap.querySelector('[data-mc-busy]')
+        const showImport = (on) => { if (!importBox) return; importBox.style.display = on ? 'flex' : 'none'; if (on) { addBox.style.display = 'none'; collEl.value = ''; collEl.focus() } }
+
+        wrap.querySelector('[data-mc-toggle]')?.addEventListener('click', () => { showImport(false); showAdd(addBox.style.display === 'none') })
         wrap.querySelector('[data-mc-cancel]')?.addEventListener('click', () => showAdd(false))
         const save = wrap.querySelector('[data-mc-save]')
         save?.addEventListener('click', () => {
           const wsId = (idEl.value || '').trim(), nm = (nameEl.value || '').trim()
           if (!/^\d{1,20}$/.test(wsId)) { setErr('Workshop ID must be digits'); return }
-          if (!nm) { setErr('Give the map a name'); return }
           withBtn(save, 'Add workshop map', async () => {
-            await dbAddServerMap(id, wsId, nm)            // persist to the catalog
+            const row = await dbAddServerMap(id, wsId, nm)   // nm '' → backend auto-fetches the title
+            const label = row?.name || nm || `Workshop ${wsId}`
             const val = `ws:${wsId}`
             let opt = [...sel.options].find(o => o.value === val)
             if (!opt) { opt = document.createElement('option'); opt.value = val; sel.appendChild(opt) }
-            opt.textContent = nm; sel.value = val; P.values[f.key] = val
+            opt.textContent = label; sel.value = val; P.values[f.key] = val
             showAdd(false); syncRemove()
-            logLine(`Added workshop map "${nm}" (${wsId}) ✓`)
+            logLine(`Added workshop map "${label}" (${wsId}) ✓`)
           }).catch(() => {})
+        })
+
+        // Import a whole Steam Workshop collection → rebuild the schema so the
+        // by-name picker shows every imported map (keeping current edits).
+        wrap.querySelector('[data-mc-import-toggle]')?.addEventListener('click', () => showImport(importBox.style.display === 'none'))
+        wrap.querySelector('[data-mc-collection-cancel]')?.addEventListener('click', () => showImport(false))
+        const collSave = wrap.querySelector('[data-mc-collection-save]')
+        collSave?.addEventListener('click', () => {
+          const cid = (collEl.value || '').trim()
+          if (!/^\d{1,20}$/.test(cid)) { setErr('Collection ID must be digits'); return }
+          if (busyEl) { busyEl.style.display = 'block'; busyEl.textContent = 'Fetching collection from Steam…' }
+          withBtn(collSave, 'Import collection', async () => {
+            const r = await dbImportServerCollection(id, cid)
+            logLine(`Imported ${r?.imported ?? 0} map(s) from collection ${cid} ✓`)
+            readProfileForm()
+            P.schema = await dbGetProfileSchema(id)
+            renderProfiles()
+          }).catch(() => {}).finally(() => { if (busyEl) busyEl.style.display = 'none' })
         })
 
         removeBtn?.addEventListener('click', () => {
@@ -1953,8 +2084,10 @@
       const running = s.status === 'running'
       const show = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = '' })
       const hide = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = 'none' })
-      if (running) { show('reboot', 'shutdown', 'stop', 'refresh'); hide('start') }
-      else { show('start', 'refresh'); hide('reboot', 'shutdown', 'stop') }
+      // Update runs in-container (SteamCMD / re-download), so it needs the server
+      // running — show it only then, alongside the running-state power controls.
+      if (running) { show('reboot', 'shutdown', 'stop', 'refresh', 'update'); hide('start') }
+      else { show('start', 'refresh'); hide('reboot', 'shutdown', 'stop', 'update') }
 
       // A panel is visible when its status gate matches AND it's either loaded or
       // still loading (so the "Loading…" placeholder shows in place, not blank).

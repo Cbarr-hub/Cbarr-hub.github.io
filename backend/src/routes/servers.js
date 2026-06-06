@@ -257,9 +257,8 @@ export default async function serversRoutes(app) {
   });
 
   // ── player sessions (read-only; the host collector writes them) ───────────────
-  // Static '/sessions/online' is declared before '/sessions' for consistency with
-  // the file's static-before-parametric convention.
-  route('get', '/:id/sessions/online', (req) => svc.listOnlineSessions(req.params.id), { schema: P({ id: ID_PARAM }) });
+  // The frontend derives "online" from `left_at == null` in this list, so there's
+  // no separate online endpoint.
   route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, { limit: req.query.limit }), {
     schema: {
       ...P({ id: ID_PARAM }),

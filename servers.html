@@ -1219,6 +1219,9 @@
     let eventsFilter = 'all'      // 'all' | a server id
     let eventsRows = []
     let eventsTimer = null        // periodic refresh while the section is mounted
+    let eventsLoadSeq = 0         // "latest wins" guard: the auto-refresh, manual Refresh,
+                                  // and filter-change all call loadEventsSection(); a slower
+                                  // in-flight fetch must not clobber state/render a stale layout.
 
     const evClock = (sec) => sec ? new Date(sec * 1000).toLocaleString([], {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -1261,7 +1264,7 @@
         loadEventsSection()
       })
       host.querySelector('[data-ev-refresh]')?.addEventListener('click', (e) =>
-        withBtnBare(e.currentTarget, loadEventsSection))
+        btnBusy(e.currentTarget, loadEventsSection))
       // Auto-refresh the table body (only) every 30s so open sessions' "online … Nm+"
       // durations stay live; stop once the section leaves the DOM.
       if (eventsTimer) clearInterval(eventsTimer)
@@ -1272,9 +1275,11 @@
       loadEventsSection()
     }
 
-    // Spinner-on-button wrapper for the standalone section (the per-card withBtn is
-    // scoped inside wireCard; this is the top-level equivalent for the Events bar).
-    async function withBtnBare(btn, fn) {
+    // Shared button-busy toggle: disable + show the 'loading' spinner for the duration
+    // of fn, then restore the prior disabled state. Used directly by the standalone
+    // Events bar (no card-scoped error log) and wrapped by the per-card withBtn (which
+    // adds setErr/logLine error handling around it).
+    async function btnBusy(btn, fn) {
       const prev = btn ? btn.disabled : false
       if (btn) { btn.disabled = true; btn.classList.add('loading') }
       try { return await fn() } finally { if (btn) { btn.disabled = prev; btn.classList.remove('loading') } }
@@ -1283,24 +1288,34 @@
     async function loadEventsSection() {
       const body = document.querySelector('#events-section [data-ev-body]')
       if (!body) return
-      const showServer = eventsFilter === 'all'
+      // Snapshot the request identity + the filter THIS load renders for. The layout
+      // (with-server vs single-server) must be derived from the same filter the fetch
+      // below uses, so a render always matches the response it draws — not whatever
+      // eventsFilter happens to be by the time slower awaits resolve.
+      const seq = ++eventsLoadSeq
+      const filter = eventsFilter
+      const showServer = filter === 'all'
+      let rows
       try {
         if (showServer) {
           // Merge each server's recent sessions, tagging the source server.
           const per = await Promise.all(servers.map(async (s) => {
-            const rows = await dbGetServerSessions(s.id, { limit: 100 }).catch(() => [])
-            return rows.map(r => ({ ...r, serverName: s.name }))
+            const r = await dbGetServerSessions(s.id, { limit: 100 }).catch(() => [])
+            return r.map(x => ({ ...x, serverName: s.name }))
           }))
-          eventsRows = per.flat().sort((a, b) => b.joined_at - a.joined_at)
+          rows = per.flat().sort((a, b) => b.joined_at - a.joined_at)
         } else {
-          const s = servers.find(x => x.id === eventsFilter)
-          const rows = await dbGetServerSessions(eventsFilter, { limit: 200 }).catch(() => [])
-          eventsRows = rows.map(r => ({ ...r, serverName: s?.name || eventsFilter }))
+          const s = servers.find(x => x.id === filter)
+          const r = await dbGetServerSessions(filter, { limit: 200 }).catch(() => [])
+          rows = r.map(x => ({ ...x, serverName: s?.name || filter }))
         }
       } catch (e) {
+        if (seq !== eventsLoadSeq) return   // superseded — don't clobber a newer load's UI
         body.innerHTML = `<div class="qs-note-block">events unavailable: ${esc(e.message)}</div>`
         return
       }
+      if (seq !== eventsLoadSeq) return      // a later load already won — drop this result
+      eventsRows = rows
       renderEventsRows(showServer)
     }
 
@@ -1458,18 +1473,16 @@
         consoleEl.scrollTop = consoleEl.scrollHeight
       }
       // run an async op with a spinner on the triggering control + error capture.
+      // Busy-toggle (disable + spinner + restore) is shared with the Events bar via
+      // the top-level btnBusy(); withBtn wraps it with card-scoped error handling.
       async function withBtn(btn, label, fn) {
         setErr('')
-        const prev = btn ? btn.disabled : false
-        if (btn) { btn.disabled = true; btn.classList.add('loading') }
         try {
-          return await fn()
+          return await btnBusy(btn, fn)
         } catch (e) {
           // surface a server-side BAD_SETTING message verbatim — it's human text.
           setErr(e.message); if (label) logLine(`${label} — error: ${e.message}`)
           throw e
-        } finally {
-          if (btn) { btn.disabled = prev; btn.classList.remove('loading') }
         }
       }
 

@@ -126,6 +126,16 @@ test('buildConnectors tolerates a null store (no DB wired)', () => {
 // ── player-session tracking ──────────────────────────────────────────────────────
 const steam = (name, uid) => ({ name, uid, identityKind: 'steam' });
 
+// Count still-open sessions (left_at IS NULL) for a hosted slug straight from the
+// DB — the store no longer exposes a listOpenSessions helper (the API derives
+// "online" from left_at on the regular session list).
+const openCount = (db, slug) =>
+  db.prepare(
+    `SELECT COUNT(*) n FROM server_sessions s
+       JOIN games g ON g.id = s.game_id
+      WHERE g.slug = ? AND s.left_at IS NULL`,
+  ).get(slug).n;
+
 test('seedHostedGames registers the five servers in games(hosted=1)', () => {
   const db = testDb();
   const store = createServerStore(db);
@@ -146,18 +156,19 @@ test('recordJoin opens a session + upserts the global player; closeSession ends 
 
   const sid = store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
   assert.ok(sid > 0);
-  let open = store.listOpenSessions('gmod');
-  assert.equal(open.length, 1);
-  assert.equal(open[0].name, 'Alice');
-  assert.equal(open[0].uid, '76561197960290419');
-  assert.equal(open[0].identityKind, 'steam');
+  assert.equal(openCount(db, 'gmod'), 1);
+  const [open] = store.listSessions('gmod');
+  assert.equal(open.left_at, null); // still online
+  assert.equal(open.name, 'Alice');
+  assert.equal(open.uid, '76561197960290419');
+  assert.equal(open.identityKind, 'steam');
 
   // one players row, linked to the session
   assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 1);
   assert.equal(db.prepare('SELECT player_id FROM server_sessions WHERE id = ?').get(sid).player_id != null, true);
 
   assert.equal(store.closeSession(sid, 1600), true);
-  assert.equal(store.listOpenSessions('gmod').length, 0);
+  assert.equal(openCount(db, 'gmod'), 0);
   const all = store.listSessions('gmod');
   assert.equal(all.length, 1);
   assert.equal(all[0].left_at, 1600);
@@ -171,7 +182,7 @@ test('a rejoin updates the player name/last_seen without a duplicate player row'
   store.recordJoin('gmod', steam('Alice_2', '76561197960290419'), 2000, 'rcon');
   assert.equal(db.prepare('SELECT COUNT(*) n FROM players').get().n, 1);
   assert.equal(db.prepare('SELECT name FROM players').get().name, 'Alice_2');
-  assert.equal(store.listOpenSessions('gmod').length, 2);
+  assert.equal(openCount(db, 'gmod'), 2);
   // The RETURNING-on-conflict (DO UPDATE) path must link BOTH sessions to the one
   // players row — this is what the whitelist-seed design hinges on.
   const playerId = db.prepare('SELECT id FROM players').get().id;
@@ -205,12 +216,13 @@ test('a null-uid session (CS2-redacted) records no player row', () => {
 });
 
 test('closeAllOpenSessions reconciles every open row', () => {
-  const store = createServerStore(testDb());
+  const db = testDb();
+  const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
   store.recordJoin('minecraft', { name: 'Notch', uid: 'uuid-1', identityKind: 'minecraft' }, 1000, 'log');
   assert.equal(store.closeAllOpenSessions(2000), 2);
-  assert.equal(store.listOpenSessions('gmod').length, 0);
+  assert.equal(openCount(db, 'gmod'), 0);
   assert.equal(store.listSessions('minecraft')[0].source, 'reconciled');
 });
 
@@ -218,6 +230,5 @@ test('session methods on an unknown slug return [] / null instead of throwing', 
   const store = createServerStore(testDb());
   store.seedHostedGames(listServers());
   assert.deepEqual(store.listSessions('nope'), []);
-  assert.deepEqual(store.listOpenSessions('nope'), []);
   assert.equal(store.recordJoin('nope', steam('x', '1'), 1, 'rcon'), null);
 });

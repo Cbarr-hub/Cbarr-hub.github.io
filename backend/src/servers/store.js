@@ -97,9 +97,13 @@ export function createServerStore(db) {
     // ── player-session tracking (shared with the host collector) ──
     // The five game servers live in the party-games `games` table tagged
     // hosted=1; sessions FK to games(id). slug→id is cached below.
+    // Conflict target carries the partial-index predicate (migration 006:
+    // `idx_games_slug ... WHERE hosted = 1`) — SQLite requires the WHERE clause in
+    // the ON CONFLICT target to match the partial unique index it should use.
     upsertHostedGame: db.prepare(
       `INSERT INTO games (name, slug, identity_kind, hosted) VALUES (?, ?, ?, 1)
-       ON CONFLICT(slug) DO UPDATE SET name = excluded.name, identity_kind = excluded.identity_kind`,
+       ON CONFLICT(slug) WHERE hosted = 1
+         DO UPDATE SET name = excluded.name, identity_kind = excluded.identity_kind`,
     ),
     listHostedGames: db.prepare(
       `SELECT id, slug FROM games WHERE hosted = 1`,
@@ -127,15 +131,6 @@ export function createServerStore(db) {
         WHERE game_id = ?
         ORDER BY joined_at DESC
         LIMIT ?`,
-    ),
-    listOpenSessions: db.prepare(
-      // Defensive LIMIT: open rows ≈ current players (tiny), but if reconciliation
-      // ever leaves orphans, cap the response rather than return it unbounded.
-      `SELECT id, name, uid, identity_kind AS identityKind, joined_at, left_at, source
-         FROM server_sessions
-        WHERE game_id = ? AND left_at IS NULL
-        ORDER BY joined_at DESC
-        LIMIT 200`,
     ),
   };
 
@@ -284,11 +279,6 @@ export function createServerStore(db) {
       if (gid == null) return [];
       const lim = Math.min(500, Math.max(1, Number(limit) || 200));
       return stmts.listSessions.all(gid, lim);
-    },
-    listOpenSessions(slug) {
-      const gid = gameId(slug);
-      if (gid == null) return [];
-      return stmts.listOpenSessions.all(gid);
     },
   };
 }

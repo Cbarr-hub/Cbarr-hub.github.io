@@ -39,17 +39,16 @@ const DB = process.env.GT_DB_PATH
   || '/var/lib/docker/volumes/gamertown_gt-data/_data/gamertown.sqlite';
 const POLL_MS = Number(process.env.GT_POLL_MS) || 60_000;
 
-// Which collection path each game uses, + the env var holding its RCON password.
-const LOG_GAMES  = new Set(['minecraft', 'factorio']);
-const RCON_GAMES = new Set(['gmod', 'prophunt', 'counterstrike']);
-const RCON_ENV   = {
-  gmod: 'GMOD_RCON_PASSWORD',
-  prophunt: 'PROPHUNT_RCON_PASSWORD',
-  counterstrike: 'CS2_RCON_PASSWORD',
-};
-
 const SERVERS = listServers();
 const byId = new Map(SERVERS.map((s) => [s.id, s]));
+
+// Collection path + RCON env var come from the registry (registry.js is the single
+// source of truth: each server carries `collect: 'log'|'rcon'` and, for rcon, a
+// `rconEnvKey`). Deriving them here means this collector has no game list of its own
+// to drift from the registry.
+const LOG_GAMES  = new Set(SERVERS.filter((s) => s.collect === 'log').map((s) => s.id));
+const RCON_GAMES = new Set(SERVERS.filter((s) => s.collect === 'rcon').map((s) => s.id));
+const rconEnvKey = (slug) => byId.get(slug)?.rconEnvKey;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -64,12 +63,19 @@ const q = (v) => (v == null ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
 // a result row, which in `-json` mode pollutes querySql() with a phantom {timeout:N}
 // row (and concatenates a second JSON array onto real results, breaking JSON.parse).
 const TIMEOUT_ARGS = ['-cmd', '.timeout 5000'];
+// `-bail` aborts the script on the FIRST error instead of plowing on to later
+// statements. Our multi-statement writes are wrapped in BEGIN…COMMIT, so if an
+// INSERT fails (e.g. a NULL into a NOT NULL column) -bail stops BEFORE the COMMIT,
+// leaving the transaction to roll back rather than partially commit a sibling
+// statement. Defense-in-depth behind recordJoin's explicit null-game guard. It does
+// not affect the normal `.timeout` dot-command or `-json` output paths.
+const BAIL = '-bail';
 
 async function runSql(sql) {
-  await execFileP('sqlite3', [...TIMEOUT_ARGS, DB, sql]);
+  await execFileP('sqlite3', [BAIL, ...TIMEOUT_ARGS, DB, sql]);
 }
 async function querySql(sql) {
-  const { stdout } = await execFileP('sqlite3', ['-json', ...TIMEOUT_ARGS, DB, sql]);
+  const { stdout } = await execFileP('sqlite3', [BAIL, '-json', ...TIMEOUT_ARGS, DB, sql]);
   return stdout.trim() ? JSON.parse(stdout) : [];
 }
 
@@ -91,14 +97,34 @@ async function assertSqliteVersion() {
   log(`sqlite3 ${ver} OK`);
 }
 
+// Resolve a hosted game's slug → games.id, or null if it isn't seeded yet. The app
+// seeds the `games` table (hosted=1) from the registry on boot; if the collector
+// raced ahead of that, the id is still null. Positive results are cached (the id is
+// stable once seeded); a null is NOT cached, so a later poll re-resolves it.
+const gidCache = new Map();
+async function gameIdFor(slug) {
+  if (gidCache.has(slug)) return gidCache.get(slug);
+  const rows = await querySql(`SELECT id FROM games WHERE slug=${q(slug)} AND hosted=1;`);
+  const gid = rows.length ? rows[0].id : null;
+  if (gid != null) gidCache.set(slug, gid);
+  return gid;
+}
+
 // Open a session (snapshotting the join). When the player has a uid (not
 // CS2-redacted), upsert the global `players` roster first and link the session.
 // Runs as ONE sqlite3 invocation (= one connection): wrapped in a transaction for
 // atomicity and ending in `SELECT last_insert_rowid()` so we can return the new
 // session id (the CLI can't otherwise report it) — callers track that id directly
 // instead of re-reading the row by name (which mis-handles duplicate names).
+//
+// Mirrors store.js recordJoin: resolve the hosted game_id FIRST and bail if null,
+// returning without touching the DB. The old inline `game_id=(SELECT …)` inserted a
+// possibly-NULL gid into the NOT NULL server_sessions.game_id, which on an unseeded
+// DB both threw AND orphaned a `players` row (the player upsert had already committed
+// in an earlier statement). Resolving first keeps it graceful and side-effect-free.
 async function recordJoin(slug, p, ts, source) {
-  const gid = `(SELECT id FROM games WHERE slug=${q(slug)} AND hosted=1)`;
+  const gid = await gameIdFor(slug);
+  if (gid == null) { log(`${slug}: not a seeded hosted game — skipping join for ${p.name}`); return null; }
   let playerSql = '';
   let playerId = 'NULL';
   if (p.uid != null) {
@@ -146,6 +172,20 @@ const isRunning = async (c) => (await dockerInspect(c, '{{.State.Running}}')) ==
 const containerIp = (c) =>
   dockerInspect(c, '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}').then((s) => s.split(' ').filter(Boolean)[0] || '');
 
+// Cache the bridge IP per container so a steady-state poll tick doesn't spawn a
+// `docker inspect` every 60s just to re-derive an IP that only changes on a restart.
+// `prevRunning` tracks the last observed run state; we re-resolve the IP only when the
+// container transitions back to running (false→true), i.e. a restart may have changed
+// it, or when we have no cached IP yet. Keyed by container name.
+const ipCache = new Map(); // container → { prevRunning, ip }
+async function cachedContainerIp(container, running) {
+  let e = ipCache.get(container);
+  if (!e) { e = { prevRunning: false, ip: '' }; ipCache.set(container, e); }
+  if (running && (!e.prevRunning || !e.ip)) e.ip = await containerIp(container);
+  e.prevRunning = running;
+  return running ? e.ip : '';
+}
+
 // ── log-tailed games (Minecraft, Factorio) ────────────────────────────────────
 // Event-driven: maintain an in-memory name→sessionId map of the currently-open
 // sessions for this game. `docker logs --tail=0` only shows NEW lines, so a player
@@ -167,6 +207,12 @@ function startLogTail(server) {
     log(`${slug}: tailing docker logs`);
 
     const child = spawn('docker', ['logs', '-f', '-t', '--tail=0', container]);
+    // Serialize event handling: handleEvent's check-then-act on the in-memory `open`
+    // map is async (it awaits recordJoin), so dispatching events fire-and-forget would
+    // interleave a join+leave from the same chunk — dropping the leave (session stuck
+    // open) or double-opening. Chain each event onto a single per-stream promise so
+    // they apply in log order. Parsing stays synchronous; only the DB writes serialize.
+    let queue = Promise.resolve();
     const processLine = (raw) => {
       if (!raw.trim()) return;
       // Strip the `docker logs -t` RFC3339 prefix → accurate event timestamp.
@@ -174,7 +220,7 @@ function startLogTail(server) {
       const ts = Math.floor((Date.parse(raw.slice(0, sp)) || Date.now()) / 1000);
       const ev = parse(raw.slice(sp + 1));
       if (!ev) return;
-      handleEvent(ev, ts).catch((e) => log(`${slug}: write failed`, e.message));
+      queue = queue.then(() => handleEvent(ev, ts)).catch((e) => log(`${slug}: write failed`, e.message));
     };
     // Stream chunks are arbitrary byte boundaries — buffer a partial trailing line
     // across 'data' events so a join/leave split across a chunk boundary isn't lost.
@@ -188,7 +234,13 @@ function startLogTail(server) {
       }
     });
     child.stderr.on('data', () => {}); // docker logs noise
-    child.on('exit', () => { log(`${slug}: log stream ended; respawning`); setTimeout(spawnTail, 3_000); });
+    child.on('exit', () => {
+      // Flush any residual partial line (a last event with no trailing newline) before
+      // respawning, so a leave emitted right as the stream closed isn't dropped.
+      if (buf) { processLine(buf); buf = ''; }
+      log(`${slug}: log stream ended; respawning`);
+      setTimeout(spawnTail, 3_000);
+    });
   };
 
   const handleEvent = async (ev, ts) => {
@@ -213,15 +265,29 @@ function startLogTail(server) {
 // ── RCON-polled games (GMOD, Prop Hunt, CS2) ───────────────────────────────────
 async function pollRcon(server) {
   const { id: slug, container, identityKind } = server;
-  if (!(await isRunning(container))) return;
-  const password = process.env[RCON_ENV[slug]] || '';
-  if (!password) { log(`${slug}: no RCON password (${RCON_ENV[slug]}) — skipping`); return; }
-  const host = await containerIp(container);
+  const running = await isRunning(container);
+  if (!running) {
+    // Mark down so the next running tick re-resolves the IP (a restart may change it).
+    const e = ipCache.get(container);
+    if (e) e.prevRunning = false;
+    return;
+  }
+  const envKey = rconEnvKey(slug);
+  const password = process.env[envKey] || '';
+  if (!password) { log(`${slug}: no RCON password (${envKey}) — skipping`); return; }
+  const host = await cachedContainerIp(container, running);
   if (!host) { log(`${slug}: no container IP — skipping`); return; }
 
   const port = server.rconPort ?? server.port;
   const output = await rconExchange({ host, port, password, command: 'status' });
-  const roster = parseSourceStatus(output);
+  const { players, valid } = parseSourceStatus(output);
+
+  // The three Source games are SteamID-or-skip EXCEPT CS2, whose `status` redacts the
+  // SteamID (legitimately name-only → uid:null). For GMOD/Prop Hunt, DROP rows whose
+  // uid is null: a player whose SteamID is briefly unresolved would otherwise be keyed
+  // by name now and by SteamID once resolved, churning close+reopen. Dropping them
+  // means a stable key (uid) and at worst a one-poll delay until the SteamID resolves.
+  const roster = slug === 'counterstrike' ? players : players.filter((p) => p.uid != null);
 
   const ts = nowSec();
   // Diff key: the SteamID64 when present (GMOD/PH), else the name (CS2, name-only —
@@ -229,6 +295,10 @@ async function pollRcon(server) {
   // `slot` reserved for that once the CS2 status format is host-validated).
   const keyOf = (e) => e.uid ?? `name:${e.name}`;
   const live = new Map(roster.map((p) => [keyOf(p), p]));
+  // TODO(perf): this DB read runs every tick even when idle. Safe to skip only when
+  // `valid && roster unchanged since last tick && no open rows`; left in for now to
+  // keep the close logic correct (no stale in-memory map). The IP inspect — the other
+  // per-tick spawn — is already cached above.
   const openRows = await openSessionsFor(slug);
   const openByKey = new Map(openRows.map((r) => [keyOf(r), r]));
 
@@ -237,13 +307,12 @@ async function pollRcon(server) {
     if (!openByKey.has(key)) await recordJoin(slug, { ...p, identityKind }, ts, 'rcon');
   }
   // Close departed players — but ONLY when this poll returned a trustworthy status
-  // block. An empty/partial response (RCON hiccup, map change, truncated multi-packet)
-  // would otherwise read as "everyone left" and close+reopen every session, fragmenting
-  // the history. A real `status` always leads with a hostname:/players: header, so
-  // require that before believing an empty/short roster. (A genuinely emptied server
-  // still returns the header, so its last stragglers do get closed.)
-  const trustworthy = /^\s*(hostname|players|map|spawngroups)\b/im.test(String(output));
-  if (trustworthy) {
+  // block (`valid`, reported by the parser: a legacy header/row or the CS2 block was
+  // seen). An empty/partial response (RCON hiccup, map change, truncated multi-packet)
+  // reads as valid:false, so we DON'T believe its empty roster and close+reopen every
+  // session, fragmenting the history. A genuinely emptied server still returns a real
+  // status block (valid:true), so its last stragglers do get closed.
+  if (valid) {
     for (const [key, row] of openByKey) {
       if (!live.has(key)) await closeSession(row.id, ts);
     }

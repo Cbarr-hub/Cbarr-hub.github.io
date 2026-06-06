@@ -46,6 +46,21 @@ const STEAMID_TOKEN = /(STEAM_[0-5]:[01]:\d+|\[U:1:\d+\])/;
 // excluded — as are hostname:/map:/version:/players: header lines.
 const LEGACY_ROW = /^#\s*(\d+)\s+(.+)$/;
 
+// A legacy player row with a DOUBLE-QUOTED name (`#<userid> "name" …`). Used only
+// for format DISPATCH: it keys on the srcds row STRUCTURE (a `#`-userid then a
+// quoted name), which the CS2 block never produces (CS2 player rows have no `#`
+// prefix and single-quote the name). Dispatching on this — instead of on the
+// `---players---` text marker — means a GMOD player who NAMES THEMSELF `--players--`
+// can't trick the legacy output into the CS2 parser (which would yield an empty
+// roster and make the collector close everyone's session).
+const LEGACY_ROW_NAMED = /^#\s*\d+\s+"/m;
+
+// A legacy `status` header line (hostname:/players:/map:/version:/…). Its presence
+// means the response is a real, trustworthy status block even when the roster is
+// empty (a genuinely emptied server still prints the header) — so the collector can
+// safely run its close pass. Reported out as `valid` from parseSourceStatus.
+const LEGACY_HEADER = /^\s*(hostname|players|map|version|spawngroups|udp\/ip|os|type|account)\s*:/im;
+
 // The CS2 (Source 2) `status` lists players in a `---------players--------` block,
 // terminated by `#end`. Validated live against joedwards32/cs2:
 //   ---------players--------
@@ -59,20 +74,38 @@ const LEGACY_ROW = /^#\s*(\d+)\s+(.+)$/;
 const CS2_PLAYERS_MARKER = /-{2,}\s*players\s*-{2,}/i;
 
 /**
- * Parse Source-engine `status` output into a roster of
- * `{ name, uid|null, identityKind:'steam', slot }`. Dispatches on the two real
- * formats (both validated live against the running containers):
+ * Parse Source-engine `status` output into
+ * `{ players: [{ name, uid|null, identityKind:'steam', slot }], valid }`. Dispatches
+ * on the two real formats by STRUCTURE (both validated live against the running
+ * containers):
  *  • Legacy srcds — GMOD/Prop Hunt: `#<userid> "Name" <uniqueid> …`; the uniqueid is
  *    a STEAM_/[U:1:] token → SteamID64; name double-quoted.
  *  • Source 2 — CS2: the `--------players--------` block above; name single-quoted +
  *    last, SteamID redacted (uid:null).
  * BOT rows and empty-name slots are dropped in both. The uniqueid is taken only from
  * the part after the name (legacy) / is absent (CS2), so a SteamID embedded in a
- * display name cannot spoof it.
+ * display name cannot spoof it. Dispatch keys on a legacy `#<userid> "name"` row
+ * FIRST (a shape player names can't forge), then the CS2 block marker — so a GMOD
+ * player named `--players--` can't divert legacy output into the CS2 parser.
+ *
+ * `valid` = the text was a recognizable status block (a legacy header/row, or the
+ * CS2 players block). It lets the collector tell "real status, possibly empty roster"
+ * (→ safe to close departed sessions) from "RCON hiccup / truncated packet" (→ skip
+ * the close pass so it doesn't read a blip as "everyone left").
  */
 export function parseSourceStatus(output) {
   const text = String(output ?? '');
-  return CS2_PLAYERS_MARKER.test(text) ? parseCs2Status(text) : parseLegacyStatus(text);
+  // Structure-based dispatch (anti-spoof): a legacy quoted player row wins over the
+  // CS2 text marker, since that marker can appear inside a forged GMOD display name.
+  if (LEGACY_ROW_NAMED.test(text) || (LEGACY_HEADER.test(text) && !CS2_PLAYERS_MARKER.test(text))) {
+    const players = parseLegacyStatus(text);
+    return { players, valid: true };
+  }
+  if (CS2_PLAYERS_MARKER.test(text)) {
+    return { players: parseCs2Status(text), valid: true };
+  }
+  // No header, no legacy row, no CS2 block → an unrecognized/partial response.
+  return { players: parseLegacyStatus(text), valid: false };
 }
 
 function parseLegacyStatus(text) {
@@ -102,7 +135,10 @@ function parseCs2Status(text) {
     if (/^\s*#?end\b/i.test(line)) break;        // end-of-block marker
     if (/^\s*id\s+time\b/i.test(line)) continue;  // column header
     // Name is the trailing single-quoted field; CS2 redacts the SteamID (name-only).
-    const nameMatch = /'([^']*)'\s*$/.exec(line);
+    // Capture from the FIRST quote to the LAST quote on the line (greedy) so a name
+    // with an apostrophe (`'O'Brien'` → O'Brien) survives — the columns before the
+    // name carry no single quotes, so the first `'` is always the name's opener.
+    const nameMatch = /'(.*)'\s*$/.exec(line);
     if (!nameMatch || !nameMatch[1]) continue;    // no name / empty connecting slot
     const before = line.slice(0, nameMatch.index);
     if (/\bBOT\b/.test(before)) continue;         // bots aren't real players
@@ -121,10 +157,13 @@ export function parseMinecraftLog(line) {
   const s = String(line ?? '');
   let m = /UUID of player (\S+) is ([0-9a-fA-F-]{32,36})/.exec(s);
   if (m) return { kind: 'uuid', name: m[1], uuid: m[2].toLowerCase() };
-  m = /: (\S+) joined the game(?:\s|$)/.exec(s);
-  if (m) return { kind: 'join', name: m[1] };
-  m = /: (\S+) left the game(?:\s|$)/.exec(s);
-  if (m) return { kind: 'leave', name: m[1] };
+  // Anchor to the server-thread structure: the WHOLE post-`]: ` message must be
+  // exactly `<username> joined/left the game`, with `username` a bare Minecraft name
+  // (alnum/underscore — no `<…>` chat wrapper, no preceding chat text). This rejects
+  // chat like `[…INFO]: <Evil> hey: ghost joined the game` (the char after `]: ` is
+  // `<`, not a name char) and `[…INFO]: <Evil> joined the game` (a player chatting).
+  m = /\]:\s+([A-Za-z0-9_]+) (joined|left) the game\s*$/.exec(s);
+  if (m) return { kind: m[2] === 'joined' ? 'join' : 'leave', name: m[1] };
   return null;
 }
 
@@ -134,9 +173,14 @@ export function parseMinecraftLog(line) {
  */
 export function parseFactorioLog(line) {
   const s = String(line ?? '');
-  let m = /\[JOIN\]\s+(.+?)\s+joined the game/.exec(s);
+  // The server emits the [JOIN]/[LEAVE] tag at the START of the message (after at
+  // most its own timestamp), e.g. `2026-06-06 12:00:00 [JOIN] Alice joined the game`.
+  // Anchor the tag there — NOT anywhere — so a [JOIN] embedded in a [CHAT] line, e.g.
+  // `… [CHAT] Attacker: [JOIN] Ghost joined the game`, is not mistaken for a real join.
+  const TS = /^(?:\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?Z? )?/.source;
+  let m = new RegExp(`${TS}\\[JOIN\\]\\s+(.+?)\\s+joined the game\\b`).exec(s);
   if (m) return { kind: 'join', name: m[1] };
-  m = /\[LEAVE\]\s+(.+?)\s+left the game/.exec(s);
+  m = new RegExp(`${TS}\\[LEAVE\\]\\s+(.+?)\\s+left the game\\b`).exec(s);
   if (m) return { kind: 'leave', name: m[1] };
   return null;
 }

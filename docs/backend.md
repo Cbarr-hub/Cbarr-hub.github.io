@@ -92,7 +92,6 @@ node src/cli.js delete-user
 | GET/PUT/DELETE | `/api/servers/:id/profiles/:profileId` | admin |
 | POST   | `/api/servers/:id/profiles/:profileId/apply` | admin |
 | GET    | `/api/servers/:id/sessions`           | admin    |
-| GET    | `/api/servers/:id/sessions/online`    | admin    |
 
 > Backups are **not** an app feature — the app holds no R2 credentials. Production
 > backups (app DB + Factorio save + Minecraft world → Cloudflare R2) run from a host

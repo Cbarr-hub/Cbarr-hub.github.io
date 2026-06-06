@@ -1900,13 +1900,14 @@
           const key = el.dataset.pf, t = el.dataset.pt
           if (t === 'maplist') return
           if (t === 'segmented') {
-            const on = el.querySelector('.seg-btn.on')
+            // fall back to the first option so a value is always read back
+            const on = el.querySelector('.seg-btn.on') || el.querySelector('.seg-btn')
             if (on) S.values[key] = on.dataset.segVal
             return
           }
           if (t === 'number' && el.classList.contains('pf-range')) {
             const num = el.querySelector('[data-pf-num]')
-            S.values[key] = num.value === '' ? '' : Number(num.value)
+            if (num) S.values[key] = num.value === '' ? '' : Number(num.value)
             return
           }
           if (t === 'bool') S.values[key] = el.checked ? '1' : '0'
@@ -1950,6 +1951,7 @@
         body.querySelectorAll('.pf-range').forEach(rng => {
           const slider = rng.querySelector('[data-pf-slider]')
           const num = rng.querySelector('[data-pf-num]')
+          if (!slider || !num) return
           const val = rng.querySelector('[data-pf-val]')
           const suffix = val ? val.textContent : ''
           const sync = (src) => { if (src === 'slider') num.value = slider.value; else slider.value = num.value; if (val) val.textContent = `${slider.value}${suffix}` }
@@ -2219,9 +2221,27 @@
       async function loadMaps() {
         const body = panelBody('maps')
         try {
-          if (!S.schema) { try { S.schema = await dbGetProfileSchema(id) } catch {} }
-          S.maps = await dbListServerMaps(id)
+          if (!S.schema) { S.schema = await dbGetProfileSchema(id) }
         } catch (e) { body.innerHTML = `<div class="qs-note-block">maps unavailable: ${esc(e.message)}</div>`; return }
+        S.cvarRef = S.schema?.cvarRef || S.cvarRef
+        // Catalog source differs by game (CS DB catalog vs GMOD/PH installed maps).
+        await refreshMapCatalog()
+        // Hydrate the active profile into S.values so the rotation/boot picker isn't
+        // empty and Save targets the right profile, even when the Maps tab is opened
+        // before the Profiles tab (the two tabs share S.values / S.editId).
+        if (S.editId == null) {
+          try {
+            if (!S.list.length) {
+              const { profiles, activeId } = await dbListProfiles(id)
+              S.list = profiles || []; S.activeId = activeId ?? null
+            }
+            const pid = S.activeId ?? S.list[0]?.id
+            if (pid != null) {
+              const full = await dbGetProfile(id, pid)
+              S.editId = pid; S.values = { ...(full?.settings || {}) }
+            }
+          } catch {}
+        }
         renderMapPanel()
       }
 
@@ -2237,20 +2257,38 @@
         return null
       }
 
+      // Refresh S.maps from the right source for this game: CS = DB catalog,
+      // GMOD/PH = the schema's maplist options (installed maps). Re-fetches the
+      // schema first so freshly-synced/imported maps appear.
+      async function refreshMapCatalog() {
+        const mf = mapField()
+        if (mf?.kind === 'single') { try { S.maps = await dbListServerMaps(id) } catch { S.maps = [] } }
+        else { S.maps = (mf?.kind === 'list' && Array.isArray(mf.f.options)) ? mf.f.options : [] }
+      }
+
       function renderMapPanel() {
         const body = panelBody('maps')
         const mf = mapField()
         const rotationModel = mf?.kind || 'single'
+        // CS has an editable DB catalog (add/rename/delete, import — no sync).
+        // GMOD/PH have a read-only installed-map list driven by the collection
+        // (sync to install — no add/rename/delete). Drives the left pane's controls.
+        const editableCatalog = rotationModel === 'single'
 
-        // catalog rows from dbListServerMaps (workshop catalog)
+        // catalog rows: CS catalog (with rename/delete) or GMOD/PH installed maps (read-only)
         const catRows = (S.maps || []).length
-          ? S.maps.map(w => `
-              <div class="coll-row" data-map-row="${esc(w.workshopId ?? w.id ?? w.value ?? '')}">
-                <span class="mi-name" title="${esc(w.name || w.label || '')}">${esc(w.name || w.label || w.value || '')}</span>
-                <button type="button" class="mini-btn" data-map-rename title="Rename">✎</button>
-                <button type="button" class="mini-btn x" data-map-del title="Remove from catalog">✕</button>
-              </div>`).join('')
-          : `<div class="map-empty">No catalog maps yet — import a collection or add a Workshop map.</div>`
+          ? S.maps.map(w => {
+              const rid = esc(w.workshopId ?? w.id ?? w.value ?? '')
+              const nm = esc(w.name || w.label || w.value || '')
+              return `<div class="coll-row" data-map-row="${rid}">
+                <span class="mi-name" title="${nm}">${nm}</span>
+                ${editableCatalog ? `<button type="button" class="mini-btn" data-map-rename title="Rename">✎</button>
+                <button type="button" class="mini-btn x" data-map-del title="Remove from catalog">✕</button>` : ''}
+              </div>`
+            }).join('')
+          : `<div class="map-empty">${editableCatalog
+              ? 'No catalog maps yet — import a collection or add a Workshop map.'
+              : 'No installed maps yet — import a collection, Restart Hosting, then Sync.'}</div>`
 
         // rotation/boot column
         let rotCol
@@ -2288,17 +2326,17 @@
           <div class="map-cols">
             <div class="map-pane">
               <div class="map-pane-head">
-                <span class="map-pane-title">Installed / Catalog Maps</span>
-                <button type="button" class="mini-btn" data-map-addws>＋ Add WS</button>
+                <span class="map-pane-title">${editableCatalog ? 'Workshop Catalog' : 'Installed Maps'}</span>
+                ${editableCatalog ? `<button type="button" class="mini-btn" data-map-addws>＋ Add WS</button>` : ''}
               </div>
               <div class="map-rows">${catRows}</div>
-              <div class="mc-add" data-map-addbox style="display:none;margin-top:6px">
+              ${editableCatalog ? `<div class="mc-add" data-map-addbox style="display:none;margin-top:6px">
                 <input type="text" data-map-wsid placeholder="Workshop ID (digits)" inputmode="numeric" />
                 <input type="text" data-map-wsname placeholder="Name (optional)" />
                 <button type="button" class="mini-btn" data-map-wssave>Add</button>
                 <button type="button" class="mini-btn" data-map-wscancel>Cancel</button>
-              </div>
-              <div class="map-foot"><button type="button" class="retro-btn" data-map-sync>⟳ Sync from Collection</button></div>
+              </div>` : ''}
+              ${!editableCatalog ? `<div class="map-foot"><button type="button" class="retro-btn" data-map-sync title="Install maps downloaded from the collection at the last boot">⟳ Sync from Collection</button></div>` : ''}
             </div>
             ${rotCol}
           </div>`
@@ -2331,7 +2369,7 @@
             }
             // re-fetch schema + catalog and re-render
             try { S.schema = await dbGetProfileSchema(id); S.cvarRef = S.schema.cvarRef || S.cvarRef } catch {}
-            try { S.maps = await dbListServerMaps(id) } catch {}
+            await refreshMapCatalog()
             renderMapPanel()
           }).catch(() => { resEl.innerHTML = '' })
         })
@@ -2384,7 +2422,7 @@
           withBtn(btn, 'Sync maps', async () => {
             const r = await dbSyncServerMaps(id)
             try { S.schema = await dbGetProfileSchema(id) } catch {}
-            try { S.maps = await dbListServerMaps(id) } catch {}
+            await refreshMapCatalog()
             logLine(`Synced maps from collection ✓ — ${(r?.maps || []).length} installed`)
             renderMapPanel()
           }).catch(() => {})

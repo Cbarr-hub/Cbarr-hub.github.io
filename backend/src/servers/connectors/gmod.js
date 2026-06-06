@@ -39,54 +39,99 @@ import { getVar, setVars } from '../cfgvars.js';
 import { getCvar, setCvars } from '../cvars.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
+import { fetchCollectionMaps } from '../steam-workshop.js';
 
 // Maps that ship with the base install, so they're always loadable even with no
 // workshop collection — the safe floor for defaults + the boot-map guard.
 const STOCK_ALWAYS = ['gm_construct', 'gm_flatgrass'];
 
-// Live (RCON) curated actions. These are generic Source-engine toggles that work
-// in ANY GMOD gamemode, so TTT gets the SAME runtime buttons Prop Hunt offers
-// (the X2Z-mod-specific Next Round / Map Vote / Apply Config in PH have no stock
-// TTT equivalent, so they're intentionally left out). The live change-map control
-// is rendered separately (changeMap: true below).
-const GMOD_LIVE_ACTIONS = [
-  { key: 'lowgrav_on',   label: 'Low Gravity On' },
-  { key: 'lowgrav_off',  label: 'Low Gravity Off' },
-  { key: 'speed_on',     label: 'Speed Boost On' },
-  { key: 'speed_off',    label: 'Speed Boost Off' },
-  { key: 'bhop_on',      label: 'Bunnyhop On' },
-  { key: 'bhop_off',     label: 'Bunnyhop Off' },
-  { key: 'slowmo_on',    label: 'Slow-Mo On' },
-  { key: 'slowmo_off',   label: 'Slow-Mo Off' },
-  { key: 'cheats_on',    label: 'Cheats On' },
-  { key: 'cheats_off',   label: 'Cheats Off' },
-  { key: 'players',      label: 'List Players' },
+// Live (RCON) curated actions — the genuinely BINARY toggles + instant commands
+// that work in ANY GMOD gamemode (so TTT gets the same ones Prop Hunt offers; the
+// X2Z-specific Next Round / Map Vote / Apply Config have no stock TTT equivalent,
+// so they're left out). The on/off pairs that were really just two points on a
+// numeric range (gravity / speed / timescale) now render as sliders — see
+// GMOD_LIVE_CONTROLS below. The live change-map control is separate (changeMap).
+export const GMOD_LIVE_ACTIONS = [
+  { key: 'restart_round', label: 'Restart Round' },
+  { key: 'cleanup',       label: 'Clean Up Props' },
+  { key: 'bhop_on',       label: 'Bunnyhop On' },
+  { key: 'bhop_off',      label: 'Bunnyhop Off' },
+  { key: 'alltalk_on',    label: 'All-talk On' },
+  { key: 'alltalk_off',   label: 'All-talk Off' },
+  { key: 'cheats_on',     label: 'Cheats On' },
+  { key: 'cheats_off',    label: 'Cheats Off' },
+  { key: 'players',       label: 'List Players' },
 ];
-const GMOD_ACTION_CMDS = {
-  lowgrav_on:   'sv_gravity 200',
-  lowgrav_off:  'sv_gravity 600',
-  speed_on:     'sv_cheats 1; hl2_normspeed 320; hl2_sprintspeed 480',
-  speed_off:    'hl2_normspeed 190; hl2_sprintspeed 320',
-  bhop_on:      'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_airaccelerate 1000',
-  bhop_off:     'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_airaccelerate 12',
-  slowmo_on:    'sv_cheats 1; host_timescale 0.5',
-  slowmo_off:   'host_timescale 1',
-  cheats_on:    'sv_cheats 1',
-  cheats_off:   'sv_cheats 0',
-  players:      'status',
+export const GMOD_ACTION_CMDS = {
+  restart_round: 'ttt_roundrestart',
+  cleanup:       'gmod_admin_cleanup',
+  // GMOD's Source engine has NO sv_autobunnyhopping/sv_enablebunnyhopping (those are
+  // CS2-only) — validated live, they error "Unknown command". The honest GMOD bhop is
+  // loose air control via sv_airaccelerate (high = bhop-friendly; 12 ≈ default).
+  bhop_on:       'sv_cheats 1; sv_airaccelerate 1000',
+  bhop_off:      'sv_airaccelerate 12',
+  alltalk_on:    'sv_alltalk 1',
+  alltalk_off:   'sv_alltalk 0',
+  cheats_on:     'sv_cheats 1',
+  cheats_off:    'sv_cheats 0',
+  players:       'status',
 };
 
+// Live RANGE controls — cvars whose value is a continuous range, rendered as a
+// slider in the Runtime panel. The connector turns the chosen value into the
+// RCON command via gmodRangeCmd(). Shared by TTT + Prop Hunt (both srcds).
+// NOTE: there is intentionally NO "player speed" control. GMOD has no server cvar
+// for walk speed (hl2_normspeed is HL2-only → "Unknown command" here, validated live;
+// sv_maxspeed only caps, and TTT/PH set speed in gamemode Lua), so a slider would be
+// misleading. Game Speed (host_timescale) + gravity are the honest movement knobs.
+export const GMOD_LIVE_CONTROLS = [
+  { key: 'gravity',     label: 'Gravity',       min: 0,    max: 1000, step: 25,   default: 600,  suffix: '' },
+  { key: 'timescale',   label: 'Game Speed',    min: 0.25, max: 3,    step: 0.25, default: 1,    suffix: '×' },
+  // TTT next-round tuning (takes effect on the next round, not mid-round).
+  { key: 'traitor_pct', label: 'Traitor Ratio', min: 0.05, max: 0.5,  step: 0.01, default: 0.25, suffix: '' },
+  { key: 'round_limit', label: 'Rounds/Map',    min: 1,    max: 15,   step: 1,    default: 6,    suffix: '' },
+];
+
+// Build the RCON command for a range control's chosen value. timescale needs
+// sv_cheats. Clamps to the control's bounds so an out-of-range value can't be injected.
+export function gmodRangeCmd(key, value) {
+  const ctl = GMOD_LIVE_CONTROLS.find((c) => c.key === key);
+  if (!ctl) return null;
+  let n = Number(value);
+  if (!Number.isFinite(n)) throw badSetting(`invalid value for ${ctl.label}`);
+  n = Math.min(ctl.max, Math.max(ctl.min, n));
+  switch (key) {
+    case 'gravity':     return `sv_gravity ${Math.round(n)}`;
+    case 'timescale':   return `sv_cheats 1; host_timescale ${n}`;
+    case 'traitor_pct': return `ttt_traitor_pct ${n}`;
+    case 'round_limit': return `ttt_round_limit ${Math.round(n)}`;
+    default:            return null;
+  }
+}
+
 // TTT cvar field specs (key in server.cfg, UI label, numeric bounds). pct fields
-// are 0..1 fractions; the rest are integers. Kept as data so getSettings builds
-// the panel and setSettings validates from one source.
+// are 0..1 fractions; the rest are integers; `bool` rows are 0/1 toggles the UI
+// renders as switches. `group` tags partition the panel into two readable groups.
+// Kept as data so getSettings builds the panel and setSettings validates from one
+// source (the data-table pattern — apply/capture/validate all iterate this list).
 const TTT_FIELDS = [
-  { cvar: 'ttt_round_limit',        key: 'roundLimit',     label: 'Rounds per Map',        def: 6,    min: 1,  max: 100,  int: true },
-  { cvar: 'ttt_time_limit_minutes', key: 'timeLimit',      label: 'Time Limit (min)',      def: 75,   min: 1,  max: 600,  int: true },
-  { cvar: 'ttt_traitor_pct',        key: 'traitorPct',     label: 'Traitor Ratio (0–1)',   def: 0.25, min: 0,  max: 1 },
-  { cvar: 'ttt_traitor_max',        key: 'traitorMax',     label: 'Max Traitors',          def: 32,   min: 1,  max: 64,   int: true },
-  { cvar: 'ttt_detective_pct',      key: 'detectivePct',   label: 'Detective Ratio (0–1)', def: 0.13, min: 0,  max: 1 },
-  { cvar: 'ttt_detective_max',      key: 'detectiveMax',   label: 'Max Detectives',        def: 32,   min: 1,  max: 64,   int: true },
-  { cvar: 'ttt_minimum_players',    key: 'minPlayers',     label: 'Min Players to Start',  def: 2,    min: 1,  max: 64,   int: true },
+  { cvar: 'ttt_round_limit',          key: 'roundLimit',     label: 'Rounds per Map',        def: 6,    min: 1,  max: 100,  int: true,             group: 'round' },
+  { cvar: 'ttt_time_limit_minutes',   key: 'timeLimit',      label: 'Time Limit (min)',      def: 75,   min: 1,  max: 600,  int: true,             group: 'round' },
+  { cvar: 'ttt_preptime_seconds',     key: 'prepTime',       label: 'Prep Time (s)',         def: 30,   min: 5,  max: 120,  int: true,             group: 'round' },
+  { cvar: 'ttt_haste',                key: 'haste',          label: 'Haste Mode',            def: 1,    min: 0,  max: 1,    int: true, bool: true, group: 'round' },
+  { cvar: 'ttt_haste_starting_minutes', key: 'hasteStart',   label: 'Haste Start (min)',     def: 5,    min: 1,  max: 20,   int: true,             group: 'round' },
+  { cvar: 'ttt_postround_dm',         key: 'postroundDm',    label: 'Post-round Deathmatch',  def: 0,    min: 0,  max: 1,    int: true, bool: true, group: 'round' },
+  { cvar: 'sv_alltalk',               key: 'allTalk',        label: 'All-talk Voice',         def: 1,    min: 0,  max: 1,    int: true, bool: true, group: 'round' },
+  { cvar: 'ttt_traitor_pct',          key: 'traitorPct',     label: 'Traitor Ratio (0–1)',   def: 0.25, min: 0,  max: 1,                           group: 'roles' },
+  { cvar: 'ttt_traitor_max',          key: 'traitorMax',     label: 'Max Traitors',          def: 32,   min: 1,  max: 64,   int: true,             group: 'roles' },
+  { cvar: 'ttt_detective_pct',        key: 'detectivePct',   label: 'Detective Ratio (0–1)', def: 0.13, min: 0,  max: 1,                           group: 'roles' },
+  { cvar: 'ttt_detective_max',        key: 'detectiveMax',   label: 'Max Detectives',        def: 32,   min: 1,  max: 64,   int: true,             group: 'roles' },
+  { cvar: 'ttt_detective_min_players', key: 'detMinPlayers', label: 'Min Players for Det.',  def: 5,    min: 0,  max: 32,   int: true,             group: 'roles' },
+  { cvar: 'ttt_minimum_players',      key: 'minPlayers',     label: 'Min Players to Start',  def: 2,    min: 1,  max: 64,   int: true,             group: 'roles' },
+  { cvar: 'ttt_credits_starting',     key: 'creditsStart',   label: 'Starting Credits',      def: 2,    min: 0,  max: 8,    int: true,             group: 'roles' },
+  { cvar: 'ttt_karma',                key: 'karma',          label: 'Karma System',          def: 1,    min: 0,  max: 1,    int: true, bool: true, group: 'roles' },
+  { cvar: 'ttt_karma_low_autokick',   key: 'karmaAutokick',  label: 'Karma Autokick',        def: 0,    min: 0,  max: 1,    int: true, bool: true, group: 'roles' },
+  { cvar: 'ttt_karma_low_ban',        key: 'karmaBan',       label: 'Karma Auto-ban',        def: 0,    min: 0,  max: 1,    int: true, bool: true, group: 'roles' },
 ];
 
 export class GmodConnector extends LinuxGsmConnector {
@@ -174,6 +219,42 @@ export class GmodConnector extends LinuxGsmConnector {
     return { ok: true, maps: await this.installedMaps() };
   }
 
+  // Unified Steam Workshop collection import (the same POST /:id/maps/collection
+  // route CS2 uses). GMOD/PH can't live-mount an arbitrary collection — mount is
+  // boot-only — so this: (1) writes the collection id into the instance cfg so the
+  // NEXT restart downloads + mounts it, (2) best-effort syncs any already-downloaded
+  // .gma into maps/ (a no-op pre-restart), and (3) returns the member titles (keyless,
+  // advisory) plus requiresRestart:true. PropHuntConnector inherits this unchanged —
+  // `this.paths`/`installedMaps` are subclass-derived, so it writes the PH cfg.
+  async importCollection(collectionId) {
+    const id = String(collectionId ?? '').trim();
+    if (!/^\d{1,20}$/.test(id)) throw badSetting('workshop collection id must be digits');
+
+    // 1) Persist the collection id into the instance cfg so the NEXT boot mounts it.
+    const P = this.paths;
+    let inst = (await this.client.agentFileRead(this.vmid, P.instanceCfg)).content ?? '';
+    inst = setVars(inst, { wscollectionid: id });
+    await this.client.agentFileWrite(this.vmid, P.instanceCfg, inst);
+
+    // 2) Best-effort: extract any already-downloaded .gma into maps/ (no-op pre-restart).
+    await this.syncMaps().catch(() => {});
+
+    // 3) Member titles for display (keyless). These are Workshop titles, not bsp
+    //    names — informational only (private/empty collections just skip).
+    let members = [];
+    try { members = await fetchCollectionMaps(id); } catch { /* private/empty → skip */ }
+    const installed = await this.installedMaps();
+
+    return {
+      ok: true,
+      imported: installed.length,
+      maps: installed.map((m) => ({ value: m, label: m })),
+      members: members.map((m) => ({ id: m.workshopId, title: m.name })), // advisory
+      requiresRestart: true,
+      note: `Collection ${id} set. Restart Hosting so Steam downloads + mounts it, then “Sync from Collection” to install its maps.`,
+    };
+  }
+
   // Profiles own the startup config (the Profiles panel). getSettings is kept only
   // to feed the Runtime panel's live change-map dropdown with the loadable maps.
   async getSettings() {
@@ -249,7 +330,13 @@ export class GmodConnector extends LinuxGsmConnector {
     const mapOpts = [...new Set([...STOCK_ALWAYS, ...discovered])].map((m) => ({
       value: m, label: m, group: STOCK_ALWAYS.includes(m) ? 'Stock' : 'Collection',
     }));
-    const numField = (f) => ({ key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01 });
+    // bool rows render as switches; numeric rows as bounded number inputs. The
+    // `group` tag on each TTT_FIELDS row is advisory metadata (round vs roles) the
+    // panel can use to sub-head the list; the schema keeps the single Gameplay group
+    // so the field order stays one flat, predictable list.
+    const numField = (f) => f.bool
+      ? { key: f.key, label: f.label, type: 'bool', group: f.group }
+      : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01, group: f.group };
 
     return {
       groups: [
@@ -275,6 +362,16 @@ export class GmodConnector extends LinuxGsmConnector {
         },
       ],
       note: 'A profile is the startup config the server boots as. Apply saves it and restarts the server (which downloads + mounts your Workshop collection). Maps come from the collection; gm_construct is the always-available fallback.',
+      // Embedded cvar reference (autocomplete / inline docs for the Raw Config tab),
+      // built from the same TTT_FIELDS table the profile renders/validates from.
+      cvarRef: TTT_FIELDS.map((f) => ({
+        name: f.cvar, type: f.bool ? 'bool' : 'number', default: f.def,
+        ...(f.bool ? {} : { min: f.min, max: f.max }), group: f.group,
+      })).concat([
+        { name: 'ttt_always_use_mapcycle', type: 'bool', default: 1, help: 'rotate via mapcycle.txt' },
+        { name: 'rcon_password', type: 'text', help: 'enables the Runtime panel' },
+        { name: 'sv_cheats', type: 'bool', default: 0 },
+      ]),
     };
   }
 
@@ -360,6 +457,7 @@ export class GmodConnector extends LinuxGsmConnector {
     return {
       available: true,
       actions: GMOD_LIVE_ACTIONS,
+      controls: GMOD_LIVE_CONTROLS, // panel renders these as sliders
       changeMap: true, // panel renders a live change-map control
       commandHint: 'any GMOD/TTT console command, e.g. ttt_round_limit 5, changelevel ttt_…, status',
     };
@@ -382,6 +480,8 @@ export class GmodConnector extends LinuxGsmConnector {
       if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
       return this.runRcon(`changelevel ${v}`);
     }
+    const range = gmodRangeCmd(key, value);
+    if (range) return this.runRcon(range);
     const cmd = GMOD_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);
     return this.runRcon(cmd);

@@ -217,7 +217,7 @@ test('prophunt: validateProfileSettings rejects bad values + normalizes cvars', 
   assert.equal(v.workshopCollection, '3737190377'); // default collection carried
 });
 
-test('prophunt: applyProfileSettings writes gamemode + map + collection + cvars + active.cfg', async () => {
+test('prophunt: applyProfileSettings writes gamemode + map + cvars + active.cfg (NOT the collection)', async () => {
   const { conn, client } = prophunt({ [PH_GAME]: 'rcon_password "x"\n', [PH_INST]: 'gamemode="terrortown"\n' });
   await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), propHuntMap: 'ph_office_fsg_v2',
     maxPlayers: 24, kickNonAdmin: '1', rawConfig: 'phx_verbose 1\n' }, 9);
@@ -226,7 +226,10 @@ test('prophunt: applyProfileSettings writes gamemode + map + collection + cvars 
   assert.match(inst, /gamemode="prop_hunt"/);
   assert.match(inst, /defaultmap="ph_office_fsg_v2"/);
   assert.match(inst, /maxplayers="24"/);
-  assert.match(inst, /wscollectionid="3737190377"/); // collection mounted at boot
+  // Apply must NOT write wscollectionid — the X2Z gamemode + maps mount from the
+  // collection only at boot; touching it here can brick the mount (managed via
+  // importCollection / Raw Config instead). See docker-gmod.test.mjs bug-fix test.
+  assert.ok(!/wscollectionid/.test(inst), 'apply must not write wscollectionid');
   assert.match(inst, /gt_active_profile="9"/);
 
   const game = client.files[PH_GAME];
@@ -265,7 +268,9 @@ test('prophunt: profileSchema groups Map/X2Z/Controls/Advanced', async () => {
   assert.ok(mapG.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select'));
   assert.ok(mapG.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text'));
   assert.ok(mapG.fields.some((f) => f.type === 'mapsync'));
-  assert.ok(x2zG.fields.every((f) => f.type === 'bool') && x2zG.fields.length >= 3);
+  // X2Z group now mixes bool toggles + numeric cvars (round time, hide time, …).
+  assert.ok(x2zG.fields.every((f) => f.type === 'bool' || f.type === 'number') && x2zG.fields.length >= 3);
+  assert.ok(x2zG.fields.some((f) => f.type === 'number')); // the new numeric X2Z cvars
   assert.ok(ctrlG.fields.length >= 4 && ctrlG.fields.every((f) => f.type === 'info' && f.help));
   assert.ok(advG.fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
 });
@@ -281,7 +286,9 @@ test('prophunt: getLive + runLiveAction — change_map, next round, movement on 
   const live = await on.conn.getLive();
   assert.equal(live.available, true);
   assert.ok(live.actions.some((a) => a.key === 'next_round'));
-  assert.ok(live.actions.some((a) => a.key === 'lowgrav_on'));
+  // gravity/speed/timescale are now range sliders (controls), not on/off buttons.
+  assert.ok((live.controls || []).some((c) => c.key === 'gravity'));
+  assert.ok(!live.actions.some((a) => a.key === 'lowgrav_on'));
 
   const res = await on.conn.runLiveAction('change_map', 'ph_restaurant');
   assert.equal(res.output, 'players: 2');
@@ -292,7 +299,7 @@ test('prophunt: getLive + runLiveAction — change_map, next round, movement on 
 
   await on.conn.runLiveAction('next_round');
   assert.equal(calls.at(-1).command.at(-1), 'ph_force_end_round');   // real X2Z command
-  await on.conn.runLiveAction('lowgrav_on');
+  await on.conn.runLiveAction('gravity', '200');                     // range slider → cvar
   assert.equal(calls.at(-1).command.at(-1), 'sv_gravity 200');
 
   await assert.rejects(() => on.conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');

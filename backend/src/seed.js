@@ -1,6 +1,12 @@
 // One-shot seed: inserts the original Gamertown roster (all admin) and the
-// canonical games list. Safe to re-run — uses INSERT OR IGNORE so existing
+// canonical party-games list. Safe to re-run — idempotent by name so existing
 // rows are preserved. Passwords are pre-hashed with argon2id.
+//
+// Party games are seeded WITHOUT explicit ids (auto-assigned): the `games` table is
+// now shared with the hosted game *servers* (hosted=1, auto-inserted on app boot —
+// see store.seedHostedGames), so hardcoded ids 1..N would collide with the server
+// rows on a fresh DB and silently drop party games. Keying by name (hosted=0)
+// avoids that coupling entirely.
 
 import argon2 from 'argon2';
 
@@ -18,23 +24,23 @@ const SEED_USERS = [
 ];
 
 const SEED_GAMES = [
-  { id: 1,  name: 'Lethal Company',              minplayers: 4, maxplayers: 8, time_minutes: 90 },
-  { id: 2,  name: 'Lockdown Protocol',           minplayers: 5, maxplayers: 8, time_minutes: 90 },
-  { id: 3,  name: 'RV There Yet',                minplayers: 3, maxplayers: 4, time_minutes: 90 },
-  { id: 4,  name: 'Goofy Gorillas',              minplayers: 5, maxplayers: 8, time_minutes: 90 },
-  { id: 5,  name: 'Super Battle Golf',           minplayers: 4, maxplayers: 8, time_minutes: 90 },
-  { id: 6,  name: 'CSGO',                        minplayers: 2, maxplayers: 5, time_minutes: 60 },
-  { id: 7,  name: 'Buckshot Roulette',           minplayers: 4, maxplayers: 4, time_minutes: 60 },
-  { id: 8,  name: 'Peak',                        minplayers: 3, maxplayers: 6, time_minutes: 90 },
-  { id: 9,  name: 'Gamble with your friends',    minplayers: 3, maxplayers: 8, time_minutes: 90 },
-  { id: 10, name: 'Rocket League',               minplayers: 2, maxplayers: 4, time_minutes: 30 },
-  { id: 11, name: 'Halo',                        minplayers: 2, maxplayers: 8, time_minutes: 90 },
-  { id: 12, name: 'Risk of Rain',                minplayers: 2, maxplayers: 4, time_minutes: 90 },
-  { id: 13, name: 'Just Another Night Shift',    minplayers: 4, maxplayers: 4, time_minutes: 60 },
-  { id: 14, name: 'League of Legends',           minplayers: 2, maxplayers: 5, time_minutes: 30 },
-  { id: 15, name: 'Age of Empires',              minplayers: 4, maxplayers: 8, time_minutes: 90 },
-  { id: 16, name: 'Last Train Out of Wormtown',  minplayers: 5, maxplayers: 8, time_minutes: 90 },
-  { id: 17, name: 'Oh Deer',                     minplayers: 4, maxplayers: 4, time_minutes: 60 },
+  { name: 'Lethal Company',              minplayers: 4, maxplayers: 8, time_minutes: 90 },
+  { name: 'Lockdown Protocol',           minplayers: 5, maxplayers: 8, time_minutes: 90 },
+  { name: 'RV There Yet',                minplayers: 3, maxplayers: 4, time_minutes: 90 },
+  { name: 'Goofy Gorillas',              minplayers: 5, maxplayers: 8, time_minutes: 90 },
+  { name: 'Super Battle Golf',           minplayers: 4, maxplayers: 8, time_minutes: 90 },
+  { name: 'CSGO',                        minplayers: 2, maxplayers: 5, time_minutes: 60 },
+  { name: 'Buckshot Roulette',           minplayers: 4, maxplayers: 4, time_minutes: 60 },
+  { name: 'Peak',                        minplayers: 3, maxplayers: 6, time_minutes: 90 },
+  { name: 'Gamble with your friends',    minplayers: 3, maxplayers: 8, time_minutes: 90 },
+  { name: 'Rocket League',               minplayers: 2, maxplayers: 4, time_minutes: 30 },
+  { name: 'Halo',                        minplayers: 2, maxplayers: 8, time_minutes: 90 },
+  { name: 'Risk of Rain',                minplayers: 2, maxplayers: 4, time_minutes: 90 },
+  { name: 'Just Another Night Shift',    minplayers: 4, maxplayers: 4, time_minutes: 60 },
+  { name: 'League of Legends',           minplayers: 2, maxplayers: 5, time_minutes: 30 },
+  { name: 'Age of Empires',              minplayers: 4, maxplayers: 8, time_minutes: 90 },
+  { name: 'Last Train Out of Wormtown',  minplayers: 5, maxplayers: 8, time_minutes: 90 },
+  { name: 'Oh Deer',                     minplayers: 4, maxplayers: 4, time_minutes: 60 },
 ];
 
 const env = loadEnv();
@@ -46,9 +52,12 @@ const insertUser = db.prepare(
   'INSERT INTO users (username, display_name, password_hash, is_admin) VALUES (?, ?, ?, ?)'
 );
 const insertBalance = db.prepare('INSERT INTO balances (user_id, dollars) VALUES (?, 5000)');
+// Idempotent by name, scoped to party games (hosted=0) — never touches the hosted
+// server rows and never assumes a fixed id.
 const insertGame = db.prepare(`
-  INSERT OR IGNORE INTO games (id, name, players, minplayers, maxplayers, time_minutes)
-  VALUES (?, ?, NULL, ?, ?, ?)
+  INSERT INTO games (name, players, minplayers, maxplayers, time_minutes)
+  SELECT ?, NULL, ?, ?, ?
+  WHERE NOT EXISTS (SELECT 1 FROM games WHERE name = ? AND hosted = 0)
 `);
 
 let usersCreated = 0;
@@ -65,7 +74,7 @@ for (const u of SEED_USERS) {
 
 let gamesCreated = 0;
 for (const g of SEED_GAMES) {
-  const r = insertGame.run(g.id, g.name, g.minplayers, g.maxplayers, g.time_minutes);
+  const r = insertGame.run(g.name, g.minplayers, g.maxplayers, g.time_minutes, g.name);
   if (r.changes > 0) gamesCreated += 1;
 }
 

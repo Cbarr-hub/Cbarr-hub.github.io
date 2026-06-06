@@ -214,6 +214,41 @@ Notes:
 - `SKIP_CSS=1` (from the bundle) skips GMOD's ~3GB CS:S pull; set `$env:SKIP_CSS = "1"`
   to force it if your env differs.
 
+### Connecting to a dev game server (use your LAN IP, not `127.0.0.1`)
+
+Joining a dev game server from a game **client on the same machine** has two gotchas that
+don't exist in prod. Both are handled — but you must connect to your machine's **LAN IP,
+never `127.0.0.1`**:
+
+1. **Loopback is unreachable from the game client.** A Source/GMOD client binds its socket
+   to the host's LAN interface (you'll see `Network: IP 192.168.x.y` in the client console).
+   On Windows a socket bound to the LAN IP physically *cannot* send to `127.0.0.1` (loopback
+   is a separate interface), so every `connect 127.0.0.1:27066` packet is dropped before it
+   reaches Docker — the container sees zero packets. The published port also listens on
+   `0.0.0.0`, so the server **is** reachable at `<LAN-IP>:27066`.
+2. **VAC/Steam-auth fails over Docker NAT.** A normal (secure) server makes the client present
+   a Steam auth ticket that can't validate once the connection is NAT'd through the Docker
+   bridge. So the dev `gmod`/`prophunt` containers boot **LAN + insecure** (`LAN_INSECURE=1`
+   in `docker-compose.dev.yml` → the entrypoint appends `+sv_lan 1 -insecure` to LinuxGSM's
+   launch). The GSLT and Workshop content still work — the entrypoint reuses LinuxGSM's own
+   `startparameters` template, so `+sv_setsteamaccount` is untouched.
+
+**Make the panel emit the right join string** — set your LAN IP as `DEV_PUBLIC_HOST` in
+`.env.local`, and the panel's join links say `connect <LAN-IP>:27066` directly:
+
+```ini
+# .env.local  (find your IP via `ipconfig` or the client's "Network: IP …" line)
+DEV_PUBLIC_HOST=192.168.0.228
+```
+
+Then in the game console: `connect <LAN-IP>:27066` (TTT) · `:27067` (Prop Hunt). The same
+LAN-IP rule applies to any game client on this machine (CS2, Minecraft, Factorio). If a DHCP
+lease changes your IP, update `.env.local` (or set a DHCP reservation). `127.0.0.1` still
+works for the **web panel/API** (`https://localhost`) — only direct game-client UDP needs the
+LAN IP, and the host-side session collector + the panel's RCON control are unaffected (they
+reach the containers over the Docker network). **Prod is untouched:** `LAN_INSECURE` is never
+set there, so production servers stay VAC-secure and public players auth through Steam normally.
+
 ### Database restore (required for login)
 
 `setup.ps1` restores **secrets**, not the app **database** — so a fresh stack boots with
@@ -241,6 +276,39 @@ Need a brand-new account instead of a restore? Create one interactively:
 ```bash
 docker exec -it <project>-app-1 node src/cli.js create-admin
 ```
+
+### Player-session collector (Events section) in dev
+
+The **Events** section on the servers panel is fed by `tools/gt-session-tracker.mjs`, which in
+production runs as a **host systemd service** (`gt-session-tracker.service`) — NOT a compose
+service. It needs full `docker` + direct DB-volume access, which the app (behind the scoped
+`docker-proxy`) deliberately can't reach. So the dev stack does **not** start it, and the Events
+section stays empty until you run the collector yourself.
+
+To exercise it locally, run it in a throwaway container that mirrors the keeper (host `docker` +
+`sqlite3` + the DB volume) on the compose network:
+
+```powershell
+docker run -d --name gt-tracker-dev `
+  --network <project>_default `
+  -v "${PWD}:/repo" `
+  -v /var/run/docker.sock:/var/run/docker.sock `
+  -v <project>_gt-data:/gtdata `
+  --env-file .secrets\etc\gamertown\secrets.env `
+  --env-file .secrets\root\gamertown\.env `
+  -e GT_DB_PATH=/gtdata/gamertown.sqlite -e GT_POLL_MS=15000 `
+  -w /repo docker:cli `
+  sh -c "apk add --no-cache nodejs sqlite >/dev/null && exec node tools/gt-session-tracker.mjs"
+
+docker logs -f gt-tracker-dev      # watch joins/leaves
+docker rm -f gt-tracker-dev        # stop it
+```
+
+(`<project>` is the compose project name — the lowercased repo dir, e.g. `cbarr-hubgithubio`.)
+Sessions appear when a player **joins after the collector starts** — the log tail uses
+`--tail=0`, so already-online players aren't backfilled. Minecraft/Factorio are read from
+`docker logs`; GMOD/Prop Hunt/CS2 from a 15s RCON `status` poll. The host needs `sqlite3 ≥ 3.38`
+(the collector probes this at startup).
 
 ## Linux notes (verified in a Debian container)
 

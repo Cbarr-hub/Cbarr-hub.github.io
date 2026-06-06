@@ -32,6 +32,15 @@ const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame
  */
 export function createServerService({ dockerClient = null, publicHost = '', db = null }) {
   const store = db ? createServerStore(db) : null;
+  // Register the hosted game servers in the `games` catalog (hosted=1) so the
+  // session collector + the Events section can resolve a slug → game row. Cheap +
+  // idempotent; keeps the registry the single source of truth.
+  // Catalog convention (the `games` table is shared): hosted=1 rows are game
+  // *servers* (slug set, e.g. 'counterstrike'); hosted=0 rows are party/gambling
+  // games (slug NULL today). Any consumer of `games` must filter by `hosted`
+  // accordingly — e.g. /api/games returns only hosted=0. The slug uniqueness is
+  // a PARTIAL index scoped to hosted=1 (migration 006).
+  if (store) store.seedHostedGames(listServers());
   const connectors = dockerClient
     ? buildConnectors({ docker: dockerClient }, store)
     : null;
@@ -142,6 +151,9 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     addMap(id, body) {
       return connectorFor(id).addMap(body);
     },
+    importCollection(id, collectionId) {
+      return connectorFor(id).importCollection(collectionId);
+    },
     renameMap(id, workshopId, name) {
       return connectorFor(id).renameMap(workshopId, name);
     },
@@ -201,6 +213,14 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     },
     runLiveAction(id, action, value) {
       return connectorFor(id).runLiveAction(action, value);
+    },
+
+    // ── player sessions (read-only; written host-side by the collector) ───────
+    // Validate the id against the registry (like getStatus) so an unknown server
+    // 404s instead of silently returning []. With no DB, sessions are empty.
+    listSessions(id, opts = {}) {
+      if (!getServer(id)) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
+      return store ? store.listSessions(id, opts) : [];
     },
   };
 }

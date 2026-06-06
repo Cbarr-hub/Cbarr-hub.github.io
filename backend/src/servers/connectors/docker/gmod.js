@@ -54,6 +54,18 @@ export function dockerizeGmod(Base) {
     async stopGame()    { await this.shutdown(); return { ok: true }; }
     async restartGame() { await this.reboot();   return { ok: true }; }
 
+    // Update the game client via LinuxGSM (SteamCMD under the hood), in-container.
+    // `./gmodserver update` refreshes serverfiles; the panel then restarts the
+    // container to run the new build (also remounts the Workshop collection).
+    async update() {
+      const res = await this.runShell(`${this.gsmDir}/${this.gsmScript} update`, { timeoutMs: 1_800_000 });
+      return {
+        ok: res.exitCode === 0,
+        note: 'Game files updated via LinuxGSM — restart the server to run the new build.',
+        steps: [{ name: `${this.gsmScript} update`, exitCode: res.exitCode, stdout: res.stdout, stderr: res.stderr }],
+      };
+    }
+
     // Live RCON over TCP to the container's game port. The password comes from env
     // (`rconEnvKey`, set per game below) — the same value the image entrypoint wrote
     // into the game cfg's rcon_password. Overrides GmodConnector.runRcon so all the

@@ -16,6 +16,7 @@ SF=/data/serverfiles
 GARRYS="$SF/garrysmod"
 GAME_CFG="$GARRYS/cfg/gmodserver.cfg"
 INST_CFG=/data/lgsm/config-lgsm/gmodserver/gmodserver.cfg
+DEFAULT_CFG=/data/lgsm/config-lgsm/gmodserver/_default.cfg
 COMMON_CFG=/data/lgsm/config-lgsm/gmodserver/common.cfg
 MOUNT_CFG="$GARRYS/cfg/mount.cfg"
 CSS_DIR="$SF/css-content"
@@ -41,9 +42,15 @@ if [ -n "${SKIP_CSS:-}" ]; then
   log "SKIP_CSS set — skipping CS:S content (custom-map textures may be missing)"
 elif [ ! -d "$CSS_DIR/cstrike" ]; then
   log "downloading Counter-Strike: Source content (~3GB; one-time)…"
-  STEAMCMD="$SF/steamcmd/steamcmd.sh"
-  [ -x "$STEAMCMD" ] || STEAMCMD="$(command -v steamcmd || true)"
+  # LinuxGSM installs steamcmd under the game user's home (~/.steam/steamcmd), NOT in
+  # serverfiles — check that (and a couple of fallbacks) so CS:S actually downloads.
+  STEAMCMD=""
+  for c in "$SF/steamcmd/steamcmd.sh" "${HOME:-/data}/.steam/steamcmd/steamcmd.sh" \
+           /data/.steam/steamcmd/steamcmd.sh "$(command -v steamcmd || true)"; do
+    if [ -n "$c" ] && [ -x "$c" ]; then STEAMCMD="$c"; break; fi
+  done
   if [ -n "${STEAMCMD:-}" ] && [ -x "$STEAMCMD" ]; then
+    log "using steamcmd at $STEAMCMD"
     "$STEAMCMD" +force_install_dir "$CSS_DIR" +login anonymous +app_update 232330 validate +quit \
       || log "CS:S download returned non-zero (maps may have missing textures)"
   else
@@ -93,6 +100,26 @@ if [ ! -f /data/.gt-seeded ]; then
   [ -n "${WORKSHOP_COLLECTION:-}" ] && seedvar "$INST_CFG" wscollectionid "$WORKSHOP_COLLECTION"
   [ -n "${DEFAULT_MAP:-}" ]         && seedvar "$INST_CFG" defaultmap "$DEFAULT_MAP"
   touch /data/.gt-seeded
+fi
+
+# ── 3b. Dev-only: LAN + insecure boot ─────────────────────────────────────────
+# A Source/GMOD client on the SAME host binds its socket to the host's LAN IP and
+# CANNOT send to 127.0.0.1 (loopback is a separate interface), and a VAC-secure
+# server would also reject the Steam-auth ticket once it arrives NAT'd. So in dev
+# (LAN_INSECURE=1) we boot the server LAN + insecure and connect to it by the host's
+# LAN IP — NOT 127.0.0.1. NEVER set LAN_INSECURE in production. See docs/local-dev.md.
+# We reuse LinuxGSM's OWN startparameters template (so +sv_setsteamaccount ${gslt}
+# and Workshop downloads stay intact) and just append the LAN/insecure flags.
+if [ -n "${LAN_INSECURE:-}" ]; then
+  base=$(grep -m1 '^startparameters=' "$DEFAULT_CFG" 2>/dev/null)
+  if [ -n "$base" ]; then
+    sed -i -e '/^startparameters=/d' -e '/^# LAN_INSECURE override/d' "$INST_CFG"
+    {
+      echo "# LAN_INSECURE override (dev only) — see docs/local-dev.md"
+      echo "${base%\"} +sv_lan 1 -insecure\""
+    } >> "$INST_CFG"
+    log "LAN_INSECURE: booting LAN + insecure (dev) — connect via the host LAN IP, not 127.0.0.1"
+  fi
 fi
 
 # ── 4. Foreground run (container == server) ───────────────────────────────────

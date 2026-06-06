@@ -175,6 +175,7 @@ export class BaseConnector {
   listMaps()     { throw notSupported('a workshop map catalog'); }
   syncMaps()     { throw notSupported('workshop map sync'); }
   addMap()       { throw notSupported('a workshop map catalog'); }
+  importCollection() { throw notSupported('workshop collection import'); }
   renameMap()    { throw notSupported('a workshop map catalog'); }
   deleteMap()    { throw notSupported('a workshop map catalog'); }
   listConfigs()  { throw notSupported('a config library'); }

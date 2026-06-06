@@ -124,8 +124,9 @@ export default async function serversRoutes(app) {
       ...P({ id: ID_PARAM }),
       body: {
         type: 'object',
-        properties: { workshopId: WS_PARAM, name: { type: 'string', minLength: 1, maxLength: 64 } },
-        required: ['workshopId', 'name'],
+        // name is optional — when omitted the connector auto-fetches the Workshop title.
+        properties: { workshopId: WS_PARAM, name: { type: 'string', maxLength: 64 } },
+        required: ['workshopId'],
         additionalProperties: false,
       },
     },
@@ -133,6 +134,15 @@ export default async function serversRoutes(app) {
   // Install collection maps into the single garrysmod/maps/ source (GMOD). Static
   // '/maps/sync' is declared before '/maps/:workshopId' so it can't be shadowed.
   route('post', '/:id/maps/sync', (req) => svc.syncMaps(req.params.id), { csrf: true, schema: P({ id: ID_PARAM }) });
+  // Import every map in a public Steam Workshop collection into the catalog (CS),
+  // names auto-fetched. Static '/maps/collection' before '/maps/:workshopId'.
+  route('post', '/:id/maps/collection', (req) => svc.importCollection(req.params.id, req.body.collectionId), {
+    csrf: true,
+    schema: {
+      ...P({ id: ID_PARAM }),
+      body: { type: 'object', properties: { collectionId: WS_PARAM }, required: ['collectionId'], additionalProperties: false },
+    },
+  });
   route('patch', '/:id/maps/:workshopId', (req) => svc.renameMap(req.params.id, req.params.workshopId, req.body.name), {
     csrf: true,
     schema: {
@@ -243,6 +253,16 @@ export default async function serversRoutes(app) {
         required: ['action'],
         additionalProperties: false,
       },
+    },
+  });
+
+  // ── player sessions (read-only; the host collector writes them) ───────────────
+  // The frontend derives "online" from `left_at == null` in this list, so there's
+  // no separate online endpoint.
+  route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, { limit: req.query.limit }), {
+    schema: {
+      ...P({ id: ID_PARAM }),
+      querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } } },
     },
   });
 

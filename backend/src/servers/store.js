@@ -93,9 +93,57 @@ export function createServerStore(db) {
       `INSERT INTO server_active_profile (server_id, profile_id) VALUES (?, ?)
        ON CONFLICT(server_id) DO UPDATE SET profile_id = excluded.profile_id`,
     ),
+
+    // ── player-session tracking (shared with the host collector) ──
+    // The five game servers live in the party-games `games` table tagged
+    // hosted=1; sessions FK to games(id). slug→id is cached below.
+    // Conflict target carries the partial-index predicate (migration 006:
+    // `idx_games_slug ... WHERE hosted = 1`) — SQLite requires the WHERE clause in
+    // the ON CONFLICT target to match the partial unique index it should use.
+    upsertHostedGame: db.prepare(
+      `INSERT INTO games (name, slug, identity_kind, hosted) VALUES (?, ?, ?, 1)
+       ON CONFLICT(slug) WHERE hosted = 1
+         DO UPDATE SET name = excluded.name, identity_kind = excluded.identity_kind`,
+    ),
+    listHostedGames: db.prepare(
+      `SELECT id, slug FROM games WHERE hosted = 1`,
+    ),
+    upsertPlayer: db.prepare(
+      `INSERT INTO players (identity_kind, uid, name) VALUES (?, ?, ?)
+       ON CONFLICT(identity_kind, uid)
+         DO UPDATE SET name = excluded.name, last_seen = unixepoch()
+       RETURNING id`,
+    ),
+    openSession: db.prepare(
+      `INSERT INTO server_sessions
+         (game_id, player_id, identity_kind, uid, name, joined_at, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    closeSession: db.prepare(
+      `UPDATE server_sessions SET left_at = ? WHERE id = ? AND left_at IS NULL`,
+    ),
+    closeAllOpen: db.prepare(
+      `UPDATE server_sessions SET left_at = ?, source = ? WHERE left_at IS NULL`,
+    ),
+    listSessions: db.prepare(
+      `SELECT id, name, uid, identity_kind AS identityKind, joined_at, left_at, source
+         FROM server_sessions
+        WHERE game_id = ?
+        ORDER BY joined_at DESC
+        LIMIT ?`,
+    ),
   };
 
   const parseSettings = (json) => { try { return JSON.parse(json); } catch { return {}; } };
+
+  // Lazy slug→games.id cache for the hosted servers (rebuilt by seedHostedGames).
+  let gameIdBySlug = null;
+  const gameId = (slug) => {
+    if (!gameIdBySlug) {
+      gameIdBySlug = new Map(stmts.listHostedGames.all().map((r) => [r.slug, r.id]));
+    }
+    return gameIdBySlug.get(slug) ?? null;
+  };
 
   return {
     // ── workshop map catalog ─────────────────────────────────────────────────
@@ -185,6 +233,52 @@ export function createServerStore(db) {
     },
     setActiveProfile(serverId, id) {
       stmts.setActiveProfile.run(serverId, id);
+    },
+
+    // ── player-session tracking ──────────────────────────────────────────────
+    // Idempotently register the hosted game servers (hosted=1) in the `games`
+    // catalog from the registry, so adding a server needs no migration. Rebuilds
+    // the slug→id cache. `list` is registry entries { id, name, identityKind }.
+    seedHostedGames(list) {
+      const tx = db.transaction(() => {
+        for (const s of list) {
+          if (!s.identityKind) continue;
+          stmts.upsertHostedGame.run(s.name, s.id, s.identityKind);
+        }
+      });
+      tx();
+      gameIdBySlug = null; // force a rebuild on next read
+    },
+
+    // Record a player joining `slug` at `now` (unix seconds). When the player has
+    // a uid (not CS2-redacted), upsert the global `players` row so it doubles as
+    // the whitelist roster; always open a session snapshotting the join. Returns
+    // the new session id, or null if the slug isn't a known hosted game.
+    recordJoin(slug, p, now, source = 'log') {
+      const gid = gameId(slug);
+      if (gid == null) return null;
+      let playerId = null;
+      if (p.uid != null) {
+        playerId = stmts.upsertPlayer.get(p.identityKind, String(p.uid), p.name).id;
+      }
+      const { lastInsertRowid } = stmts.openSession.run(
+        gid, playerId, p.identityKind, p.uid != null ? String(p.uid) : null, p.name, now, source,
+      );
+      return lastInsertRowid;
+    },
+    closeSession(id, leftAt) {
+      return stmts.closeSession.run(leftAt, id).changes > 0;
+    },
+    // Close every still-open session (collector/container restart: we can't know
+    // the real leave time, so stamp `leftAt` and tag the rows as reconciled).
+    closeAllOpenSessions(leftAt, source = 'reconciled') {
+      return stmts.closeAllOpen.run(leftAt, source).changes;
+    },
+    listSessions(slug, { limit = 200 } = {}) {
+      const gid = gameId(slug);
+      if (gid == null) return [];
+      const lim = Math.min(500, Math.max(1, Number(limit) || 200));
+      return stmts.listSessions.all(gid, lim);
     },
   };
 }

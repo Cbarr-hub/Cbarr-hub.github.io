@@ -18,8 +18,37 @@ const PROPS = `${DATA}/server.properties`;
 const MC_LIVE_ACTIONS = [
   { key: 'list', label: 'List Players' },
   { key: 'save', label: 'Save World' },
+  { key: 'day',   label: 'Set Day' },
+  { key: 'night', label: 'Set Night' },
+  { key: 'clear', label: 'Clear Weather' },
+  { key: 'rain',  label: 'Rain' },
+  { key: 'keepinv_on',  label: 'Keep Inventory On' },
+  { key: 'keepinv_off', label: 'Keep Inventory Off' },
+  { key: 'mobs_on',  label: 'Mob Spawning On' },
+  { key: 'mobs_off', label: 'Mob Spawning Off' },
 ];
-const MC_ACTION_CMDS = { list: 'list', save: 'save-all' };
+const MC_ACTION_CMDS = {
+  list: 'list', save: 'save-all',
+  day: 'time set day', night: 'time set night',
+  clear: 'weather clear', rain: 'weather rain',
+  keepinv_on:  'gamerule keep_inventory true',
+  keepinv_off: 'gamerule keep_inventory false',
+  mobs_on:  'gamerule spawn_mobs true',
+  mobs_off: 'gamerule spawn_mobs false',
+};
+
+// Continuous live cvars → sliders. Each clamps to its bounds in runLiveAction.
+// NOTE: gamerule identifiers on the deployed build (validated live against
+// itzg/minecraft-server v26.1.2) are snake_case — keep_inventory, random_tick_speed,
+// players_sleeping_percentage — and mob spawning is the renamed `spawn_mobs` rule
+// (NOT do_mob_spawning). Re-validate with backend/test-live/rcon-smoke.mjs if the
+// pinned VERSION changes.
+const MC_LIVE_CONTROLS = [
+  { key: 'time',       label: 'Time of Day',       min: 0, max: 24000, step: 1000, default: 6000 },
+  { key: 'randomtick', label: 'Random Tick Speed', min: 0, max: 20,    step: 1,    default: 3 },
+  { key: 'sleeppct',   label: 'Sleep %',           min: 0, max: 100,   step: 5,    default: 100, suffix: '%' },
+];
+const clamp = (v, lo, hi, def) => Math.max(lo, Math.min(hi, Number(v) || def));
 
 export class DockerMinecraftConnector extends DockerBaseConnector {
   configFiles = {
@@ -60,7 +89,7 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
     const [worlds, current] = await Promise.all([this.#listWorlds(), this.#currentWorld()]);
     const names = [...new Set([current, ...worlds].filter(Boolean))];
     const worldOpts = [{ value: '', label: '(keep current world)' }, ...names.map((w) => ({ value: w, label: w }))];
-    return { groups: mcProfile.profileGroups(worldOpts), note: mcProfile.PROFILE_NOTE };
+    return { groups: mcProfile.profileGroups(worldOpts), note: mcProfile.PROFILE_NOTE, cvarRef: mcProfile.CVAR_REF };
   }
 
   async applyProfileSettings(settings) {
@@ -91,16 +120,34 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
     if (!process.env.MINECRAFT_RCON_PASSWORD) {
       return { available: false, reason: 'MINECRAFT_RCON_PASSWORD is not set' };
     }
-    return { available: true, actions: MC_LIVE_ACTIONS, commandHint: 'Minecraft RCON' };
+    // No changeMap — switching worlds is restart-only (the profile world picker).
+    return { available: true, actions: MC_LIVE_ACTIONS, controls: MC_LIVE_CONTROLS, commandHint: 'Minecraft RCON' };
   }
 
   async sendCommand(command) {
     return { output: await this.#rcon(validateLiveCommand(command)) };
   }
 
-  async runLiveAction(key) {
+  async runLiveAction(key, value) {
+    // Range sliders (clamped to their bounds) come first, then keyed actions.
+    if (key === 'time')       return { output: await this.#rcon(`time set ${clamp(value, 0, 24000, 6000)}`) };
+    if (key === 'randomtick') return { output: await this.#rcon(`gamerule random_tick_speed ${clamp(value, 0, 20, 3)}`) };
+    if (key === 'sleeppct')   return { output: await this.#rcon(`gamerule players_sleeping_percentage ${clamp(value, 0, 100, 100)}`) };
     const cmd = MC_ACTION_CMDS[key];
     if (!cmd) { const e = new Error(`unknown live action: ${key}`); e.code = 'BAD_SETTING'; throw e; }
     return { output: await this.#rcon(cmd) };
+  }
+
+  // ── update the game client ───────────────────────────────────────────────────
+  // itzg/minecraft-server re-resolves + downloads the configured VERSION on every
+  // start, so updating the server jar is just a restart. Set VERSION=LATEST in the
+  // compose env to track the newest release; otherwise it re-pulls the pinned one.
+  async update() {
+    await this.reboot();
+    return {
+      ok: true,
+      note: 'Restarted — itzg/minecraft-server re-downloaded the configured VERSION on boot. '
+        + 'Set VERSION=LATEST in servers.compose.yml to always pull the newest release.',
+    };
   }
 }

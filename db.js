@@ -201,8 +201,15 @@ export async function dbListServerMaps(id) {
   return (await api(`/servers/${encodeURIComponent(id)}/maps`)) ?? [];
 }
 
+// name is optional — omit it and the backend auto-fetches the Workshop title.
 export async function dbAddServerMap(id, workshopId, name) {
-  return api(`/servers/${encodeURIComponent(id)}/maps`, { method: 'POST', body: { workshopId, name } });
+  const body = name == null || name === '' ? { workshopId } : { workshopId, name };
+  return api(`/servers/${encodeURIComponent(id)}/maps`, { method: 'POST', body });
+}
+
+// Import every map in a public Steam Workshop collection (CS). Returns { ok, imported, maps }.
+export async function dbImportServerCollection(id, collectionId) {
+  return api(`/servers/${encodeURIComponent(id)}/maps/collection`, { method: 'POST', body: { collectionId } });
 }
 
 // Install collection maps into the single maps source (GMOD). Returns { ok, maps }.
@@ -251,6 +258,12 @@ export async function dbServerLiveCommand(id, command) {
 export async function dbServerLiveAction(id, action, value) {
   const body = value === undefined ? { action } : { action, value };
   return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body });
+}
+
+// ── player sessions (the standalone "Events" section; written host-side by the collector) ─
+export async function dbGetServerSessions(id, { limit } = {}) {
+  const qs = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+  return (await api(`/servers/${encodeURIComponent(id)}/sessions${qs}`)) ?? [];
 }
 
 // ── startup-config profiles (named, structured loadouts) ──────────────────────

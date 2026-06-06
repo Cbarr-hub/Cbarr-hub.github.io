@@ -50,6 +50,12 @@ const LOG_GAMES  = new Set(SERVERS.filter((s) => s.collect === 'log').map((s) =>
 const RCON_GAMES = new Set(SERVERS.filter((s) => s.collect === 'rcon').map((s) => s.id));
 const rconEnvKey = (slug) => byId.get(slug)?.rconEnvKey;
 
+// In-memory open-session maps for the RCON poll path (slug → Map(key → session id)) —
+// the poll-side analog of the log-tail `open` map. Seeded empty in main() after the
+// startup reconcile, then maintained entirely in memory, so a steady-state poll does
+// no per-tick DB read.
+const rconOpen = new Map();
+
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -153,13 +159,6 @@ async function reconcile(slug, ts) {
     : 'left_at IS NULL';
   await runSql(`UPDATE server_sessions SET left_at=${ts}, source='reconciled' WHERE ${where};`);
 }
-async function openSessionsFor(slug) {
-  return querySql(
-    `SELECT id, uid, name FROM server_sessions
-      WHERE game_id=(SELECT id FROM games WHERE slug=${q(slug)} AND hosted=1) AND left_at IS NULL;`,
-  );
-}
-
 // ── docker helpers ────────────────────────────────────────────────────────────
 async function dockerInspect(container, fmt) {
   try {
@@ -270,6 +269,15 @@ async function pollRcon(server) {
     // Mark down so the next running tick re-resolves the IP (a restart may change it).
     const e = ipCache.get(container);
     if (e) e.prevRunning = false;
+    // Close this game's still-open sessions and clear its in-memory map when the
+    // container stops (real leave time unknowable across a restart/stop) — mirroring the
+    // log-tail's reconcile on stream end. Without this, stopping a game would leak its
+    // open sessions until the collector restarts. Runs once: after clearing, open is empty.
+    const open = rconOpen.get(slug);
+    if (open && open.size) {
+      await reconcile(slug, nowSec()).catch((err) => log(`${slug}: reconcile failed`, err.message));
+      open.clear();
+    }
     return;
   }
   const envKey = rconEnvKey(slug);
@@ -295,28 +303,33 @@ async function pollRcon(server) {
   // `slot` reserved for that once the CS2 status format is host-validated).
   const keyOf = (e) => e.uid ?? `name:${e.name}`;
   const live = new Map(roster.map((p) => [keyOf(p), p]));
-  // TODO(perf): this DB read runs every tick even when idle. Safe to skip only when
-  // `valid && roster unchanged since last tick && no open rows`; left in for now to
-  // keep the close logic correct (no stale in-memory map). The IP inspect — the other
-  // per-tick spawn — is already cached above.
-  const openRows = await openSessionsFor(slug);
-  const openByKey = new Map(openRows.map((r) => [keyOf(r), r]));
+  // In-memory open map (key → session id), persisted across ticks and seeded empty at
+  // startup (after the startup reconcile closes any stale rows). A steady tick does ZERO
+  // DB reads — the poll-side analog of the log-tail `open` map. recordJoin returns the
+  // new id; closeSession takes it directly.
+  const open = rconOpen.get(slug);
 
-  // Open/refresh anyone newly present.
+  // Open anyone newly present. If recordJoin can't write (e.g. unseeded game → null) it
+  // isn't added to `open`, so the next tick retries.
   for (const [key, p] of live) {
-    if (!openByKey.has(key)) await recordJoin(slug, { ...p, identityKind }, ts, 'rcon');
+    if (open.has(key)) continue;
+    const id = await recordJoin(slug, { ...p, identityKind }, ts, 'rcon');
+    if (id != null) open.set(key, id);
   }
   // Close departed players — but ONLY when this poll returned a trustworthy status
   // block (`valid`, reported by the parser: a legacy header/row or the CS2 block was
   // seen). An empty/partial response (RCON hiccup, map change, truncated multi-packet)
   // reads as valid:false, so we DON'T believe its empty roster and close+reopen every
   // session, fragmenting the history. A genuinely emptied server still returns a real
-  // status block (valid:true), so its last stragglers do get closed.
+  // status block (valid:true), so its last stragglers do get closed. Iterate a snapshot
+  // (we delete while closing); a close that throws keeps the entry so the next tick retries.
   if (valid) {
-    for (const [key, row] of openByKey) {
-      if (!live.has(key)) await closeSession(row.id, ts);
+    for (const [key, id] of [...open]) {
+      if (live.has(key)) continue;
+      try { await closeSession(id, ts); open.delete(key); }
+      catch (err) { log(`${slug}: close failed`, err.message); }
     }
-  } else if (openByKey.size) {
+  } else if (open.size) {
     log(`${slug}: status response unrecognized (${roster.length} parsed) — skipping close pass`);
   }
 }
@@ -332,6 +345,9 @@ async function main() {
   }
 
   const rconServers = SERVERS.filter((s) => RCON_GAMES.has(s.id));
+  // Seed each RCON game's in-memory open map empty — the startup reconcile above just
+  // closed every stale open row, so memory and DB agree (no rows open).
+  for (const s of rconServers) rconOpen.set(s.id, new Map());
   const inFlight = new Set();
   const tick = () => {
     for (const s of rconServers) {

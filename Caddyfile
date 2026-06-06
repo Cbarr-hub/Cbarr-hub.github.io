@@ -35,8 +35,14 @@
 	}
 
 	# Public assets (sign-in page + static media) served WITHOUT the auth gate.
+	# `no-cache` = browsers may store but MUST revalidate (ETag → cheap 304 when
+	# unchanged). Without it, Cloudflare stamps a 4h browser-cache TTL on these, so a
+	# deploy that changes a JS module leaves clients on a stale copy for up to 4h —
+	# fresh HTML (no-store, below) importing an old module → "missing export" / blank
+	# page. Revalidation makes a deploy take effect on the next load instead.
 	@public path /signin.html *.css *.js *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2 *.ttf *.webp *.mp4
 	handle @public {
+		header Cache-Control "no-cache"
 		root * /srv
 		file_server
 	}

@@ -464,7 +464,6 @@
     .dash-err { color: #ff6666; font-size: 11px; }
 
     /* ── game tab bar ── */
-    .tabbar { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #7bb85f; margin-bottom: 16px; }
     .tab {
       display: inline-flex; align-items: center; gap: 8px;
       background: #1a1a1a; border: 1px solid #3a3a3a; border-bottom: none;
@@ -681,6 +680,85 @@
       .fleet-gauges { gap: 18px; }
       .entity-grid { grid-template-columns: 1fr; }
     }
+
+    /* ─────────────────────────────────────────────────────────────────────────
+       REDESIGN — tabbed per-game card (Runtime / Profiles / Maps / Raw Config).
+       Power controls stay above the tabs; the unified console stays below them.
+       New classes only — every token + component above is reused as-is.
+       ───────────────────────────────────────────────────────────────────────── */
+    .srv-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--gt-line); flex-wrap: wrap; margin-top: 10px; }
+    .srv-tabs .tab { padding: 7px 16px; top: 1px; }
+    .srv-tabs .tab[hidden] { display: none; }
+    .tabpanel { padding: 12px 2px; }
+    .tabpanel[hidden] { display: none; }
+
+    /* slider field (profile editor) — track + readout + numeric mirror */
+    .pf-range { display: grid; grid-template-columns: 1fr 64px auto; gap: 8px; align-items: center; }
+    .pf-range input[type=range] { width: 100%; accent-color: var(--gt-green); cursor: pointer; }
+    .pf-range input[type=number] { width: 100%; box-sizing: border-box; }
+    .pf-range-val { font-family: "Courier New", monospace; color: var(--gt-green-soft); min-width: 46px; text-align: right; }
+    .field-unit { color: #777; margin-left: 4px; font-size: 10px; }
+
+    /* segmented control (small enums) */
+    .seg { display: inline-flex; border: 1px solid #3a3a3a; border-radius: 2px; overflow: hidden; flex-wrap: wrap; }
+    .seg-btn { padding: 3px 9px; background: #161616; color: #b8d4a0; border: none; border-right: 1px solid #3a3a3a;
+      cursor: pointer; font-family: Verdana, Arial, sans-serif; font-size: 11px; }
+    .seg-btn:last-child { border-right: none; }
+    .seg-btn.on { background: #1e2e1e; color: var(--gt-green); }
+    .seg-btn:hover:not(.on) { background: #1d231d; }
+
+    /* password field with reveal toggle */
+    .pf-pass { display: flex; gap: 6px; align-items: center; }
+    .pf-pass input { flex: 1; min-width: 0; }
+    .pf-pass .mini-btn { padding: 3px 8px; }
+
+    /* presets/sharing badge in the profile toolbar */
+    .pf-badge { font-size: 10px; padding: 1px 6px; border-radius: 2px; white-space: nowrap; }
+    .pf-badge.live { color: var(--gt-green); border: 1px solid #2e5a2e; }
+    .pf-badge.dirty { color: var(--gt-amber); border: 1px solid #5a4a1e; }
+
+    /* unified Map panel: collection import + catalog + rotation/boot picker */
+    .map-import { border: 1px solid #333; background: #181818; padding: 8px; margin-bottom: 10px; border-radius: 3px; }
+    .map-import-head { color: var(--gt-green); font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .coll-row { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
+    .coll-row input { flex: 1 1 150px; min-width: 0; }
+    .coll-result { margin-top: 7px; }
+    .coll-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; max-height: 180px; overflow: auto; }
+    .map-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 700px) { .map-cols { grid-template-columns: 1fr; } }
+    .map-pane { border: 1px solid #2a2a2a; background: #141914; border-radius: 3px; padding: 8px; }
+    .map-pane-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 7px; }
+    .map-pane-title { color: #7bb85f; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+    .map-rows { display: flex; flex-direction: column; gap: 3px; }
+    .map-empty { color: #777; font-size: 10px; font-style: italic; padding: 3px 0; }
+    .map-foot { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .map-boot-bar { display: flex; gap: 6px; align-items: center; }
+    .map-boot-bar select { flex: 1; min-width: 0; }
+
+    /* Raw-config power tools: editor + reference/snippet sidebar */
+    .rawcfg-grid { display: grid; grid-template-columns: 1fr 280px; gap: 10px; }
+    @media (max-width: 780px) { .rawcfg-grid { grid-template-columns: 1fr; } }
+    .rc-editor { min-width: 0; }
+    .rc-lint { font-family: "Courier New", monospace; font-size: 10px; color: var(--gt-amber); min-height: 14px; margin: 4px 0; white-space: pre-wrap; }
+    .rc-lint.err { color: #e06c6c; }
+    .rc-toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+    .rc-side { border: 1px solid #333; background: #181818; padding: 8px; border-radius: 3px; }
+    .rc-side-title { color: #7bb85f; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .rc-filter { width: 100%; box-sizing: border-box; margin-bottom: 6px; }
+    .rc-ref-list { max-height: 220px; overflow: auto; }
+    .rc-ref-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid #262626; }
+    .rc-ref-row .rc-ref-meta { color: #b8d4a0; font-family: "Courier New", monospace; font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .rc-ref-row .rc-ref-meta small { color: #777; }
+    .rc-ref-help { color: #7a7a64; font-style: italic; font-size: 9px; }
+    .rc-snip-list { display: flex; flex-direction: column; gap: 3px; margin: 5px 0; }
+    .rc-snip-row { display: flex; align-items: center; gap: 6px; }
+    .rc-snip-row .rc-snip-name { flex: 1; min-width: 0; color: #b8d4a0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rc-sep { border-top: 1px dashed #2a2a2a; margin: 9px 0; }
+    .rc-diff { font-family: "Courier New", monospace; font-size: 11px; white-space: pre; background: #141414; border: 1px solid #333;
+      padding: 6px; max-height: 220px; overflow: auto; margin-top: 6px; border-radius: 2px; }
+    .rc-del { color: #e06c6c; }
+    .rc-add { color: var(--gt-green); }
+    .rc-ctx { color: #6a6a5a; }
   </style>
 </head>
 <body>
@@ -714,8 +792,8 @@
       dbGetServers, dbGetServerStatus, dbServerAction,
       dbListServerConfig, dbReadServerConfig, dbWriteServerConfig, dbUpdateServer,
       dbGetServerSettings, dbSaveServerSettings,
-      dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
-      dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
+      dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
+      dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbUpdateServerConfig, dbDeleteServerConfig,
       dbGetServerLive, dbServerLiveCommand, dbServerLiveAction,
       dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile,
       dbUpdateProfile, dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
@@ -1099,23 +1177,6 @@
       renderActiveCard()
     }
 
-    function renderTabs() {
-      const bar = document.getElementById('tabbar')
-      if (!bar) return
-      bar.innerHTML = servers.map(s => {
-        const { cls, label } = statusBits(s)
-        return `<button class="tab ${s.id === activeId ? 'active' : ''}" type="button" data-tab="${esc(s.id)}" title="${esc(label)}">
-          <span class="dot ${cls}"></span><span class="tab-name">${esc(s.name)}</span>
-        </button>`
-      }).join('')
-      bar.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
-        if (b.dataset.tab === activeId) return
-        activeId = b.dataset.tab
-        renderTabs()
-        renderActiveCard()
-      }))
-    }
-
     function renderActiveCard() {
       const host = document.getElementById('active-card')
       const s = servers.find(x => x.id === activeId)
@@ -1143,8 +1204,26 @@
       stop: 'Force Stop',
     }
 
+    // ── per-card render: power controls (always) + 4 tabs + unified console ──
+    // Tabs: Runtime / Profiles / Maps / Raw Config. Power stays above; console
+    // below. Each tab lazy-loads on first activation into the shared state S.
+    const TABS = [
+      { key: 'runtime',  label: 'Runtime' },
+      { key: 'profiles', label: 'Profiles' },
+      { key: 'maps',     label: 'Maps' },
+      { key: 'rawcfg',   label: 'Raw Config' },
+    ]
+
     function cardHtml(s) {
       const { cls, label, meta } = statusBits(s)
+      const tabsHtml = TABS.map(t =>
+        `<button class="tab" type="button" role="tab" data-srvtab="${t.key}" hidden>
+           <span class="tab-name">${esc(t.label)}</span>
+         </button>`).join('')
+      const panelsHtml = TABS.map(t =>
+        `<div class="tabpanel" data-tabpanel="${t.key}" role="tabpanel" hidden>
+           <div data-tab-body><div class="panel-ldg">Loading…</div></div>
+         </div>`).join('')
       return `
       <div class="srv" id="srv-${esc(s.id)}">
         <div class="srv-head">
@@ -1175,41 +1254,8 @@
           </div>
           <div class="srv-err" data-err></div>
 
-          <!-- RUNTIME: live commands to the running server (not persisted) -->
-          <div class="srv-section rt" data-section style="display:none">
-            <div class="srv-section-head">Runtime <span>live RCON — ephemeral, not saved; server must be running</span></div>
-            <div class="panel runtime" data-runtime data-loading="1" style="display:none">
-              <div data-rt-body><div class="panel-ldg">Loading runtime…</div></div>
-            </div>
-          </div>
-
-          <!-- CONFIGURATION: everything persistent (profiles, quick settings, raw files) -->
-          <div class="srv-section cfg" data-section style="display:none">
-            <div class="srv-section-head">Configuration <span>the server's startup config — edit a profile, then Apply to go live</span></div>
-
-            <div class="panel profiles" data-profiles data-loading="1" style="display:none">
-              <div data-prof-body><div class="panel-ldg">Loading profiles…</div></div>
-            </div>
-
-            <div class="panel quickset" data-quickset data-loading="1" style="display:none">
-              <div class="panel-title">Quick Settings <span class="qs-note">world / save operations</span></div>
-              <div class="qs-fields" data-qs-fields><div class="panel-ldg">Loading…</div></div>
-              <div class="panel-row">
-                <button class="retro-btn" data-qs-save>Save Settings</button>
-                <span class="qs-note" data-qs-note></span>
-              </div>
-            </div>
-
-            <details class="panel rawcfg" data-rawcfg style="display:none">
-              <summary>Raw Config Files <span class="qs-note">advanced — edit a file directly</span></summary>
-              <div class="panel-row" style="margin-top:8px">
-                <label>File</label>
-                <select data-cfg-select><option value="">— loading… —</option></select>
-                <button class="retro-btn" data-cfg-save disabled>Save File</button>
-              </div>
-              <textarea class="cfg" data-cfg-text placeholder="expand to load…" disabled></textarea>
-            </details>
-          </div>
+          <div class="srv-tabs" role="tablist" data-srvtabs>${tabsHtml}</div>
+          <div class="srv-tabpanels" data-srvpanels>${panelsHtml}</div>
 
           <pre class="console" data-console style="display:none"></pre>
         </div>
@@ -1220,10 +1266,23 @@
       const root = document.getElementById(`srv-${id}`)
       const errEl = root.querySelector('[data-err]')
       const consoleEl = root.querySelector('[data-console]')
-      const sel   = root.querySelector('[data-cfg-select]')
-      const text  = root.querySelector('[data-cfg-text]')
-      const saveBtn = root.querySelector('[data-cfg-save]')
       const actionStatus = root.querySelector('[data-action-status-text]')
+
+      // Per-card state object S — one cache shared by all four tabs. S.values is
+      // shared by Profiles + Maps so rotation edits stay coherent across tabs.
+      const S = {
+        id, server: servers.find(x => x.id === id) || null,
+        loaded: { runtime: false, profiles: false, maps: false, rawcfg: false },
+        activeTab: null,
+        // profiles
+        schema: null, list: [], activeId: null, editId: null, values: {}, dirty: false,
+        // maps
+        maps: [],
+        // rawcfg
+        files: [], curFile: null, fileBaseline: '', configs: [], cvarRef: [],
+        // runtime
+        live: null,
+      }
 
       const setErr = (m) => { errEl.textContent = m || '' }
       const setBusy = (busy, label = 'Working...') => {
@@ -1251,16 +1310,15 @@
         consoleEl.textContent += (consoleEl.textContent ? '\n' : '') + entry
         consoleEl.scrollTop = consoleEl.scrollHeight
       }
-      const showOut = (txt) => logLine(txt)
       // run an async op with a spinner on the triggering control + error capture.
       async function withBtn(btn, label, fn) {
         setErr('')
         const prev = btn ? btn.disabled : false
         if (btn) { btn.disabled = true; btn.classList.add('loading') }
         try {
-          const res = await fn()
-          return res
+          return await fn()
         } catch (e) {
+          // surface a server-side BAD_SETTING message verbatim — it's human text.
           setErr(e.message); if (label) logLine(`${label} — error: ${e.message}`)
           throw e
         } finally {
@@ -1268,38 +1326,18 @@
         }
       }
 
-      // apply initial game-button state from the server data already in `servers`
-      const initData = servers.find(x => x.id === id)
-      if (initData) updateStatus(root, initData)
-
       async function refresh() {
         try {
           const all = await dbGetServers()
           servers = all
           const s = all.find(x => x.id === id)
-          if (s) updateStatus(root, s)
-          renderTopFromState()   // keep the fleet deck's status + resources in sync
+          if (s) { S.server = s; updateStatus(root, s) }
+          renderTopFromState()   // keep the fleet deck in sync
           setErr(s?.error || '')
         } catch (e) { setErr(e.message) }
       }
 
-      // copy join string
-      const copyBtn = root.querySelector('[data-copy]')
-      if (copyBtn) copyBtn.addEventListener('click', async () => {
-        const txt = root.querySelector('[data-conn]').textContent
-        try {
-          await navigator.clipboard.writeText(txt)
-        } catch {
-          // clipboard API needs HTTPS/permission; fall back to a manual select
-          const r = document.createRange(); r.selectNode(root.querySelector('[data-conn]'))
-          const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r)
-          try { document.execCommand('copy') } catch {}
-          sel.removeAllRanges()
-        }
-        const old = copyBtn.textContent; copyBtn.textContent = 'Copied!'
-        setTimeout(() => { copyBtn.textContent = old }, 1200)
-      })
-
+      // ── power controls ────────────────────────────────────────────────────
       async function runAction(act, btn) {
         if (act === 'refresh') {
           setErr(''); setBusy(true, 'Refreshing...'); if (btn) btn.classList.add('loading')
@@ -1327,7 +1365,6 @@
         setErr(''); setBusy(true, `${label}...`); logLine(`${label}…`); if (btn) btn.classList.add('loading')
         try {
           await dbServerAction(id, act)
-          // give Proxmox a moment, then refresh status
           await new Promise(r => setTimeout(r, 1500))
           await refresh()
           logLine(`${label} ✓`)
@@ -1339,90 +1376,116 @@
       }
 
       root.querySelectorAll('[data-act]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          await runAction(btn.dataset.act, btn)
-        })
+        btn.addEventListener('click', () => runAction(btn.dataset.act, btn))
       })
 
-      // config: load the file list (the section is collapsed by default)
-      const cfgDetails = root.querySelector('[data-rawcfg]')
-      async function loadConfigList() {
-        try {
-          const { files } = await dbListServerConfig(id)
-          sel.innerHTML = (files.length ? files : []).map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')
-            || '<option value="">(no editable files)</option>'
-        } catch (e) { setErr(e.message) }
-      }
-      const cfgListReady = loadConfigList()
+      // ── tabs ──────────────────────────────────────────────────────────────
+      const tabBtns = () => [...root.querySelectorAll('[data-srvtab]')]
+      const panelEl = (name) => root.querySelector(`[data-tabpanel="${name}"]`)
+      const panelBody = (name) => panelEl(name)?.querySelector('[data-tab-body]')
 
-      // config: read a file into the editor
-      async function loadFile(file) {
-        if (!file) return
-        text.disabled = true; saveBtn.disabled = true; text.value = 'loading…'
-        try {
-          const { content, truncated } = await dbReadServerConfig(id, file)
-          text.value = content; text.disabled = false; saveBtn.disabled = false
-          if (truncated) setErr('note: file was truncated by Proxmox (very large file)')
-        } catch (e) { setErr(e.message); text.value = ''; text.disabled = true; saveBtn.disabled = true }
-      }
-
-      // auto-load the selected file the first time the section is expanded
-      cfgDetails.addEventListener('toggle', async () => {
-        if (cfgDetails.open && !cfgDetails.dataset.loaded) {
-          cfgDetails.dataset.loaded = '1'
-          await cfgListReady
-          loadFile(sel.value)
+      // Confirm leaving the Profiles tab when there are unsaved edits.
+      function guardLeave() {
+        if (S.activeTab === 'profiles' && S.dirty) {
+          if (!confirm('Discard unsaved profile changes?')) return false
+          S.dirty = false
         }
-      })
-      sel.addEventListener('change', () => loadFile(sel.value))
-
-      // config: save
-      saveBtn.addEventListener('click', async () => {
-        const file = sel.value
-        if (!file) return
-        setErr(''); saveBtn.disabled = true
-        try {
-          await dbWriteServerConfig(id, file, text.value)
-          showOut(`saved ${file} ✓`)
-        } catch (e) { setErr(e.message) } finally { saveBtn.disabled = false }
-      })
-
-      // ── quick settings (structured map / game mode / …) ───────────────────
-      const qs = root.querySelector('[data-quickset]')
-      const qsFields = root.querySelector('[data-qs-fields]')
-      const qsNote = root.querySelector('[data-qs-note]')
-      const qsSave = root.querySelector('[data-qs-save]')
-      const rt = root.querySelector('[data-runtime]')
-
-      // Clear a panel's loading state and re-gate it. applicable=false → the panel
-      // doesn't apply to this game (stays hidden); true → loaded, shows content.
-      function panelReady(panel, applicable = true) {
-        if (!panel) return
-        panel.dataset.loading = ''
-        if (applicable) panel.dataset.loaded = '1'
-        const current = servers.find(x => x.id === id)
-        if (current) updateStatus(root, current)
+        return true
       }
 
-      // ── runtime (live RCON/console) panel ─────────────────────────────────
-      async function loadLive() {
+      function activateTab(name, force) {
+        if (!name) return
+        if (S.activeTab === name && !force) return
+        if (!force && !guardLeave()) {
+          // revert visual selection to the current tab
+          tabBtns().forEach(b => b.classList.toggle('active', b.dataset.srvtab === S.activeTab))
+          return
+        }
+        S.activeTab = name
+        tabBtns().forEach(b => b.classList.toggle('active', b.dataset.srvtab === name))
+        TABS.forEach(t => { const p = panelEl(t.key); if (p) p.hidden = t.key !== name })
+        if (!S.loaded[name]) {
+          S.loaded[name] = true
+          if (name === 'runtime') loadRuntime()
+          else if (name === 'profiles') loadProfiles()
+          else if (name === 'maps') loadMaps()
+          else if (name === 'rawcfg') loadRawcfg()
+        }
+      }
+
+      root.querySelectorAll('[data-srvtab]').forEach(b => {
+        b.addEventListener('click', () => activateTab(b.dataset.srvtab))
+      })
+
+      // Re-run the visibility gates (e.g. after the schema loads and the game
+      // turns out to advertise maps → the Maps tab should appear).
+      function regate() {
+        const cur = servers.find(x => x.id === id) || S.server
+        if (cur) updateStatus(root, cur)
+      }
+
+      // ════════════════════════════════════════════════════════════════════
+      // RUNTIME TAB
+      // ════════════════════════════════════════════════════════════════════
+      async function loadRuntime() {
+        const body = panelBody('runtime')
         let data
-        try { data = await dbGetServerLive(id) } catch { return panelReady(rt, false) }
-        if (!data) return panelReady(rt, false)
-        await renderLive(data)
-        panelReady(rt)
+        try { data = await dbGetServerLive(id) }
+        catch (e) { body.innerHTML = `<div class="qs-note-block">runtime unavailable: ${esc(e.message)}</div>`; return }
+        // Operations (e.g. Factorio "Save Current World As") come from getSettings'
+        // `sections` and run via file ops whenever the container is up — they don't
+        // need RCON, so they render even when live control is unavailable.
+        let settings = null
+        try { settings = await dbGetServerSettings(id) } catch {}
+        S.live = data
+        renderLive(data, settings)
       }
 
-      async function renderLive(data) {
-        const body = rt.querySelector('[data-rt-body]')
-        if (!data.available) {
-          body.innerHTML = `<div class="qs-note-block">${esc(data.reason || 'live control unavailable')}</div>`
+      // One operations section (getSettings().sections[]) → a card with its fields
+      // and a Save button. Reuses the .qs-fields label/input grid.
+      function renderOpsSection(sec) {
+        const inputHtml = (f) => {
+          const v = esc(f.value ?? '')
+          if (f.type === 'select') return `<select data-ops-field="${esc(f.key)}">${(f.options || []).map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</select>`
+          if (f.type === 'textarea') return `<textarea class="cfg" data-ops-field="${esc(f.key)}">${v}</textarea>`
+          return `<input type="${f.type === 'number' ? 'number' : 'text'}" data-ops-field="${esc(f.key)}" value="${v}" placeholder="${esc(f.placeholder || '')}" />`
+        }
+        return `<div class="rt-block" data-ops-section="${esc(sec.key)}">
+          <div class="rt-block-title">${esc(sec.title || 'Operations')}</div>
+          <div class="qs-fields">${(sec.fields || []).map(f => `<label>${esc(f.label)}</label>${inputHtml(f)}`).join('')}</div>
+          ${sec.note ? `<div class="rt-hint">${esc(sec.note)}</div>` : ''}
+          <button class="retro-btn primary" data-ops-save="${esc(sec.key)}">${esc(sec.saveLabel || 'Save')}</button>
+        </div>`
+      }
+      function wireOps(body, sections) {
+        body.querySelectorAll('[data-ops-save]').forEach(btn => {
+          const key = btn.dataset.opsSave
+          const sec = sections.find(s => s.key === key)
+          btn.addEventListener('click', () => {
+            const root = btn.closest('[data-ops-section]')
+            const values = { section: key }
+            root.querySelectorAll('[data-ops-field]').forEach(el => { values[el.dataset.opsField] = el.value })
+            withBtn(btn, btn.textContent.trim(), async () => {
+              const r = await dbSaveServerSettings(id, values)
+              logLine(`> ${sec?.title || key}`, r?.saveName ? `saved as “${r.saveName}”` : (r?.ok ? 'done' : JSON.stringify(r)))
+            }).catch(() => {})
+          })
+        })
+      }
+
+      function renderLive(data, settings) {
+        const body = panelBody('runtime')
+        const sections = (settings && Array.isArray(settings.sections)) ? settings.sections : []
+        const opsHtml = sections.map(renderOpsSection).join('')
+        if (!data || !data.available) {
+          body.innerHTML = opsHtml +
+            `<div class="qs-note-block">${esc(data?.reason || 'live control unavailable — start the server first')}</div>`
+          wireOps(body, sections)
           return
         }
         const actions = (data.actions || []).map(a =>
-          `<button class="retro-btn${a.danger ? ' danger' : ''}" data-rt-act="${esc(a.key)}">${esc(a.label)}</button>`).join('')
+          `<button class="retro-btn${a.danger ? ' danger' : ''}" data-rt-act="${esc(a.key)}"${a.arg ? ` data-rt-arg="${esc(a.arg)}"` : ''}>${esc(a.label)}</button>`).join('')
 
-        // live RANGE controls → sliders (e.g. gravity / player speed / game speed).
         const controls = (data.controls || [])
         const controlsHtml = controls.length ? `
           <div class="rt-block">
@@ -1436,34 +1499,23 @@
                 <button class="retro-btn" data-rt-set="${esc(c.key)}">Set</button>
               </div>`
             }).join('')}</div>
-            <div class="rt-hint">Drag a slider, then <b>Set</b> to push it to the running server (needs sv_cheats — toggled for you).</div>
+            <div class="rt-hint">Drag a slider, then <b>Set</b> to push it to the running server (cheats-gated values toggle sv_cheats for you).</div>
           </div>` : ''
 
-        // optional live change-map control — map options reuse the Startup settings.
         let changeMapHtml = ''
         if (data.changeMap) {
-          let opts = ''
-          try {
-            const m = (await dbGetServerSettings(id))?.map || { stock: [], collection: [], workshop: [], current: '' }
-            const plainGroup = (label, names) => names?.length
-              ? `<optgroup label="${label}">` + names.map(n => `<option value="${esc(n)}"${n === m.current ? ' selected' : ''}>${esc(n)}</option>`).join('') + '</optgroup>'
-              : ''
-            opts = plainGroup('Stock', m.stock)
-            opts += plainGroup('Collection', m.collection)   // GMOD workshop-collection maps
-            if (m.workshop?.length) opts += '<optgroup label="Workshop">' +   // CS workshop maps (ws: ids)
-              m.workshop.map(w => { const v = `ws:${w.id}`; return `<option value="${esc(v)}"${v === m.current ? ' selected' : ''}>${esc(w.name)}</option>` }).join('') + '</optgroup>'
-          } catch {}
           changeMapHtml = `
             <div class="rt-block">
               <div class="rt-block-title">Change Map <span class="rt-live">live</span></div>
               <div class="rt-map-bar">
-                <select data-rt-map>${opts}</select>
+                <select data-rt-map><option value="">— loading maps… —</option></select>
                 <button class="retro-btn" data-rt-changemap>Change Now</button>
               </div>
             </div>`
         }
 
         body.innerHTML = `
+          ${opsHtml}
           ${actions ? `<div class="rt-block">
             <div class="rt-block-title">Quick Actions</div>
             <div class="rt-actions">${actions}</div>
@@ -1479,15 +1531,22 @@
             <div class="rt-hint">Any console / RCON command — output appears in the console below.</div>
           </div>`
 
-        const cmdEl = body.querySelector('[data-rt-cmd]')
+        // quick actions (some may carry an inline arg prompt)
         body.querySelectorAll('[data-rt-act]').forEach(btn => {
-          btn.addEventListener('click', () => withBtn(btn, btn.textContent.trim(), async () => {
-            const r = await dbServerLiveAction(id, btn.dataset.rtAct)
-            logLine(`> ${btn.textContent.trim()}`, r?.output)
-          }).catch(() => {}))
+          btn.addEventListener('click', () => {
+            let value
+            if (btn.dataset.rtArg) {
+              value = prompt(`${btn.textContent.trim()} — ${btn.dataset.rtArg}:`)
+              if (value == null) return
+            }
+            withBtn(btn, btn.textContent.trim(), async () => {
+              const r = await dbServerLiveAction(id, btn.dataset.rtAct, value)
+              logLine(`> ${btn.textContent.trim()}`, r?.output)
+            }).catch(() => {})
+          })
         })
 
-        // range sliders: live value readout on drag; Set pushes it over RCON.
+        // live range sliders
         body.querySelectorAll('[data-rt-range]').forEach(slider => {
           const key = slider.dataset.rtRange
           const ctl = controls.find(c => c.key === key)
@@ -1503,14 +1562,23 @@
             logLine(`> ${ctl?.label || key} → ${slider.value}${ctl?.suffix || ''}`, r?.output)
           }).catch(() => {}))
         })
-        const cm = body.querySelector('[data-rt-changemap]')
-        if (cm) cm.addEventListener('click', () => {
-          const val = body.querySelector('[data-rt-map]').value
-          withBtn(cm, 'Change map', async () => {
-            const r = await dbServerLiveAction(id, 'change_map', val)
-            logLine(`> change map → ${val}`, r?.output)
-          }).catch(() => {})
-        })
+
+        // change-map select — populate from the live settings/schema map block
+        if (data.changeMap) {
+          const mapSel = body.querySelector('[data-rt-map]')
+          populateMapSelect(mapSel)
+          const cm = body.querySelector('[data-rt-changemap]')
+          if (cm) cm.addEventListener('click', () => {
+            const val = mapSel.value
+            if (!val) return
+            withBtn(cm, 'Change map', async () => {
+              const r = await dbServerLiveAction(id, 'change_map', val)
+              logLine(`> change map → ${val}`, r?.output)
+            }).catch(() => {})
+          })
+        }
+
+        const cmdEl = body.querySelector('[data-rt-cmd]')
         const send = () => {
           const cmd = cmdEl.value.trim()
           if (!cmd) return
@@ -1521,144 +1589,169 @@
         }
         body.querySelector('[data-rt-send]').addEventListener('click', send)
         cmdEl.addEventListener('keydown', e => { if (e.key === 'Enter') send() })
+
+        wireOps(body, sections)
       }
 
-      function renderField(id, f) {
-        const lbl = `<label for="qs-${id}-${f.key}">${esc(f.label)}</label>`
-        if (f.type === 'select') {
-          const opts = f.options.map(o =>
-            `<option value="${esc(o.value)}"${o.value === f.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
-          return `${lbl}<select id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}">${opts}</select>`
-        }
-        if (f.type === 'textarea') {
-          return `${lbl}<textarea class="cfg" id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>${esc(f.value ?? '')}</textarea>`
-        }
-        const attrs = [
-          f.min != null ? `min="${f.min}"` : '',
-          f.max != null ? `max="${f.max}"` : '',
-          f.placeholder ? `placeholder="${esc(f.placeholder)}"` : '',
-        ].filter(Boolean).join(' ')
-        return `${lbl}<input id="qs-${id}-${f.key}" data-qs-key="${esc(f.key)}" type="${f.type === 'number' ? 'number' : 'text'}" value="${esc(f.value ?? '')}" ${attrs} />`
+      // reusable map-select populator (stock / collection / workshop optgroups)
+      async function populateMapSelect(sel) {
+        if (!sel) return
+        let opts = ''
+        try {
+          const m = (await dbGetServerSettings(id))?.map || { stock: [], collection: [], workshop: [], current: '' }
+          const plainGroup = (label, names) => names?.length
+            ? `<optgroup label="${label}">` + names.map(n => `<option value="${esc(n)}"${n === m.current ? ' selected' : ''}>${esc(n)}</option>`).join('') + '</optgroup>'
+            : ''
+          opts = plainGroup('Stock', m.stock)
+          opts += plainGroup('Collection', m.collection)
+          if (m.workshop?.length) opts += '<optgroup label="Workshop">' +
+            m.workshop.map(w => { const v = `ws:${w.id}`; return `<option value="${esc(v)}"${v === m.current ? ' selected' : ''}>${esc(w.name)}</option>` }).join('') + '</optgroup>'
+        } catch {}
+        sel.innerHTML = opts || '<option value="">(no maps)</option>'
       }
 
-      // ── startup-config Profiles editor ────────────────────────────────────
-      const prof = root.querySelector('[data-profiles]')
-      const profBody = prof.querySelector('[data-prof-body]')
-      // Per-card editor state: the loaded field schema, the profile list + the
-      // applied profile's id, the id open in the editor, and the live working
-      // values (maplist widgets keep their arrays here — they aren't plain inputs).
-      const P = { schema: null, list: [], activeId: null, editId: null, values: {} }
-
-      // True if this server supports profiles (non-empty schema). When false the
-      // caller falls back to the legacy Quick Settings panel.
+      // ════════════════════════════════════════════════════════════════════
+      // PROFILES TAB  (schema-driven editor + presets/sharing)
+      // ════════════════════════════════════════════════════════════════════
       async function loadProfiles() {
+        const body = panelBody('profiles')
         let schema
-        try { schema = await dbGetProfileSchema(id) } catch { panelReady(prof, false); return false }
-        if (!schema?.groups?.length) { panelReady(prof, false); return false }
-        P.schema = schema
+        try { schema = await dbGetProfileSchema(id) }
+        catch (e) { body.innerHTML = `<div class="qs-note-block">profiles unavailable: ${esc(e.message)}</div>`; return }
+        if (!schema?.groups?.length) {
+          body.innerHTML = `<div class="qs-note-block">This game has no structured startup config — use the Raw Config tab.</div>`
+          return
+        }
+        S.schema = schema
+        S.cvarRef = schema.cvarRef || []
+        regate()   // schema may reveal a Maps tab
         await reloadProfileList()
-        panelReady(prof)
-        return true
       }
 
       async function reloadProfileList(selectId) {
         try {
           const { profiles, activeId } = await dbListProfiles(id)
-          P.list = profiles || []
-          P.activeId = activeId ?? null
+          S.list = profiles || []
+          S.activeId = activeId ?? null
         } catch (e) { setErr(e.message); return }
-        const want = selectId ?? P.editId ?? P.activeId ?? P.list[0]?.id
+        const want = selectId ?? S.editId ?? S.activeId ?? S.list[0]?.id
         await openProfile(want)
       }
 
-      // Load a profile's full settings into the editor.
       async function openProfile(profileId) {
-        P.editId = profileId == null ? null : Number(profileId)
-        if (P.editId == null) { P.values = {}; renderProfiles(); return }
+        S.editId = profileId == null ? null : Number(profileId)
+        S.dirty = false
+        if (S.editId == null) { S.values = {}; renderProfiles(); return }
         try {
-          const full = await dbGetProfile(id, P.editId)
-          P.values = { ...(full?.settings || {}) }
-        } catch (e) { setErr(e.message); P.values = {} }
+          const full = await dbGetProfile(id, S.editId)
+          S.values = { ...(full?.settings || {}) }
+        } catch (e) { setErr(e.message); S.values = {} }
         renderProfiles()
       }
 
+      // Schema-driven field renderer. switch on f.type; UNKNOWN → text input so an
+      // unfamiliar schema never hard-fails the page.
       function profFieldHtml(f) {
-        const v = P.values[f.key]
+        const v = S.values[f.key]
         const lid = `prof-${id}-${f.key}`
         const lbl = `<label for="${lid}">${esc(f.label)}</label>`
         const help = f.help ? `<div class="field-help">${esc(f.help)}</div>` : ''
+
         if (f.type === 'info') {
-          // Read-only documentation row (no input, never collected on save).
-          const body = (f.help || '').split('\n').map(esc).join('<br>')
-          return `<div class="prof-info"><b>${esc(f.label)}</b><div class="field-help">${body}</div></div>`
+          const bodyTxt = (f.help || '').split('\n').map(esc).join('<br>')
+          return `<div class="prof-info"><b>${esc(f.label)}</b><div class="field-help">${bodyTxt}</div></div>`
         }
+
+        if (f.type === 'bool') {
+          const on = v === '1' || v === 1 || v === true
+          return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="bool" type="checkbox" class="switch"${on ? ' checked' : ''} />` + help
+        }
+
+        if (f.type === 'slider') {
+          // range track + numeric mirror (two-way bound) + suffix readout.
+          const min = f.min ?? 0, max = f.max ?? 100, step = f.step ?? 1
+          const cur = (v ?? f.default ?? min)
+          return lbl + `<div class="pf-range" data-pf="${esc(f.key)}" data-pt="number">
+              <input type="range" data-pf-slider min="${esc(min)}" max="${esc(max)}" step="${esc(step)}" value="${esc(cur)}" />
+              <input type="number" data-pf-num min="${esc(min)}" max="${esc(max)}" step="${esc(step)}" value="${esc(cur)}" />
+              <span class="pf-range-val" data-pf-val>${esc(f.suffix || '')}</span>
+            </div>` + help
+        }
+
+        if (f.type === 'segmented') {
+          const opts = (f.options || [])
+          const cur = String(v ?? f.default ?? (opts[0]?.value ?? ''))
+          const btns = opts.map(o =>
+            `<button type="button" class="seg-btn${String(o.value) === cur ? ' on' : ''}" data-seg-val="${esc(o.value)}">${esc(o.label)}</button>`).join('')
+          return lbl + `<div class="seg" data-pf="${esc(f.key)}" data-pt="segmented">${btns}</div>` + help
+        }
+
+        if (f.type === 'cvar') {
+          const dlid = `dl-${id}-${f.key}`
+          const sugg = (f.suggest || []).map(o => `<option value="${esc(o.value)}">${esc(o.label || o.value)}</option>`).join('')
+          const t = f.valueType === 'number' ? 'number' : 'text'
+          return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="${t === 'number' ? 'number' : 'text'}" type="${t}" list="${dlid}" value="${esc(v ?? '')}" autocomplete="off" /><datalist id="${dlid}">${sugg}</datalist>` + help
+        }
+
+        if (f.type === 'password') {
+          // empty value means "unchanged" when the backend returns a •••• sentinel.
+          const shown = (v === '••••' || v == null) ? '' : v
+          return lbl + `<div class="pf-pass">
+              <input id="${lid}" data-pf="${esc(f.key)}" data-pt="text" type="password" value="${esc(shown)}" placeholder="${v === '••••' ? 'unchanged' : ''}" autocomplete="new-password" />
+              <button type="button" class="mini-btn" data-pf-reveal title="Show/hide">👁</button>
+            </div>` + help
+        }
+
         if (f.type === 'select') {
-          // CS map field: a by-name pick-list (Workshop maps show their name, not
-          // ws:id) plus an inline "add a Workshop map by id + name" form.
-          if (f.addWorkshop) {
-            const opts = [...(f.options || [])]
-            if (v != null && v !== '' && !opts.some(o => String(o.value) === String(v))) {
-              const fb = String(v).startsWith('ws:') ? `Workshop ${String(v).slice(3)}` : String(v)
-              opts.unshift({ value: v, label: fb })
-            }
-            const optsHtml = opts.map(o =>
-              `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
-            const isWs = String(v ?? '').startsWith('ws:')
-            const importBtn = f.addCollection
-              ? `<button type="button" class="mini-btn" data-mc-import-toggle title="Import every map from a Steam Workshop collection (names auto-fetched)">⤓ Import Collection</button>`
-              : ''
-            const importForm = f.addCollection
-              ? `<div class="mc-import" data-mc-import style="display:none">
-                  <input type="text" data-mc-collection placeholder="Collection ID (digits)" inputmode="numeric" />
-                  <button type="button" class="mini-btn" data-mc-collection-save>Import</button>
-                  <button type="button" class="mini-btn" data-mc-collection-cancel>Cancel</button>
-                </div>`
-              : ''
-            return lbl + `
-              <div class="mapcat" data-mapcat="${esc(f.key)}">
-                <div class="inline">
-                  <select id="${lid}" data-pf="${esc(f.key)}" data-pt="text">${optsHtml}</select>
-                  <button type="button" class="mini-btn" data-mc-toggle>＋ Workshop Map</button>
-                  ${importBtn}
-                  <button type="button" class="mini-btn x" data-mc-remove title="Remove the selected Workshop map from your list"${isWs ? '' : ' disabled'}>Remove</button>
-                </div>
-                <div class="mc-add" data-mc-add style="display:none">
-                  <input type="text" data-mc-id placeholder="Workshop ID (digits)" inputmode="numeric" />
-                  <input type="text" data-mc-name placeholder="Name (optional — auto-filled from Steam)" />
-                  <button type="button" class="mini-btn" data-mc-save>Add</button>
-                  <button type="button" class="mini-btn" data-mc-cancel>Cancel</button>
-                </div>
-                ${importForm}
-                <div class="mc-busy" data-mc-busy style="display:none"></div>
-              </div>` + help
-          }
-          // `custom` selects are combo inputs: pick a suggestion or type a value
-          // (e.g. a collection map name that hasn't downloaded yet).
+          // map-catalog combo (CS): by-name picker + add-workshop + import collection
+          if (f.addWorkshop) return mapCatalogFieldHtml(f, lid, lbl, help, v)
           if (f.custom) {
             const dlid = `dl-${id}-${f.key}`
             const opts = (f.options || []).map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
             return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="text" type="text" list="${dlid}" value="${esc(v ?? '')}" placeholder="map name" autocomplete="off" /><datalist id="${dlid}">${opts}</datalist>` + help
           }
-          const opts = (f.options || []).map(o =>
-            `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
-          return lbl + `<select id="${lid}" data-pf="${esc(f.key)}" data-pt="select">${opts}</select>` + help
+          if (f.style === 'segmented' && (f.options || []).length <= 5) {
+            const opts = (f.options || [])
+            const cur = String(v ?? (opts[0]?.value ?? ''))
+            const btns = opts.map(o => `<button type="button" class="seg-btn${String(o.value) === cur ? ' on' : ''}" data-seg-val="${esc(o.value)}">${esc(o.label)}</button>`).join('')
+            return lbl + `<div class="seg" data-pf="${esc(f.key)}" data-pt="segmented">${btns}</div>` + help
+          }
+          // grouped optgroups when options carry .group
+          let optsHtml
+          if ((f.options || []).some(o => o.group)) {
+            const byGroup = {}
+            ;(f.options || []).forEach(o => { (byGroup[o.group || 'Other'] ??= []).push(o) })
+            optsHtml = Object.entries(byGroup).map(([g, os]) =>
+              `<optgroup label="${esc(g)}">${os.map(o => `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</optgroup>`).join('')
+          } else {
+            optsHtml = (f.options || []).map(o =>
+              `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
+          }
+          return lbl + `<select id="${lid}" data-pf="${esc(f.key)}" data-pt="select">${optsHtml}</select>` + help
         }
-        if (f.type === 'bool') {
-          const on = v === '1' || v === 1 || v === true
-          return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="bool" type="checkbox" class="switch"${on ? ' checked' : ''} />` + help
-        }
+
         if (f.type === 'textarea') {
           return lbl + `<textarea id="${lid}" data-pf="${esc(f.key)}" data-pt="text" class="cfg" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>${esc(v ?? '')}</textarea>` + help
         }
+
         if (f.type === 'maplist') {
           return `<label class="ml-label">${esc(f.label)}</label>`
             + `<div class="maplist" data-pf="${esc(f.key)}" data-pt="maplist">${maplistHtml(f)}</div>` + help
         }
+
+        if (f.type === 'mapcatalog') {
+          // mount point for the shared Map panel inline in a profile group.
+          return `<label class="ml-label">${esc(f.label)}</label>`
+            + `<div class="maplist"><div class="field-help">Manage maps in the <b>Maps</b> tab.</div></div>` + help
+        }
+
         if (f.type === 'mapsync') {
-          // action button (not a settings value) — installs collection maps into the list
           return `<label class="ml-label">${esc(f.label)}</label>`
             + `<div class="maplist"><button type="button" class="retro-btn" data-mapsync>⟳ Sync from Collection</button></div>` + help
         }
+
+        // number, text, and ANY unknown type → input (number gets numeric type,
+        // everything else degrades to a text input).
         const attrs = [
           f.min != null ? `min="${f.min}"` : '',
           f.max != null ? `max="${f.max}"` : '',
@@ -1666,11 +1759,49 @@
           f.placeholder ? `placeholder="${esc(f.placeholder)}"` : '',
         ].filter(Boolean).join(' ')
         const type = f.type === 'number' ? 'number' : 'text'
-        return lbl + `<input id="${lid}" data-pf="${esc(f.key)}" data-pt="${type}" type="${type}" value="${esc(v ?? '')}" ${attrs} />` + help
+        const unit = (f.type === 'number' && f.suffix) ? `<span class="field-unit">${esc(f.suffix)}</span>` : ''
+        return lbl + `<span><input id="${lid}" data-pf="${esc(f.key)}" data-pt="${type}" type="${type}" value="${esc(v ?? '')}" ${attrs} />${unit}</span>` + help
+      }
+
+      // CS map-catalog field markup (used both inline and by the Maps tab catalog).
+      function mapCatalogFieldHtml(f, lid, lbl, help, v) {
+        const opts = [...(f.options || [])]
+        if (v != null && v !== '' && !opts.some(o => String(o.value) === String(v))) {
+          const fb = String(v).startsWith('ws:') ? `Workshop ${String(v).slice(3)}` : String(v)
+          opts.unshift({ value: v, label: fb })
+        }
+        const optsHtml = opts.map(o =>
+          `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
+        const isWs = String(v ?? '').startsWith('ws:')
+        const importBtn = f.addCollection
+          ? `<button type="button" class="mini-btn" data-mc-import-toggle title="Import every map from a Steam Workshop collection">⤓ Import Collection</button>` : ''
+        const importForm = f.addCollection
+          ? `<div class="mc-import" data-mc-import style="display:none">
+              <input type="text" data-mc-collection placeholder="Collection ID (digits)" inputmode="numeric" />
+              <button type="button" class="mini-btn" data-mc-collection-save>Import</button>
+              <button type="button" class="mini-btn" data-mc-collection-cancel>Cancel</button>
+            </div>` : ''
+        return lbl + `
+          <div class="mapcat" data-mapcat="${esc(f.key)}">
+            <div class="inline">
+              <select id="${lid}" data-pf="${esc(f.key)}" data-pt="text">${optsHtml}</select>
+              <button type="button" class="mini-btn" data-mc-toggle>＋ Workshop Map</button>
+              ${importBtn}
+              <button type="button" class="mini-btn x" data-mc-remove title="Remove the selected Workshop map from your list"${isWs ? '' : ' disabled'}>Remove</button>
+            </div>
+            <div class="mc-add" data-mc-add style="display:none">
+              <input type="text" data-mc-id placeholder="Workshop ID (digits)" inputmode="numeric" />
+              <input type="text" data-mc-name placeholder="Name (optional — auto-filled from Steam)" />
+              <button type="button" class="mini-btn" data-mc-save>Add</button>
+              <button type="button" class="mini-btn" data-mc-cancel>Cancel</button>
+            </div>
+            ${importForm}
+            <div class="mc-busy" data-mc-busy style="display:none"></div>
+          </div>` + help
       }
 
       function maplistHtml(f) {
-        const arr = Array.isArray(P.values[f.key]) ? P.values[f.key] : []
+        const arr = Array.isArray(S.values[f.key]) ? S.values[f.key] : []
         const rows = arr.length
           ? arr.map((m, i) => `
               <div class="maplist-row">
@@ -1687,14 +1818,12 @@
         const grouped = addable.some(o => o.group)
         let addControl
         if (grouped) {
-          // categorized pick-list (e.g. TTT: Stock vs Collection)
           const byGroup = {}
           addable.forEach(o => { (byGroup[o.group || 'Other'] ??= []).push(o) })
           const groupsHtml = Object.entries(byGroup).map(([g, opts]) =>
             `<optgroup label="${esc(g)}">${opts.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</optgroup>`).join('')
           addControl = `<select data-ml-pick>${groupsHtml || '<option value="">(no maps)</option>'}</select>`
         } else if (f.custom) {
-          // `custom` maplists let you type any map name (not-yet-downloaded maps)
           addControl = `<input type="text" data-ml-pick list="mldl-${id}-${f.key}" placeholder="add a map by name…" autocomplete="off" /><datalist id="mldl-${id}-${f.key}">${dlOpts}</datalist>`
         } else {
           addControl = `<select data-ml-pick${addable.length ? '' : ' disabled'}>${addable.length ? dlOpts : '<option value="">(no maps discovered)</option>'}</select>`
@@ -1708,42 +1837,46 @@
       }
 
       function renderProfiles() {
-        const opts = P.list.length
-          ? P.list.map(p =>
-              `<option value="${esc(p.id)}"${p.id === P.editId ? ' selected' : ''}>${esc(p.name)}${p.id === P.activeId ? ' ✓' : ''}</option>`).join('')
+        const body = panelBody('profiles')
+        const opts = S.list.length
+          ? S.list.map(p =>
+              `<option value="${esc(p.id)}"${p.id === S.editId ? ' selected' : ''}>${esc(p.name)}${p.id === S.activeId ? ' ✓' : ''}</option>`).join('')
           : '<option value="">(no profiles)</option>'
-        const isActive = P.editId != null && P.editId === P.activeId
-        const groups = (P.schema.groups || []).map((g, gi) => `
-          <details class="prof-group"${gi === 0 ? ' open' : ''}>
-            <summary>${esc(g.title)}</summary>
+        const isActive = S.editId != null && S.editId === S.activeId
+        let badge
+        if (isActive) badge = `<span class="pf-badge live">● live${S.dirty ? ' · unsaved' : ''}</span>`
+        else badge = `<span class="pf-badge dirty">○ not applied${S.dirty ? ' · unsaved' : ''}</span>`
+
+        const groups = (S.schema.groups || []).map((g, gi) => `
+          <details class="prof-group"${(gi === 0 && !g.advanced) ? ' open' : ''}>
+            <summary>${esc(g.title)}${g.advanced ? ' <span class="field-unit">advanced</span>' : ''}</summary>
+            ${g.note ? `<div class="field-help" style="padding:6px 10px 0">${esc(g.note)}</div>` : ''}
             <div class="prof-grid">${(g.fields || []).map(profFieldHtml).join('')}</div>
           </details>`).join('')
 
-        // Apply semantics differ per game: restart-based (default — writes the
-        // startup config + reboots) vs live (CS — pushes over RCON, no restart;
-        // a restart would just revert to the compose env). The connector's schema
-        // declares `apply` for the live case.
-        const apply = P.schema.apply || {}
+        const apply = S.schema.apply || {}
         const liveApply = apply.mode === 'live'
         const applyLabel = apply.label || '▶ Apply &amp; Restart'
         const applyTitle = liveApply
           ? 'Save your edits, then push them to the running server live over RCON (no restart)'
           : 'Save your edits, write them as the live startup config, and restart to load them'
         const applyNote = liveApply
-          ? `${apply.note ? esc(apply.note) + ' ' : ''}<b>Save</b> stores your edits · <b>${esc(apply.label || 'Apply Live')}</b> pushes them to the running server instantly.`
-          : `${P.schema.note ? esc(P.schema.note) + ' ' : ''}<b>Save</b> stores your edits · <b>Apply &amp; Restart</b> writes them live and reboots the server to load them.`
+          ? `${apply.note ? esc(apply.note) + ' ' : ''}Applies instantly over RCON — reverts on container restart.`
+          : `${S.schema.note ? esc(S.schema.note) + ' ' : ''}Written to boot config; container restarts to take effect.`
 
-        profBody.innerHTML = `
+        body.innerHTML = `
           <div class="pf-toolbar">
             <div class="pf-select">
               <span class="pf-lbl">Profile</span>
               <select data-prof-pick>${opts}</select>
-              <span class="prof-active${isActive ? '' : ' off'}">${isActive ? '● live' : '○ not applied'}</span>
+              ${badge}
             </div>
             <div class="pf-manage">
               <button class="mini-btn" data-prof-new title="Create a new profile from defaults">＋ New</button>
-              <button class="mini-btn" data-prof-saveas title="Save the current edits as a new profile">⎘ Duplicate</button>
-              <button class="mini-btn" data-prof-capture title="Save the server's current live config as a new profile">⤓ Capture</button>
+              <button class="mini-btn" data-prof-clone title="Clone the current edits into a new profile">⎘ Clone</button>
+              <button class="mini-btn" data-prof-capture title="Snapshot the server's live config into a new profile">⤓ Capture</button>
+              <button class="mini-btn" data-prof-export title="Download this profile's settings as JSON">⇄ Export</button>
+              <button class="mini-btn" data-prof-import title="Import a profile from a JSON file">⇲ Import</button>
               <button class="mini-btn x" data-prof-delete title="Delete this profile">🗑 Delete</button>
             </div>
           </div>
@@ -1759,47 +1892,103 @@
         wireProfileEvents()
       }
 
-      // Pull every plain input back into P.values (maplists already live there).
+      // Pull every field back into S.values (maplists already live there; sliders,
+      // segmented buttons and password sentinels are read via their data-pt).
       function readProfileForm() {
-        profBody.querySelectorAll('[data-pf]').forEach(el => {
+        const body = panelBody('profiles')
+        body.querySelectorAll('[data-pf]').forEach(el => {
           const key = el.dataset.pf, t = el.dataset.pt
           if (t === 'maplist') return
-          if (t === 'bool') P.values[key] = el.checked ? '1' : '0'
-          else if (t === 'number') P.values[key] = el.value === '' ? '' : Number(el.value)
-          else P.values[key] = el.value
+          if (t === 'segmented') {
+            const on = el.querySelector('.seg-btn.on')
+            if (on) S.values[key] = on.dataset.segVal
+            return
+          }
+          if (t === 'number' && el.classList.contains('pf-range')) {
+            const num = el.querySelector('[data-pf-num]')
+            S.values[key] = num.value === '' ? '' : Number(num.value)
+            return
+          }
+          if (t === 'bool') S.values[key] = el.checked ? '1' : '0'
+          else if (t === 'number') S.values[key] = el.value === '' ? '' : Number(el.value)
+          else S.values[key] = el.value
         })
-        return P.values
+        return S.values
       }
 
       function wireProfileEvents() {
-        const pick = profBody.querySelector('[data-prof-pick]')
-        if (pick) pick.addEventListener('change', () => openProfile(pick.value))
+        const body = panelBody('profiles')
+        const markDirty = () => {
+          if (!S.dirty) {
+            S.dirty = true
+            const badge = body.querySelector('.pf-badge')
+            if (badge && !/unsaved/.test(badge.textContent)) badge.textContent += ' · unsaved'
+          }
+        }
+        // any field edit lights the dirty flag
+        body.querySelectorAll('[data-pf]').forEach(el => {
+          el.addEventListener('input', markDirty)
+          el.addEventListener('change', markDirty)
+        })
 
-        const onClick = (sel, fn) => { const b = profBody.querySelector(sel); if (b) b.addEventListener('click', () => fn(b)) }
-        const curName = () => (P.list.find(p => p.id === P.editId)?.name) || 'profile'
+        const pick = body.querySelector('[data-prof-pick]')
+        if (pick) pick.addEventListener('change', () => {
+          if (!guardLeave2()) { pick.value = String(S.editId ?? ''); return }
+          openProfile(pick.value)
+        })
+        // local guard for switching profiles (separate from the tab guard)
+        function guardLeave2() {
+          if (!S.dirty) return true
+          if (confirm('Discard unsaved changes to this profile?')) { S.dirty = false; return true }
+          return false
+        }
+
+        const onClick = (sel, fn) => { const b = body.querySelector(sel); if (b) b.addEventListener('click', () => fn(b)) }
+        const curName = () => (S.list.find(p => p.id === S.editId)?.name) || 'profile'
+
+        // slider ↔ number mirror + segmented buttons
+        body.querySelectorAll('.pf-range').forEach(rng => {
+          const slider = rng.querySelector('[data-pf-slider]')
+          const num = rng.querySelector('[data-pf-num]')
+          const val = rng.querySelector('[data-pf-val]')
+          const suffix = val ? val.textContent : ''
+          const sync = (src) => { if (src === 'slider') num.value = slider.value; else slider.value = num.value; if (val) val.textContent = `${slider.value}${suffix}` }
+          if (val) val.textContent = `${slider.value}${suffix}`
+          slider.addEventListener('input', () => { sync('slider'); markDirty() })
+          num.addEventListener('input', () => { sync('num'); markDirty() })
+        })
+        body.querySelectorAll('.seg').forEach(seg => {
+          seg.querySelectorAll('.seg-btn').forEach(btn => btn.addEventListener('click', () => {
+            seg.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('on'))
+            btn.classList.add('on'); markDirty()
+          }))
+        })
+        body.querySelectorAll('[data-pf-reveal]').forEach(btn => btn.addEventListener('click', () => {
+          const inp = btn.parentElement.querySelector('input')
+          inp.type = inp.type === 'password' ? 'text' : 'password'
+        }))
 
         onClick('[data-prof-save]', (b) => withBtn(b, 'Save profile', async () => {
-          if (P.editId == null) return
+          if (S.editId == null) return
           readProfileForm()
-          await dbUpdateProfile(id, P.editId, { settings: P.values })
+          await dbUpdateProfile(id, S.editId, { settings: S.values })
+          S.dirty = false
           logLine(`Profile "${curName()}" saved ✓`)
-          await reloadProfileList(P.editId)
+          await reloadProfileList(S.editId)
         }).catch(() => {}))
 
         onClick('[data-prof-apply]', (b) => {
-          if (P.editId == null) return
-          const apply = P.schema.apply || {}
+          if (S.editId == null) return
+          const apply = S.schema.apply || {}
           const liveApply = apply.mode === 'live'
           const confirmMsg = apply.confirm
             || 'Apply this profile and restart the server now?\n\nThe server reloads with this config and briefly disconnects any players.'
           if (!confirm(confirmMsg)) return
           withBtn(b, liveApply ? 'Apply live' : 'Apply & restart', async () => {
-            // persist pending edits, then apply. Restart-based games reboot so the
-            // config fully takes effect (collection download/mount at boot); live
-            // games (CS) push over RCON and must NOT restart (that reverts to env).
             readProfileForm()
-            await dbUpdateProfile(id, P.editId, { settings: P.values })
-            const r = await dbApplyProfile(id, P.editId)
+            await dbUpdateProfile(id, S.editId, { settings: S.values })
+            S.dirty = false
+            const r = await dbApplyProfile(id, S.editId)
             if (liveApply) {
               logLine(`Applied "${r?.name}" live ✓`)
             } else {
@@ -1809,7 +1998,7 @@
               await refresh()
               logLine(`Restarted ✓ — now running "${r?.name}"`)
             }
-            await reloadProfileList(P.editId)
+            await reloadProfileList(S.editId)
           }).catch(() => {})
         })
 
@@ -1817,19 +2006,20 @@
           const name = (prompt('Name for the new profile:') || '').trim()
           if (!name) return
           withBtn(b, 'New profile', async () => {
-            const p = await dbCreateProfile(id, name) // seeded from connector defaults
+            const p = await dbCreateProfile(id, name)
             logLine(`Created profile "${p.name}" ✓`)
             await reloadProfileList(p.id)
           }).catch(() => {})
         })
 
-        onClick('[data-prof-saveas]', (b) => {
-          const name = (prompt('Duplicate this profile — name the copy:') || '').trim()
+        // Clone = client-side: create a new profile from the CURRENT form values.
+        onClick('[data-prof-clone]', (b) => {
+          const name = (prompt('Clone this profile — name the copy:') || '').trim()
           if (!name) return
-          withBtn(b, 'Duplicate', async () => {
+          withBtn(b, 'Clone', async () => {
             readProfileForm()
-            const p = await dbCreateProfile(id, name, P.values)
-            logLine(`Duplicated as "${p.name}" ✓`)
+            const p = await dbCreateProfile(id, name, S.values)
+            logLine(`Cloned as "${p.name}" ✓`)
             await reloadProfileList(p.id)
           }).catch(() => {})
         })
@@ -1844,43 +2034,83 @@
           }).catch(() => {})
         })
 
+        // Export = client-only: download a JSON file of the current settings.
+        onClick('[data-prof-export]', () => {
+          readProfileForm()
+          const doc = { gamertownProfile: 1, game: id, name: curName(), settings: S.values }
+          const json = JSON.stringify(doc, null, 2)
+          const blob = new Blob([json], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `${id}-${(curName() || 'profile').replace(/[^a-z0-9_-]+/gi, '_')}.json`
+          document.body.appendChild(a); a.click(); a.remove()
+          setTimeout(() => URL.revokeObjectURL(url), 1000)
+          logLine(`Exported profile "${curName()}" ✓`)
+        })
+
+        // Import = client-only: file-pick → parse → dbCreateProfile (backend validates).
+        onClick('[data-prof-import]', () => {
+          const inp = document.createElement('input')
+          inp.type = 'file'; inp.accept = '.json,application/json'
+          inp.addEventListener('change', () => {
+            const file = inp.files?.[0]
+            if (!file) return
+            const reader = new FileReader()
+            reader.onload = () => {
+              let parsed
+              try { parsed = JSON.parse(String(reader.result)) }
+              catch (e) { setErr(`import failed: not valid JSON (${e.message})`); return }
+              const settings = parsed?.settings ?? parsed
+              if (!settings || typeof settings !== 'object') { setErr('import failed: no settings object found'); return }
+              const name = (prompt('Name for the imported profile:', parsed?.name || 'Imported') || '').trim()
+              if (!name) return
+              withBtn(null, 'Import profile', async () => {
+                const p = await dbCreateProfile(id, name, settings)
+                logLine(`Imported profile "${p.name}" ✓`)
+                await reloadProfileList(p.id)
+              }).catch(() => {})
+            }
+            reader.readAsText(file)
+          })
+          inp.click()
+        })
+
         onClick('[data-prof-delete]', (b) => {
-          if (P.editId == null) return
+          if (S.editId == null) return
           const name = curName()
           if (!confirm(`Delete profile "${name}"? This can't be undone.`)) return
           withBtn(b, 'Delete profile', async () => {
-            await dbDeleteProfile(id, P.editId)
+            await dbDeleteProfile(id, S.editId)
             logLine(`Deleted profile "${name}" ✓`)
-            P.editId = null
+            S.editId = null; S.dirty = false
             await reloadProfileList()
           }).catch(() => {})
         })
 
-        // field widgets that need their own wiring
-        ;(P.schema.groups || []).forEach(g => (g.fields || []).forEach(f => {
+        // per-field widget wiring
+        ;(S.schema.groups || []).forEach(g => (g.fields || []).forEach(f => {
           if (f.type === 'maplist') wireMaplist(f)
-          if (f.type === 'select' && f.addWorkshop) wireMapCatalog(f)
+          if (f.type === 'select' && f.addWorkshop) wireMapCatalog(f, body)
         }))
 
-        // Sync maps from collection → installs them into the single maps source,
-        // then refresh the schema's map options (keeping current edits).
-        profBody.querySelector('[data-mapsync]')?.addEventListener('click', (e) => {
+        body.querySelector('[data-mapsync]')?.addEventListener('click', (e) => {
           const btn = e.currentTarget
           withBtn(btn, 'Sync maps', async () => {
             readProfileForm()
             const r = await dbSyncServerMaps(id)
-            P.schema = await dbGetProfileSchema(id)
+            S.schema = await dbGetProfileSchema(id)
+            S.cvarRef = S.schema.cvarRef || S.cvarRef
             renderProfiles()
             logLine(`Synced maps from collection ✓ — ${(r?.maps || []).length} installed`)
           }).catch(() => {})
         })
       }
 
-      // CS map field: the "＋ Workshop Map" inline form adds a Workshop map to the
-      // saved catalog (so it shows by name) and selects it; "Remove" deletes the
-      // selected Workshop map from the catalog.
-      function wireMapCatalog(f) {
-        const wrap = [...profBody.querySelectorAll('.mapcat')].find(w => w.dataset.mapcat === f.key)
+      // CS map-catalog field wiring (inline in the Profiles tab). scope = the
+      // element to search within (the profiles body or the maps panel body).
+      function wireMapCatalog(f, scope) {
+        const wrap = [...scope.querySelectorAll('.mapcat')].find(w => w.dataset.mapcat === f.key)
         if (!wrap) return
         const sel = wrap.querySelector('select[data-pf]')
         const addBox = wrap.querySelector('[data-mc-add]')
@@ -1888,12 +2118,9 @@
         const nameEl = wrap.querySelector('[data-mc-name]')
         const removeBtn = wrap.querySelector('[data-mc-remove]')
         const showAdd = (on) => { addBox.style.display = on ? 'flex' : 'none'; if (on) { idEl.value = ''; nameEl.value = ''; idEl.focus() } }
-        // Remove is only valid for a Workshop (ws:) map; keep it in sync with the select.
         const syncRemove = () => { if (removeBtn) removeBtn.disabled = !String(sel.value || '').startsWith('ws:') }
-        sel.addEventListener('change', syncRemove)
-        syncRemove()
+        sel.addEventListener('change', syncRemove); syncRemove()
 
-        // collection import form (CS) — declared first so the add toggle can hide it.
         const importBox = wrap.querySelector('[data-mc-import]')
         const collEl = wrap.querySelector('[data-mc-collection]')
         const busyEl = wrap.querySelector('[data-mc-busy]')
@@ -1906,19 +2133,20 @@
           const wsId = (idEl.value || '').trim(), nm = (nameEl.value || '').trim()
           if (!/^\d{1,20}$/.test(wsId)) { setErr('Workshop ID must be digits'); return }
           withBtn(save, 'Add workshop map', async () => {
-            const row = await dbAddServerMap(id, wsId, nm)   // nm '' → backend auto-fetches the title
+            const row = await dbAddServerMap(id, wsId, nm)
             const label = row?.name || nm || `Workshop ${wsId}`
             const val = `ws:${wsId}`
             let opt = [...sel.options].find(o => o.value === val)
             if (!opt) { opt = document.createElement('option'); opt.value = val; sel.appendChild(opt) }
-            opt.textContent = label; sel.value = val; P.values[f.key] = val
+            opt.textContent = label; sel.value = val; S.values[f.key] = val
             showAdd(false); syncRemove()
             logLine(`Added workshop map "${label}" (${wsId}) ✓`)
           }).catch(() => {})
         })
 
-        // Import a whole Steam Workshop collection → rebuild the schema so the
-        // by-name picker shows every imported map (keeping current edits).
+        // PREVIEW-SEAM: import is the *commit* call (dbImportServerCollection). When
+        // a keyless previewCollection endpoint exists, call it here first and let
+        // the user check which ids to import; until then it's import-then-curate.
         wrap.querySelector('[data-mc-import-toggle]')?.addEventListener('click', () => showImport(importBox.style.display === 'none'))
         wrap.querySelector('[data-mc-collection-cancel]')?.addEventListener('click', () => showImport(false))
         const collSave = wrap.querySelector('[data-mc-collection-save]')
@@ -1929,8 +2157,10 @@
           withBtn(collSave, 'Import collection', async () => {
             const r = await dbImportServerCollection(id, cid)
             logLine(`Imported ${r?.imported ?? 0} map(s) from collection ${cid} ✓`)
+            if (r?.requiresRestart) logLine(r.note || 'Restart Hosting so Steam downloads + mounts the collection.')
             readProfileForm()
-            P.schema = await dbGetProfileSchema(id)
+            S.schema = await dbGetProfileSchema(id)
+            S.cvarRef = S.schema.cvarRef || S.cvarRef
             renderProfiles()
           }).catch(() => {}).finally(() => { if (busyEl) busyEl.style.display = 'none' })
         })
@@ -1943,11 +2173,10 @@
           const label = opt ? opt.textContent : `Workshop ${wsId}`
           if (!confirm(`Remove "${label}" from your Workshop map list?\n\nThis only removes it from the picker — it doesn't unsubscribe on Steam or change a running server.`)) return
           withBtn(removeBtn, 'Remove workshop map', async () => {
-            // 404 = wasn't in the catalog (a fallback entry) — drop it locally anyway.
             try { await dbDeleteServerMap(id, wsId) } catch (e) { if (e.status !== 404) throw e }
             opt?.remove()
             sel.value = sel.options[0]?.value || ''
-            P.values[f.key] = sel.value
+            S.values[f.key] = sel.value
             syncRemove()
             logLine(`Removed workshop map "${label}" ✓`)
           }).catch(() => {})
@@ -1955,165 +2184,517 @@
       }
 
       function wireMaplist(f) {
-        const wrap = [...profBody.querySelectorAll('.maplist')].find(w => w.dataset.pf === f.key)
-        if (!wrap) return
-        const arr = () => (Array.isArray(P.values[f.key]) ? P.values[f.key] : (P.values[f.key] = []))
-        const rerender = () => { wrap.innerHTML = maplistHtml(f); wireMaplist(f) }
+        const body = panelBody('profiles')
+        const scopes = [body, panelBody('maps')].filter(Boolean)
+        scopes.forEach(scope => {
+          const wrap = [...scope.querySelectorAll('.maplist')].find(w => w.dataset.pf === f.key)
+          if (!wrap) return
+          const arr = () => (Array.isArray(S.values[f.key]) ? S.values[f.key] : (S.values[f.key] = []))
+          const rerender = () => { wrap.innerHTML = maplistHtml(f); wireMaplistRows(wrap, f, arr, rerender) }
+          wireMaplistRows(wrap, f, arr, rerender)
+        })
+      }
+      function wireMaplistRows(wrap, f, arr, rerender) {
         wrap.querySelectorAll('[data-ml-up]').forEach(b => b.addEventListener('click', () => {
-          const i = Number(b.dataset.mlUp); const a = arr(); [a[i - 1], a[i]] = [a[i], a[i - 1]]; rerender()
+          const i = Number(b.dataset.mlUp); const a = arr(); [a[i - 1], a[i]] = [a[i], a[i - 1]]; rerender(); S.dirty = true
         }))
         wrap.querySelectorAll('[data-ml-down]').forEach(b => b.addEventListener('click', () => {
-          const i = Number(b.dataset.mlDown); const a = arr(); [a[i + 1], a[i]] = [a[i], a[i + 1]]; rerender()
+          const i = Number(b.dataset.mlDown); const a = arr(); [a[i + 1], a[i]] = [a[i], a[i + 1]]; rerender(); S.dirty = true
         }))
         wrap.querySelectorAll('[data-ml-del]').forEach(b => b.addEventListener('click', () => {
-          arr().splice(Number(b.dataset.mlDel), 1); rerender()
+          arr().splice(Number(b.dataset.mlDel), 1); rerender(); S.dirty = true
         }))
         const add = wrap.querySelector('[data-ml-add]')
         if (add) add.addEventListener('click', () => {
           const picked = (wrap.querySelector('[data-ml-pick]')?.value || '').trim()
           if (!picked) return
           if (!/^[a-z0-9_]{1,64}$/.test(picked)) { setErr(`invalid map name: ${picked}`); return }
-          setErr(''); arr().push(picked); rerender()
+          setErr(''); arr().push(picked); rerender(); S.dirty = true
         })
       }
 
-      async function loadSettings() {
-        let data
+      // ════════════════════════════════════════════════════════════════════
+      // MAPS TAB  (unified collection import + catalog + rotation/boot picker)
+      // ════════════════════════════════════════════════════════════════════
+      async function loadMaps() {
+        const body = panelBody('maps')
         try {
-          data = await dbGetServerSettings(id)
-        } catch { return panelReady(qs, false) }
-        if (!data) return panelReady(qs, false)
+          if (!S.schema) { try { S.schema = await dbGetProfileSchema(id) } catch {} }
+          S.maps = await dbListServerMaps(id)
+        } catch (e) { body.innerHTML = `<div class="qs-note-block">maps unavailable: ${esc(e.message)}</div>`; return }
+        renderMapPanel()
+      }
 
-        // Counter-Strike and GMOD use the generic Profiles panel for startup
-        // config; their getSettings only returns the map block (for the live
-        // change-map), so this falls through to the no-op below.
+      // The rotation model is derived from the schema: a maplist field ⇒ ordered
+      // rotation (GMOD/PH, first = boot); otherwise a single boot-map picker (CS).
+      function mapField() {
+        for (const g of (S.schema?.groups || [])) {
+          for (const f of (g.fields || [])) {
+            if (f.type === 'maplist') return { kind: 'list', f }
+            if (f.type === 'select' && f.addWorkshop) return { kind: 'single', f }
+          }
+        }
+        return null
+      }
 
-        if (!data.fields?.length && !data.sections?.length) return panelReady(qs, false)
+      function renderMapPanel() {
+        const body = panelBody('maps')
+        const mf = mapField()
+        const rotationModel = mf?.kind || 'single'
 
-        if (data.sections?.length) {
-          // Multi-section layout (e.g. Factorio): replace panel content dynamically.
-          qs.innerHTML = '<div class="panel-title">Quick Settings</div>' +
-            data.sections.map((sec, i) =>
-              `${i > 0 ? '<div class="qs-sep"></div>' : ''}
-              <div class="qs-section" data-qs-section="${esc(sec.key)}">
-                <div class="qs-section-title">${esc(sec.title)}</div>
-                <div class="qs-fields">${sec.fields.map(f => renderField(id, f)).join('')}</div>
-                <div class="panel-row">
-                  <button class="retro-btn" data-qs-save>${esc(sec.saveLabel || 'Save')}</button>
-                </div>
-              </div>`
-            ).join('') +
-            (data.note ? `<div class="qs-note-block">${esc(data.note)}</div>` : '')
+        // catalog rows from dbListServerMaps (workshop catalog)
+        const catRows = (S.maps || []).length
+          ? S.maps.map(w => `
+              <div class="coll-row" data-map-row="${esc(w.workshopId ?? w.id ?? w.value ?? '')}">
+                <span class="mi-name" title="${esc(w.name || w.label || '')}">${esc(w.name || w.label || w.value || '')}</span>
+                <button type="button" class="mini-btn" data-map-rename title="Rename">✎</button>
+                <button type="button" class="mini-btn x" data-map-del title="Remove from catalog">✕</button>
+              </div>`).join('')
+          : `<div class="map-empty">No catalog maps yet — import a collection or add a Workshop map.</div>`
 
-          panelReady(qs)
-
-          qs.querySelectorAll('[data-qs-section]').forEach(secEl => {
-            const sectionKey = secEl.dataset.qsSection
-            secEl.querySelector('[data-qs-save]').addEventListener('click', async () => {
-              const values = { section: sectionKey }
-              secEl.querySelectorAll('[data-qs-key]').forEach(el => {
-                values[el.dataset.qsKey] = el.type === 'number' ? Number(el.value) : el.value
-              })
-              if (sectionKey === 'saveAs') {
-                if (!confirm(`Save current world as "${values.saveName}"?\n\nIf a save with this name already exists it will be overwritten.`)) return
-              }
-              const secLabel = secEl.querySelector('[data-qs-save]').textContent.trim()
-              withBtn(secEl.querySelector('[data-qs-save]'), secLabel, async () => {
-                const res = await dbSaveServerSettings(id, values)
-                if (res?.steps) logLine(`${secLabel} ✓`, formatUpdate(res))
-                else logLine(`${secLabel} ✓ — restart the server to apply`)
-                if (res?.ok === false) setErr('operation failed — see console')
-              }).catch(() => {})
-            })
-          })
-          return
+        // rotation/boot column
+        let rotCol
+        if (rotationModel === 'list' && mf) {
+          rotCol = `
+            <div class="map-pane">
+              <div class="map-pane-head"><span class="map-pane-title">Rotation (first = boot)</span></div>
+              <div class="maplist" data-pf="${esc(mf.f.key)}" data-pt="maplist">${maplistHtml(mf.f)}</div>
+              <div class="map-foot"><button type="button" class="retro-btn" data-rot-save>Save Rotation</button></div>
+              <div class="field-help">Saved to the active profile — shared with the Profiles tab.</div>
+            </div>`
+        } else if (mf) {
+          // single boot-map picker (CS) — reuse the map-catalog combo field
+          const v = S.values[mf.f.key]
+          rotCol = `
+            <div class="map-pane">
+              <div class="map-pane-head"><span class="map-pane-title">Boot Map</span></div>
+              ${mapCatalogFieldHtml(mf.f, `mapboot-${id}`, '', '', v)}
+              <div class="map-foot"><button type="button" class="retro-btn" data-boot-save>Set Boot Map</button></div>
+              <div class="field-help">Live map change is on the <b>Runtime</b> tab.</div>
+            </div>`
+        } else {
+          rotCol = `<div class="map-pane"><div class="map-empty">This game has no map rotation.</div></div>`
         }
 
-        // Single-section path (legacy generic fields)
-        qsNote.textContent = data.note || ''
-        qsFields.innerHTML = data.fields.map(f => renderField(id, f)).join('')
+        body.innerHTML = `
+          <div class="map-import">
+            <div class="map-import-head">Import a Steam Workshop collection</div>
+            <div class="coll-row">
+              <input type="text" data-coll-id placeholder="collection id (digits)" inputmode="numeric" />
+              <button type="button" class="mini-btn" data-coll-import>⤓ Import Collection</button>
+            </div>
+            <div class="coll-result" data-coll-result></div>
+          </div>
+          <div class="map-cols">
+            <div class="map-pane">
+              <div class="map-pane-head">
+                <span class="map-pane-title">Installed / Catalog Maps</span>
+                <button type="button" class="mini-btn" data-map-addws>＋ Add WS</button>
+              </div>
+              <div class="map-rows">${catRows}</div>
+              <div class="mc-add" data-map-addbox style="display:none;margin-top:6px">
+                <input type="text" data-map-wsid placeholder="Workshop ID (digits)" inputmode="numeric" />
+                <input type="text" data-map-wsname placeholder="Name (optional)" />
+                <button type="button" class="mini-btn" data-map-wssave>Add</button>
+                <button type="button" class="mini-btn" data-map-wscancel>Cancel</button>
+              </div>
+              <div class="map-foot"><button type="button" class="retro-btn" data-map-sync>⟳ Sync from Collection</button></div>
+            </div>
+            ${rotCol}
+          </div>`
 
-        // mark loaded and let updateStatus decide visibility
-        panelReady(qs)
+        wireMapPanel(rotationModel, mf)
       }
 
-      qsSave.addEventListener('click', async () => {
-        const values = {}
-        qsFields.querySelectorAll('[data-qs-key]').forEach(el => {
-          values[el.dataset.qsKey] = el.type === 'number' ? Number(el.value) : el.value
+      function wireMapPanel(rotationModel, mf) {
+        const body = panelBody('maps')
+
+        // unified collection import (same call for CS/TTT/PH)
+        const collImport = body.querySelector('[data-coll-import]')
+        collImport?.addEventListener('click', () => {
+          const cid = (body.querySelector('[data-coll-id]').value || '').trim()
+          if (!/^\d{1,20}$/.test(cid)) { setErr('Collection ID must be digits'); return }
+          const resEl = body.querySelector('[data-coll-result]')
+          if (!confirm(`Import all maps from collection ${cid}?`)) return
+          resEl.innerHTML = `<div class="mc-busy">Fetching collection from Steam…</div>`
+          withBtn(collImport, 'Import collection', async () => {
+            const r = await dbImportServerCollection(id, cid)
+            logLine(`Imported ${r?.imported ?? 0} map(s) from collection ${cid} ✓`)
+            // result list (post-import "curate" view — PREVIEW-SEAM above)
+            const list = (r?.maps || []).map(m => `<div class="coll-row"><span class="mi-name">${esc(m.label || m.value)}</span></div>`).join('')
+            resEl.innerHTML = `<div class="field-help">Imported ${r?.imported ?? 0} map(s)${r?.requiresRestart ? ' — Restart Hosting to download + mount them.' : ' — selectable now.'}</div>${list ? `<div class="coll-list">${list}</div>` : ''}`
+            if (r?.requiresRestart && confirm('This collection mounts at boot. Restart Hosting now to download + mount it?')) {
+              logLine('Restarting to mount collection…')
+              await dbServerAction(id, 'reboot')
+              await new Promise(res => setTimeout(res, 2500))
+              await refresh()
+            }
+            // re-fetch schema + catalog and re-render
+            try { S.schema = await dbGetProfileSchema(id); S.cvarRef = S.schema.cvarRef || S.cvarRef } catch {}
+            try { S.maps = await dbListServerMaps(id) } catch {}
+            renderMapPanel()
+          }).catch(() => { resEl.innerHTML = '' })
         })
-        setErr(''); qsSave.disabled = true
+
+        // catalog: add WS / rename / delete
+        const addBox = body.querySelector('[data-map-addbox]')
+        body.querySelector('[data-map-addws]')?.addEventListener('click', () => {
+          addBox.style.display = addBox.style.display === 'none' ? 'flex' : 'none'
+          if (addBox.style.display === 'flex') body.querySelector('[data-map-wsid]').focus()
+        })
+        body.querySelector('[data-map-wscancel]')?.addEventListener('click', () => { addBox.style.display = 'none' })
+        const wsSave = body.querySelector('[data-map-wssave]')
+        wsSave?.addEventListener('click', () => {
+          const wsId = (body.querySelector('[data-map-wsid]').value || '').trim()
+          const nm = (body.querySelector('[data-map-wsname]').value || '').trim()
+          if (!/^\d{1,20}$/.test(wsId)) { setErr('Workshop ID must be digits'); return }
+          withBtn(wsSave, 'Add workshop map', async () => {
+            await dbAddServerMap(id, wsId, nm)
+            S.maps = await dbListServerMaps(id)
+            logLine(`Added workshop map ${wsId} ✓`)
+            renderMapPanel()
+          }).catch(() => {})
+        })
+        body.querySelectorAll('[data-map-rename]').forEach(b => b.addEventListener('click', () => {
+          const row = b.closest('[data-map-row]'); const wsId = row?.dataset.mapRow
+          const cur = row?.querySelector('.mi-name')?.textContent || ''
+          const name = (prompt('Rename map:', cur) || '').trim()
+          if (!name) return
+          withBtn(b, 'Rename map', async () => {
+            await dbRenameServerMap(id, wsId, name)
+            S.maps = await dbListServerMaps(id)
+            logLine(`Renamed map ${wsId} → "${name}" ✓`)
+            renderMapPanel()
+          }).catch(() => {})
+        }))
+        body.querySelectorAll('[data-map-del]').forEach(b => b.addEventListener('click', () => {
+          const row = b.closest('[data-map-row]'); const wsId = row?.dataset.mapRow
+          const nm = row?.querySelector('.mi-name')?.textContent || wsId
+          if (!confirm(`Remove "${nm}" from the catalog?`)) return
+          withBtn(b, 'Remove map', async () => {
+            try { await dbDeleteServerMap(id, wsId) } catch (e) { if (e.status !== 404) throw e }
+            S.maps = await dbListServerMaps(id)
+            logLine(`Removed map "${nm}" ✓`)
+            renderMapPanel()
+          }).catch(() => {})
+        }))
+        // sync (GMOD/PH)
+        body.querySelector('[data-map-sync]')?.addEventListener('click', (e) => {
+          const btn = e.currentTarget
+          withBtn(btn, 'Sync maps', async () => {
+            const r = await dbSyncServerMaps(id)
+            try { S.schema = await dbGetProfileSchema(id) } catch {}
+            try { S.maps = await dbListServerMaps(id) } catch {}
+            logLine(`Synced maps from collection ✓ — ${(r?.maps || []).length} installed`)
+            renderMapPanel()
+          }).catch(() => {})
+        })
+
+        // rotation (list) — shares S.values with Profiles
+        if (rotationModel === 'list' && mf) {
+          wireMaplist(mf.f)
+          body.querySelector('[data-rot-save]')?.addEventListener('click', (e) => {
+            const btn = e.currentTarget
+            withBtn(btn, 'Save rotation', async () => {
+              if (S.editId == null) { setErr('Open a profile in the Profiles tab first.'); return }
+              await dbUpdateProfile(id, S.editId, { settings: S.values })
+              logLine('Rotation saved to profile ✓')
+            }).catch(() => {})
+          })
+        } else if (mf) {
+          // single boot-map (CS): wire the catalog combo + Set boot map
+          wireMapCatalog(mf.f, body)
+          body.querySelector('[data-boot-save]')?.addEventListener('click', (e) => {
+            const btn = e.currentTarget
+            const sel = body.querySelector(`.mapcat[data-mapcat="${mf.f.key}"] select[data-pf]`)
+            withBtn(btn, 'Set boot map', async () => {
+              if (S.editId == null) { setErr('Open a profile in the Profiles tab first.'); return }
+              if (sel) S.values[mf.f.key] = sel.value
+              await dbUpdateProfile(id, S.editId, { settings: S.values })
+              logLine(`Boot map set to ${sel?.value || '(unchanged)'} ✓`)
+            }).catch(() => {})
+          })
+        }
+      }
+
+      // ════════════════════════════════════════════════════════════════════
+      // RAW CONFIG TAB  (file editor + cvar reference + lint + diff + snippets)
+      // ════════════════════════════════════════════════════════════════════
+      async function loadRawcfg() {
+        const body = panelBody('rawcfg')
         try {
-          await dbSaveServerSettings(id, values)
-          showOut('settings saved ✓ — restart the server to apply')
-        } catch (e) { setErr(e.message) } finally { qsSave.disabled = false }
-      })
+          const [{ files }, configs] = await Promise.all([
+            dbListServerConfig(id),
+            dbListServerConfigs(id).catch(() => []),
+          ])
+          S.files = files || []
+          S.configs = configs || []
+        } catch (e) { body.innerHTML = `<div class="qs-note-block">raw config unavailable: ${esc(e.message)}</div>`; return }
+        // cvar reference comes from the profile schema (load it if not yet fetched)
+        if (!S.schema) { try { S.schema = await dbGetProfileSchema(id) } catch {} }
+        S.cvarRef = S.schema?.cvarRef || []
+        renderRawcfg()
+      }
 
-      // Profiles (startup config) and Quick Settings (operations like Save As /
-      // Generate) are independent panels — a game can have one, the other, or both.
-      // Run both; each gates its own visibility (empty schema / no sections → no-op).
-      loadProfiles()
-      loadSettings()
-      loadLive()
+      function renderRawcfg() {
+        const body = panelBody('rawcfg')
+        const fileOpts = S.files.length
+          ? S.files.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')
+          : '<option value="">(no editable files)</option>'
 
-      // Pull this server's fresh status on mount so the panel gates use current
-      // data, not the cached page-load snapshot (else e.g. Minecraft's panel could
-      // stay hidden until you switch tabs and back). One light per-server call.
+        const hasRef = (S.cvarRef || []).length > 0
+        const snipRows = (S.configs || []).length
+          ? S.configs.map(c => `<div class="rc-snip-row" data-snip-row="${esc(c.id)}">
+              <span class="rc-snip-name" title="${esc(c.name)}">${esc(c.name)}</span>
+              <button type="button" class="mini-btn" data-snip-load>load</button>
+              <button type="button" class="mini-btn x" data-snip-del>✕</button>
+            </div>`).join('')
+          : `<div class="map-empty">No saved snippets.</div>`
+
+        const sideHtml = `
+          <div class="rc-side">
+            ${hasRef ? `
+              <div class="rc-side-title">Cvar Reference</div>
+              <input type="text" class="rc-filter" data-rc-filter placeholder="filter…" />
+              <div class="rc-ref-list" data-rc-reflist></div>
+              <div class="rc-sep"></div>` : ''}
+            <div class="rc-side-title">Saved Snippets</div>
+            <div class="rc-snip-list" data-rc-sniplist>${snipRows}</div>
+            <button type="button" class="mini-btn" data-snip-add>＋ Save current as…</button>
+          </div>`
+
+        body.innerHTML = `
+          <div class="rawcfg-grid">
+            <div class="rc-editor">
+              <div class="panel-row">
+                <label>File</label>
+                <select data-cfg-select>${fileOpts}</select>
+              </div>
+              <textarea class="cfg" data-cfg-text placeholder="select a file…" disabled></textarea>
+              <div class="rc-lint" data-rc-lint></div>
+              <div class="rc-toolbar">
+                <button class="retro-btn" data-cfg-revert disabled>⤺ Revert</button>
+                <button class="retro-btn" data-cfg-diff disabled>≡ Diff</button>
+                <button class="retro-btn primary" data-cfg-save disabled>💾 Save File</button>
+              </div>
+              <div class="rc-diff" data-rc-diff style="display:none"></div>
+            </div>
+            ${sideHtml}
+          </div>`
+
+        wireRawcfg()
+      }
+
+      function wireRawcfg() {
+        const body = panelBody('rawcfg')
+        const sel = body.querySelector('[data-cfg-select]')
+        const text = body.querySelector('[data-cfg-text]')
+        const saveBtn = body.querySelector('[data-cfg-save]')
+        const revertBtn = body.querySelector('[data-cfg-revert]')
+        const diffBtn = body.querySelector('[data-cfg-diff]')
+        const lintEl = body.querySelector('[data-rc-lint]')
+        const diffEl = body.querySelector('[data-rc-diff]')
+
+        async function loadFile(file) {
+          if (!file) { text.value = ''; text.disabled = true; saveBtn.disabled = revertBtn.disabled = diffBtn.disabled = true; return }
+          text.disabled = true; text.value = 'loading…'
+          try {
+            const { content, truncated } = await dbReadServerConfig(id, file)
+            text.value = content; S.fileBaseline = content; S.curFile = file
+            text.disabled = false; saveBtn.disabled = revertBtn.disabled = diffBtn.disabled = false
+            if (truncated) setErr('note: file was truncated (very large file)')
+            lint()
+          } catch (e) { setErr(e.message); text.value = ''; text.disabled = true; saveBtn.disabled = true }
+        }
+
+        // client-side lint: unknown cvar → soft warn; JSON parse error blocks save
+        // for .json files only. Advisory; never blocks .cfg saves.
+        let blockSave = false
+        function lint() {
+          const file = sel.value || ''
+          const val = text.value
+          if (/\.json$/i.test(file)) {
+            try { JSON.parse(val || '{}'); lintEl.className = 'rc-lint'; lintEl.textContent = ''; blockSave = false }
+            catch (e) { lintEl.className = 'rc-lint err'; lintEl.textContent = `⚠ JSON error: ${e.message} — fix before saving`; blockSave = true }
+          } else {
+            blockSave = false
+            const ref = S.cvarRef || []
+            const known = new Set(ref.map(c => String(c.name)))
+            const warns = []
+            val.split('\n').forEach((line, i) => {
+              const ln = line.trim()
+              if (!ln || ln.startsWith('//') || ln.startsWith('#') || ln.startsWith('"')) return
+              const m = ln.match(/^([a-zA-Z0-9_]+)\s+(.+)$/)
+              if (!m) return
+              const [, name, rawv] = m
+              if (ref.length && !known.has(name)) { warns.push(`line ${i + 1}: unknown cvar '${name}'`); return }
+              const def = ref.find(c => String(c.name) === name)
+              if (def && def.type === 'number') {
+                const n = Number(rawv.replace(/["';].*$/, '').trim())
+                if (!Number.isNaN(n)) {
+                  if (def.min != null && n < def.min) warns.push(`line ${i + 1}: ${name} ${n} < min ${def.min}`)
+                  if (def.max != null && n > def.max) warns.push(`line ${i + 1}: ${name} ${n} > max ${def.max}`)
+                }
+              }
+            })
+            lintEl.className = 'rc-lint'
+            lintEl.textContent = warns.length ? '⚠ ' + warns.slice(0, 6).join('  ·  ') + (warns.length > 6 ? `  (+${warns.length - 6} more)` : '') : ''
+          }
+          saveBtn.disabled = blockSave
+        }
+        let lintTimer
+        text.addEventListener('input', () => { clearTimeout(lintTimer); lintTimer = setTimeout(lint, 300); diffEl.style.display = 'none' })
+
+        sel.addEventListener('change', () => loadFile(sel.value))
+        if (sel.value) loadFile(sel.value)
+
+        revertBtn.addEventListener('click', () => { text.value = S.fileBaseline; diffEl.style.display = 'none'; lint() })
+
+        diffBtn.addEventListener('click', () => {
+          if (diffEl.style.display !== 'none') { diffEl.style.display = 'none'; return }
+          diffEl.innerHTML = lineDiff(S.fileBaseline, text.value)
+          diffEl.style.display = 'block'
+        })
+
+        saveBtn.addEventListener('click', () => {
+          const file = sel.value
+          if (!file || blockSave) return
+          withBtn(saveBtn, 'Save file', async () => {
+            await dbWriteServerConfig(id, file, text.value)
+            S.fileBaseline = text.value
+            diffEl.style.display = 'none'
+            logLine(`Saved ${file} ✓`)
+          }).catch(() => {})
+        })
+
+        // cvar reference list (filterable; [ins] inserts at the caret)
+        const refList = body.querySelector('[data-rc-reflist]')
+        const filterEl = body.querySelector('[data-rc-filter]')
+        function renderRef() {
+          if (!refList) return
+          const q = (filterEl?.value || '').toLowerCase()
+          const rows = (S.cvarRef || [])
+            .filter(c => !q || String(c.name).toLowerCase().includes(q) || String(c.help || '').toLowerCase().includes(q))
+            .slice(0, 200)
+            .map(c => `<div class="rc-ref-row">
+                <span class="rc-ref-meta" title="${esc(c.help || '')}">${esc(c.name)} <small>${esc(c.type || '')}${c.default != null ? ' ' + esc(c.default) : ''}</small>${c.help ? `<div class="rc-ref-help">${esc(c.help)}</div>` : ''}</span>
+                <button type="button" class="mini-btn" data-rc-ins="${esc(c.name)}" data-rc-def="${esc(c.default ?? '')}">ins</button>
+              </div>`).join('')
+          refList.innerHTML = rows || '<div class="map-empty">no matches</div>'
+          refList.querySelectorAll('[data-rc-ins]').forEach(b => b.addEventListener('click', () => {
+            if (text.disabled) return
+            const snippet = `${b.dataset.rcIns} ${b.dataset.rcDef}`.trim() + '\n'
+            const p = text.selectionStart ?? text.value.length
+            text.value = text.value.slice(0, p) + snippet + text.value.slice(p)
+            text.focus(); lint()
+          }))
+        }
+        filterEl?.addEventListener('input', renderRef)
+        renderRef()
+
+        // saved snippet library (DB-backed)
+        body.querySelectorAll('[data-snip-load]').forEach(b => b.addEventListener('click', () => {
+          const cid = b.closest('[data-snip-row]')?.dataset.snipRow
+          withBtn(b, 'Load snippet', async () => {
+            const c = await dbGetServerConfigBody(id, cid)
+            if (!text.disabled) { text.value = c?.body ?? ''; lint() }
+            logLine(`Loaded snippet "${c?.name || cid}" into editor`)
+          }).catch(() => {})
+        }))
+        body.querySelectorAll('[data-snip-del]').forEach(b => b.addEventListener('click', () => {
+          const cid = b.closest('[data-snip-row]')?.dataset.snipRow
+          if (!confirm('Delete this saved snippet?')) return
+          withBtn(b, 'Delete snippet', async () => {
+            await dbDeleteServerConfig(id, cid)
+            S.configs = await dbListServerConfigs(id).catch(() => [])
+            renderRawcfg()
+          }).catch(() => {})
+        }))
+        body.querySelector('[data-snip-add]')?.addEventListener('click', (e) => {
+          const name = (prompt('Name this snippet:') || '').trim()
+          if (!name) return
+          withBtn(e.currentTarget, 'Save snippet', async () => {
+            await dbCreateServerConfig(id, name, text.value)
+            S.configs = await dbListServerConfigs(id).catch(() => [])
+            logLine(`Saved snippet "${name}" ✓`)
+            renderRawcfg()
+          }).catch(() => {})
+        })
+      }
+
+      // expose the per-card hooks updateStatus needs (tab gating + activation)
+      // — set BEFORE the first updateStatus so the boot gate can pick a tab.
+      root._card = { S, activateTab, tabBtns, panelEl }
+
+      // ── boot: gate tabs from current status, then activate the default tab ──
+      const initData = servers.find(x => x.id === id)
+      if (initData) updateStatus(root, initData)
+
+      // Pull fresh status on mount so the gates use current data. Also prefetch
+      // the profile schema so the Maps-tab gate (which depends on the schema's
+      // map fields) is correct without the user first opening Profiles.
       ;(async () => {
         try {
           const fresh = await dbGetServerStatus(id)
           const i = servers.findIndex(x => x.id === id)
           if (i >= 0) servers[i] = { ...servers[i], ...fresh }
-          updateStatus(root, servers[i] ?? fresh)
+          S.server = servers[i] ?? fresh
+          updateStatus(root, S.server)
           renderTopFromState()
         } catch {}
+        if (!S.schema) { try { S.schema = await dbGetProfileSchema(id); S.cvarRef = S.schema.cvarRef || []; regate() } catch {} }
       })()
-
     }
 
+    // Gate tab visibility from status and auto-switch if the active tab hides.
     function updateStatus(root, s) {
       const { cls, label, meta } = statusBits(s)
       root.querySelector('.dot').className = `dot ${cls}`
       root.querySelector('.status .label').textContent = label
       root.querySelector('.status .meta').innerHTML = meta
 
-      // Container power model: a single-purpose game container IS the game, so the
-      // controls are just container power — running → Restart/Stop/Force-Stop;
-      // stopped → Start. Refresh is always available.
-      const gs = s.gameStatus    // still used by the panel-visibility gates below
       const running = s.status === 'running'
+      const hosting = s.gameStatus === 'hosting'
       const show = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = '' })
       const hide = (...keys) => keys.forEach(k => { const b = root.querySelector(`[data-act="${k}"]`); if (b) b.style.display = 'none' })
-      // Update runs in-container (SteamCMD / re-download), so it needs the server
-      // running — show it only then, alongside the running-state power controls.
       if (running) { show('reboot', 'shutdown', 'stop', 'refresh', 'update'); hide('start') }
       else { show('start', 'refresh'); hide('reboot', 'shutdown', 'stop', 'update') }
 
-      // A panel is visible when its status gate matches AND it's either loaded or
-      // still loading (so the "Loading…" placeholder shows in place, not blank).
-      const ready = (el) => el && (el.dataset.loaded === '1' || el.dataset.loading === '1')
+      const card = root._card
+      if (!card) return
+      const { S } = card
 
-      // Profiles edit the startup config, so they're usable whenever the VM is up
-      // (idle or hosting) — configure first, then Start/Restart Hosting to apply.
-      const prof = root.querySelector('[data-profiles]')
-      if (prof) prof.style.display = (s.status === 'running' && ready(prof)) ? 'block' : 'none'
-
-      // settings panel only when hosting and populated
-      const qs = root.querySelector('[data-quickset]')
-      if (qs) qs.style.display = (gs === 'hosting' && ready(qs)) ? 'block' : 'none'
-      const rt = root.querySelector('[data-runtime]')
-      if (rt) rt.style.display = (gs === 'hosting' && ready(rt)) ? 'block' : 'none'
-
-      // raw config files: editable whenever the VM is up.
-      const rawcfg = root.querySelector('[data-rawcfg]')
-      if (rawcfg) rawcfg.style.display = (s.status === 'running') ? 'block' : 'none'
-
-      // Each grouping section (Configuration / Runtime) shows only when
-      // at least one of its panels is visible — no empty bordered headers.
-      root.querySelectorAll('[data-section]').forEach(sec => {
-        const anyVisible = [...sec.querySelectorAll('.panel')].some(p => p.style.display !== 'none')
-        sec.style.display = anyVisible ? '' : 'none'
+      // Tab visibility gates (priority order: runtime, profiles, maps, rawcfg).
+      const hasMaps = !!(S.schema && (S.schema.groups || []).some(g => (g.fields || []).some(f =>
+        f.type === 'maplist' || f.type === 'mapcatalog' || (f.type === 'select' && f.addWorkshop)))) || (S.maps || []).length > 0
+      const vis = {
+        runtime: hosting,
+        profiles: running,
+        maps: running && hasMaps,
+        rawcfg: running,
+      }
+      const order = ['runtime', 'profiles', 'maps', 'rawcfg']
+      order.forEach(name => {
+        const b = card.tabBtns().find(x => x.dataset.srvtab === name)
+        if (b) b.hidden = !vis[name]
+        const p = card.panelEl(name)
+        if (p && !vis[name]) p.hidden = true
       })
+
+      // Pick / keep an active tab among the visible ones.
+      const firstVisible = order.find(n => vis[n])
+      if (!firstVisible) {
+        // nothing to show (server down) — clear active state
+        S.activeTab = null
+        card.tabBtns().forEach(b => b.classList.remove('active'))
+        return
+      }
+      if (!S.activeTab || !vis[S.activeTab]) {
+        card.activateTab(firstVisible, true)
+      } else {
+        // keep current; ensure its panel is visible + tab marked active
+        card.activateTab(S.activeTab, true)
+      }
     }
 
     function formatUpdate(res) {

@@ -89,6 +89,19 @@ export default async function serversRoutes(app) {
   // Host (node) dashboard. Static '/node' is declared before '/:id' so the
   // parametric matcher can't shadow it.
   route('get', '/node', () => svc.getNodeStatus());
+
+  // ── presence + activity (read-only). Static paths before '/:id'. ─────────────
+  route('get', '/online', () => svc.listOnline());
+  route('get', '/activity', (req) => svc.recentActivity({ limit: req.query.limit }), {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } },
+        additionalProperties: false,
+      },
+    },
+  });
+
   route('get', '/:id', (req) => svc.getStatus(req.params.id, { mode: req.query.mode }), {
     schema: {
       ...P({ id: ID_PARAM }),

@@ -221,3 +221,39 @@ test('session methods on an unknown slug return [] / null instead of throwing', 
   assert.deepEqual(store.listSessions('nope'), []);
   assert.equal(store.recordJoin('nope', steam('x', '1'), 1, 'rcon'), null);
 });
+
+// ── presence + cross-game activity ────────────────────────────────────────────────
+test('onlineCountsBySlug counts only still-open sessions, per slug', () => {
+  const store = createServerStore(storeDb());
+  store.seedHostedGames(listServers());
+  store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');       // open
+  const closed = store.recordJoin('gmod', steam('Bob', '222'), 1000, 'rcon');
+  store.closeSession(closed, 1100);                                     // closed → not counted
+  store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log'); // open
+  assert.deepEqual(store.onlineCountsBySlug(), { gmod: 1, minecraft: 1 });
+});
+
+test('listOnline returns the live roster across hosted servers with game name', () => {
+  const store = createServerStore(storeDb());
+  store.seedHostedGames(listServers());
+  store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
+  const closed = store.recordJoin('gmod', steam('Bob', '222'), 900, 'rcon');
+  store.closeSession(closed, 950);
+  const online = store.listOnline();
+  assert.equal(online.length, 1);
+  assert.equal(online[0].name, 'Alice');
+  assert.equal(online[0].slug, 'gmod');
+  assert.equal(online[0].gameName, 'TTT');
+});
+
+test('recentSessions merges all servers newest-first and respects limit', () => {
+  const store = createServerStore(storeDb());
+  store.seedHostedGames(listServers());
+  store.recordJoin('gmod', steam('A', '1'), 1000, 'rcon');
+  store.recordJoin('minecraft', { name: 'B', uid: 'u', identityKind: 'minecraft' }, 2000, 'log');
+  store.recordJoin('prophunt', steam('C', '3'), 1500, 'rcon');
+  const all = store.recentSessions({ limit: 100 });
+  assert.deepEqual(all.map((s) => s.name), ['B', 'C', 'A']); // by joined_at DESC
+  assert.equal(all[0].slug, 'minecraft');
+  assert.equal(store.recentSessions({ limit: 1 }).length, 1);
+});

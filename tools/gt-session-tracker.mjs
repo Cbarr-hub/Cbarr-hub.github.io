@@ -280,7 +280,13 @@ async function pollRcon(server) {
     }
     return;
   }
+  // A registry RCON game with no `rconEnvKey` (a registry drift / typo) yields an
+  // undefined env key here → process.env[undefined] is undefined → no password →
+  // it would silently never track. Name the missing-key case explicitly so the
+  // skip log is actionable rather than reading `no RCON password (undefined)`.
+  // (main() also validates this once at startup; this guards a per-tick re-check.)
   const envKey = rconEnvKey(slug);
+  if (!envKey) { log(`${slug}: no rconEnvKey in registry — RCON tracking disabled for this game`); return; }
   const password = process.env[envKey] || '';
   if (!password) { log(`${slug}: no RCON password (${envKey}) — skipping`); return; }
   const host = await cachedContainerIp(container, running);
@@ -338,6 +344,17 @@ async function pollRcon(server) {
 async function main() {
   log(`gt-session-tracker starting (db=${DB}, poll=${POLL_MS}ms)`);
   await assertSqliteVersion();
+
+  // Surface registry drift loudly at startup rather than per-tick: any RCON game
+  // missing an `rconEnvKey` (a registry typo / a new game wired for `collect:'rcon'`
+  // without naming its password env var) would otherwise silently never track. Warn
+  // (not fatal) so the correctly-configured games still come up.
+  const missingKey = SERVERS.filter((s) => RCON_GAMES.has(s.id) && !rconEnvKey(s.id));
+  for (const s of missingKey) {
+    log(`WARNING: ${s.id} has collect:'rcon' but no rconEnvKey in registry — it will NOT be session-tracked`);
+  }
+  log(`tracking: ${LOG_GAMES.size} log-tailed, ${RCON_GAMES.size - missingKey.length} RCON-polled`);
+
   await reconcile(null, nowSec()).catch((e) => log('startup reconcile failed', e.message));
 
   for (const s of SERVERS) {

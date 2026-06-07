@@ -1,3 +1,8 @@
+// Injects the fixed global tab bar (the cross-page nav) at the top of <body>.
+// Runs once per page as an IIFE on script load. The tabs are plain <a> links
+// with no JS listeners, so there is nothing to leak; installTabs() also guards
+// on an existing .global-tabbar and bails, so a duplicate include can't produce
+// a second bar or double-bound handlers.
 (function () {
   const pages = [
     { label: "Home", path: "index.html" },

@@ -27,11 +27,12 @@ hypervisor, bare metal) works identically.
 - **Stack:** `docker compose` project **`gamertown`**, two files:
   `docker-compose.yml` (app + Caddy) + `servers.compose.yml` (5 games), with a
   project `.env` for interpolation.
-- **8 containers:** `gamertown-app-1`, `gamertown-caddy-1`,
+- **9 containers:** `gamertown-app-1`, `gamertown-caddy-1`,
   `gamertown-docker-proxy-1`, `minecraft`, `gmod`, `prophunt`, `counterstrike`,
-  `factorio`. All `restart: unless-stopped` (so they self-start on host boot — there
-  is no stack systemd unit).
-- **8 named volumes** hold all persistent state:
+  `factorio`, `bluemap`. All `restart: unless-stopped` (so they self-start on host boot —
+  there is no stack systemd unit).
+- **Named volumes** hold all persistent state (only `gt-data` + the game saves are
+  load-bearing for DR — the rest re-create on first boot):
 
   | Volume | Holds |
   |---|---|
@@ -39,6 +40,7 @@ hypervisor, bare metal) works identically.
   | `gamertown_mc-data` | Minecraft world (`world_GTown`) |
   | `gamertown_factorio-data` | Factorio saves (incl. `saves/_active.zip`) |
   | `gamertown_gmod-data` / `_ph-data` / `_cs2-data` | game-server installs (re-installable) |
+  | `gamertown_bluemap-data` / `_bluemap-web` | BlueMap render state + generated tiles (regenerated from the world; not backed up) |
   | `gamertown_caddy_data` / `_config` | Caddy's issued certs / state |
 
 - **Edge:** `gamertown.solutions` is **Cloudflare-proxied** → the origin is reached
@@ -82,9 +84,9 @@ Bucket `gamertown-backups`, rclone remote `r2`. Restore reads, never writes the 
 
 | Prefix | Contents | Schedule | Retention |
 |---|---|---|---|
-| `app/gamertown_<ts>.sqlite` | app DB (users, sessions, **server Profiles**) | **weekly Mon 04:00** (`gt-db-backup.timer`) | keep **7** |
-| `factorio/_active_<ts>.zip` | Factorio active save (~45 MB) | **weekly Mon 04:00** | keep **3** |
-| `minecraft/<level>_<ts>.tar.gz` | MC world (`world_GTown`, ~5 GB gz) | **weekly Mon 04:00** | keep **3** |
+| `app/gamertown_<ts>.sqlite` | app DB (users, sessions, **server Profiles**) | **daily 04:00** (`gt-db-backup.timer`) | keep **14** |
+| `factorio/_active_<ts>.zip` | Factorio active save (~45 MB) | **daily 04:00** | keep **14** |
+| `minecraft/<level>_<ts>.tar.gz` | MC world (`world_GTown`, ~5 GB gz) | **daily 04:00** | keep **1** |
 | `predeploy/gamertown_<ts>.sqlite` | app DB snapshot taken right before a deploy | **every `gt prod`** (`tools/gt.sh prod`) | keep **10** |
 | `secrets/secrets.tar.age` | age-encrypted bundle (`secrets.env` + project `.env` + TLS cert) | **on-demand** (after editing secrets) | keep 1 |
 
@@ -96,13 +98,13 @@ is flushed via the container's `rcon-cli` (`save-off` → `save-all flush` → t
 for a consistent snapshot.
 
 The same script is also a CLI with selectable targets — `gt-backup.sh [all|db|factorio|minecraft]
-[--prefix P] [--keep N]` (zero-arg = the weekly all-three, byte-for-byte). **`gt prod` calls
+[--prefix P] [--keep N]` (zero-arg = the daily all-three). **`gt prod` calls
 `gt-backup.sh db --prefix predeploy --keep 10` (with `GT_STRICT=1`, which also verifies the
 object landed in R2) and aborts the deploy if it fails.** A `predeploy/` snapshot is a valid
 app-DB restore point — it lives in its **own** prefix precisely so deploy-day snapshots can't
-evict the weekly `app/` window (which DR's "restore newest" relies on). **Deploy the script to
+evict the daily `app/` window (which DR's "restore newest" relies on). **Deploy the script to
 the keeper after editing it:** copy `tools/gt-backup.sh` → `/usr/local/bin/gt-backup.sh`
-(`chmod +x`) and confirm the zero-arg run still keeps 7/3/3.
+(`chmod +x`) and confirm the zero-arg run still keeps 14/14/1.
 
 ---
 
@@ -138,8 +140,8 @@ git clone https://github.com/Cbarr-hub/Cbarr-hub.github.io /root/gamertown   # i
 **5. TLS cert** — already restored by the bundle in step 4. *(Fallback if you skipped the
 bundle: re-issue from Cloudflare → SSL/TLS → Origin Server → Create Certificate.)*
 
-**6. Bring the stack up** (creates the 8 volumes, builds images, starts installing
-game files):
+**6. Bring the stack up** (creates the volumes, builds images, starts installing
+game files; BlueMap begins rendering once the Minecraft world is in place):
 ```bash
 cd /root/gamertown
 docker compose -f docker-compose.yml -f servers.compose.yml up -d --build
@@ -180,7 +182,7 @@ curl -s https://gamertown.solutions/api/health     # {"ok":true}
 
 - **App DB corrupted / bad migration / fat-fingered data:**
   `tools/db-restore.sh [gamertown_YYYYMMDD_HHMMSS.sqlite]` — stop app, swap the DB in
-  `gt-data`, start. Defaults to the newest weekly snapshot (7 kept).
+  `gt-data`, start. Defaults to the newest daily snapshot (14 kept).
 - **A game save went bad:** restore from R2 by hand (there's no in-panel restore on
   Docker). Factorio: `rclone copyto` the newest `factorio/_active_<ts>.zip` into the
   `factorio-data` volume's `saves/`. Minecraft: see §4 step 7 (stop `minecraft`, extract
@@ -207,8 +209,8 @@ Closed since the migration, and what's still loose:
   (real terminal, passphrase) after editing any secret so R2 stays current.
 - ✅ **Keeper checkout reconciled (2026-06-04):** `/root/gamertown` is back on clean
   `main`; `git pull` deploys work.
-- ✅ **MC world now backed up (2026-06-05):** the weekly `gt-backup.sh` includes the
-  Minecraft world (flushed via `rcon-cli`, keep 3) — no longer on-demand-only.
+- ✅ **MC world now backed up (2026-06-05):** the scheduled `gt-backup.sh` includes the
+  Minecraft world (flushed via `rcon-cli`, keep 1) — no longer on-demand-only.
 
 Still loose:
 
@@ -216,9 +218,9 @@ Still loose:
    then depends on your Cloudflare login — keep that recoverable.
 2. **The age passphrase is the single point of failure** for the secret bundle. If it's
    lost, the offsite copy is unrecoverable. Keep it in your password manager.
-3. **Weekly cadence:** backups run weekly (Mon 04:00), so up to a week of app-DB / world
-   changes can be lost. Bump `OnCalendar` in `tools/systemd/gt-db-backup.timer` for more
-   frequent runs.
+3. **Daily cadence:** backups run daily (04:00), so up to ~24h of app-DB / world
+   changes can be lost between snapshots. Adjust `OnCalendar` in
+   `tools/systemd/gt-db-backup.timer` to change it.
 
 ---
 
@@ -227,7 +229,7 @@ Still loose:
 | Tool | Purpose |
 |---|---|
 | `tools/gt.sh` / `tools/gt.ps1` | unified dispatcher: `dev --fresh` / `dev --prod-like` (dev), `prod` / `prod --rollback` / `prod --dry-run` (keeper). Mapping in `tools/gt-modes.conf` |
-| `tools/gt-backup.sh` + `tools/systemd/gt-db-backup.{timer,service}` | **weekly** app-DB + Factorio save + Minecraft world → R2 (host root; installed at `/usr/local/bin/`). Also a CLI: `db\|factorio\|minecraft [--prefix P] [--keep N]` (used by `gt prod`) |
+| `tools/gt-backup.sh` + `tools/systemd/gt-db-backup.{timer,service}` | **daily** app-DB + Factorio save + Minecraft world → R2 (host root; installed at `/usr/local/bin/`). Also a CLI: `db\|factorio\|minecraft [--prefix P] [--keep N]` (used by `gt prod`) |
 | `tools/db-backup.sh` / `tools/db-restore.sh` | portable app-DB snapshot / restore (volume-aware) |
 | `tools/secrets-backup.sh` / `tools/secrets-restore.sh` | age-encrypt the secret **bundle** (`secrets.env` + project `.env` + TLS cert) → R2 / restore |
 

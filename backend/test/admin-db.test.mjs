@@ -276,6 +276,22 @@ test('GET /tables/:table: sort dir flips order', async () => {
   }
 });
 
+test('GET /tables/:table?sort=password_hash → 400 (masked column is not sortable)', async () => {
+  const { app, dir } = await freshApp();
+  try {
+    await seedUser(app, { username: 'boss', password: 'admin-password-1', isAdmin: true });
+    const cookie = await login(app, 'boss', 'admin-password-1');
+    // password_hash is a REAL column but masked → sorting by it would leak the
+    // hash's relative ordering as an oracle, so it's rejected like a bad column.
+    const res = await get(app, '/api/admin/db/tables/users?sort=password_hash', cookie);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.json().error, 'bad sort column');
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('GET /tables/:table?q: search excludes masked columns (cannot probe the hash)', async () => {
   const { app, dir } = await freshApp();
   try {

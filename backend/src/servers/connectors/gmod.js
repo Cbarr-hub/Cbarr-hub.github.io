@@ -189,10 +189,15 @@ export class GmodConnector extends LinuxGsmConnector {
   async installedMaps() {
     try {
       const P = this.paths;
+      // List basenames of the installed .bsp files (strip dir + extension via sed).
       const res = await this.runShell(
         `ls -1 ${P.mapsDir}/*.bsp 2>/dev/null | sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
         { asUser: this.gsmUser, timeoutMs: 15_000 },
       );
+      // Keep only maps whose name starts with one of this gamemode's prefixes
+      // (ttt_/gm_ for TTT, ph_/gm_ for PH) so an unrelated bsp can't appear in the
+      // picker. Names are lowercase a-z0-9_ (matches Source/GMOD bsp naming). Any
+      // failure (dir missing, exec error) degrades to an empty list, never throws.
       const re = new RegExp(`^(${this.mapPrefixes.join('|')})[a-z0-9_]*$`);
       const names = (res.stdout || '').split('\n')
         .map((l) => l.trim())
@@ -286,7 +291,10 @@ export class GmodConnector extends LinuxGsmConnector {
   // rotation, the ttt_* gameplay cvars, player slots, and the workshop collection.
   // applyProfile writes them across the instance cfg (defaultmap / maxplayers /
   // wscollectionid + the gt_active_profile mirror), the game cfg (ttt_* +
-  // ttt_always_use_mapcycle), and mapcycle.txt. Takes effect on the next restart.
+  // ttt_always_use_mapcycle), and mapcycle.txt. applyProfileSettings only WRITES
+  // those files — none of it is live; the restart that re-reads them (and downloads +
+  // mounts the workshop collection) is the panel's "Apply = apply config + restart"
+  // step, NOT something this method does. captureProfileSettings is the inverse read.
 
   defaultProfileSettings() {
     // The server boots into the FIRST map of the rotation; default it to a stock
@@ -453,6 +461,10 @@ export class GmodConnector extends LinuxGsmConnector {
   }
 
   // ── live commands (Source RCON on the game port, like CS2) ──
+  // The RCON password is read live from the game cfg's `rcon_password` cvar (the VM
+  // path; the Docker subclass overrides this to read it from env instead). Empty ⇒
+  // RCON is disabled and getLive() reports unavailable. Cached nowhere — re-read per
+  // call so an Apply that sets the password takes effect without a connector reload.
   async rconPassword() {
     const game = await this.client.agentFileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
     return (getCvar(game, 'rcon_password') || '').trim();
@@ -477,10 +489,19 @@ export class GmodConnector extends LinuxGsmConnector {
     return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command });
   }
 
+  // Free-text console passthrough (the Runtime console input). validateLiveCommand
+  // trims + rejects empty / overlong / multi-line input; the command then runs
+  // verbatim over RCON. Distinct from runLiveAction, which maps curated keys to cmds.
   async sendCommand(command) {
     return this.runRcon(validateLiveCommand(command));
   }
 
+  // Dispatch one Runtime-panel control to its RCON command, in priority order:
+  //   1. the live change-map dropdown (`change_map`) → `changelevel <map>` (only
+  //      reaches maps mounted at the last boot — see CLAUDE.md § GMOD workshop);
+  //   2. a slider value (`gmodRangeCmd` returns null for non-range keys) → its cvar;
+  //   3. a curated action button (`GMOD_ACTION_CMDS`).
+  // `value` is only consumed by change_map + the sliders; action buttons ignore it.
   async runLiveAction(key, value) {
     if (key === 'change_map') {
       const v = String(value ?? '').trim();

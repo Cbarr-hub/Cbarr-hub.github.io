@@ -3,6 +3,13 @@
 
 import { dbWhoAmI, dbLogout } from './db.js';
 
+// Per-page-load session cache. `loadSession()` hits /api/me at most once and
+// every later caller awaits the same in-flight promise (so a page importing
+// auth.js plus several modules calling loadSession() makes one request). The
+// "not signed in" case is the common one and resolves to null (dbWhoAmI maps a
+// 401 to null), so it caches cleanly; a genuine network/parse failure rejects
+// the shared promise — acceptable here because such a page can't function
+// authenticated anyway. logout() clears both so a later loadSession() re-fetches.
 let cachedSession = null;
 let sessionPromise = null;
 
@@ -35,6 +42,11 @@ export async function logout() {
   sessionPromise = null;
 }
 
+// Swap the "sign in" nav link for a username + Logout control. Idempotent:
+// once the sign-in link has been replaced, the querySelector below finds
+// nothing and the function returns early, so re-invoking it can't append a
+// second .nav-user. Called once from init(); safe to call again with an
+// explicit username (e.g. right after sign-in on a page that doesn't navigate).
 export function updateNavbar(username) {
   const signInLink = document.querySelector('a[href="signin.html"], #openSignIn');
   if (!signInLink) return;

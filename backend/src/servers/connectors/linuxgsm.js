@@ -1,10 +1,18 @@
-// Shared connector for LinuxGSM-managed game servers (Counter-Strike, Factorio).
+// Shared connector for LinuxGSM-managed game servers (the GMOD family, plus the
+// retired VM-era CS/Factorio path).
 //
 // LinuxGSM installs each game under a normal user's home as an instance with a
 // control script (e.g. ~/csserver/cs2server). Management is done by running that
 // script as the owning user: `./<script> start|stop|restart|update`. Subclasses
 // only declare the instance specifics (user, dir, script) + their config-file
 // whitelist; all the LinuxGSM mechanics live here.
+//
+// Post-Docker-migration note: GmodConnector/PropHuntConnector extend this for the
+// LinuxGSM cfg/path machinery, but the Docker mixin (dockerizeGmod + the
+// containerGameLifecycle wrapper) SHADOWS the power methods + gameRunning + update
+// below — for a live container the game lifecycle is container power, not `runGsm`.
+// So in the running stack the methods below serve the VM-era path; the GMOD family
+// inherits them only as a fallback behind the Docker overrides.
 
 import { BaseConnector } from './base.js';
 

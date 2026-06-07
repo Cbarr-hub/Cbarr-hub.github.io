@@ -5,6 +5,31 @@
 // execution, and whitelisted config read/write. Game-specific connectors extend
 // this class to declare their config-file whitelist and `update()` recipe — all
 // game knowledge lives in the subclass, never in the service or route layers.
+//
+// ── connector lifecycle contract (what a subclass implements) ────────────────
+// The base owns the generic, persisted, transport-driven machinery; a subclass
+// supplies only the game semantics through these override points. Anything left
+// at the base default cleanly reports "not supported" rather than crashing.
+//
+//   status / power     status() + start/shutdown/reboot/stop are inherited and
+//                      transport-driven; a subclass overrides gameRunning() (and,
+//                      for the container model, the game-process aliases — see
+//                      docker-base.js `containerGameLifecycle`).
+//   config files       override the `configFiles` getter to whitelist the only
+//                      guest paths read/writeConfig may touch (logical name → path).
+//   quick settings     getSettings/setSettings expose a small validated field set
+//                      the UI renders without game knowledge (default: none).
+//   update recipe      override update() with the game's updater (default throws
+//                      NO_UPDATE_RECIPE).
+//   profiles           the base owns persistence + lifecycle (list/get/create/
+//                      update/delete/apply/capture + auto-seeded "Default"); a
+//                      subclass supplies the semantics via profileSchema /
+//                      defaultProfileSettings / validateProfileSettings /
+//                      applyProfileSettings / captureProfileSettings.
+//   live control       getLive advertises availability + actions/controls;
+//                      sendCommand/runLiveAction execute (default: unavailable).
+//   catalog/library    listMaps/syncMaps/…/listConfigs (DB-backed, CS only today)
+//                      default to notSupported() so a null store never NPEs.
 
 import { badSetting, notFound, notSupported, duplicateError } from '../errors.js';
 
@@ -79,6 +104,13 @@ export class BaseConnector {
   // guest agent is not running". When set, we retry ONLY that specific error for
   // up to this long before giving up — letting actions like Start Hosting wait
   // out a freshly-booted VM instead of erroring. Passive reads leave it at 0.
+  //
+  // The "deadline" is a wall-clock check (Date.now() > deadline), NOT a held
+  // timer, so an early exit can't leak a pending timeout: the only timer is the
+  // self-resolving `sleep(pollMs)` between polls, and the loop returns before
+  // sleeping when the command has already exited. (Over the Docker transport
+  // agentExec runs to completion synchronously, so agentExecStatus reports
+  // `exited` on the first poll and `sleep` is never even reached.)
   async runCommand(command, { input, timeoutMs = 120_000, pollMs = 1000, awaitAgentMs = 0 } = {}) {
     const { pid } = await this.#execAwaitingAgent(command, input, awaitAgentMs, pollMs, timeoutMs);
     const deadline = Date.now() + timeoutMs;

@@ -2,6 +2,32 @@
 // (factoriotools) connectors. Transport-agnostic: it operates on the parsed
 // server-settings.json object + the structured settings doc, so each connector
 // just supplies read/write of that file and its own save/active-world handling.
+//
+// PROFILE SCHEMA (fields span TWO config files + the active save)
+//   Fields (defaultProfileSettings):
+//     saveName    - which saved world to stage as the active one ('' = keep
+//                   current); SAFE_NAME_RE. The active-world copy is the
+//                   connector's job (it's a file op), not done here.
+//     server-settings.json knobs → applyServerSettings / captureServerSettings:
+//       serverName (≤200), description (≤500), maxPlayers (0–500, 0=unlimited),
+//       visibility ('public' adds {public,lan}; anything else → 'lan'-only),
+//       password (≤100), autosaveInterval (1–240 min), autoPause (bool '1'/'0').
+//     map-settings.json world rules → applyMapSettings / captureMapSettings:
+//       evolutionEnabled / pollutionEnabled / expansionEnabled (bool '1'/'0'),
+//       techPriceMultiplier (0.25–10). These are baked into a save AT GENERATION,
+//       so they only affect a NEWLY generated world (see PROFILE_NOTE) — a running
+//       world is changed via the live Game Speed / Evolution RCON sliders.
+//       NOTE: Factorio 2.0 removed MapGenSize 'large'/'very-large' (hard crash);
+//       map size is not a profile field here, but keep that constraint in mind for
+//       any map-gen tooling.
+//   validate (validateProfileSettings): coerces/clamps every field, throwing
+//     badSetting on bad world names, out-of-range players/autosave/tech-multiplier;
+//     bool-ish toggles normalize to '1'/'0' via the local `bool` helper.
+//   apply: the connector reads each JSON file, runs applyServerSettings /
+//     applyMapSettings to mutate the parsed object, writes it back, then stages the
+//     chosen save; changes take effect on the next restart.
+//   capture: captureServerSettings + captureMapSettings read the two files back
+//     into a pre-validation doc (the connector merges them, leaving saveName='').
 
 import { badSetting, SAFE_NAME_RE } from '../errors.js';
 

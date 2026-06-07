@@ -44,6 +44,18 @@ if (-not $Volume) {
     }
     $Volume = $cands[0]
 }
+# The app container name is derived from the volume by stripping the "_gt-data"
+# suffix (compose names volumes "<project>_gt-data" and the app container
+# "<project>-app-1"). A volume that doesn't follow that convention would derive
+# the WRONG container name: the real app container would never be stopped (so the
+# restore races a live SQLite writer) and never restarted. Fail loudly instead of
+# silently targeting a phantom container. The auto-detect path above already
+# guarantees the suffix; this only guards an explicit -Volume.
+if ($Volume -notmatch '_gt-data$') {
+    Write-Host "[ERROR] -Volume '$Volume' does not end in '_gt-data'; cannot derive the app container name." -ForegroundColor Red
+    Write-Host "    Pass a compose gt-data volume (e.g. cbarr-hubgithubio_gt-data); see: docker volume ls" -ForegroundColor Red
+    exit 1
+}
 $project = $Volume -replace '_gt-data$', ''
 $app     = "$project-app-1"
 Write-Host "[*] Volume: $Volume   app container: $app"
@@ -76,3 +88,8 @@ if ($running) { Write-Host "[*] starting $app"; docker start $app | Out-Null }
 
 Write-Host "[OK] restored $Name -> ${Volume} (gamertown.sqlite)" -ForegroundColor Green
 Write-Host "    Verify: docker exec $app node src/cli.js list-users"
+
+# Explicit success exit so callers see a clean 0. gt.ps1's Cmd-RestoreDb does
+# `exit $LASTEXITCODE` and Preseed-Db checks it; without this, a script that runs
+# off the end leaves $LASTEXITCODE at the last native command's code.
+exit 0

@@ -3,22 +3,25 @@
 #
 # Version-controlled mirror of the host runner. Installed on the keeper at
 #   /usr/local/bin/gt-backup.sh
-# and fired weekly (Mon 04:00) by the systemd timer `gt-db-backup.timer` (units vendored
+# and fired daily (04:00) by the systemd timer `gt-db-backup.timer` (units vendored
 # in tools/systemd/). rclone authenticates via /root/.config/rclone/rclone.conf (`r2`) —
 # no keys live here. To deploy a change: copy this file to /usr/local/bin/gt-backup.sh
 # (chmod +x). Full backup map + restore steps -> docs/disaster-recovery.md.
 #
 # Usage:
-#   gt-backup.sh                    # ALL three, default prefixes/retention (the weekly timer)
+#   gt-backup.sh                    # ALL three, default prefixes/retention (the daily timer)
 #   gt-backup.sh all                # same as no args
-#   gt-backup.sh db        [--prefix P] [--keep N]   # default prefix=app       keep=7
-#   gt-backup.sh factorio  [--prefix P] [--keep N]   # default prefix=factorio  keep=3
-#   gt-backup.sh minecraft [--prefix P] [--keep N]   # default prefix=minecraft keep=3
+#   gt-backup.sh db        [--prefix P] [--keep N]   # default prefix=app       keep=14
+#   gt-backup.sh factorio  [--prefix P] [--keep N]   # default prefix=factorio  keep=14
+#   gt-backup.sh minecraft [--prefix P] [--keep N]   # default prefix=minecraft keep=1
+#
+# Retention is sized to a ~10 GB R2 budget: the Minecraft world (~5 GB gz) keeps 1; the
+# cheap DB + Factorio save keep 14 (~2 weeks of daily snapshots). Total ~5.6 GB.
 #
 # Env:
 #   GT_STRICT=1   drop the `|| true` masking on the Minecraft flush, and VERIFY each
 #                 uploaded object actually landed in R2 (used by `gt prod` pre-deploy).
-#                 The weekly timer omits it so a transient RCON hiccup can't abort the job.
+#                 The daily timer omits it so a transient RCON hiccup can't abort the job.
 set -euo pipefail
 
 TS=$(date -u +%Y%m%d_%H%M%S)
@@ -40,7 +43,7 @@ prune() {   # $1=prefix $2=grep-pattern $3=keep-N
 
 # --- app DB (consistent .backup) ---
 backup_db() {
-  local prefix="${1:-app}" keep="${2:-7}"
+  local prefix="${1:-app}" keep="${2:-14}"
   local db=/var/lib/docker/volumes/gamertown_gt-data/_data/gamertown.sqlite
   local tmp obj; tmp="$(mktemp)"; obj="gamertown_${TS}.sqlite"
   sqlite3 "$db" ".backup '$tmp'"
@@ -52,7 +55,7 @@ backup_db() {
 
 # --- Factorio active save (small) ---
 backup_factorio() {
-  local prefix="${1:-factorio}" keep="${2:-3}"
+  local prefix="${1:-factorio}" keep="${2:-14}"
   local fs=/var/lib/docker/volumes/gamertown_factorio-data/_data/saves/_active.zip
   [ -f "$fs" ] || { echo "factorio: no _active.zip — skipping" >&2; return 0; }
   local obj="_active_${TS}.zip"
@@ -68,7 +71,7 @@ backup_factorio() {
 #     it can't be the safety net). The world dir is the level-name; object is
 #     "<level>_<ts>.tar.gz". ---
 backup_minecraft() {
-  local prefix="${1:-minecraft}" keep="${2:-3}" rc=0
+  local prefix="${1:-minecraft}" keep="${2:-1}" rc=0
   local mcv=/var/lib/docker/volumes/gamertown_mc-data/_data level obj
   level="$(grep -E "^level-name=" "$mcv/server.properties" 2>/dev/null | cut -d= -f2 | tr -d "\r" || true)"
   [ -n "${level:-}" ] && [ -d "$mcv/$level" ] || { echo "minecraft: no world (level='${level:-}') — skipping" >&2; return 0; }
@@ -106,14 +109,14 @@ parse_opts() {   # $1=default-prefix $2=default-keep, then the remaining CLI arg
 
 case "${1:-}" in
   ""|all)
-    # The weekly timer's path — IDENTICAL objects + prune as before the refactor.
-    backup_db        app       7
-    backup_factorio  factorio  3
-    backup_minecraft minecraft 3
+    # The daily timer's path.
+    backup_db        app       14
+    backup_factorio  factorio  14
+    backup_minecraft minecraft 1
     echo "backed up app DB + factorio save + minecraft world (ts=$TS)"
     ;;
-  db)        shift; parse_opts app       7 "$@"; backup_db        "$PREFIX" "$KEEP"; echo "backed up app DB -> $PREFIX (ts=$TS)" ;;
-  factorio)  shift; parse_opts factorio  3 "$@"; backup_factorio  "$PREFIX" "$KEEP"; echo "backed up factorio save -> $PREFIX (ts=$TS)" ;;
-  minecraft) shift; parse_opts minecraft 3 "$@"; backup_minecraft "$PREFIX" "$KEEP"; echo "backed up minecraft world -> $PREFIX (ts=$TS)" ;;
+  db)        shift; parse_opts app       14 "$@"; backup_db        "$PREFIX" "$KEEP"; echo "backed up app DB -> $PREFIX (ts=$TS)" ;;
+  factorio)  shift; parse_opts factorio  14 "$@"; backup_factorio  "$PREFIX" "$KEEP"; echo "backed up factorio save -> $PREFIX (ts=$TS)" ;;
+  minecraft) shift; parse_opts minecraft 1 "$@"; backup_minecraft "$PREFIX" "$KEEP"; echo "backed up minecraft world -> $PREFIX (ts=$TS)" ;;
   *) echo "usage: gt-backup.sh [all|db|factorio|minecraft] [--prefix P] [--keep N]" >&2; exit 1 ;;
 esac

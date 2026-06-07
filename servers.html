@@ -1150,6 +1150,7 @@ function cardHTML(s){
       ${bg ? '' : `<div class="mono" style="background:${monoBg(s)}">${esc(a.mono)}</div>`}
       <div class="stat" style="color:${STATUS_COLOR[cls]}"><span class="d ${cls}"></span>${STATUS_LABEL[cls]}</div>
       ${port ? `<div class="port">:${esc(port)}</div>` : ''}
+      ${/* s.online is a host-tracked integer count (service.js → onlineCountsBySlug), not user text — safe to interpolate unescaped. */''}
       ${s.online ? `<div class="playing" title="players online right now"><span class="d"></span>${s.online} playing</div>` : ''}
     </div>
     <div class="body">
@@ -1169,6 +1170,7 @@ function cardHTML(s){
         <span class="go">${ICONS.chev}</span>
       </div>
       ${up && launch ? `<a class="steam-launch" href="${esc(launch)}" data-launch title="Launch via Steam">${ICONS.steam} Launch via Steam</a>` : ''}
+      ${/* Only Minecraft has a BlueMap world render; the button jumps to the Map tab (data-mapview → switchView('map')). */''}
       ${up && s.id === 'minecraft' ? `<button type="button" class="steam-launch map-link" data-mapview title="Open the world map">${MAP_ICON} World Map</button>` : ''}
     </div>
   </article>`
@@ -1292,12 +1294,19 @@ function startActivity(){
   }, 20000)
   loadActivity()
 }
+// Fetch presence (online[] from /servers/online) + the merged join/leave
+// timeline (rows[] from /servers/activity), then paint the strip + list. The
+// activityLoadSeq guard makes the latest fetch win so a slow earlier request
+// can't overwrite newer data when the user refreshes rapidly.
 async function loadActivity(){
   const strip = document.getElementById('onlineStrip')
   const list = document.getElementById('actlist')
   const seq = ++activityLoadSeq
   let online, rows
   try {
+    // Destructuring-assignment to the let-bound vars above. The `try {` brace is
+    // the preceding token, so the leading `[` is not an ASI hazard — but keep the
+    // `let online, rows` line above it (don't merge) so it stays unambiguous.
     [online, rows] = await Promise.all([dbGetOnline(), dbGetActivity({ limit: 150 })])
   } catch (e) {
     if (seq !== activityLoadSeq) return
@@ -1330,6 +1339,8 @@ async function loadEconomy(){
   const list = document.getElementById('ecoPlayers')
   let settings, users, players
   try {
+    // Destructuring-assignment to the let-bound vars above; safe after `try {`
+    // (see loadActivity). users is the link-dropdown source, cached in ecoUsers.
     [settings, users, players] = await Promise.all([dbGetEconomySettings(), dbGetEconomyUsers(), dbGetEconomyPlayers()])
   } catch (e) {
     list.innerHTML = `<div class="ev-empty pane-err">economy unavailable: ${esc(errMsg(e))}</div>`

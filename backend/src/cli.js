@@ -91,7 +91,14 @@ async function listUsers() {
 async function deleteUser() {
   const username = (await prompt('Username to delete: ')).trim();
   const result = db.prepare('DELETE FROM users WHERE username = ?').run(username);
-  console.log(result.changes ? `Deleted ${username}.` : `No user named ${username}.`);
+  if (result.changes) {
+    console.log(`Deleted ${username}.`);
+  } else {
+    // Match the rest of the CLI: a no-op (no such user) is a failure, so exit
+    // non-zero rather than silently "succeeding".
+    console.error(`No user named ${username}.`);
+    process.exitCode = 1;
+  }
 }
 
 try {

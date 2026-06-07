@@ -1,9 +1,9 @@
+// Leaderboard renderer for the gambling page: ranks players by bankroll
+// (then net, then name) and paints the standings list. Pure presentation —
+// stats are computed upstream by getLeaderboardRows() in gamble-data.js.
+
 import { getLeaderboardRows } from './gamble-data.js?v=money-events-2';
 import { esc, formatSignedDollars, formatWholeDollars, numberValue } from './gamble-utils.mjs?v=money-events-2';
-
-function formatDollars(value) {
-  return formatWholeDollars(value);
-}
 
 function normalizeRows(rows) {
   return rows.map((row) => {
@@ -51,14 +51,14 @@ export async function renderLeaderboard({ listEl, statusEl, currentUsername, row
             <em>${row.wins}-${row.losses} record / ${row.winRate}% win rate</em>
           </span>
           <span class="leaderboard-bankroll">
-            <strong>${formatDollars(row.balance)}</strong>
+            <strong>${formatWholeDollars(row.balance)}</strong>
             <em>bankroll</em>
           </span>
           <span class="leaderboard-net ${row.net < 0 ? 'loss' : 'win'}">
             <strong>${formatSignedDollars(row.net)}</strong>
             <em>net</em>
           </span>
-          <span class="leaderboard-detail">Max win ${formatDollars(row.biggestWin)} / streak ${row.bestWinStreak}</span>
+          <span class="leaderboard-detail">Max win ${formatWholeDollars(row.biggestWin)} / streak ${row.bestWinStreak}</span>
         </li>
       `;
     }).join('');

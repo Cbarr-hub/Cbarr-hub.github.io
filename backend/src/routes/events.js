@@ -23,7 +23,9 @@ export default async function eventsRoutes(app) {
     const rows = limit
       ? app.db.prepare(sql).all(limit)
       : app.db.prepare(sql).all();
-    return rows.map(r => ({ ...r, payload: JSON.parse(r.payload) }));
+    // Guard each parse: a single corrupt payload row shouldn't 500 the feed.
+    const parsePayload = (json) => { try { return JSON.parse(json); } catch { return {}; } };
+    return rows.map(r => ({ ...r, payload: parsePayload(r.payload) }));
   });
 
   app.post('/', {

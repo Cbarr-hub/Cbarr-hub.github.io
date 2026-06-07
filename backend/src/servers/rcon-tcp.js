@@ -27,7 +27,17 @@ function encode(id, type, body) {
 /**
  * Authenticate, run one command, and resolve its (possibly multi-packet) text
  * response. A trailing empty "sentinel" command marks where the response ends,
- * the standard trick for reassembling responses split across packets.
+ * the standard trick for reassembling responses split across packets: we send the
+ * real command (id=CMD_ID) immediately followed by an empty command (id=END_ID),
+ * and once the server's response to that empty command comes back (a packet with
+ * id===END_ID) we know every fragment of the real response has arrived. For servers
+ * that DON'T echo the empty sentinel (Factorio), an idle timer (700ms of quiet)
+ * finishes the exchange instead, so we never hang waiting for an echo that won't come.
+ *
+ * Error codes (on the rejected Error's `.code`):
+ *   NO_RCON    — no password configured (rejects before connecting)
+ *   RCON_AUTH  — auth packet returned id===-1 (bad password)
+ *   RCON_ERROR — socket error, closed-before-auth, or the overall timeout fired
  *
  * @returns {Promise<string>}
  */

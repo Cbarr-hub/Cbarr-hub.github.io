@@ -1,3 +1,9 @@
+// Slot-machine math engine: symbol/payline/payout tables tuned to SLOT_RTP_TARGET,
+// plus pure functions to spin a grid (weighted, with optional near-miss / scatter /
+// small-win assists), evaluate line + scatter wins both directions, settle payouts
+// and the free-spin bonus state machine, and cascade survivors after a win. No DOM,
+// no I/O — deterministic given an injected rng (createSeededRng for reproducible tests).
+
 export const SLOT_RTP_TARGET = 0.96;
 export const SLOT_LINE_PAYOUT_SCALE = 0.98;
 

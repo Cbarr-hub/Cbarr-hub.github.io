@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>cyberbarn · Fleet</title>
+<title>thecyberbarn · Fleet</title>
 <style>
 /* ============================================================
    v2 · LISTING FEED  —  "a hacker terminal art-directed by Airbnb"
@@ -79,7 +79,7 @@ header.top{
 .logo{display:flex; align-items:center; gap:var(--s2); flex:0 0 auto}
 .logo .mark{color:var(--grn-hot);filter:drop-shadow(0 0 7px rgba(66,245,39,.55));animation:pulse 2.6s var(--ease) infinite;flex:0 0 auto}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
-.logo b{font-size:var(--t-lg);letter-spacing:1px;color:var(--txt)}
+.logo b{font-size:var(--t-lg);letter-spacing:1px;color:var(--grn-hot)}
 .logo b span{color:var(--grn)}
 .logo .cur{color:var(--grn-hot);animation:blink 1.1s step-end infinite}
 @keyframes blink{50%{opacity:0}}
@@ -455,7 +455,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <path d="M9.5 14.5 14.5 21M14.5 14.5 9.5 21" stroke="currentColor" stroke-width="1" opacity=".55"/>
         <circle cx="12" cy="9.6" r="1.3" fill="currentColor"/>
       </svg>
-      <b>cyber<span>barn</span><span class="cur">_</span></b>
+      <b><span>the</span>cyberbarn<span class="cur">_</span></b>
     </button>
     <div class="spacer"></div>
     <div class="who"><span class="av">W</span> admin@keeper</div>
@@ -870,10 +870,14 @@ function detailHTML(s){
   </div>`;
 }
 
-/* Steam-connect games (CS2 / GMOD / Prop Hunt) launch the game + connect via the
-   steam:// protocol; Minecraft/Factorio aren't steam-connect, so no button there. */
-const STEAM_IDS = ['cs','gmod','ph'];
-function steamUri(s){ return STEAM_IDS.includes(s.id) ? 'steam://connect/' + s.join.replace(/^connect\s+/,'') : null; }
+/* Steam launch+connect. Source games use steam://connect/<ip:port>; Factorio launches
+   its appid (427520) with --mp-connect; Minecraft (Java) isn't a steam-connect game. */
+function steamUri(s){
+  const hostport = s.join.replace(/^connect\s+/,'');
+  if (s.id === 'fac') return 'steam://run/427520//--mp-connect ' + hostport;
+  if (s.id === 'cs' || s.id === 'gmod' || s.id === 'ph') return 'steam://connect/' + hostport;
+  return null;  // Minecraft (Java)
+}
 
 /* ---- OVERVIEW ---- */
 function overviewPane(s){

@@ -1,3 +1,8 @@
+// Gambling-event domain model: normalizes raw event rows, classifies outcomes
+// (win / loss / push / reset) from net_change, flags "big" events, builds new
+// events for persistence, and provides client event-id generation + recent-event
+// sorting. Pure logic shared by the dashboard, activity, leaderboard, and data layers.
+
 import { numberValue } from './gamble-utils.mjs';
 
 export const BIG_EVENT_AMOUNT = 1000;

@@ -1,3 +1,7 @@
+// Shared formatting + coercion helpers for the gambling UI modules. Canonical
+// home for the dollar/number/HTML-escape primitives — import these instead of
+// redefining local copies (formatWholeDollars is the one-true money formatter).
+
 export function numberValue(value) {
   return Number(value ?? 0);
 }

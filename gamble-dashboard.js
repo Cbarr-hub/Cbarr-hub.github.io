@@ -1,17 +1,11 @@
+// Gambling analytics dashboard: aggregates raw events into per-player and
+// per-game stats + headline KPIs (buildDashboardModel), then renders the KPI
+// cards and the net / win-loss / game-mix bar charts (renderDashboardModel).
+// Data-shaping functions are pure and unit-testable; the render* helpers paint DOM.
+
 import { DEFAULT_BALANCE, getGamblingDashboardData } from './gamble-data.js?v=money-events-2';
 import { BIG_EVENT_AMOUNT, isMoneyEvent, normalizeGamblingEvent, sortRecentEvents } from './gamble-events.mjs?v=money-events-2';
 import { esc, formatSignedDollars, formatWholeDollars, numberValue, percent } from './gamble-utils.mjs?v=money-events-2';
-
-function formatDollars(value) {
-  return formatWholeDollars(value);
-}
-
-function compactDollars(value) {
-  return Intl.NumberFormat('en-US', {
-    notation: 'compact',
-    maximumFractionDigits: 1
-  }).format(Math.round(numberValue(value)));
-}
 
 function playerName(row) {
   return row?.username ?? 'None yet';
@@ -202,7 +196,7 @@ function renderKpis(kpiEl, model) {
     </div>
     <div class="viz-card">
       <span>Total wagered</span>
-      <strong>${formatDollars(kpis.totalWagered)}</strong>
+      <strong>${formatWholeDollars(kpis.totalWagered)}</strong>
       <em>${kpis.resetCount} bankroll resets</em>
     </div>
     <div class="viz-card ${kpis.totalNet < 0 ? 'danger' : 'success'}">
@@ -212,7 +206,7 @@ function renderKpis(kpiEl, model) {
     </div>
     <div class="viz-card success">
       <span>Biggest win</span>
-      <strong>${formatDollars(kpis.biggestWin?.payout_amount ?? 0)}</strong>
+      <strong>${formatWholeDollars(kpis.biggestWin?.payout_amount ?? 0)}</strong>
       <em>${esc(kpis.biggestWin?.username ?? 'No wins yet')}</em>
     </div>
     <div class="viz-card">

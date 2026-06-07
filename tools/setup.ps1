@@ -289,3 +289,8 @@ Write-Host ""
 Write-Host "Tip: from a BLANK machine, '.\tools\gt.ps1 dev --fresh' does ALL of the above" -ForegroundColor Cyan
 Write-Host "     (this setup + stack + DB pre-seed + health) in one command." -ForegroundColor Cyan
 Write-Host "Production-equivalent rehearsal -> .\tools\gt.ps1 dev --prod-like   (docs/local-dev.md)" -ForegroundColor Gray
+
+# Explicit success exit so $LASTEXITCODE is deterministically 0 for callers. Without
+# it, a script that runs off the end leaves $LASTEXITCODE at whatever the last native
+# command (e.g. tar) set — which gt.ps1's Dev-Fresh checks ("if setup failed").
+exit 0

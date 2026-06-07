@@ -135,7 +135,7 @@ services:
     image: ghcr.io/bluemap-minecraft/bluemap:v5.20
     container_name: bluemap
     restart: unless-stopped
-    command: ["-r", "-u", "-w"]   # render, watch for changes, run the webserver
+    command: ["-r", "-u", "-w", "-m", "overworld,nether,end"] # render/watch all map dimensions
     volumes:
       # Mount the ACTIVE world folder (mc-data/<MC_LEVEL>) straight to /app/world,
       # read-only. Using the volume subpath + ${MC_LEVEL} keeps the BlueMap map

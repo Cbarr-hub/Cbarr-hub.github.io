@@ -10,6 +10,7 @@ and [`../AGENTS.md`](../AGENTS.md).
 | [`infrastructure.md`](infrastructure.md) | Current architecture — the Docker stack on the keeper (VM 106), containers, volumes, edge, forwarded ports |
 | [`disaster-recovery.md`](disaster-recovery.md) | Rebuild from GitHub + R2 + the age passphrase; the R2 backup inventory + partial-recovery recipes |
 | [`backend.md`](backend.md) | Backend API surface, the auth/security model, the CLI, and the game-server control panel |
+| [`bluemap-performance.md`](bluemap-performance.md) | BlueMap 3D map performance, incremental-rendering rules, and operational guardrails |
 | [`design-system.md`](design-system.md) | Frontend design reference — colour scheme, layout, responsive breakpoints |
 
 For day-to-day operations and the game-server gotchas (GMOD workshop, Factorio saves,

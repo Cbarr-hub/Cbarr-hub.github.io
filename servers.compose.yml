@@ -122,15 +122,17 @@ services:
   # BlueMap: a 3D web map of the Minecraft world. Renders from a READ-ONLY mount
   # of the mc-data volume (never writes the world) and serves its web UI on
   # :8100, which Caddy reverse-proxies at /map/ behind the auth gate (NOT host-
-  # published). Starter config is bind-mounted from docker/bluemap/config
-  # (accept-download=true so it runs unattended; the map points at /app/world/<MC_LEVEL>).
-  # NOTE (host validation): the FIRST run downloads Minecraft client assets and
-  # renders the whole world — this can take a while and use CPU; the web UI is up
+  # published). Tracked config is bind-mounted from docker/bluemap/config
+  # (accept-download=true so it runs unattended; maps point at /app/world).
+  # Preserve bluemap-data + bluemap-web so normal restarts update changed world
+  # regions instead of forcing a full rebuild. If those volumes are deleted, BlueMap
+  # downloads Minecraft client assets again and
+  # renders the whole world; this can take a while and use CPU; the web UI is up
   # immediately but tiles fill in as the render progresses. The map config does NOT
   # need editing per environment: the volume subpath below mounts the active world
   # (mc-data/${MC_LEVEL}) at the fixed path /app/world, which overworld.conf targets.
   bluemap:
-    image: ghcr.io/bluemap-minecraft/bluemap:latest
+    image: ghcr.io/bluemap-minecraft/bluemap:v5.20
     container_name: bluemap
     restart: unless-stopped
     command: ["-r", "-u", "-w"]   # render, watch for changes, run the webserver
@@ -146,8 +148,8 @@ services:
         volume:
           subpath: ${MC_LEVEL:-world}
       - ./docker/bluemap/config:/app/config
-      - bluemap-data:/app/data    # render state + downloaded assets
-      - bluemap-web:/app/web      # generated web app + map tiles
+      - bluemap-data:/app/data    # render state + downloaded assets; preserve for diff updates
+      - bluemap-web:/app/web      # generated web app + map tiles; preserve to avoid full rebuilds
     expose:
       - "8100"                    # internal only; Caddy reaches it as bluemap:8100
 

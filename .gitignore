@@ -23,8 +23,9 @@ secrets.env
 # gt prod rollback anchor (written on the keeper by tools/gt.sh prod)
 .last-deploy
 
-# BlueMap runtime-generated config (only our hand-authored core/webserver/maps
-# under docker/bluemap/config are tracked; BlueMap writes these on first run)
-docker/bluemap/config/webapp.conf
-docker/bluemap/config/storages/
+# BlueMap runtime-generated config. Keep the hand-authored webapp + file-storage
+# config tracked so 3D LOD/storage behavior is deterministic across deploys.
+docker/bluemap/config/storages/*
+!docker/bluemap/config/storages/
+!docker/bluemap/config/storages/file.conf
 docker/bluemap/config/packs/

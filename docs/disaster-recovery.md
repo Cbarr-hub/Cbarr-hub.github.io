@@ -40,7 +40,7 @@ hypervisor, bare metal) works identically.
   | `gamertown_mc-data` | Minecraft world (`world_GTown`) |
   | `gamertown_factorio-data` | Factorio saves (incl. `saves/_active.zip`) |
   | `gamertown_gmod-data` / `_ph-data` / `_cs2-data` | game-server installs (re-installable) |
-  | `gamertown_bluemap-data` / `_bluemap-web` | BlueMap render state + generated tiles (regenerated from the world; not backed up) |
+  | `gamertown_bluemap-data` / `_bluemap-web` | BlueMap render state + generated tiles (regenerated from the world; not backed up, but preserving them avoids full map rebuilds) |
   | `gamertown_caddy_data` / `_config` | Caddy's issued certs / state |
 
 - **Edge:** `gamertown.solutions` is **Cloudflare-proxied** → the origin is reached
@@ -141,7 +141,9 @@ git clone https://github.com/Cbarr-hub/Cbarr-hub.github.io /root/gamertown   # i
 bundle: re-issue from Cloudflare → SSL/TLS → Origin Server → Create Certificate.)*
 
 **6. Bring the stack up** (creates the volumes, builds images, starts installing
-game files; BlueMap begins rendering once the Minecraft world is in place):
+game files; BlueMap begins rendering once the Minecraft world is in place. If
+`bluemap-data`/`bluemap-web` were not restored, the first BlueMap pass is a full rebuild;
+after that it resumes changed-region updates):
 ```bash
 cd /root/gamertown
 docker compose -f docker-compose.yml -f servers.compose.yml up -d --build

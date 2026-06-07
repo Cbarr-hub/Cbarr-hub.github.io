@@ -134,7 +134,16 @@ services:
     restart: unless-stopped
     command: ["-r", "-u", "-w"]   # render, watch for changes, run the webserver
     volumes:
-      - mc-data:/app/world:ro     # the Minecraft world (read-only)
+      # Mount the ACTIVE world folder (mc-data/<MC_LEVEL>) straight to /app/world,
+      # read-only. Using the volume subpath + ${MC_LEVEL} keeps the BlueMap map
+      # config env-portable: it always points at /app/world regardless of the
+      # level name (dev 'world_GTown', prod whatever MC_LEVEL is set to).
+      - type: volume
+        source: mc-data
+        target: /app/world
+        read_only: true
+        volume:
+          subpath: ${MC_LEVEL:-world}
       - ./docker/bluemap/config:/app/config
       - bluemap-data:/app/data    # render state + downloaded assets
       - bluemap-web:/app/web      # generated web app + map tiles

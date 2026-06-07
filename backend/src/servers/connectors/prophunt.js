@@ -301,6 +301,11 @@ export class PropHuntConnector extends GmodConnector {
     };
   }
 
+  // Dispatch order (overrides GmodConnector.runLiveAction): change_map →
+  // PH-specific sliders (ph_round_time / ph_blind_time, clamped) → the shared GMOD
+  // ranges (gravity / timescale via gmodRangeCmd over GMOD_SHARED_LIVE_CONTROLS,
+  // NOT the TTT set) → curated PH action buttons. The TTT sliders (traitor_pct /
+  // round_limit) are intentionally unreachable here — PH never advertises them.
   async runLiveAction(key, value) {
     if (key === 'change_map') {
       const v = String(value ?? '').trim();

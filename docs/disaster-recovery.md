@@ -85,6 +85,7 @@ Bucket `gamertown-backups`, rclone remote `r2`. Restore reads, never writes the 
 | `app/gamertown_<ts>.sqlite` | app DB (users, sessions, **server Profiles**) | **weekly Mon 04:00** (`gt-db-backup.timer`) | keep **7** |
 | `factorio/_active_<ts>.zip` | Factorio active save (~45 MB) | **weekly Mon 04:00** | keep **3** |
 | `minecraft/<level>_<ts>.tar.gz` | MC world (`world_GTown`, ~5 GB gz) | **weekly Mon 04:00** | keep **3** |
+| `predeploy/gamertown_<ts>.sqlite` | app DB snapshot taken right before a deploy | **every `gt prod`** (`tools/gt.sh prod`) | keep **10** |
 | `secrets/secrets.tar.age` | age-encrypted bundle (`secrets.env` + project `.env` + TLS cert) | **on-demand** (after editing secrets) | keep 1 |
 
 `<ts>` = UTC `YYYYMMDD_HHMMSS`. The job is the host script `/usr/local/bin/gt-backup.sh`
@@ -93,6 +94,15 @@ where rclone + the R2 keys live — so backups are **not** an in-app/panel featu
 reaches the engine only through the scoped socket-proxy, with no path to R2). The MC world
 is flushed via the container's `rcon-cli` (`save-off` → `save-all flush` → tar → `save-on`)
 for a consistent snapshot.
+
+The same script is also a CLI with selectable targets — `gt-backup.sh [all|db|factorio|minecraft]
+[--prefix P] [--keep N]` (zero-arg = the weekly all-three, byte-for-byte). **`gt prod` calls
+`gt-backup.sh db --prefix predeploy --keep 10` (with `GT_STRICT=1`, which also verifies the
+object landed in R2) and aborts the deploy if it fails.** A `predeploy/` snapshot is a valid
+app-DB restore point — it lives in its **own** prefix precisely so deploy-day snapshots can't
+evict the weekly `app/` window (which DR's "restore newest" relies on). **Deploy the script to
+the keeper after editing it:** copy `tools/gt-backup.sh` → `/usr/local/bin/gt-backup.sh`
+(`chmod +x`) and confirm the zero-arg run still keeps 7/3/3.
 
 ---
 
@@ -178,8 +188,13 @@ curl -s https://gamertown.solutions/api/health     # {"ok":true}
 - **You edited `secrets.env`:** re-run the secrets backup so R2 stays current — **in a
   real terminal** (the `age -p` prompt needs a TTY, which the Claude `!` prompt lacks):
   `ssh -t root@192.168.1.241 'bash /root/gamertown/tools/secrets-backup.sh'`
-- **Roll the keeper to the latest code:** reconcile its checkout to `main` first (see
-  below), then `git -C /root/gamertown pull` + `docker compose … up -d --build`.
+- **Roll the keeper to the latest code:** `cd /root/gamertown && tools/gt.sh prod` — it
+  reconciles to `origin/main`, takes a pre-deploy DB snapshot (`predeploy/`, abort on fail),
+  rebuilds, and health-checks. (Manual fallback: reconcile to `main`, then `git pull` +
+  `docker compose … up -d --build`.)
+- **A deploy went bad (bad migration / crash-loop):** `tools/gt.sh prod --rollback` — stops
+  the stack, restores the `predeploy/` DB snapshot taken for that deploy, `git checkout`s the
+  pre-deploy SHA (recorded in `/root/gamertown/.last-deploy`), rebuilds, and re-health-checks.
 
 ---
 
@@ -211,7 +226,8 @@ Still loose:
 
 | Tool | Purpose |
 |---|---|
-| `tools/gt-backup.sh` + `tools/systemd/gt-db-backup.{timer,service}` | **weekly** app-DB + Factorio save + Minecraft world → R2 (host root; installed at `/usr/local/bin/`) |
+| `tools/gt.sh` / `tools/gt.ps1` | unified dispatcher: `dev --fresh` / `dev --prod-like` (dev), `prod` / `prod --rollback` / `prod --dry-run` (keeper). Mapping in `tools/gt-modes.conf` |
+| `tools/gt-backup.sh` + `tools/systemd/gt-db-backup.{timer,service}` | **weekly** app-DB + Factorio save + Minecraft world → R2 (host root; installed at `/usr/local/bin/`). Also a CLI: `db\|factorio\|minecraft [--prefix P] [--keep N]` (used by `gt prod`) |
 | `tools/db-backup.sh` / `tools/db-restore.sh` | portable app-DB snapshot / restore (volume-aware) |
 | `tools/secrets-backup.sh` / `tools/secrets-restore.sh` | age-encrypt the secret **bundle** (`secrets.env` + project `.env` + TLS cert) → R2 / restore |
 

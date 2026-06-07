@@ -11,14 +11,13 @@ Quick links: [`docs/local-dev.md`](docs/local-dev.md) (run it locally) ·
 [`docs/backend.md`](docs/backend.md) (backend API) ·
 [`docs/design-system.md`](docs/design-system.md) (frontend design system).
 
-**Run it locally (dev):** from a fresh clone, three commands stand up the full stack
-with a working login —
-`tools/setup.ps1` (pull + decrypt secrets from R2),
-`tools/dev.ps1` (build + start app + Caddy + docker-proxy + 5 game servers, localhost
-self-signed + live reload), then
-`tools/db-restore.ps1` (restore the app DB so users exist) — then open
-`https://localhost`. macOS/Linux use the `.sh` equivalents. Full walkthrough →
-[`docs/local-dev.md`](docs/local-dev.md).
+**Run it locally (dev):** from a fresh clone, **one command** stands up the full stack
+with a working login — `.\tools\gt.ps1 dev --fresh` (Windows) / `tools/gt.sh dev --fresh`
+(macOS/Linux). It pulls + decrypts secrets from R2, restores the app DB, builds and starts
+app + Caddy + docker-proxy + 5 game servers (localhost self-signed + live reload), and waits
+for health — then open `https://localhost`. To rehearse the real deploy on existing data, use
+`gt … dev --prod-like`. (The underlying `tools/setup.*` + `tools/dev.*` + `tools/db-restore.*`
+still work.) Full walkthrough → [`docs/local-dev.md`](docs/local-dev.md).
 
 Everything below is the project's (deliberately absurdist) **design philosophy** — kept
 verbatim, not an operational spec.

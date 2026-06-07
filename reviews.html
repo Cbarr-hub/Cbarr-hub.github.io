@@ -358,14 +358,24 @@
           reviews.forEach(review => {
             const reviewEl = document.createElement('div');
             reviewEl.className = 'review-item';
-            reviewEl.innerHTML = `
-              <div class="review-header">
-                <span class="review-author">${review.name}</span>
-                <span class="review-date">${formatDate(review.created_at * 1000)}</span>
-              </div>
-              <div class="review-rating">${ratingsToStars(review.rating)}</div>
-              <p class="review-text">${review.message}</p>
-            `;
+            const header = document.createElement('div');
+            header.className = 'review-header';
+            const author = document.createElement('span');
+            author.className = 'review-author';
+            author.textContent = review.name;
+            const date = document.createElement('span');
+            date.className = 'review-date';
+            date.textContent = formatDate(review.created_at * 1000);
+            header.append(author, date);
+
+            const rating = document.createElement('div');
+            rating.className = 'review-rating';
+            rating.textContent = ratingsToStars(review.rating);
+            const text = document.createElement('p');
+            text.className = 'review-text';
+            text.textContent = review.message;
+
+            reviewEl.append(header, rating, text);
             container.appendChild(reviewEl);
           });
           updateAggregateRating(reviews);

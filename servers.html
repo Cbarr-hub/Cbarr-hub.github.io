@@ -241,6 +241,8 @@ header.top{position:sticky; top:0; z-index:40;
 .steam-launch{display:inline-flex;align-items:center;gap:9px;margin-top:var(--s2);padding:11px 18px;border-radius:var(--r-sm);background:var(--grn-deep);border:1px solid var(--grn);color:var(--grn-hot);font-size:var(--t-sm);letter-spacing:1px;text-decoration:none;transition:.16s var(--ease)}
 .steam-launch:hover{background:var(--grn);color:#06140a}
 .steam-launch svg{width:16px;height:16px;flex:0 0 auto}
+/* Compact, full-width variant shown on the fleet tiles. */
+.card .steam-launch{margin-top:var(--s2);width:100%;justify-content:center;padding:9px 12px;font-size:var(--t-xs);letter-spacing:.5px}
 .power{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}
 .pbtn{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 6px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg-1);color:var(--txt-dim);transition:.16s var(--ease);font-size:var(--t-xs);letter-spacing:.5px}
 .pbtn svg{width:19px;height:19px}
@@ -708,7 +710,9 @@ import { loadSession } from './auth.js'
 let servers = []
 let activeId = null
 let lastNode = null
+let nodeFetchedAt = 0
 let curView = 'fleet'
+let dashboardInFlight = false
 // events
 let eventsFilter = 'all'
 let eventsTimer = null
@@ -907,15 +911,21 @@ function renderWho(){
 }
 
 async function boot(){
+  let loaded = false
   try {
-    servers = await dbGetServers()
+    servers = await dbGetServers({ mode: 'quick' })
+    loaded = true
   } catch (e) {
     document.getElementById('feed').innerHTML = `<div class="view-msg pane-err">error loading servers: ${esc(errMsg(e))}</div>`
   }
-  renderFeed()
+  if (loaded) renderFeed()
   renderEvFilter()
+  renderHost(lastNode)
   refreshDashboard()
   setInterval(refreshDashboard, 10000)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshDashboard()
+  })
   // deep-link to a view
   if (location.hash === '#events') switchView('events')
   else if (location.hash === '#data') switchView('data')
@@ -923,19 +933,27 @@ async function boot(){
 
 /* ═════════════════════════ HOST STRIP + FLEET REFRESH ═════════════════════════ */
 async function refreshDashboard(){
+  if (dashboardInFlight || document.hidden) return
+  dashboardInFlight = true
   try {
+    const shouldFetchNode = !lastNode || Date.now() - nodeFetchedAt > 60_000
     const [n, all] = await Promise.all([
-      dbGetNodeStatus(),
-      dbGetServers().catch(() => null),
+      shouldFetchNode ? dbGetNodeStatus().catch(() => lastNode) : Promise.resolve(lastNode),
+      dbGetServers({ mode: 'full' }).catch(() => null),
     ])
     if (Array.isArray(all)) servers = all
-    lastNode = n
-    renderHost(n)
+    if (n) {
+      lastNode = n
+      if (shouldFetchNode) nodeFetchedAt = Date.now()
+    }
+    renderHost(lastNode)
     if (curView === 'fleet') renderFeed()
   } catch (e) {
     if (!lastNode) {
       document.getElementById('host').innerHTML = `<div class="view-msg pane-err">host stats unavailable: ${esc(errMsg(e))}</div>`
     }
+  } finally {
+    dashboardInFlight = false
   }
 }
 
@@ -997,6 +1015,7 @@ function cardHTML(s){
   const cpuTxt = up ? cpuPct.toFixed(0) + '%' : '—'
   const ramTxt = up ? fmtBytes(s.mem) : '—'
   const conn = s.connect?.string
+  const launch = s.connect?.launch
   const port = s.connect?.port
   const a = artFor(s)
   return `
@@ -1023,6 +1042,7 @@ function cardHTML(s){
           </button>` : `<button class="join" style="cursor:default;opacity:.5"><code>${down ? 'offline' : 'no join address'}</code></button>`}
         <span class="go">${ICONS.chev}</span>
       </div>
+      ${up && launch ? `<a class="steam-launch" href="${esc(launch)}" data-launch title="Launch via Steam">${ICONS.steam} Launch via Steam</a>` : ''}
     </div>
   </article>`
 }
@@ -1032,8 +1052,8 @@ function renderFeed(){
   feed.innerHTML = servers.map(cardHTML).join('')
   feed.querySelectorAll('.card').forEach(c => {
     const open = () => openDetail(c.dataset.id)
-    c.addEventListener('click', e => { if (e.target.closest('.join[data-join]')) return; open() })
-    c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } })
+    c.addEventListener('click', e => { if (e.target.closest('.join[data-join]') || e.target.closest('.steam-launch')) return; open() })
+    c.addEventListener('keydown', e => { if (e.target.closest('.steam-launch')) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } })
   })
   feed.querySelectorAll('.join[data-join]').forEach(j => {
     j.addEventListener('click', e => { e.stopPropagation(); copyText(j.dataset.join, j) })
@@ -1129,7 +1149,7 @@ async function loadEvents(){
 const scrim = document.getElementById('scrim')
 const detail = document.getElementById('detail')
 
-scrim.addEventListener('click', closeDetail)
+scrim.addEventListener('click', e => { if (e.target === scrim) closeDetail() })
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (confirmEl.classList.contains('open')) hideConfirm(false)
@@ -1139,10 +1159,16 @@ document.addEventListener('keydown', e => {
 })
 
 function closeDetail(){
+  if (DS?.dirty) {
+    if (!window.confirm('Discard unsaved profile changes?')) return false
+    DS.dirty = false
+  }
   scrim.classList.remove('open'); detail.classList.remove('open')
   detail.setAttribute('aria-hidden', 'true')
   document.body.style.overflow = ''
   activeId = null
+  DS = null
+  return true
 }
 
 /* Per-detail card state (one open at a time). */
@@ -1163,16 +1189,23 @@ async function openDetail(id){
   wireDetailChrome(s)
   requestAnimationFrame(() => { scrim.classList.add('open'); detail.classList.add('open') })
   document.body.style.overflow = 'hidden'
-  // fetch fresh status, then pick the first visible tab
-  try {
-    const fresh = await dbGetServerStatus(id)
+  gateTabs()
+  // Hydrate fresh status + schema in parallel; the overview stays usable while
+  // Docker/profile metadata arrives.
+  const [fresh, schema] = await Promise.all([
+    dbGetServerStatus(id, { mode: 'quick' }).catch(() => null),
+    dbGetProfileSchema(id).catch(() => null),
+  ])
+  if (activeId !== id || !DS || DS.id !== id) return   // closed or switched while loading
+  if (fresh) {
     const i = servers.findIndex(x => x.id === id)
     if (i >= 0) servers[i] = { ...servers[i], ...fresh }
     DS.server = servers[i] || fresh
-  } catch {}
-  // prefetch schema so the Maps tab gate is correct
-  try { DS.schema = await dbGetProfileSchema(id); DS.cvarRef = DS.schema?.cvarRef || [] } catch {}
-  if (activeId !== id) return   // closed while loading
+  }
+  if (schema) {
+    DS.schema = schema
+    DS.cvarRef = schema?.cvarRef || []
+  }
   rerenderDetail()
 }
 
@@ -1275,13 +1308,12 @@ function renderOverview(){
   if (s.status !== 'running') { body.innerHTML = downPaneHTML(s); wireOverview(); return }
   const cpuPct = s.cpu != null ? s.cpu * 100 : 0
   const ramPct = s.maxmem ? (s.mem / s.maxmem) * 100 : 0
-  const conn = s.connect?.string, launch = s.connect?.launch
+  const conn = s.connect?.string
   body.innerHTML = `
   <div class="pane on">
     <div>
       <div class="section-h">Connection</div>
       ${conn ? `<div class="joinbig" id="dJoin"><code>${esc(conn)}</code><button>COPY</button></div>` : '<div class="note-block">No join address.</div>'}
-      ${launch ? `<a class="steam-launch" href="${esc(launch)}">${ICONS.steam} Launch via Steam</a>` : ''}
     </div>
     <div>
       <div class="section-h">Live</div>
@@ -1347,8 +1379,10 @@ function wireOverview(){
 async function powerAction(act, btn){
   const s = DS.server
   if (act === 'refresh') {
-    await busy(btn, async () => { await refreshActive() })
-    logLine('Status refreshed')
+    await busy(btn, async () => {
+      try { await refreshActive(); logLine('Status refreshed') }
+      catch (e) { logLine(`Refresh — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+    })
     return
   }
   if (act === 'update') {
@@ -1361,7 +1395,8 @@ async function powerAction(act, btn){
         const out = res?.steps ? formatUpdate(res) : ''
         logLine(res?.ok === false ? 'Update finished with errors — see output' : 'Update ✓', out)
         if (res?.note) logLine(res.note)
-        await refreshActive()
+        try { await refreshActive() }
+        catch (e) { logLine(`Status refresh — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
       } catch (e) { logLine(`Update — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
     })
     return
@@ -1379,36 +1414,43 @@ async function powerAction(act, btn){
     logLine(`${labels[act]}…`)
     try {
       await dbServerAction(s.id, act)
+      logLine(`${labels[act]} command accepted`)
       await new Promise(r => setTimeout(r, 1500))
-      await refreshActive()
-      logLine(`${labels[act]} ✓`)
+      try {
+        await refreshActive()
+        logLine(`${labels[act]} ✓`)
+      } catch (e) {
+        logLine(`Status refresh — error: ${errMsg(e)}`)
+        toast(errMsg(e), 'err')
+      }
     } catch (e) { logLine(`${labels[act]} — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
   })
 }
 
 /* Re-fetch the active server's status + the fleet, then re-render the open pane + feed. */
 async function refreshActive(){
-  try {
-    const fresh = await dbGetServerStatus(DS.id)
-    const i = servers.findIndex(x => x.id === DS.id)
-    if (i >= 0) servers[i] = { ...servers[i], ...fresh }
-    DS.server = servers[i] || fresh
-  } catch {}
-  try { const all = await dbGetServers(); if (Array.isArray(all)) servers = all; DS.server = srvById(DS.id) || DS.server } catch {}
+  const fresh = await dbGetServerStatus(DS.id, { mode: 'quick' })
+  const i = servers.findIndex(x => x.id === DS.id)
+  if (i >= 0) servers[i] = { ...servers[i], ...fresh }
+  DS.server = servers[i] || fresh
   if (curView === 'fleet') renderFeed()
   if (lastNode) renderHost(lastNode)
   gateTabs()
+  refreshDashboard()
 }
 
 /* ───── RUNTIME ───── */
 async function loadRuntime(){
   const body = detail.querySelector('#dBody')
   body.innerHTML = `<div class="pane on"><div class="note-block">Loading runtime…</div></div>`
-  let data
-  try { data = await dbGetServerLive(DS.id) }
+  let data, settings
+  try {
+    ;[data, settings] = await Promise.all([
+      dbGetServerLive(DS.id),
+      dbGetServerSettings(DS.id).catch(() => null),
+    ])
+  }
   catch (e) { body.innerHTML = `<div class="pane on"><div class="note-block pane-err">runtime unavailable: ${esc(errMsg(e))}</div>${consoleHTML(DS.server)}</div>`; return }
-  let settings = null
-  try { settings = await dbGetServerSettings(DS.id) } catch {}
   DS.live = data; DS.liveSettings = settings
   if (DS.activeTab !== 'runtime') return
   renderRuntimeCached()
@@ -1620,6 +1662,8 @@ function renderProfiles(){
   </div>`
   wireProfiles()
 }
+function fieldReadOnly(f){ return !!(f?.readOnly || f?.readonly) }
+function roAttr(f, attr = 'data-ro="1"'){ return fieldReadOnly(f) ? attr : '' }
 function profFieldHTML(f){
   const v = DS.values[f.key]
   const lbl = `<label>${esc(f.label)}</label>`
@@ -1631,44 +1675,48 @@ function profFieldHTML(f){
   }
   if (f.type === 'bool') {
     const on = v === '1' || v === 1 || v === true
-    return wrap(`<div class="tog${on ? ' on' : ''}" data-pf="${esc(f.key)}" data-pt="bool"><i></i></div>`)
+    return wrap(`<div class="tog${on ? ' on' : ''}${fieldReadOnly(f) ? ' disabled' : ''}" data-pf="${esc(f.key)}" data-pt="bool" ${roAttr(f, 'data-ro="1" aria-readonly="true"')}><i></i></div>`)
   }
   if (f.type === 'slider' || (f.type === 'number' && f.min != null && f.max != null)) {
     const min = f.min ?? 0, max = f.max ?? 100, step = f.step ?? 1
     const cur = v ?? f.default ?? min
-    return wrap(`<div class="pf-range" data-pf="${esc(f.key)}" data-pt="number">
-        <input type="range" data-pf-slider min="${esc(min)}" max="${esc(max)}" step="${esc(step)}" value="${esc(cur)}" />
-        <input type="number" data-pf-num min="${esc(min)}" max="${esc(max)}" step="${esc(step)}" value="${esc(cur)}" />
+    const ro = fieldReadOnly(f)
+    return wrap(`<div class="pf-range" data-pf="${esc(f.key)}" data-pt="number" ${roAttr(f, 'data-ro="1" aria-readonly="true"')}>
+        <input type="range" data-pf-slider min="${esc(min)}" max="${esc(max)}" step="${esc(step)}" value="${esc(cur)}"${ro ? ' disabled' : ''} />
+        <input type="number" data-pf-num min="${esc(min)}" max="${esc(max)}" step="${esc(step)}" value="${esc(cur)}"${ro ? ' readonly aria-readonly="true"' : ''} />
         <span class="pf-range-val" data-pf-val>${esc(f.suffix || '')}</span></div>`)
   }
   if (f.type === 'segmented') {
     const opts = f.options || []
     const cur = String(v ?? f.default ?? (opts[0]?.value ?? ''))
-    const btns = opts.map(o => `<button type="button" class="seg-btn${String(o.value) === cur ? ' on' : ''}" data-seg-val="${esc(o.value)}">${esc(o.label)}</button>`).join('')
-    return wrap(`<div class="seg" data-pf="${esc(f.key)}" data-pt="segmented">${btns}</div>`)
+    const ro = fieldReadOnly(f)
+    const btns = opts.map(o => `<button type="button" class="seg-btn${String(o.value) === cur ? ' on' : ''}" data-seg-val="${esc(o.value)}"${ro ? ' disabled' : ''}>${esc(o.label)}</button>`).join('')
+    return wrap(`<div class="seg" data-pf="${esc(f.key)}" data-pt="segmented" ${roAttr(f, 'data-ro="1" aria-readonly="true"')}>${btns}</div>`)
   }
   if (f.type === 'cvar') {
     const dlid = `dl-${DS.id}-${f.key}`
     const sugg = (f.suggest || []).map(o => `<option value="${esc(o.value)}">${esc(o.label || o.value)}</option>`).join('')
     const t = f.valueType === 'number' ? 'number' : 'text'
-    return wrap(`<input data-pf="${esc(f.key)}" data-pt="${t}" type="${t}" list="${dlid}" value="${esc(v ?? '')}" autocomplete="off" /><datalist id="${dlid}">${sugg}</datalist>`)
+    return wrap(`<input data-pf="${esc(f.key)}" data-pt="${t}" type="${t}" list="${dlid}" value="${esc(v ?? '')}" autocomplete="off" ${roAttr(f, 'data-ro="1" readonly aria-readonly="true"')} /><datalist id="${dlid}">${sugg}</datalist>`)
   }
   if (f.type === 'password') {
     const shown = (v === '••••' || v == null) ? '' : v
-    return wrap(`<div class="pf-pass"><input data-pf="${esc(f.key)}" data-pt="text" type="password" value="${esc(shown)}" placeholder="${v === '••••' ? 'unchanged' : ''}" autocomplete="new-password" /><button type="button" class="mini-btn" data-pf-reveal>👁</button></div>`)
+    const ro = fieldReadOnly(f)
+    return wrap(`<div class="pf-pass"><input data-pf="${esc(f.key)}" data-pt="text" type="password" value="${esc(shown)}" placeholder="${v === '••••' ? 'unchanged' : ''}" autocomplete="new-password" ${roAttr(f, 'data-ro="1" readonly aria-readonly="true"')} /><button type="button" class="mini-btn" data-pf-reveal${ro ? ' disabled' : ''}>👁</button></div>`)
   }
   if (f.type === 'select') {
     if (f.addWorkshop) return `<div class="field" style="flex-direction:column;align-items:stretch">${lbl}${mapCatalogHTML(f, v)}${help}</div>`
     if (f.custom) {
       const dlid = `dl-${DS.id}-${f.key}`
       const opts = (f.options || []).map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
-      return wrap(`<input data-pf="${esc(f.key)}" data-pt="text" type="text" list="${dlid}" value="${esc(v ?? '')}" placeholder="map name" autocomplete="off" /><datalist id="${dlid}">${opts}</datalist>`)
+      return wrap(`<input data-pf="${esc(f.key)}" data-pt="text" type="text" list="${dlid}" value="${esc(v ?? '')}" placeholder="map name" autocomplete="off" ${roAttr(f, 'data-ro="1" readonly aria-readonly="true"')} /><datalist id="${dlid}">${opts}</datalist>`)
     }
     if (f.style === 'segmented' && (f.options || []).length <= 5) {
       const opts = f.options || []
       const cur = String(v ?? (opts[0]?.value ?? ''))
-      const btns = opts.map(o => `<button type="button" class="seg-btn${String(o.value) === cur ? ' on' : ''}" data-seg-val="${esc(o.value)}">${esc(o.label)}</button>`).join('')
-      return wrap(`<div class="seg" data-pf="${esc(f.key)}" data-pt="segmented">${btns}</div>`)
+      const ro = fieldReadOnly(f)
+      const btns = opts.map(o => `<button type="button" class="seg-btn${String(o.value) === cur ? ' on' : ''}" data-seg-val="${esc(o.value)}"${ro ? ' disabled' : ''}>${esc(o.label)}</button>`).join('')
+      return wrap(`<div class="seg" data-pf="${esc(f.key)}" data-pt="segmented" ${roAttr(f, 'data-ro="1" aria-readonly="true"')}>${btns}</div>`)
     }
     let optsHtml
     if ((f.options || []).some(o => o.group)) {
@@ -1678,26 +1726,33 @@ function profFieldHTML(f){
     } else {
       optsHtml = (f.options || []).map(o => `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')
     }
-    return wrap(`<select data-pf="${esc(f.key)}" data-pt="select">${optsHtml}</select>`)
+    return wrap(`<select data-pf="${esc(f.key)}" data-pt="select" ${roAttr(f, 'data-ro="1" disabled aria-readonly="true"')}>${optsHtml}</select>`)
   }
   if (f.type === 'textarea') {
-    return `<div class="field" style="flex-direction:column;align-items:stretch">${lbl}<textarea data-pf="${esc(f.key)}" data-pt="text" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''}>${esc(v ?? '')}</textarea>${help}</div>`
+    return `<div class="field" style="flex-direction:column;align-items:stretch">${lbl}<textarea data-pf="${esc(f.key)}" data-pt="text" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''} ${roAttr(f, 'data-ro="1" readonly aria-readonly="true"')}>${esc(v ?? '')}</textarea>${help}</div>`
   }
   if (f.type === 'maplist') {
-    return `<div class="field" style="flex-direction:column;align-items:stretch"><label>${esc(f.label)}</label><div class="maplist" data-pf="${esc(f.key)}" data-pt="maplist">${maplistHTML(f)}</div>${help}</div>`
+    return `<div class="field" style="flex-direction:column;align-items:stretch"><label>${esc(f.label)}</label><div class="maplist" data-pf="${esc(f.key)}" data-pt="maplist" ${roAttr(f, 'data-ro="1" aria-readonly="true"')}>${maplistHTML(f)}</div>${help}</div>`
   }
   if (f.type === 'mapcatalog') {
     return `<div class="field" style="flex-direction:column;align-items:stretch"><label>${esc(f.label)}</label><div class="field-help">Manage maps in the <b>Maps</b> tab.</div>${help}</div>`
   }
   if (f.type === 'mapsync') {
-    return `<div class="field" style="flex-direction:column;align-items:stretch"><label>${esc(f.label)}</label><div><button type="button" class="mini-btn" data-mapsync>⟳ Sync from Collection</button></div>${help}</div>`
+    return `<div class="field" style="flex-direction:column;align-items:stretch"><label>${esc(f.label)}</label><div><button type="button" class="mini-btn" data-mapsync${fieldReadOnly(f) ? ' disabled' : ''}>⟳ Sync from Collection</button></div>${help}</div>`
   }
   // number / text / unknown → input
   const type = f.type === 'number' ? 'number' : 'text'
-  const attrs = [f.min != null ? `min="${f.min}"` : '', f.max != null ? `max="${f.max}"` : '', f.step != null ? `step="${f.step}"` : '', f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''].filter(Boolean).join(' ')
+  const attrs = [
+    f.min != null ? `min="${f.min}"` : '',
+    f.max != null ? `max="${f.max}"` : '',
+    f.step != null ? `step="${f.step}"` : '',
+    f.placeholder ? `placeholder="${esc(f.placeholder)}"` : '',
+    fieldReadOnly(f) ? 'data-ro="1" readonly aria-readonly="true"' : '',
+  ].filter(Boolean).join(' ')
   return wrap(`<input data-pf="${esc(f.key)}" data-pt="${type}" type="${type}" value="${esc(v ?? '')}" ${attrs} />`)
 }
 function mapCatalogHTML(f, v){
+  const ro = fieldReadOnly(f)
   const opts = [...(f.options || [])]
   if (v != null && v !== '' && !opts.some(o => String(o.value) === String(v))) {
     const fb = String(v).startsWith('ws:') ? `Workshop ${String(v).slice(3)}` : String(v)
@@ -1708,10 +1763,10 @@ function mapCatalogHTML(f, v){
   return `
   <div class="mapcat" data-mapcat="${esc(f.key)}">
     <div class="import" style="margin-top:4px">
-      <div class="sel" style="flex:2"><select data-pf="${esc(f.key)}" data-pt="text">${optsHtml}</select></div>
-      <button type="button" class="mini-btn" data-mc-toggle>＋ WS</button>
-      ${f.addCollection ? `<button type="button" class="mini-btn" data-mc-import-toggle>⤓ Collection</button>` : ''}
-      <button type="button" class="mini-btn x" data-mc-remove${isWs ? '' : ' disabled'}>Remove</button>
+      <div class="sel" style="flex:2"><select data-pf="${esc(f.key)}" data-pt="text"${ro ? ' data-ro="1" disabled aria-readonly="true"' : ''}>${optsHtml}</select></div>
+      ${ro ? '' : `<button type="button" class="mini-btn" data-mc-toggle>＋ WS</button>`}
+      ${!ro && f.addCollection ? `<button type="button" class="mini-btn" data-mc-import-toggle>⤓ Collection</button>` : ''}
+      ${ro ? '' : `<button type="button" class="mini-btn x" data-mc-remove${isWs ? '' : ' disabled'}>Remove</button>`}
     </div>
     <div class="import" data-mc-add style="display:none">
       <input type="text" data-mc-id placeholder="Workshop ID (digits)" inputmode="numeric" />
@@ -1727,6 +1782,7 @@ function mapCatalogHTML(f, v){
   </div>`
 }
 function maplistHTML(f){
+  const ro = fieldReadOnly(f)
   const arr = Array.isArray(DS.values[f.key]) ? DS.values[f.key] : []
   const rows = arr.length
     ? arr.map((m, i) => `
@@ -1734,11 +1790,12 @@ function maplistHTML(f){
           <span class="idx">${String(i+1).padStart(2,'0')}</span>
           <span class="mn" title="${esc(m)}">${esc(m)}</span>
           ${i === 0 ? '<span class="cur">BOOT</span>' : ''}
-          <button type="button" class="mini-btn" data-ml-up="${i}"${i === 0 ? ' disabled' : ''}>↑</button>
+          ${ro ? '' : `<button type="button" class="mini-btn" data-ml-up="${i}"${i === 0 ? ' disabled' : ''}>↑</button>
           <button type="button" class="mini-btn" data-ml-down="${i}"${i === arr.length-1 ? ' disabled' : ''}>↓</button>
-          <button type="button" class="mini-btn x" data-ml-del="${i}">✕</button>
+          <button type="button" class="mini-btn x" data-ml-del="${i}">✕</button>`}
         </div>`).join('')
     : `<div class="note-block">No maps in rotation yet.</div>`
+  if (ro) return `<div data-ml-rows>${rows}</div>`
   const addable = f.options || []
   const grouped = addable.some(o => o.group)
   let addControl
@@ -1779,7 +1836,11 @@ function wireProfiles(){
       if (badge && !/unsaved/.test(badge.textContent)) badge.textContent += ' · unsaved'
     }
   }
-  body.querySelectorAll('[data-pf]').forEach(el => { el.addEventListener('input', markDirty); el.addEventListener('change', markDirty) })
+  body.querySelectorAll('[data-pf]').forEach(el => {
+    if (el.dataset.ro === '1') return
+    el.addEventListener('input', markDirty)
+    el.addEventListener('change', markDirty)
+  })
   const curName = () => (DS.list.find(p => p.id === DS.editId)?.name) || 'profile'
 
   const pick = body.querySelector('[data-prof-pick]')
@@ -1789,9 +1850,9 @@ function wireProfiles(){
   })
 
   // toggles
-  body.querySelectorAll('.tog[data-pf]').forEach(t => t.addEventListener('click', () => { t.classList.toggle('on'); markDirty() }))
+  body.querySelectorAll('.tog[data-pf]:not([data-ro])').forEach(t => t.addEventListener('click', () => { t.classList.toggle('on'); markDirty() }))
   // slider ↔ number mirror
-  body.querySelectorAll('.pf-range').forEach(rng => {
+  body.querySelectorAll('.pf-range:not([data-ro])').forEach(rng => {
     const slider = rng.querySelector('[data-pf-slider]'), num = rng.querySelector('[data-pf-num]')
     if (!slider || !num) return
     const val = rng.querySelector('[data-pf-val]'); const suffix = val ? val.textContent : ''
@@ -1801,7 +1862,7 @@ function wireProfiles(){
     num.addEventListener('input', () => { sync('num'); markDirty() })
   })
   // segmented
-  body.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('.seg-btn').forEach(btn => btn.addEventListener('click', () => {
+  body.querySelectorAll('.seg:not([data-ro])').forEach(seg => seg.querySelectorAll('.seg-btn').forEach(btn => btn.addEventListener('click', () => {
     seg.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('on')); btn.classList.add('on'); markDirty()
   })))
   body.querySelectorAll('[data-pf-reveal]').forEach(btn => btn.addEventListener('click', () => {
@@ -1830,11 +1891,22 @@ function wireProfiles(){
           const r = await dbApplyProfile(DS.id, DS.editId)
           if (liveApply) logLine(`Applied "${r?.name}" live ✓`)
           else {
-            logLine(`Applied "${r?.name}" ✓ — restarting to load it…`)
-            await dbServerAction(DS.id, 'reboot')
-            await new Promise(res => setTimeout(res, 2500))
-            await refreshActive()
-            logLine(`Restarted ✓ — now running "${r?.name}"`)
+            logLine(`Applied "${r?.name}" ✓`)
+            try {
+              logLine('Restarting to load profile…')
+              await dbServerAction(DS.id, 'reboot')
+              await new Promise(res => setTimeout(res, 2500))
+              try {
+                await refreshActive()
+                logLine(`Restarted ✓ — now running "${r?.name}"`)
+              } catch (e) {
+                logLine(`Status refresh — error: ${errMsg(e)}`)
+                toast(errMsg(e), 'err')
+              }
+            } catch (e) {
+              logLine(`Restart — error: ${errMsg(e)}`)
+              toast(errMsg(e), 'err')
+            }
           }
           await reloadProfileList(DS.editId)
         } catch (e) { logLine(`Apply — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
@@ -1891,6 +1963,7 @@ function wireProfiles(){
 
   // per-field widgets
   ;(DS.schema.groups || []).forEach(g => (g.fields || []).forEach(f => {
+    if (fieldReadOnly(f)) return
     if (f.type === 'maplist') wireMaplist(f, body, markDirty)
     if (f.type === 'select' && f.addWorkshop) wireMapCatalog(f, body, markDirty)
   }))
@@ -1904,6 +1977,7 @@ function wireProfiles(){
 }
 
 function wireMaplist(f, scope, markDirty){
+  if (fieldReadOnly(f)) return
   const wraps = [...scope.querySelectorAll('.maplist')].filter(w => w.dataset.pf === f.key)
   wraps.forEach(wrap => {
     const arr = () => (Array.isArray(DS.values[f.key]) ? DS.values[f.key] : (DS.values[f.key] = []))
@@ -1925,6 +1999,7 @@ function wireMaplist(f, scope, markDirty){
 }
 
 function wireMapCatalog(f, scope, markDirty){
+  if (fieldReadOnly(f)) return
   const wrap = [...scope.querySelectorAll('.mapcat')].find(w => w.dataset.mapcat === f.key)
   if (!wrap) return
   const sel = wrap.querySelector('select[data-pf]')
@@ -2070,7 +2145,13 @@ function wireMaps(mf, editable){
           resEl.innerHTML = `<div class="field-help">Imported ${r?.imported ?? 0} map(s)${r?.requiresRestart ? ' — Restart Hosting to download + mount them.' : ' — selectable now.'}</div>${list}`
           if (r?.requiresRestart) {
             const reb = await showConfirm({ title:'Restart to mount?', message:'This collection mounts at boot. Restart Hosting now to download + mount it?', yesLabel:'Restart', danger:false })
-            if (reb) { logLine('Restarting to mount collection…'); await dbServerAction(DS.id, 'reboot'); await new Promise(res => setTimeout(res, 2500)); await refreshActive() }
+            if (reb) {
+              logLine('Restarting to mount collection…')
+              await dbServerAction(DS.id, 'reboot')
+              await new Promise(res => setTimeout(res, 2500))
+              try { await refreshActive() }
+              catch (e) { logLine(`Status refresh — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+            }
           }
           try { DS.schema = await dbGetProfileSchema(DS.id); DS.cvarRef = DS.schema.cvarRef || DS.cvarRef } catch {}
           await refreshMapCatalog(); renderMaps()
@@ -2111,7 +2192,7 @@ function wireMaps(mf, editable){
     wireMaplist(mf.f, body, null)
     body.querySelector('[data-rot-save]')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
       if (DS.editId == null) { toast('Open a profile in the Profiles tab first.', 'err'); return }
-      try { await dbUpdateProfile(DS.id, DS.editId, { settings: DS.values }); logLine('Rotation saved to profile ✓') } catch (er) { toast(errMsg(er), 'err') }
+      try { await dbUpdateProfile(DS.id, DS.editId, { settings: DS.values }); DS.dirty = false; logLine('Rotation saved to profile ✓') } catch (er) { toast(errMsg(er), 'err') }
     }))
   } else if (mf) {
     wireMapCatalog(mf.f, body, null)

@@ -27,11 +27,12 @@ hypervisor, bare metal) works identically.
 - **Stack:** `docker compose` project **`gamertown`**, two files:
   `docker-compose.yml` (app + Caddy) + `servers.compose.yml` (5 games), with a
   project `.env` for interpolation.
-- **8 containers:** `gamertown-app-1`, `gamertown-caddy-1`,
+- **9 containers:** `gamertown-app-1`, `gamertown-caddy-1`,
   `gamertown-docker-proxy-1`, `minecraft`, `gmod`, `prophunt`, `counterstrike`,
-  `factorio`. All `restart: unless-stopped` (so they self-start on host boot — there
-  is no stack systemd unit).
-- **8 named volumes** hold all persistent state:
+  `factorio`, `bluemap`. All `restart: unless-stopped` (so they self-start on host boot —
+  there is no stack systemd unit).
+- **Named volumes** hold all persistent state (only `gt-data` + the game saves are
+  load-bearing for DR — the rest re-create on first boot):
 
   | Volume | Holds |
   |---|---|
@@ -39,6 +40,7 @@ hypervisor, bare metal) works identically.
   | `gamertown_mc-data` | Minecraft world (`world_GTown`) |
   | `gamertown_factorio-data` | Factorio saves (incl. `saves/_active.zip`) |
   | `gamertown_gmod-data` / `_ph-data` / `_cs2-data` | game-server installs (re-installable) |
+  | `gamertown_bluemap-data` / `_bluemap-web` | BlueMap render state + generated tiles (regenerated from the world; not backed up) |
   | `gamertown_caddy_data` / `_config` | Caddy's issued certs / state |
 
 - **Edge:** `gamertown.solutions` is **Cloudflare-proxied** → the origin is reached
@@ -138,8 +140,8 @@ git clone https://github.com/Cbarr-hub/Cbarr-hub.github.io /root/gamertown   # i
 **5. TLS cert** — already restored by the bundle in step 4. *(Fallback if you skipped the
 bundle: re-issue from Cloudflare → SSL/TLS → Origin Server → Create Certificate.)*
 
-**6. Bring the stack up** (creates the 8 volumes, builds images, starts installing
-game files):
+**6. Bring the stack up** (creates the volumes, builds images, starts installing
+game files; BlueMap begins rendering once the Minecraft world is in place):
 ```bash
 cd /root/gamertown
 docker compose -f docker-compose.yml -f servers.compose.yml up -d --build

@@ -18,8 +18,8 @@ as one **`docker compose` stack** on a single host, the "keeper":
 | Role | Docker host. The PVE box `pve` (192.168.1.109) is **only** the hypervisor — no Docker on it. |
 | Enter | `ssh root@192.168.1.241` (passwordless from `pve`) · `qm guest exec 106 -- …` |
 | Repo / stack | `/root/gamertown` (branch `main`); compose project `gamertown` = `docker-compose.yml` + `servers.compose.yml` + project `.env` |
-| Containers (8) | `gamertown-app-1` (Fastify), `gamertown-caddy-1` (Caddy :443), `gamertown-docker-proxy-1` (read-only Docker API → dashboard), `minecraft`, `gmod`, `prophunt`, `counterstrike`, `factorio` — all `restart: unless-stopped` |
-| State (volumes) | `gamertown_gt-data` (app DB + session-key), `_mc-data`, `_factorio-data`, `_gmod-data`, `_ph-data`, `_cs2-data`, `_caddy_data`, `_caddy_config` |
+| Containers (9) | `gamertown-app-1` (Fastify), `gamertown-caddy-1` (Caddy :443), `gamertown-docker-proxy-1` (read-only Docker API → dashboard), `minecraft`, `gmod`, `prophunt`, `counterstrike`, `factorio`, `bluemap` (3D Minecraft world map → reverse-proxied at `/map/`) — all `restart: unless-stopped` |
+| State (volumes) | `gamertown_gt-data` (app DB + session-key), `_mc-data`, `_factorio-data`, `_gmod-data`, `_ph-data`, `_cs2-data`, `_bluemap-data` (BlueMap render state + assets), `_bluemap-web` (generated map tiles), `_caddy_data`, `_caddy_config` |
 | Edge | `gamertown.solutions` via **Cloudflare** → BGW210 `:443` forward → keeper. Caddy terminates TLS with a **Cloudflare Origin cert** (`/etc/gamertown/certs/`) + gates the site with `forward_auth` → `/api/auth/gate`. No tunnel. |
 | Secrets | `/etc/gamertown/secrets.env` (app/Caddy) + `/root/gamertown/.env` (game interpolation) — neither in git. → DR doc |
 | Backups | **weekly** host timer `gt-db-backup.timer` (Mon 04:00) → `/usr/local/bin/gt-backup.sh` (app DB + Factorio save + Minecraft world → R2); age-encrypted secret bundle (`secrets.tar.age`) on-demand. Host-driven (the app/containers hold no R2 keys). → DR doc |
@@ -29,6 +29,20 @@ as one **`docker compose` stack** on a single host, the "keeper":
 locator; the `DockerClient` duck-types the small transport surface the connectors consume,
 so they're reused almost unchanged. RCON is spoken **over TCP**
 (`backend/src/servers/rcon-tcp.js`), not via an in-guest agent.
+
+**Minecraft world map (BlueMap).** The `bluemap` container renders a 3D web map from a
+**read-only** mount of the Minecraft world volume and serves it on `:8100` (not host-
+published). Caddy reverse-proxies it at `/map/*` behind the same `forward_auth` login gate
+as the rest of the panel, and `servers.html` embeds it in a **Map** tab. Starter config is
+bind-mounted from `docker/bluemap/config`; the first render downloads client assets and can
+take a while. See `servers.compose.yml` + `Caddyfile` for the gating + mount details.
+
+**App-side economy + presence (no new infra).** The app reads the host session-tracker's
+`players`/`server_sessions` rows to drive the panel's **Activity** view (live presence +
+join/leave timeline) and a **playtime economy** (migration 007): an in-process reconciler
+credits closed, linked sessions to site balances at boot + on a 5-minute timer, configurable
+from the admin **Economy** view. These run entirely inside `gamertown-app-1` — no extra
+container or host service. → [`backend.md`](backend.md).
 
 **Deploy:** on the keeper, `git pull` in `/root/gamertown`, then
 `docker compose -f docker-compose.yml -f servers.compose.yml up -d --build`.

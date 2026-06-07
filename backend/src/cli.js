@@ -1,10 +1,10 @@
-import argon2 from 'argon2';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { Writable } from 'node:stream';
 
 import { loadEnv } from './env.js';
 import { openDb, runMigrations } from './db.js';
+import { USERNAME_RE, createUser as insertUser, isDuplicateUserError } from './users.js';
 
 const env = loadEnv();
 const db = openDb(env.DB_PATH);
@@ -38,14 +38,8 @@ async function prompt(question) {
 
 async function createUser({ admin }) {
   const username = (await prompt('Username: ')).trim();
-  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(username)) {
+  if (!USERNAME_RE.test(username)) {
     console.error('Invalid username. Allowed: letters, digits, _ . - (max 64).');
-    process.exit(1);
-  }
-
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-  if (existing) {
-    console.error('Username already exists.');
     process.exit(1);
   }
 
@@ -66,15 +60,16 @@ async function createUser({ admin }) {
     process.exit(1);
   }
 
-  const hash = await argon2.hash(password, { type: argon2.argon2id });
-
-  const id = db.transaction(() => {
-    const r = db.prepare(
-      'INSERT INTO users (username, display_name, password_hash, is_admin) VALUES (?, ?, ?, ?)'
-    ).run(username, displayName, hash, admin ? 1 : 0);
-    db.prepare('INSERT INTO balances (user_id, dollars) VALUES (?, 5000)').run(r.lastInsertRowid);
-    return r.lastInsertRowid;
-  })();
+  let id;
+  try {
+    id = await insertUser(db, { username, displayName, password, isAdmin: admin });
+  } catch (err) {
+    if (isDuplicateUserError(err)) {
+      console.error('Username already exists.');
+      process.exit(1);
+    }
+    throw err;
+  }
 
   console.log(`Created ${admin ? 'admin' : 'user'} "${username}" (id=${id}).`);
 }

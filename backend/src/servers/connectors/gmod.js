@@ -84,18 +84,25 @@ export const GMOD_ACTION_CMDS = {
 // for walk speed (hl2_normspeed is HL2-only → "Unknown command" here, validated live;
 // sv_maxspeed only caps, and TTT/PH set speed in gamemode Lua), so a slider would be
 // misleading. Game Speed (host_timescale) + gravity are the honest movement knobs.
-export const GMOD_LIVE_CONTROLS = [
+export const GMOD_SHARED_LIVE_CONTROLS = [
   { key: 'gravity',     label: 'Gravity',       min: 0,    max: 1000, step: 25,   default: 600,  suffix: '' },
   { key: 'timescale',   label: 'Game Speed',    min: 0.25, max: 3,    step: 0.25, default: 1,    suffix: '×' },
+];
+
+export const TTT_LIVE_CONTROLS = [
+  ...GMOD_SHARED_LIVE_CONTROLS,
   // TTT next-round tuning (takes effect on the next round, not mid-round).
   { key: 'traitor_pct', label: 'Traitor Ratio', min: 0.05, max: 0.5,  step: 0.01, default: 0.25, suffix: '' },
   { key: 'round_limit', label: 'Rounds/Map',    min: 1,    max: 15,   step: 1,    default: 6,    suffix: '' },
 ];
 
+// Back-compat export for code that historically used this as the TTT control set.
+export const GMOD_LIVE_CONTROLS = TTT_LIVE_CONTROLS;
+
 // Build the RCON command for a range control's chosen value. timescale needs
 // sv_cheats. Clamps to the control's bounds so an out-of-range value can't be injected.
-export function gmodRangeCmd(key, value) {
-  const ctl = GMOD_LIVE_CONTROLS.find((c) => c.key === key);
+export function gmodRangeCmd(key, value, controls = TTT_LIVE_CONTROLS) {
+  const ctl = controls.find((c) => c.key === key);
   if (!ctl) return null;
   let n = Number(value);
   if (!Number.isFinite(n)) throw badSetting(`invalid value for ${ctl.label}`);
@@ -457,7 +464,7 @@ export class GmodConnector extends LinuxGsmConnector {
     return {
       available: true,
       actions: GMOD_LIVE_ACTIONS,
-      controls: GMOD_LIVE_CONTROLS, // panel renders these as sliders
+      controls: TTT_LIVE_CONTROLS, // panel renders these as sliders
       changeMap: true, // panel renders a live change-map control
       commandHint: 'any GMOD/TTT console command, e.g. ttt_round_limit 5, changelevel ttt_…, status',
     };
@@ -480,7 +487,7 @@ export class GmodConnector extends LinuxGsmConnector {
       if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
       return this.runRcon(`changelevel ${v}`);
     }
-    const range = gmodRangeCmd(key, value);
+    const range = gmodRangeCmd(key, value, TTT_LIVE_CONTROLS);
     if (range) return this.runRcon(range);
     const cmd = GMOD_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);

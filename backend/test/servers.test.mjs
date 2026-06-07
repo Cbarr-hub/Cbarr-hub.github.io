@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import Database from 'better-sqlite3';
 
-import { runMigrations } from '../src/db.js';
+import { testDb } from './test-db.js';
 import { getServer, listServers } from '../src/servers/registry.js';
 import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
@@ -46,15 +45,6 @@ function fakeDocker(overrides = {}) {
 }
 
 // In-memory DB with all migrations applied (backs the connector store).
-function testDb() {
-  const db = new Database(':memory:');
-  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-    name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch())
-  );`);
-  runMigrations(db);
-  return db;
-}
-
 // ── registry ──────────────────────────────────────────────────────────────────
 test('registry maps ids to their containers (all docker-backed)', () => {
   assert.equal(getServer('counterstrike').container, 'counterstrike');
@@ -94,6 +84,20 @@ test('listServers returns every server with normalized status', async () => {
   assert.ok(list.every((s) => s.gameStatus === 'hosting'));
   // the internal container locator is never leaked to the API
   assert.ok(list.every((s) => s.vmid === undefined && s.container === undefined));
+});
+
+test('listServers quick mode skips per-container stats', async () => {
+  const seen = [];
+  const svc = createServerService({ dockerClient: fakeDocker({
+    statusCurrent: (c, opts) => {
+      seen.push([c, opts]);
+      return Promise.resolve({ status: 'running', uptime: 10, cpu: opts?.stats === false ? null : 0.2, mem: 50, maxmem: 100 });
+    },
+  }) });
+  const quick = await svc.listServers({ mode: 'quick' });
+  assert.equal(quick.length, 5);
+  assert.ok(seen.every(([, opts]) => opts?.stats === false));
+  assert.ok(quick.every((s) => s.cpu == null));
 });
 
 test('listServers captures per-server errors without failing the whole list', async () => {

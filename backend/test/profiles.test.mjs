@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import Database from 'better-sqlite3';
 
-import { runMigrations } from '../src/db.js';
+import { testDb } from './test-db.js';
 import { createServerStore } from '../src/servers/store.js';
 import { GmodConnector } from '../src/servers/connectors/gmod.js';
 import { PropHuntConnector } from '../src/servers/connectors/prophunt.js';
@@ -10,18 +9,6 @@ import { PropHuntConnector } from '../src/servers/connectors/prophunt.js';
 // CS / Factorio / Minecraft profile logic is covered by the docker-*.test.mjs
 // files (the live Docker connectors + their shared *-profile.js modules). This
 // file covers the store + the GMOD-family connectors (GMOD/Prop Hunt) directly.
-
-// In-memory DB with all migrations applied. Deliberately does NOT set the
-// foreign_keys pragma (mirrors store.test.mjs) so the active-pointer cleanup is
-// exercised via the store's explicit DELETE, not FK cascade.
-function testDb() {
-  const db = new Database(':memory:');
-  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-    name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch())
-  );`);
-  runMigrations(db);
-  return db;
-}
 
 // Fake transport client: an in-memory file map for agentFileRead/Write, plus a
 // benign-success agentExec so runShell calls (e.g. CS's `mkdir`) work. Map-listing
@@ -266,7 +253,7 @@ test('prophunt: profileSchema groups Map/X2Z/Controls/Advanced', async () => {
   assert.deepEqual(schema.groups.map((g) => g.key), ['map', 'x2z', 'controls', 'advanced']);
   const [mapG, x2zG, ctrlG, advG] = schema.groups;
   assert.ok(mapG.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select'));
-  assert.ok(mapG.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text'));
+  assert.ok(mapG.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text' && f.readOnly === true));
   assert.ok(mapG.fields.some((f) => f.type === 'mapsync'));
   // X2Z group now mixes bool toggles + numeric cvars (round time, hide time, …).
   assert.ok(x2zG.fields.every((f) => f.type === 'bool' || f.type === 'number') && x2zG.fields.length >= 3);

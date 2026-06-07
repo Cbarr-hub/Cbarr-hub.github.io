@@ -1,7 +1,7 @@
 // Reviews ("testimony registry", reviews.html). Public + anonymous: a review
 // carries a free-text name, not a user id, so listing and posting need no login
 // (this preserves the page's original behavior, when it talked to Supabase
-// directly). POST is CSRF-protected and covered by the app's global rate limit.
+// directly). POST is CSRF-protected and route-rate-limited.
 
 export default async function reviewsRoutes(app) {
   app.get('/', async () => {
@@ -12,6 +12,9 @@ export default async function reviewsRoutes(app) {
 
   app.post('/', {
     onRequest: app.csrfProtection,
+    config: {
+      rateLimit: { max: 20, timeWindow: '1 minute' },
+    },
     schema: {
       body: {
         type: 'object',
@@ -24,10 +27,15 @@ export default async function reviewsRoutes(app) {
         additionalProperties: false,
       },
     },
-  }, async (req) => {
+  }, async (req, reply) => {
+    const name = req.body.name.trim();
+    const message = req.body.message.trim();
+    if (!name || message.length < 10) {
+      return reply.code(400).send({ error: 'invalid review' });
+    }
     const result = app.db.prepare(
       'INSERT INTO reviews (name, rating, message) VALUES (?, ?, ?)'
-    ).run(req.body.name.trim(), req.body.rating, req.body.message.trim());
+    ).run(name, req.body.rating, message);
     return { id: result.lastInsertRowid };
   });
 }

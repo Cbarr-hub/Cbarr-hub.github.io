@@ -19,6 +19,8 @@ export class ServerControlError extends Error {
 }
 
 const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame']);
+const LIST_CACHE_TTL_MS = { quick: 1_000, full: 3_000 };
+const NODE_CACHE_TTL_MS = 60_000;
 
 /**
  * @param {object} deps
@@ -44,6 +46,52 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   const connectors = dockerClient
     ? buildConnectors({ docker: dockerClient }, store)
     : null;
+  const listCache = new Map();
+  let nodeCache = null;
+
+  function clearStatusCache() {
+    listCache.clear();
+    // nodeStatus carries the volatile containers/containersRunning counts, so a
+    // power action must invalidate it too — otherwise the host dashboard's
+    // running count lags the per-server list by up to NODE_CACHE_TTL_MS.
+    nodeCache = null;
+  }
+
+  function listMode(opts = {}) {
+    return opts.mode === 'quick' ? 'quick' : 'full';
+  }
+
+  async function computeServerList(mode) {
+    return Promise.all(listServers().map(async (server) => {
+      const meta = publicMeta(server);
+      const connector = connectors.get(server.id);
+      if (!connector) return { ...meta, status: 'unknown', reason: 'backend not configured' };
+      try {
+        const status = await connector.status({ stats: mode !== 'quick' });
+        return { ...meta, ...status };
+      } catch (err) {
+        return { ...meta, status: 'unknown', error: err.message };
+      }
+    }));
+  }
+
+  async function cachedServerList(mode) {
+    const now = Date.now();
+    const cached = listCache.get(mode);
+    if (cached && (!cached.settled || now - cached.at < LIST_CACHE_TTL_MS[mode])) {
+      return cached.promise;
+    }
+    const entry = { at: now, settled: false, promise: null };
+    const promise = computeServerList(mode)
+      .catch((err) => {
+        if (listCache.get(mode)?.promise === promise) listCache.delete(mode);
+        throw err;
+      })
+      .finally(() => { entry.settled = true; });
+    entry.promise = promise;
+    listCache.set(mode, entry);
+    return promise;
+  }
 
   function connectorFor(id) {
     if (!connectors) {
@@ -77,34 +125,28 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     // Throws NOT_CONFIGURED when the backend isn't wired.
     async getNodeStatus() {
       if (dockerClient) {
-        return { kind: 'docker', ...(await dockerClient.nodeStatus()) };
+        const now = Date.now();
+        if (nodeCache && now - nodeCache.at < NODE_CACHE_TTL_MS) return nodeCache.value;
+        const value = { kind: 'docker', ...(await dockerClient.nodeStatus()) };
+        nodeCache = { at: now, value };
+        return value;
       }
       throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
     },
 
     // List every server with its current status. Status failures are captured
     // per-server so one unreachable VM doesn't blank the whole list.
-    async listServers() {
+    async listServers(opts = {}) {
       if (!connectors) {
         throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
       }
-      return Promise.all(listServers().map(async (server) => {
-        const meta = publicMeta(server);
-        const connector = connectors.get(server.id);
-        if (!connector) return { ...meta, status: 'unknown', reason: 'backend not configured' };
-        try {
-          const status = await connector.status();
-          return { ...meta, ...status };
-        } catch (err) {
-          return { ...meta, status: 'unknown', error: err.message };
-        }
-      }));
+      return cachedServerList(listMode(opts));
     },
 
-    async getStatus(id) {
+    async getStatus(id, opts = {}) {
       const server = getServer(id);
       if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
-      const status = await connectorFor(id).status();
+      const status = await connectorFor(id).status({ stats: listMode(opts) !== 'quick' });
       return { ...publicMeta(server), ...status };
     },
 
@@ -116,6 +158,7 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       }
       const connector = connectorFor(id);
       await connector[action]();
+      clearStatusCache();
       return { ok: true, action };
     },
 
@@ -130,6 +173,7 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return connectorFor(id).writeConfig(file, content);
     },
     runUpdate(id) {
+      clearStatusCache();
       return connectorFor(id).update();
     },
 
@@ -138,6 +182,7 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return connectorFor(id).getSettings();
     },
     setSettings(id, values) {
+      clearStatusCache();
       return connectorFor(id).setSettings(values);
     },
 
@@ -198,6 +243,7 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return connectorFor(id).deleteProfile(profileId);
     },
     applyProfile(id, profileId) {
+      clearStatusCache();
       return connectorFor(id).applyProfile(profileId);
     },
     captureProfile(id, name) {

@@ -9,6 +9,7 @@ const ID_PARAM = { type: 'string', pattern: '^[a-z0-9-]{1,32}$' };
 const WS_PARAM = { type: 'string', pattern: '^[0-9]{1,20}$' };
 const CONFIG_ID_PARAM = { type: 'integer', minimum: 1 };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
+const CONFIG_BODY_MAX = 16_000;
 
 // Map a typed error code → HTTP status. Covers the ServerControlError codes plus
 // the plain code-bearing errors the connectors' catalog/config/live ops throw.
@@ -25,6 +26,7 @@ const CODE_STATUS = {
   NO_RCON: 503,
   RCON_AUTH: 502,
   RCON_ERROR: 502,
+  DOCKER_TIMEOUT: 504,
 };
 
 // Build a `params` JSON-schema where every listed property is required.
@@ -74,12 +76,29 @@ export default async function serversRoutes(app) {
   };
 
   // ── list + status ───────────────────────────────────────────────────────────
-  route('get', '/', () => svc.listServers());
+  route('get', '/', (req) => svc.listServers({ mode: req.query.mode }), {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { mode: { type: 'string', enum: ['quick', 'full'] } },
+        additionalProperties: false,
+      },
+    },
+  });
 
   // Host (node) dashboard. Static '/node' is declared before '/:id' so the
   // parametric matcher can't shadow it.
   route('get', '/node', () => svc.getNodeStatus());
-  route('get', '/:id', (req) => svc.getStatus(req.params.id), { schema: P({ id: ID_PARAM }) });
+  route('get', '/:id', (req) => svc.getStatus(req.params.id, { mode: req.query.mode }), {
+    schema: {
+      ...P({ id: ID_PARAM }),
+      querystring: {
+        type: 'object',
+        properties: { mode: { type: 'string', enum: ['quick', 'full'] } },
+        additionalProperties: false,
+      },
+    },
+  });
 
   // ── power actions ─────────────────────────────────────────────────────────────
   route('post', '/:id/actions/:action', (req) => svc.doAction(req.params.id, req.params.action), {
@@ -165,7 +184,7 @@ export default async function serversRoutes(app) {
       ...P({ id: ID_PARAM }),
       body: {
         type: 'object',
-        properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, body: { type: 'string', maxLength: 100_000 } },
+        properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, body: { type: 'string', maxLength: CONFIG_BODY_MAX } },
         required: ['name'],
         additionalProperties: false,
       },
@@ -177,7 +196,7 @@ export default async function serversRoutes(app) {
       ...P({ id: ID_PARAM, configId: CONFIG_ID_PARAM }),
       body: {
         type: 'object',
-        properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, body: { type: 'string', maxLength: 100_000 } },
+        properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, body: { type: 'string', maxLength: CONFIG_BODY_MAX } },
         additionalProperties: false,
       },
     },

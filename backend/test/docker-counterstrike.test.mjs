@@ -1,20 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import net from 'node:net';
-import Database from 'better-sqlite3';
 
-import { runMigrations } from '../src/db.js';
+import { testDb } from './test-db.js';
 import { createServerStore } from '../src/servers/store.js';
 import * as cs from '../src/servers/connectors/counterstrike-profile.js';
 import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/counterstrike.js';
-
-function testDb() {
-  const db = new Database(':memory:');
-  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-    name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch()));`);
-  runMigrations(db);
-  return db;
-}
 
 const CS = { id: 'counterstrike', name: 'Counter-Strike', backend: 'docker', container: 'cs2', port: 27015 };
 
@@ -30,7 +21,7 @@ function encodeRcon(id, type, body) {
   return buf;
 }
 async function withRconCapture(run) {
-  let command = null;
+  const commands = [];
   const server = net.createServer((sock) => {
     let buf = Buffer.alloc(0);
     sock.on('data', (chunk) => {
@@ -44,14 +35,14 @@ async function withRconCapture(run) {
         buf = buf.subarray(4 + size);
         if (type === 3) { sock.write(encodeRcon(id, 2, '')); continue; } // auth ok
         if (id === 3) { sock.write(encodeRcon(3, 0, '')); continue; }    // END sentinel echo
-        if (command === null) command = body;                            // first real exec
+        commands.push(body);
       }
     });
   });
   await new Promise((res) => server.listen(0, '127.0.0.1', res));
   const { port } = server.address();
   try { await run({ port }); } finally { await new Promise((res) => server.close(res)); }
-  return { command };
+  return { command: commands[0] ?? null, commands };
 }
 
 // ── shared pure module ──────────────────────────────────────────────────────────
@@ -63,6 +54,9 @@ test('cs-profile validate: map (stock/ws), mode, hostname (no maxPlayers — env
   assert.throws(() => cs.validateProfileSettings({ ...base, map: 'Bad Map!' }), /invalid map/);
   assert.throws(() => cs.validateProfileSettings({ ...base, gameMode: 'nope' }), /game mode/);
   assert.throws(() => cs.validateProfileSettings({ ...base, hostname: 'a"b' }), /server name/);
+  assert.throws(() => cs.validateProfileSettings({ ...base, hostname: 'x'.repeat(cs.MAX_HOSTNAME_CHARS + 1) }), /server name too long/);
+  assert.throws(() => cs.validateProfileSettings({ ...base, rawConfig: 'x'.repeat(cs.MAX_RAW_CONFIG_CHARS + 1) }), /extra cvars too large/);
+  assert.throws(() => cs.validateProfileSettings({ ...base, rawConfig: 'x'.repeat(cs.MAX_RAW_CONFIG_LINE_CHARS + 1) }), /extra cvar lines/);
   // a stray maxPlayers is ignored, not persisted
   assert.equal(cs.validateProfileSettings({ ...base, maxPlayers: 99 }).maxPlayers, undefined);
 });
@@ -192,7 +186,7 @@ test('DockerCS update runs SteamCMD app_update 730 in-container', async () => {
   const calls = [];
   const client = { async agentExec(_c, { command }) { calls.push(command.join(' ')); return { pid: 'p' }; },
     async agentExecStatus() { return { exited: 1, exitcode: 0, 'out-data': 'ok', 'err-data': '' }; } };
-  const conn = new DockerCounterStrikeConnector(CS, client, createServerStore(testDb()));
+  const conn = new DockerCounterStrikeConnector(CS, client);
   const res = await conn.update();
   assert.equal(res.ok, true);
   assert.ok(calls.some((c) => c.includes('app_update 730')), 'steamcmd app_update 730 issued');
@@ -200,7 +194,7 @@ test('DockerCS update runs SteamCMD app_update 730 in-container', async () => {
 
 test('DockerCS live control is gated on CS2_RCON_PASSWORD', async () => {
   delete process.env.CS2_RCON_PASSWORD;
-  const conn = new DockerCounterStrikeConnector(CS, {}, createServerStore(testDb()));
+  const conn = new DockerCounterStrikeConnector(CS, {});
   assert.equal((await conn.getLive()).available, false);
   // apply pushes via RCON → without a password it fails fast (no socket opened)
   await assert.rejects(() => conn.applyProfileSettings(cs.defaultProfileSettings()), (e) => e.code === 'NO_RCON');
@@ -210,6 +204,7 @@ test('DockerCS live control is gated on CS2_RCON_PASSWORD', async () => {
   assert.equal(live.available, true);
   // getLive now advertises range sliders alongside the button actions
   assert.ok(Array.isArray(live.controls) && live.controls.some((c) => c.key === 'gravity'));
+  assert.ok(!live.actions.some((a) => a.key === 'apply_config'), 'no dead exec gamertown/active action');
   delete process.env.CS2_RCON_PASSWORD;
 });
 
@@ -219,7 +214,7 @@ test('DockerCS applyProfileSettings pushes Match-Rules cvars in the live RCON ba
   const { command } = await withRconCapture(async (server) => {
     process.env.CS2_RCON_PASSWORD = 'x';
     const conn = new DockerCounterStrikeConnector(
-      { ...CS, container: '127.0.0.1', rconPort: server.port }, {}, createServerStore(testDb()));
+      { ...CS, container: '127.0.0.1', rconPort: server.port }, {});
     try {
       await conn.applyProfileSettings({ ...cs.defaultProfileSettings(), maxRounds: 30, friendlyFire: 0, overtime: 1 });
     } finally { delete process.env.CS2_RCON_PASSWORD; }
@@ -230,4 +225,19 @@ test('DockerCS applyProfileSettings pushes Match-Rules cvars in the live RCON ba
   assert.ok(command.includes('bot_quota 0'), 'bot_quota pushed');
   assert.ok(command.includes('game_alias competitive') && command.includes('changelevel de_dust2'),
     'map + mode still in the batch');
+});
+
+test('DockerCS applyProfileSettings chunks rawConfig into bounded RCON batches', async () => {
+  const rawConfig = Array.from({ length: 20 }, (_, i) => `say ${'x'.repeat(180)}${i}`).join('\n');
+  const { commands } = await withRconCapture(async (server) => {
+    process.env.CS2_RCON_PASSWORD = 'x';
+    const conn = new DockerCounterStrikeConnector(
+      { ...CS, container: '127.0.0.1', rconPort: server.port }, {});
+    try {
+      await conn.applyProfileSettings({ ...cs.defaultProfileSettings(), rawConfig });
+    } finally { delete process.env.CS2_RCON_PASSWORD; }
+  });
+  assert.ok(commands.length > 1, 'large rawConfig should be split across RCON calls');
+  assert.ok(commands.every((cmd) => cmd.length <= 1800), 'each RCON batch stays bounded');
+  assert.ok(commands.at(-1).includes('changelevel de_dust2'), 'map change is sent last after cvar/raw batches');
 });

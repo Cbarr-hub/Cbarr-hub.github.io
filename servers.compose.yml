@@ -1,14 +1,10 @@
-# Game-server containers + the Docker seam, layered on top of docker-compose.yml.
+# Game-server containers, layered on top of docker-compose.yml.
 #
-# Bring the whole thing up with BOTH files (and point compose's variable
-# interpolation at the host secrets file so ${MINECRAFT_RCON_PASSWORD} resolves):
+# Prod normally uses tools/gt.sh prod. Manual compose from /root/gamertown relies
+# on project .env for game-service interpolation and docker-compose.yml env_file
+# entries for /etc/gamertown/secrets.env:
 #
-#   docker compose --env-file /etc/gamertown/secrets.env \
-#     -f docker-compose.yml -f servers.compose.yml up -d --build
-#
-# To actually route the panel at the Minecraft CONTAINER (instead of the VM),
-# flip its registry entry to: backend:'docker', container:'minecraft' (port 25565).
-# Keep the Proxmox VM until you've validated the container — see registry.js.
+#   docker compose -f docker-compose.yml -f servers.compose.yml up -d --build
 
 services:
   # Scoped Docker Engine proxy. The app talks to THIS (read-only socket, minimal
@@ -17,73 +13,62 @@ services:
     image: tecnativa/docker-socket-proxy
     restart: unless-stopped
     environment:
-      CONTAINERS: 1          # inspect/list containers (status)
-      EXEC: 1                # create/start exec (config read/write)
-      POST: 1                # allow the POSTs that start/stop/exec/restart need
-      INFO: 1                # GET /info — host facts for the container dashboard (read-only)
+      CONTAINERS: 1          # inspect/list containers
+      EXEC: 1                # create/start exec for config read/write
+      POST: 1                # start/stop/exec/restart
+      INFO: 1                # read-only host facts for the fleet dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  # Overlay onto the base `app`: give it a path to the engine via the proxy.
   app:
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
     depends_on:
       - docker-proxy
 
-  # Dockerized Minecraft (proof case). RCON is reachable by the app on the compose
-  # network as minecraft:25575; the game port is forwarded as today's 25565.
   minecraft:
     image: itzg/minecraft-server
     container_name: minecraft   # MUST equal the registry `container` locator: the
-                                # Docker Engine API finds containers by name, and compose
-                                # would otherwise name it <project>-minecraft-1.
+                                # Docker Engine API finds containers by name, else
+                                # compose names it <project>-minecraft-1 (applies to
+                                # every game container below — keep names in sync).
     restart: unless-stopped
     stdin_open: true
     tty: true
     environment:
       EULA: "TRUE"
       ENABLE_RCON: "true"
-      RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD:?set MINECRAFT_RCON_PASSWORD in the secrets file and pass --env-file}
-      MEMORY: "6G"                 # JVM heap
-      LEVEL: ${MC_LEVEL:-world}    # active world (from the project .env)
+      RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD:?set MINECRAFT_RCON_PASSWORD in project .env}
+      MEMORY: "6G"
+      LEVEL: ${MC_LEVEL:-world}
     volumes:
-      - mc-data:/data        # world + server.properties — survives redeploys
+      - mc-data:/data
     ports:
       - "25565:25565"
 
-  # Dockerized Factorio. SAVE_NAME=_active so the container always loads
-  # /factorio/saves/_active.zip — the connector stages the chosen world there. RCON
-  # is on 27015 (password auto-generated into /factorio/config/rconpw, which the
-  # app reads). To route the panel at it, flip the factorio registry entry to
-  # backend:'docker', container:'factorio'.
   factorio:
     image: factoriotools/factorio
-    container_name: factorio    # must equal the registry `container` locator (see minecraft)
+    container_name: factorio
     restart: unless-stopped
     environment:
       SAVE_NAME: _active
-      GENERATE_NEW_SAVE: "true"   # first boot only; ignored once _active.zip exists
+      GENERATE_NEW_SAVE: "true"
       LOAD_LATEST_SAVE: "false"
     volumes:
-      - factorio-data:/factorio   # saves + config + mods — survives redeploys
+      - factorio-data:/factorio
     ports:
       - "34197:34197/udp"         # game port (matches the registry)
       # RCON 27015 is NOT published: the app reaches it on the compose network as
       # factorio:27015. (Publishing it would also collide with the CS2 host port 27015.)
 
-  # Dockerized Counter-Strike 2 (env-driven image). Boot config is ENV here (the
-  # connector pushes profile changes LIVE via RCON; persistent defaults are these
-  # vars). Needs a GSLT (SRCDS_TOKEN) for a public server. RCON password is shared
-  # with the app via the secrets file (CS2_RCON_PASSWORD).
   counterstrike:
     image: joedwards32/cs2
-    container_name: counterstrike   # must equal the registry `container` locator (see minecraft)
+    container_name: counterstrike
     restart: unless-stopped
     environment:
       SRCDS_TOKEN: ${CS2_GSLT:-}
       CS2_SERVERNAME: Gamertown
-      CS2_RCONPW: ${CS2_RCON_PASSWORD:?set CS2_RCON_PASSWORD in the secrets file and pass --env-file}
+      CS2_RCONPW: ${CS2_RCON_PASSWORD:?set CS2_RCON_PASSWORD in project .env}
       CS2_PORT: "27015"
       CS2_MAXPLAYERS: "10"
       CS2_GAMEALIAS: competitive
@@ -94,26 +79,20 @@ services:
       - "27015:27015"
       - "27015:27015/udp"
 
-  # Dockerized GMOD/TTT + Prop Hunt — LinuxGSM in a container, ONE image built from
-  # docker/gmod/Dockerfile (they differ only by env + volume). GMOD + CS:S content
-  # install into the /data volume on first boot (~minutes, one-time). Boot identity
-  # (GSLT/RCON/port/gamemode/collection/map) is env; the panel-managed profile (TTT/PH
-  # cvars, mapcycle) lives in the volume. RCON is reached internally as gmod:27066 /
-  # prophunt:27067 (NOT host-published); only the game ports are published.
   gmod:
     build: { context: ., dockerfile: docker/gmod/Dockerfile }
     image: gamertown-gmod
     container_name: gmod
     restart: unless-stopped
-    stop_grace_period: 90s          # let LinuxGSM stop the server cleanly on SIGTERM
+    stop_grace_period: 90s
     environment:
       GAMEMODE: terrortown
       PORT: "27066"
       GSLT: ${GMOD_GSLT:-}
-      RCON_PASSWORD: ${GMOD_RCON_PASSWORD:?set GMOD_RCON_PASSWORD in the secrets file and pass --env-file}
+      RCON_PASSWORD: ${GMOD_RCON_PASSWORD:?set GMOD_RCON_PASSWORD in project .env}
       WORKSHOP_COLLECTION: ${GMOD_WORKSHOP_COLLECTION:-}
       DEFAULT_MAP: ${GMOD_DEFAULT_MAP:-gm_construct}
-      SKIP_CSS: ${SKIP_CSS:-}        # set 1 to skip the ~3GB CS:S pull (stock maps don't need it)
+      SKIP_CSS: ${SKIP_CSS:-}
     volumes:
       - gmod-data:/data
     ports:
@@ -121,7 +100,7 @@ services:
       - "27066:27066/udp"
 
   prophunt:
-    image: gamertown-gmod           # same image as gmod; only env + volume differ
+    image: gamertown-gmod
     build: { context: ., dockerfile: docker/gmod/Dockerfile }
     container_name: prophunt
     restart: unless-stopped
@@ -130,7 +109,7 @@ services:
       GAMEMODE: prop_hunt
       PORT: "27067"
       GSLT: ${PROPHUNT_GSLT:-}
-      RCON_PASSWORD: ${PROPHUNT_RCON_PASSWORD:?set PROPHUNT_RCON_PASSWORD in the secrets file and pass --env-file}
+      RCON_PASSWORD: ${PROPHUNT_RCON_PASSWORD:?set PROPHUNT_RCON_PASSWORD in project .env}
       WORKSHOP_COLLECTION: ${PROPHUNT_WORKSHOP_COLLECTION:-3737190377}
       DEFAULT_MAP: ${PROPHUNT_DEFAULT_MAP:-ph_restaurant}
       SKIP_CSS: ${SKIP_CSS:-}

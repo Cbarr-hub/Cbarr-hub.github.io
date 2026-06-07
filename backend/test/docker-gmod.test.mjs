@@ -4,7 +4,8 @@ import test from 'node:test';
 import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
 import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
 import {
-  GMOD_LIVE_ACTIONS, GMOD_ACTION_CMDS, GMOD_LIVE_CONTROLS, gmodRangeCmd,
+  GMOD_LIVE_ACTIONS, GMOD_ACTION_CMDS, GMOD_LIVE_CONTROLS,
+  GMOD_SHARED_LIVE_CONTROLS, TTT_LIVE_CONTROLS, gmodRangeCmd,
 } from '../src/servers/connectors/gmod.js';
 
 // In-container LinuxGSM paths (gsmDir = /data), derived by GmodConnector.paths.
@@ -156,6 +157,9 @@ test('Gmod live actions cover restart_round/cleanup/alltalk and ranges clamp', (
   const ctlKeys = GMOD_LIVE_CONTROLS.map((c) => c.key);
   assert.ok(ctlKeys.includes('traitor_pct'));
   assert.ok(ctlKeys.includes('round_limit'));
+  assert.deepEqual(GMOD_SHARED_LIVE_CONTROLS.map((c) => c.key), ['gravity', 'timescale']);
+  assert.ok(TTT_LIVE_CONTROLS.map((c) => c.key).includes('traitor_pct'));
+  assert.equal(gmodRangeCmd('traitor_pct', 0.25, GMOD_SHARED_LIVE_CONTROLS), null);
   // traitor_pct clamps to 0.05–0.5
   assert.equal(gmodRangeCmd('traitor_pct', 99), 'ttt_traitor_pct 0.5');
   assert.equal(gmodRangeCmd('traitor_pct', 0), 'ttt_traitor_pct 0.05');
@@ -231,6 +235,8 @@ test('PropHunt validates numeric PH_CVARS bounds and exposes PH sliders', async 
   assert.ok(ctlKeys.includes('gravity'));        // shared GMOD slider
   assert.ok(ctlKeys.includes('ph_round_time'));  // PH-specific slider
   assert.ok(ctlKeys.includes('ph_blind_time'));
+  assert.ok(!ctlKeys.includes('traitor_pct'));
+  assert.ok(!ctlKeys.includes('round_limit'));
   assert.ok(live.actions.some((a) => a.key === 'luckyballs_on'));
   delete process.env.PROPHUNT_RCON_PASSWORD;
 });

@@ -50,7 +50,7 @@ tests/                  test suite
 | TLS / edge | `gamertown.solutions` via **Cloudflare** → BGW210 `:443` forward to the keeper; **Cloudflare Origin cert** + Caddy `forward_auth` gate (no tunnel) |
 | Public IP | `104.177.95.216` (AT&T dynamic — may change) |
 
-**Deploy = on the keeper.** `/root/gamertown` is the only deployment checkout; a `git push` to GitHub does **not** update it — `git pull` on the keeper, then rebuild/restart the affected containers. *(The old host-clone/CT-103 two-clone split is retired.)*
+**Deploy = on the keeper.** `/root/gamertown` is the only deployment checkout; a `git push` to GitHub does **not** update it. Run `tools/gt.sh prod` on the keeper for the backup-first deploy path; raw `git pull` + compose is break-glass only. *(The old host-clone/CT-103 two-clone split is retired.)*
 
 ---
 
@@ -119,7 +119,7 @@ Runtime config is injected by Compose, **not** committed. Two host files (neithe
   `PROPHUNT_RCON_PASSWORD`. **age-backed-up** to R2.
 - **`/root/gamertown/.env`** (Compose project) → game containers: `GMOD_GSLT`,
   `PROPHUNT_GSLT`, `GMOD_WORKSHOP_COLLECTION`, `MC_LEVEL`, `SKIP_CSS`, + duplicate
-  RCON passwords. **Not** backed up (GSLTs regenerable at steamgameservers.com / appid 4000).
+  RCON passwords. **age-backed-up** in the encrypted secrets bundle.
 
 The app container also sets `HOST=0.0.0.0` (so Caddy reaches it across the compose
 network) + `NODE_ENV=production`; `backend/.env` still supplies the in-container

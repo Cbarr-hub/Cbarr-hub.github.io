@@ -5,7 +5,7 @@ import csrf from '@fastify/csrf-protection';
 
 import { loadEnv } from './env.js';
 import { openDb, runMigrations, purgeExpiredSessions } from './db.js';
-import { loadOrCreateSessionKey, SESSION_TTL_SECONDS } from './session.js';
+import { loadOrCreateSessionKey, SESSION_COOKIE, SESSION_TTL_SECONDS } from './session.js';
 import { attachSession } from './middleware/auth.js';
 import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
@@ -36,7 +36,7 @@ export async function buildApp(env = loadEnv()) {
 
   await app.register(secureSession, {
     key: loadOrCreateSessionKey(env.SESSION_KEY_PATH),
-    cookieName: 'gt_session',
+    cookieName: SESSION_COOKIE,
     cookie: {
       path: '/',
       httpOnly: true,

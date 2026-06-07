@@ -14,10 +14,11 @@
 import { Agent } from 'undici';
 
 export class DockerError extends Error {
-  constructor(message, { status, cause } = {}) {
+  constructor(message, { status, code, cause } = {}) {
     super(message);
     this.name = 'DockerError';
     this.status = status;
+    if (code) this.code = code;
     if (cause) this.cause = cause;
   }
 }
@@ -51,9 +52,10 @@ export class DockerClient {
   }
 
   // ── low-level request ───────────────────────────────────────────────────────
-  async #request(method, path, { body, raw = false } = {}) {
+  async #request(method, path, { body, raw = false, signal } = {}) {
     const headers = { Accept: raw ? 'application/vnd.docker.raw-stream' : 'application/json' };
     const init = { method, headers };
+    if (signal) init.signal = signal;
     if (this.dispatcher) init.dispatcher = this.dispatcher;
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -64,18 +66,37 @@ export class DockerClient {
     try {
       res = await this.fetch(`${this.base}${path}`, init);
     } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
+      }
       throw new DockerError(`docker request failed: ${err.message}`, { cause: err });
     }
 
     if (raw) {
-      const buf = new Uint8Array(await res.arrayBuffer());
+      let buf;
+      try {
+        buf = new Uint8Array(await res.arrayBuffer());
+      } catch (err) {
+        if (signal?.aborted || err?.name === 'AbortError') {
+          throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
+        }
+        throw err;
+      }
       if (!res.ok) {
         throw new DockerError(`docker ${method} ${path} -> ${res.status}`, { status: res.status });
       }
       return buf;
     }
 
-    const text = await res.text();
+    let text;
+    try {
+      text = await res.text();
+    } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
+      }
+      throw err;
+    }
     let parsed = null;
     if (text) { try { parsed = JSON.parse(text); } catch { /* non-JSON body */ } }
 
@@ -93,7 +114,7 @@ export class DockerClient {
   // ── status ──────────────────────────────────────────────────────────────────
   // Returns the qemu-shaped payload normalizeStatus() expects:
   //   { status: 'running'|'stopped', uptime, cpu, mem, maxmem }
-  async statusCurrent(container) {
+  async statusCurrent(container, { stats = true } = {}) {
     const info = await this.#request('GET', this.#c(container, '/json'));
     const running = Boolean(info?.State?.Running);
     const startedAt = info?.State?.StartedAt;
@@ -103,21 +124,35 @@ export class DockerClient {
     // non-essential (normalizeStatus defaults them to null), so never let it fail
     // the status call.
     let cpu = null, mem = null, maxmem = info?.HostConfig?.Memory || null;
-    try {
-      const s = await this.#request('GET', this.#c(container, '/stats?stream=false'));
-      mem = s?.memory_stats?.usage ?? mem;
-      maxmem = s?.memory_stats?.limit ?? maxmem;
-      cpu = cpuFraction(s);
-    } catch { /* stats unavailable — leave nulls */ }
+    if (stats) {
+      try {
+        const s = await this.#request('GET', this.#c(container, '/stats?stream=false'));
+        mem = s?.memory_stats?.usage ?? mem;
+        maxmem = s?.memory_stats?.limit ?? maxmem;
+        cpu = cpuFraction(s);
+      } catch { /* stats unavailable — leave nulls */ }
+    }
 
     return { status: running ? 'running' : 'stopped', uptime, cpu, mem, maxmem };
   }
 
   // ── power ───────────────────────────────────────────────────────────────────
-  start(container)    { return this.#request('POST', this.#c(container, '/start')); }
-  shutdown(container) { return this.#request('POST', this.#c(container, '/stop')); }    // graceful (SIGTERM→SIGKILL)
-  stop(container)     { return this.#request('POST', this.#c(container, '/kill')); }    // hard (SIGKILL) — force off
-  reboot(container)   { return this.#request('POST', this.#c(container, '/restart')); }
+  start(container)    { return this.#power(container, '/start',   [304]); }
+  shutdown(container) { return this.#power(container, '/stop',    [304]); }      // graceful (SIGTERM→SIGKILL)
+  stop(container)     { return this.#power(container, '/kill',    [304, 409]); } // hard (SIGKILL) — force off (409 = already stopped)
+  reboot(container)   { return this.#power(container, '/restart', [304]); }       // 409 (engine refused restart) must surface, not no-op
+
+  async #power(container, suffix, noopStatuses) {
+    try {
+      const result = await this.#request('POST', this.#c(container, suffix));
+      return result ?? { ok: true };
+    } catch (err) {
+      if (err instanceof DockerError && noopStatuses.includes(err.status)) {
+        return { ok: true, noop: true, status: err.status };
+      }
+      throw err;
+    }
+  }
 
   // ── host/engine info (container dashboard) ──────────────────────────────────
   // Docker has no single "node status" equivalent; /info gives static host facts (engine,
@@ -145,7 +180,7 @@ export class DockerClient {
   // NOTE: interactive stdin is NOT supported over the Engine exec API without a
   // raw socket hijack, so Docker game connectors do live/RCON I/O over TCP
   // instead (see the Docker Minecraft connector). Passing `input` throws.
-  async agentExec(container, { command, input } = {}) {
+  async agentExec(container, { command, input, timeoutMs = 120_000 } = {}) {
     if (!command) throw new Error('agentExec: command is required');
     if (input !== undefined) {
       const e = new Error('docker exec does not support stdin input; use direct TCP for interactive I/O');
@@ -154,27 +189,33 @@ export class DockerClient {
     }
     const argv = Array.isArray(command) ? command : ['/bin/sh', '-lc', String(command)];
 
-    const created = await this.#request('POST', this.#c(container, '/exec'), {
-      body: { Cmd: argv, AttachStdout: true, AttachStderr: true, AttachStdin: false, Tty: false },
-    });
-    const id = created?.Id;
-    if (!id) throw new DockerError('docker exec create returned no Id');
+    const timeout = timeoutSignal(timeoutMs);
+    try {
+      const created = await this.#request('POST', this.#c(container, '/exec'), {
+        body: { Cmd: argv, AttachStdout: true, AttachStderr: true, AttachStdin: false, Tty: false },
+        signal: timeout.signal,
+      });
+      const id = created?.Id;
+      if (!id) throw new DockerError('docker exec create returned no Id');
 
-    const stream = await this.#request('POST', `/exec/${id}/start`, {
-      body: { Detach: false, Tty: false }, raw: true,
-    });
-    let { stdout, stderr } = demux(stream);
+      const stream = await this.#request('POST', `/exec/${id}/start`, {
+        body: { Detach: false, Tty: false }, raw: true, signal: timeout.signal,
+      });
+      let { stdout, stderr } = demux(stream);
 
-    const truncated = stdout.length > MAX_OUTPUT || stderr.length > MAX_OUTPUT;
-    if (stdout.length > MAX_OUTPUT) stdout = stdout.slice(0, MAX_OUTPUT);
-    if (stderr.length > MAX_OUTPUT) stderr = stderr.slice(0, MAX_OUTPUT);
+      const truncated = stdout.length > MAX_OUTPUT || stderr.length > MAX_OUTPUT;
+      if (stdout.length > MAX_OUTPUT) stdout = stdout.slice(0, MAX_OUTPUT);
+      if (stderr.length > MAX_OUTPUT) stderr = stderr.slice(0, MAX_OUTPUT);
 
-    const inspect = await this.#request('GET', `/exec/${id}/json`);
-    this.execResults.set(id, {
-      exitcode: inspect?.ExitCode ?? null,
-      stdout, stderr, truncated,
-    });
-    return { pid: id };
+      const inspect = await this.#request('GET', `/exec/${id}/json`, { signal: timeout.signal });
+      this.execResults.set(id, {
+        exitcode: inspect?.ExitCode ?? null,
+        stdout, stderr, truncated,
+      });
+      return { pid: id };
+    } finally {
+      timeout.cancel();
+    }
   }
 
   async agentExecStatus(container, pid) {
@@ -269,6 +310,17 @@ function demux(buf) {
     i = end;
   }
   return { stdout, stderr };
+}
+
+function timeoutSignal(timeoutMs) {
+  const ms = Number(timeoutMs);
+  if (!Number.isFinite(ms) || ms <= 0) return { signal: undefined, cancel() {} };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return {
+    signal: ctrl.signal,
+    cancel() { clearTimeout(timer); },
+  };
 }
 
 // Minimal shell-quote-escape for a value going inside double quotes.

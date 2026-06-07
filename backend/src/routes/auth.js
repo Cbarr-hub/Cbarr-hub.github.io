@@ -1,6 +1,9 @@
 import argon2 from 'argon2';
 import { createSession, destroySession } from '../session.js';
 
+const MISSING_USER_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$aLrbt2x54aDsl/Q6P0L6dQ$QvQywnWrthKLgKmdaZpNYR3XYD2bBUWevBXMulpaOhc';
+
 const loginSchema = {
   body: {
     type: 'object',
@@ -18,7 +21,7 @@ export default async function authRoutes(app) {
   // Returns 204 if the session is valid, 302 to /signin.html if not.
   app.get('/gate', async (req, reply) => {
     if (req.currentUser) return reply.code(204).send();
-    return reply.redirect(302, '/signin.html');
+    return reply.redirect('/signin.html', 302);
   });
 
   app.post('/login', {
@@ -34,7 +37,7 @@ export default async function authRoutes(app) {
       'SELECT id, password_hash FROM users WHERE username = ?'
     ).get(username);
 
-    const hash = user?.password_hash ?? '$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy';
+    const hash = user?.password_hash ?? MISSING_USER_HASH;
     let valid = false;
     try {
       valid = await argon2.verify(hash, password);

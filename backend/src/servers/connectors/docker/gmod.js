@@ -17,6 +17,7 @@
 //     game cfg) — the docker/counterstrike.js pattern.
 
 import { rconExchange } from '../../rcon-tcp.js';
+import { containerGameLifecycle } from '../docker-base.js';
 import { GmodConnector } from '../gmod.js';
 
 // The in-container LinuxGSM instance root: the image installs the gmodserver instance
@@ -25,7 +26,7 @@ import { GmodConnector } from '../gmod.js';
 const DATA_DIR = '/data';
 
 export function dockerizeGmod(Base) {
-  return class extends Base {
+  return class extends containerGameLifecycle(Base) {
     gsmDir = DATA_DIR;
 
     // Registry locator for a docker entry is the container name.
@@ -46,13 +47,6 @@ export function dockerizeGmod(Base) {
       await this.client.agentFileWrite(this.vmid, path, content);
       return { name, ok: true };
     }
-
-    // Container == game: running is hosting; the game power actions map to container
-    // power (restart re-downloads + remounts the Workshop collection at boot).
-    async gameRunning() { return true; }
-    async startGame()   { await this.start();    return { ok: true }; }
-    async stopGame()    { await this.shutdown(); return { ok: true }; }
-    async restartGame() { await this.reboot();   return { ok: true }; }
 
     // Update the game client via LinuxGSM (SteamCMD under the hood), in-container.
     // `./gmodserver update` refreshes serverfiles; the panel then restarts the

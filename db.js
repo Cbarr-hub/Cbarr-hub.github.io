@@ -149,12 +149,12 @@ export async function dbAddReview({ name, rating, message }) {
 
 // ── game-server control (servers page, admin-only) ────────────────────────────
 
-export async function dbGetServers() {
-  return (await api('/servers')) ?? [];
+export async function dbGetServers({ mode } = {}) {
+  return (await api('/servers', { query: { mode } })) ?? [];
 }
 
-export async function dbGetServerStatus(id) {
-  return api(`/servers/${encodeURIComponent(id)}`);
+export async function dbGetServerStatus(id, { mode } = {}) {
+  return api(`/servers/${encodeURIComponent(id)}`, { query: { mode } });
 }
 
 // Host-level Proxmox node snapshot (CPU/RAM/load/uptime) for the dashboard.

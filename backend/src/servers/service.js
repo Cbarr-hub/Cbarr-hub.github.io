@@ -62,8 +62,10 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   }
 
   async function computeServerList(mode) {
+    // One cheap query for all servers' "playing now" counts (host-tracked).
+    const online = store ? store.onlineCountsBySlug() : {};
     return Promise.all(listServers().map(async (server) => {
-      const meta = publicMeta(server);
+      const meta = { ...publicMeta(server), online: online[server.id] ?? 0 };
       const connector = connectors.get(server.id);
       if (!connector) return { ...meta, status: 'unknown', reason: 'backend not configured' };
       try {
@@ -267,6 +269,16 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     listSessions(id, opts = {}) {
       if (!getServer(id)) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
       return store ? store.listSessions(id, opts) : [];
+    },
+
+    // ── presence + activity (read-only; written host-side) ───────────────────
+    // Who's online across every hosted server, right now.
+    listOnline() {
+      return store ? store.listOnline() : [];
+    },
+    // Newest-first join/leave feed merged across all hosted servers (timeline).
+    recentActivity(opts = {}) {
+      return store ? store.recentSessions(opts) : [];
     },
   };
 }

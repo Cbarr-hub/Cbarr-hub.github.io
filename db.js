@@ -266,6 +266,16 @@ export async function dbGetServerSessions(id, { limit } = {}) {
   return (await api(`/servers/${encodeURIComponent(id)}/sessions${qs}`)) ?? [];
 }
 
+// ── presence + cross-game activity timeline ───────────────────────────────────
+// Who's online across every hosted server, right now.
+export async function dbGetOnline() {
+  return (await api('/servers/online')) ?? [];
+}
+// Newest-first join/leave feed merged across all servers (the Activity view).
+export async function dbGetActivity({ limit } = {}) {
+  return (await api('/servers/activity', { query: { limit } })) ?? [];
+}
+
 // ── startup-config profiles (named, structured loadouts) ──────────────────────
 export async function dbListProfiles(id) {
   return api(`/servers/${encodeURIComponent(id)}/profiles`);
@@ -316,6 +326,37 @@ export async function dbAdminTableRows(table, { limit, offset, sort, dir, q } = 
 
 export async function dbAdminQuery(sql) {
   return api('/admin/db/query', { query: { sql } });
+}
+
+// ── playtime economy (admin-only) ─────────────────────────────────────────────
+// The earning rate ($/hour) + per-session cap, the seen-players roster with their
+// linked site account, and the admin actions to set the rate / link / credit now.
+export async function dbGetEconomySettings() {
+  return api('/admin/economy/settings');
+}
+
+export async function dbSetEconomySettings(patch) {
+  return api('/admin/economy/settings', { method: 'PUT', body: patch });
+}
+
+export async function dbGetEconomyPlayers() {
+  return (await api('/admin/economy/players')) ?? [];
+}
+
+export async function dbGetEconomyUsers() {
+  return (await api('/admin/economy/users')) ?? [];
+}
+
+// userId: a users.id, or null to unlink.
+export async function dbLinkPlayerAccount(playerId, userId) {
+  return api(`/admin/economy/players/${encodeURIComponent(playerId)}/account`, {
+    method: 'PUT',
+    body: { userId },
+  });
+}
+
+export async function dbCreditPlaytime() {
+  return api('/admin/economy/credit', { method: 'POST' });
 }
 
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────

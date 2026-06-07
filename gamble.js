@@ -1,3 +1,29 @@
+/**
+ * gamble.js — front-end controller for the Gamertown gambling section (gamble.html).
+ *
+ * Single ES-module entry point (loaded via <script type="module"> in gamble.html) that
+ * drives four fictional-dollar games behind one shared bankroll and bet UI:
+ *   - High Card   — one card each, higher rank wins (push on a tie).
+ *   - Blackjack   — vs. dealer, with split support and 3:2 naturals.
+ *   - Roulette    — single-zero wheel, color (1:1) or number (35:1) bets.
+ *   - Slots       — 3x5 reels with "Crazy Mode" free spins, sticky wilds, and cascades.
+ *
+ * Responsibilities:
+ *   - Owns the live UI/game `state` object and a single `render()` that reflects it.
+ *   - Animates the table (card deal/flip, reel spins, roulette wheel) and plays the
+ *     WebAudio-synthesised sound effects.
+ *   - Settles each round, mutates the bankroll, and persists balance + a structured
+ *     gambling event (via gamble-persistence.mjs -> the backend), then refreshes the
+ *     dashboard / leaderboard / activity feed.
+ *
+ * Game MATH is intentionally NOT here. Slot symbols, paylines, payouts, RTP, scatter
+ * rules, and grid evaluation/settlement all live in the dep-free slot-rules.mjs (shared
+ * with the test/math harness). This file only renders/animates what those helpers return;
+ * never re-declare that math locally or the two copies will silently diverge.
+ *
+ * Event-name convention used in persisted events: the slug "high-card" maps to the event
+ * game key "high_card" (see gameEventKey); the other three games use their own slug.
+ */
 import { requireAuth, updateNavbar } from './auth.js';
 import {
   DEFAULT_BALANCE,
@@ -25,11 +51,17 @@ import {
   winTierTitle
 } from './slot-rules.mjs?v=cascade-1';
 
+// Gate the page: bounce to sign-in if unauthenticated, else hydrate the navbar.
 const activeUsername = await requireAuth('signin.html');
 updateNavbar(activeUsername);
 
+// ===========================================================================
+// Constants & state
+// ===========================================================================
+
 const SOUND_STORAGE_KEY = "gambleSoundEnabled";
 
+/** Read the persisted "sound on/off" preference (defaults to on; tolerant of blocked storage). */
 function readSoundSetting() {
   try {
     return window.localStorage.getItem(SOUND_STORAGE_KEY) !== "off";
@@ -38,6 +70,8 @@ function readSoundSetting() {
   }
 }
 
+// Card ranks. `value` is the High-Card ordering (Ace high = 14); `blackjack` is the
+// Blackjack point value (face cards = 10, Ace = 11; demoted to 1 by handTotal when busting).
 const ranks = [
   { label: "2", value: 2, blackjack: 2 },
   { label: "3", value: 3, blackjack: 3 },
@@ -60,6 +94,9 @@ const suits = [
   { label: "C", color: "black" }
 ];
 
+// The single mutable source of UI/game truth. `render()` reads this; every game action
+// mutates it then calls `render()`. Grouped (loosely): shared bankroll/bet + per-game
+// (blackjack hands & split, roulette wheel angles, slots free-spin / Crazy-Mode bonus).
 const state = {
   username: activeUsername,
   balanceLoading: true,
@@ -107,6 +144,9 @@ const state = {
   soundEnabled: readSoundSetting()
 };
 
+// ---------------------------------------------------------------------------
+// Cached DOM references (resolved once; the markup is static in gamble.html).
+// ---------------------------------------------------------------------------
 const creditsEl = document.getElementById("credits");
 const betEl = document.getElementById("bet-value");
 const streakEl = document.getElementById("streak");
@@ -191,38 +231,18 @@ const blackjackCards = {
   dealer: [],
   player: []
 };
+// Single-zero (European) wheel pocket order, clockwise from 0. Index here = physical
+// pocket position, used to compute the wheel/ball stop angle in spinRoulette().
 const rouletteNumbers = [
   0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
   5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
 ];
 const redNumbers = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-const slotSymbols = [
-  { id: "cherry", label: "Cherries", icon: "🍒", tier: "common", weight: 17 },
-  { id: "banana", label: "Banana", icon: "🍌", tier: "common", weight: 17 },
-  { id: "apple", label: "Apple", icon: "🍎", tier: "common", weight: 15 },
-  { id: "hundred", label: "Hundreds", icon: "💯", tier: "mid", weight: 12 },
-  { id: "diamond", label: "Diamond", icon: "💎", tier: "mid", weight: 10 },
-  { id: "seven", label: "Seven", icon: "7", tier: "premium", weight: 7 },
-  { id: "jackpot", label: "Jackpot", icon: "🎰", tier: "jackpot", weight: 4 },
-  { id: "scatter", label: "Scatter", icon: "⭐", tier: "scatter", weight: 3 },
-  { id: "wild", label: "Wild", icon: "⚡", tier: "wild", weight: 9 },
-  { id: "gold", label: "Gold", icon: "🏆", tier: "jackpot", weight: 3 }
-];
-const slotSymbolMap = Object.fromEntries(slotSymbols.map((symbol) => [symbol.id, symbol]));
-const slotPaylines = [
-  { id: "top", name: "Top", rows: [0, 0, 0, 0, 0] },
-  { id: "middle", name: "Middle", rows: [1, 1, 1, 1, 1] },
-  { id: "bottom", name: "Bottom", rows: [2, 2, 2, 2, 2] },
-  { id: "v", name: "V", rows: [0, 1, 2, 1, 0] },
-  { id: "inverted-v", name: "Inv V", rows: [2, 1, 0, 1, 2] }
-];
-const slotPayouts = {
-  common: { 3: 0.5, 4: 1, 5: 2 },
-  mid: { 3: 1, 4: 3, 5: 6 },
-  premium: { 3: 2, 4: 8, 5: 20 },
-  jackpot: { 3: 4, 4: 15, 5: 50 },
-  wild: { 3: 2, 4: 8, 5: 20 }
-};
+// Slot symbols, paylines, payouts, and per-line evaluation live in slot-rules.mjs
+// (imported above as slotRulesSymbols / slotRulesSymbolMap / slotRulesPaylines and the
+// evaluate*/generate*/settle* helpers). That module is the single source of truth shared
+// with the math/test harness, so it must NOT be re-declared here — a local copy silently
+// drifts out of sync (different symbol weights, missing the "crown"/royal tier, etc.).
 const gameMeta = {
   "high-card": {
     title: "High Card",
@@ -247,27 +267,37 @@ const cardBackBrandMarkup = `
     <img src="./gamertown_globe_logo_transparent.png" alt="" />
   </span>
 `;
+// Tunables for slots "Crazy Mode" (free-spin bonus): per-spin chance of seeding a new
+// sticky wild, the sticky-wild cap, and how much each win nudges the bonus multiplier.
 const crazyModeConfig = {
   stickyWildChance: 0.32,
   maxStickyWilds: 6,
   winMultiplierStep: 1
 };
 
+/** Crazy-Mode cascade chain multiplier: 1x at chain 0, +0.5x per chained win (capped at 4 -> 3x). */
 function computeChainMult(chain) {
   if (chain <= 0) return 1;
   return 1 + Math.min(chain, 4) * 0.5;
 }
 
+/** Thin wrapper over slot-rules.mjs cascadeGrid (drops the rng arg, uses Math.random). */
 function cascadeGrid(grid, winningCells, stickyWildPositions = []) {
   return cascadeSlotRulesGrid(grid, winningCells, stickyWildPositions);
 }
 
+// ===========================================================================
+// Generic helpers (animation + audio)
+// ===========================================================================
+
+/** Restart a CSS animation by toggling its class with a forced reflow in between. */
 function replayAnimation(element, className) {
   element.classList.remove(className);
   void element.offsetWidth;
   element.classList.add(className);
 }
 
+/** Remove an animation class after `delay` ms (lets a one-shot animation finish). */
 function clearAnimationClass(element, className, delay = 900) {
   window.setTimeout(() => element.classList.remove(className), delay);
 }
@@ -279,6 +309,12 @@ const audioState = {
   unsupported: false
 };
 
+/**
+ * Lazily create (and resume) the shared WebAudio graph:
+ *   oscillators/noise -> master gain -> dynamics compressor -> destination.
+ * Returns null when sound is muted or the browser lacks AudioContext (sets `unsupported`).
+ * Auto-resume covers browsers that start the context suspended until a user gesture.
+ */
 function audioContext() {
   if (audioState.unsupported || !state.soundEnabled) {
     return null;
@@ -314,10 +350,12 @@ function audioContext() {
   return audioState.context;
 }
 
+/** Kick the AudioContext alive from a user gesture (browsers block audio until then). */
 function unlockAudio() {
   audioContext();
 }
 
+/** Apply an attack/decay gain envelope (exponential ramp up to `gain`, then down to ~0). */
 function envelope(gainNode, start, duration, gain = 0.08, attack = 0.01) {
   const peak = Math.max(0.0001, gain);
   const end = start + Math.max(attack + 0.02, duration);
@@ -327,6 +365,11 @@ function envelope(gainNode, start, duration, gain = 0.08, attack = 0.01) {
   gainNode.gain.exponentialRampToValueAtTime(0.0001, end);
 }
 
+/**
+ * Play one synthesised oscillator note. `options`: { type, to (glide target Hz), detune,
+ * gain, attack, filter:{ type, frequency, q } }. Self-cleans its nodes on "ended". No-op
+ * when audio is unavailable/muted.
+ */
 function tone(frequency, delay = 0, duration = 0.12, options = {}) {
   const context = audioContext();
   if (!context || !audioState.master) {
@@ -369,6 +412,10 @@ function tone(frequency, delay = 0, duration = 0.12, options = {}) {
   }, { once: true });
 }
 
+/**
+ * Play a filtered white-noise burst (for clicks/shuffles/whooshes). `options`: { type
+ * (filter type), frequency, q, gain, attack }. Self-cleans on "ended"; no-op when muted.
+ */
 function noise(delay = 0, duration = 0.1, options = {}) {
   const context = audioContext();
   if (!context || !audioState.master) {
@@ -403,6 +450,7 @@ function noise(delay = 0, duration = 0.1, options = {}) {
   }, { once: true });
 }
 
+/** Cascade of bright random chimes — the "coins falling" payout flourish. */
 function coinChimes(count = 5, delay = 0) {
   for (let index = 0; index < count; index += 1) {
     const offset = delay + index * 0.045;
@@ -412,6 +460,11 @@ function coinChimes(count = 5, delay = 0) {
   }
 }
 
+/**
+ * Central sound-effect dispatcher: maps a named cue ("card", "win", "slot_spin", ...) to a
+ * recipe of tone()/noise()/coinChimes() calls. `details` carries per-cue params (e.g.
+ * `column` for the slot reel-stop pitch, `delay` for staggered card deals).
+ */
 function playSound(name, details = {}) {
   if (!state.soundEnabled || audioState.unsupported) {
     return;
@@ -511,6 +564,7 @@ function playSound(name, details = {}) {
   }
 }
 
+/** Toggle sound, persist the preference, play the appropriate cue, and re-render the UI. */
 function setSoundEnabled(enabled) {
   const nextEnabled = Boolean(enabled);
   if (!nextEnabled && state.soundEnabled) {
@@ -529,6 +583,11 @@ function setSoundEnabled(enabled) {
   render();
 }
 
+// ===========================================================================
+// Visual effects & result messaging
+// ===========================================================================
+
+/** Update the central message banner (title + optional sub-copy) with a flash animation. */
 function showResult(title, copy = "") {
   titleEl.textContent = title;
   copyEl.textContent = copy;
@@ -536,10 +595,12 @@ function showResult(title, copy = "") {
   replayAnimation(messageEl, "flash");
 }
 
+/** Briefly pulse the given scoreboard stat tiles (highlights what just changed). */
 function pulseStats(...stats) {
   stats.forEach((stat) => replayAnimation(stat, "pulse"));
 }
 
+/** Clear all transient win/loss styling, particles, and animation classes between rounds. */
 function resetEffects() {
   messageEl.classList.remove("impact");
   dealerZoneEl.classList.remove("outcome-win", "outcome-loss");
@@ -564,6 +625,7 @@ function resetEffects() {
   playerTotalEl.classList.remove("winner", "loser");
 }
 
+/** Spray a fixed pattern of sparkle particles over the table, auto-cleared after ~1s. */
 function createSparkles() {
   effectLayerEl.innerHTML = "";
   const positions = [
@@ -583,6 +645,12 @@ function createSparkles() {
   }, 1050);
 }
 
+/**
+ * Play the combined audio + visual feedback for a round outcome.
+ * @param {"win"|"loss"|"push"} result  drives sparkles / impact shake.
+ * @param {"player"|"dealer"|null} winner  blackjack zone highlighting (null for non-BJ games).
+ * @param {string|false} soundName  cue to play; pass false to suppress sound (defaults to `result`).
+ */
 function playOutcomeEffect(result, winner = null, soundName = result) {
   if (soundName) {
     playSound(soundName);
@@ -614,10 +682,16 @@ function playOutcomeEffect(result, winner = null, soundName = result) {
   }
 }
 
+/** Highest whole bet the bankroll allows (bets are in $5 increments). */
 function maxBet() {
   return Math.floor(state.credits / 5) * 5;
 }
 
+// ===========================================================================
+// Roulette — wheel geometry & UI
+// ===========================================================================
+
+/** Roulette pocket colour for a number: 0 is green, otherwise red/black per redNumbers. */
 function rouletteColor(number) {
   if (number === 0) {
     return "green";
@@ -625,22 +699,30 @@ function rouletteColor(number) {
   return redNumbers.has(number) ? "red" : "black";
 }
 
+/** Wrap any angle into [0, 360). */
 function normalizeAngle(angle) {
   return ((angle % 360) + 360) % 360;
 }
 
+/**
+ * Next absolute rotation that lands on `targetAngle` going clockwise (increasing),
+ * after at least `spins` full turns from `current`. Keeps the CSS transform monotonic
+ * so the wheel always spins forward rather than snapping backward.
+ */
 function nextClockwiseRotation(current, targetAngle, spins) {
   const currentAngle = normalizeAngle(current);
   const target = normalizeAngle(targetAngle);
   return current + spins * 360 + normalizeAngle(target - currentAngle);
 }
 
+/** Counter-clockwise counterpart of nextClockwiseRotation (used for the ball track). */
 function nextCounterClockwiseRotation(current, targetAngle, spins) {
   const currentAngle = normalizeAngle(current);
   const target = normalizeAngle(targetAngle);
   return current - spins * 360 - normalizeAngle(currentAngle - target);
 }
 
+/** Build the wheel number labels and the 1-36 colour-coded betting board (run once at boot). */
 function initializeRouletteUi() {
   const segment = 360 / rouletteNumbers.length;
   rouletteWheelEl.innerHTML = "";
@@ -666,84 +748,39 @@ function initializeRouletteUi() {
   roulettePickButtons = Array.from(document.querySelectorAll("[data-roulette-type]"));
 }
 
+// ===========================================================================
+// Slots — math wrappers, grid rendering, Crazy Mode
+//
+// The math is owned by slot-rules.mjs; the wrappers below just adapt its signatures
+// to this file's call sites. Everything else here is presentation/state for the reels.
+// ===========================================================================
+
+/** Pick a weighted random symbol (delegates to slot-rules.mjs). */
 function weightedSlotSymbol() {
   return weightedSlotRulesSymbol();
 }
 
+/** Generate a fresh 3x5 grid with optional scatter/near-miss assists (delegates to slot-rules.mjs). */
 function generateSlotGrid(options = {}) {
   return generateSlotRulesGrid(options);
 }
 
-function evaluateSlotLineRun(grid, payline, direction = "left") {
-  const lineSymbols = payline.rows.map((row, column) => grid[row][column]);
-  const columns = direction === "right" ? [4, 3, 2, 1, 0] : [0, 1, 2, 3, 4];
-  const orderedSymbols = columns.map((column) => lineSymbols[column]);
-  const target = orderedSymbols.find((symbolId) => symbolId !== "wild" && symbolId !== "scatter") || "wild";
-
-  if (target === "scatter") {
-    return null;
-  }
-
-  let count = 0;
-  for (const symbolId of orderedSymbols) {
-    if (symbolId === target || symbolId === "wild") {
-      count += 1;
-    } else {
-      break;
-    }
-  }
-
-  if (count < 3) {
-    return null;
-  }
-
-  const symbol = slotRulesSymbolMap[target];
-  const tier = target === "wild" ? "wild" : symbol.tier;
-  const multiplier = slotPayouts[tier]?.[count] || 0;
-
-  if (!multiplier) {
-    return null;
-  }
-
-  return {
-    id: direction === "right" ? `${payline.id}-right` : payline.id,
-    paylineId: payline.id,
-    name: direction === "right" ? `${payline.name} R` : payline.name,
-    direction,
-    symbol: target,
-    symbols: orderedSymbols.slice(0, count),
-    count,
-    multiplier,
-    cells: columns.slice(0, count).map((column) => ({ row: payline.rows[column], column }))
-  };
-}
-
-function evaluateSlotLine(grid, payline) {
-  const leftWin = evaluateSlotLineRun(grid, payline, "left");
-  const rightWin = evaluateSlotLineRun(grid, payline, "right");
-
-  if (!leftWin) {
-    return rightWin;
-  }
-  if (!rightWin) {
-    return leftWin;
-  }
-
-  return leftWin.multiplier >= rightWin.multiplier ? leftWin : rightWin;
-}
-
+/** Evaluate a grid into line/scatter wins + bonus triggers (delegates to slot-rules.mjs). */
 function evaluateSlotGrid(grid) {
   return evaluateSlotRulesGrid(grid);
 }
 
+/** Stable "row-column" key for sticky-wild bookkeeping. */
 function stickyWildKey(row, column) {
   return `${row}-${column}`;
 }
 
+/** Set of "row-column" keys for the currently locked sticky wilds. */
 function stickyWildSet() {
   return new Set(state.slotCrazyWilds.map(({ row, column }) => stickyWildKey(row, column)));
 }
 
+/** Lock a cell as a sticky wild if not already locked and under the cap. Returns whether it was added. */
 function addStickyWild(row, column) {
   const existing = stickyWildSet();
   const key = stickyWildKey(row, column);
@@ -755,6 +792,7 @@ function addStickyWild(row, column) {
   return true;
 }
 
+/** After a Crazy-Mode spin, promote any wilds that landed on the grid into sticky wilds. */
 function collectCrazyWilds(grid) {
   grid.forEach((rowValues, row) => {
     rowValues.forEach((symbolId, column) => {
@@ -765,6 +803,11 @@ function collectCrazyWilds(grid) {
   });
 }
 
+/**
+ * Overlay locked sticky wilds onto a freshly generated grid for a Crazy-Mode (sticky) spin,
+ * and—by chance and under the cap—seed one new sticky wild on an eligible non-scatter cell.
+ * Returns a new grid; does not mutate the input.
+ */
 function prepareCrazyModeGrid(grid) {
   const nextGrid = grid.map((rowValues) => [...rowValues]);
   const stickyCells = stickyWildSet();
@@ -794,6 +837,7 @@ function prepareCrazyModeGrid(grid) {
   return nextGrid;
 }
 
+/** Render a static (already-settled) 3x5 grid, highlighting winning / scatter / sticky-wild cells and active paylines. */
 function renderSlotGrid(grid, winningLines = [], scatterCells = [], stickyWilds = []) {
   const winningCells = new Set();
   const scatterCellSet = new Set(scatterCells.map(({ row, column }) => `${row}-${column}`));
@@ -832,6 +876,7 @@ function renderSlotGrid(grid, winningLines = [], scatterCells = [], stickyWilds 
   });
 }
 
+/** Build the little payline-shape preview + a11y labels inside each payline legend item (run once at boot). */
 function initializeSlotLineExamples() {
   const paylineMap = new Map(slotRulesPaylines.map((payline) => [payline.id, payline]));
 
@@ -879,6 +924,7 @@ function initializeSlotLineExamples() {
   });
 }
 
+/** Create a single reel cell element for `symbolId`, tagged with row/column + win/scatter/sticky classes. */
 function createSlotCell(symbolId, row = "", column = "", winning = false, scatterHit = false, stickyWild = false) {
   const symbol = slotRulesSymbolMap[symbolId];
   const cellEl = document.createElement("div");
@@ -902,6 +948,7 @@ function createSlotCell(symbolId, row = "", column = "", winning = false, scatte
   return cellEl;
 }
 
+/** Replace one reel column's three visible cells with the settled symbols (used as each reel stops). */
 function renderSlotColumn(grid, column, winningLines = [], scatterCells = [], stickyWilds = []) {
   const winningCells = new Set();
   const scatterCellSet = new Set(scatterCells.map(({ row, column: scatterColumn }) => `${row}-${scatterColumn}`));
@@ -929,6 +976,7 @@ function renderSlotColumn(grid, column, winningLines = [], scatterCells = [], st
   }
 }
 
+/** Pixel height of one reel cell (incl. row gap) — the per-symbol step used to size the spin translate. */
 function slotStepSize(stripEl) {
   const firstCell = stripEl.querySelector(".slot-cell");
   if (!firstCell) {
@@ -940,6 +988,16 @@ function slotStepSize(stripEl) {
   return firstCell.getBoundingClientRect().height + gap;
 }
 
+/**
+ * Animate the five reels spinning down to `finalGrid` and resolve once all have stopped.
+ * Each reel gets a long lead-in strip (random symbols) followed by the three final cells,
+ * then a CSS transform translates the strip up. Reels are staggered (later columns spin
+ * longer) so they stop left-to-right. Resolution per column is driven by the strip's
+ * `transitionend` (with a setTimeout fallback in case the event is missed). The
+ * transitionend listener is `{ once: true }` and the strip is a throwaway element
+ * recreated every spin (slotReelsEl is cleared above), so no listener accumulates.
+ * @returns {Promise<void[]>} resolves when every reel has settled.
+ */
 function renderSlotSpin(finalGrid) {
   slotLineEls.forEach((lineEl) => {
     lineEl.classList.remove("active");
@@ -1004,6 +1062,11 @@ function renderSlotSpin(finalGrid) {
   return Promise.all(stopPromises);
 }
 
+/**
+ * Read back the 3x5 grid currently shown in the DOM (the top 3 cells of each reel).
+ * The settled grid is re-read from the DOM rather than trusting the generated grid so
+ * what the player sees is exactly what gets evaluated/paid.
+ */
 function readVisibleSlotGrid() {
   const grid = Array.from({ length: 3 }, () => Array(5).fill(slotRulesSymbols[0].id));
   Array.from(slotReelsEl.children).forEach((reelEl, column) => {
@@ -1014,6 +1077,11 @@ function readVisibleSlotGrid() {
   return grid;
 }
 
+/**
+ * Sync the slots side-panel (mode label, scatter progress, multiplier, chain, RTP, sticky
+ * count, etc.) to current state, and fire the celebratory pops/ambient sparkles when the
+ * multiplier or chain has just increased. Pure presentation — never settles a spin.
+ */
 function updateSlotMeta() {
   const crazyModeActive = state.slotFreeSpins > 0;
   slotCabinetEl.classList.toggle("crazy-mode", crazyModeActive);
@@ -1332,6 +1400,11 @@ function animateSlotWinAmount(amount) {
   }, 28);
 }
 
+/**
+ * Award free spins and enter (or extend) Crazy Mode. On a fresh entry it resets the bonus
+ * accumulators (total, sticky wilds, chain); on a retrigger it only tops up spins and the
+ * multiplier. `options.stickyWilds === false` runs "Crazy Mini" (no sticky wilds).
+ */
 function startFreeSpins(count, multiplier, options = {}) {
   const enteringCrazyMode = state.slotFreeSpins === 0;
   const stickyWilds = options.stickyWilds !== false;
@@ -1368,6 +1441,14 @@ function startFreeSpins(count, multiplier, options = {}) {
   updateSlotMeta();
 }
 
+/**
+ * Settle one spin after the reels have stopped — the slots equivalent of a settle* function.
+ * Runs slot-rules settleSlotMath, applies base-streak / Crazy chain multipliers, processes
+ * the cascade (tumble) loop for winning Crazy spins, mutates the bankroll and all bonus
+ * state, renders the win panel / payline summary / effects, persists the gambling event,
+ * and queues an auto-reroll. `wasFreeSpin` distinguishes a free Crazy-Mode spin (bet=0) from
+ * a paid base-game spin.
+ */
 function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   const balanceBefore = state.credits;
   const crazyPrevTotal = state.slotCrazyDisplayedTotal;
@@ -1698,6 +1779,13 @@ function finishSlotSpin(grid, result, wasFreeSpin, spinBet) {
   scheduleAutoReroll();
 }
 
+/**
+ * Entry point for a slots spin (deal button / auto-reroll / free spin). Guards against a
+ * spin already in flight and against an unaffordable paid spin, generates the target grid
+ * (overlaying sticky wilds during Crazy Mode), animates the reels, then re-reads the
+ * settled DOM grid and hands off to finishSlotSpin. A `slotRound` token guards against a
+ * stale animation resolving after a reset.
+ */
 function spinSlots() {
   if (state.slotActive) {
     return;
@@ -1759,6 +1847,11 @@ function spinSlots() {
   render();
 }
 
+// ===========================================================================
+// Cards — deck, deal/flip animation, blackjack hand math
+// ===========================================================================
+
+/** Animate a card element flying from the deck shoe to its final position (with sound). */
 function dealFromDeck(cardEl, delay = 0) {
   const deckRect = deckShoeEl.getBoundingClientRect();
   const cardRect = cardEl.getBoundingClientRect();
@@ -1774,6 +1867,7 @@ function dealFromDeck(cardEl, delay = 0) {
   replayAnimation(cardEl, "dealt");
 }
 
+/** Flash the "winner" animation on a card after its deal animation has finished. */
 function highlightWinner(cardEl, delay = 0) {
   window.setTimeout(() => {
     cardEl.classList.remove("dealt");
@@ -1781,6 +1875,7 @@ function highlightWinner(cardEl, delay = 0) {
   }, delay + 460);
 }
 
+/** Draw a random card (rank + suit) from an infinite/uniform deck (cards are not removed). */
 function drawCard() {
   return {
     rank: ranks[Math.floor(Math.random() * ranks.length)],
@@ -1788,6 +1883,7 @@ function drawCard() {
   };
 }
 
+/** Build a card element — face-up markup, or a branded card back when `hidden`. */
 function createCard(card, hidden = false) {
   const cardEl = document.createElement("div");
   cardEl.className = hidden ? "card back" : "card";
@@ -1809,6 +1905,7 @@ function createCard(card, hidden = false) {
   return cardEl;
 }
 
+/** Flip an existing face-down card element to reveal `card`, preserving its random tilt. */
 function revealCard(cardEl, card) {
   const tilt = cardEl.style.getPropertyValue("--tilt");
   cardEl.classList.remove("back");
@@ -1824,6 +1921,7 @@ function revealCard(cardEl, card) {
   }, 260);
 }
 
+/** Render `card` face-up into an existing slot (used for High Card) and deal-animate it. */
 function renderCard(cardEl, card, delay = 0) {
   cardEl.replaceChildren(...createCard(card).childNodes);
   cardEl.className = "card";
@@ -1832,6 +1930,11 @@ function renderCard(cardEl, card, delay = 0) {
   requestAnimationFrame(() => dealFromDeck(cardEl, delay));
 }
 
+/**
+ * Best blackjack total for a hand. Aces start at 11 (their `blackjack` value) and are
+ * demoted to 1 (subtract 10) one at a time while the hand is bust, so a soft total never
+ * busts when it can be made hard. Returns the highest non-busting total when possible.
+ */
 function handTotal(hand) {
   let total = hand.reduce((sum, card) => sum + card.rank.blackjack, 0);
   let aces = hand.filter((card) => card.rank.label === "A").length;
@@ -1844,10 +1947,12 @@ function handTotal(hand) {
   return total;
 }
 
+/** True for a two-card 21 (a "natural"). */
 function isBlackjack(hand) {
   return hand.length === 2 && handTotal(hand) === 21;
 }
 
+/** Reset all split-related state (called when starting/resetting a blackjack round). */
 function resetBlackjackSplitState() {
   state.blackjackHands = [];
   state.blackjackHandStates = [];
@@ -1856,22 +1961,26 @@ function resetBlackjackSplitState() {
   state.blackjackSplitRound = 0;
 }
 
+/** The hand currently being played: the active split hand, or the single player hand. */
 function activeBlackjackHand() {
   return state.blackjackSplitActive
     ? state.blackjackHands[state.blackjackActiveHandIndex]
     : state.playerHand;
 }
 
+/** Per-hand UI state for the active split hand (null when not in a split). */
 function activeBlackjackHandState() {
   return state.blackjackSplitActive
     ? state.blackjackHandStates[state.blackjackActiveHandIndex]
     : null;
 }
 
+/** The card-container element for split hand `index` (defaults to the active hand). */
 function splitHandCardsEl(index = state.blackjackActiveHandIndex) {
   return playerHandEl.querySelector(`[data-split-cards="${index}"]`);
 }
 
+/** Sync the existing split-hand shells (totals, active/settled/status) to current state. */
 function updateSplitHandShells() {
   if (!state.blackjackSplitActive) {
     playerHandEl.classList.remove("split-layout");
@@ -1896,6 +2005,7 @@ function updateSplitHandShells() {
   });
 }
 
+/** Build the two split-hand shell containers from scratch (called once when a split begins). */
 function renderSplitHandShells() {
   playerHandEl.innerHTML = "";
   playerHandEl.classList.add("split-layout");
@@ -1918,6 +2028,7 @@ function renderSplitHandShells() {
   updateSplitHandShells();
 }
 
+/** Deal a card into split hand `index` (DOM + tracking) and refresh totals. */
 function appendCardToSplitHand(index, card, delay = 0) {
   const cardsEl = splitHandCardsEl(index);
   if (!cardsEl) {
@@ -1932,6 +2043,7 @@ function appendCardToSplitHand(index, card, delay = 0) {
   return cardEl;
 }
 
+/** Split is allowed only on the opening two-card hand of matching rank, with funds for a 2nd bet. */
 function canSplitBlackjack() {
   if (!state.blackjackActive || state.blackjackSplitActive || state.blackjackResolving) {
     return false;
@@ -1942,6 +2054,7 @@ function canSplitBlackjack() {
   return state.playerHand[0].rank.label === state.playerHand[1].rank.label;
 }
 
+/** Standard split-hand fields merged into a persisted event's details. */
 function splitEventDetails(index, extra = {}) {
   return {
     split_hand_index: index + 1,
@@ -1951,6 +2064,7 @@ function splitEventDetails(index, extra = {}) {
   };
 }
 
+/** Clamp the bet into [5, maxBet] (in $5 steps), update the bet label, and pop on change. */
 function clampBet() {
   const currentMax = maxBet();
   state.bet = Math.max(5, Math.min(state.bet, currentMax || 5));
@@ -1962,27 +2076,36 @@ function clampBet() {
   }
 }
 
+/** Format a money value as "$N" (integers) or "$N.NN" (fractional). */
 function formatDollars(value) {
   const amount = Number.isInteger(value) ? value : value.toFixed(2);
   return `$${amount}`;
 }
 
+/** Format a payout multiplier as e.g. "3x" / "2.5x", trimming trailing zeros. */
 function formatMultiplier(value) {
   const rounded = Math.round(value * 1000) / 1000;
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}x`;
 }
 
+// ===========================================================================
+// Event building, balance persistence & stats
+// ===========================================================================
+
 let dashboardModel = null;
 let activityFilter = "all";
 
+/** Map a game slug to its persisted event key ("high-card" -> "high_card"; others unchanged). */
 function gameEventKey(game = state.game) {
   return game === "high-card" ? "high_card" : game;
 }
 
+/** Compact card code for event details, e.g. {rank:"A", suit:"S"} -> "AS". */
 function cardCode(card) {
   return `${card.rank.label}${card.suit.label}`;
 }
 
+/** Build a structured gambling event for persistence, defaulting fields from current state. */
 function buildEvent({
   game = gameEventKey(),
   eventType = "wager_settled",
@@ -2004,6 +2127,7 @@ function buildEvent({
   });
 }
 
+/** Update win/loss/streak counters from a balance delta and return "win"/"loss"/"push". */
 function applyNetRecord(balanceBefore, balanceAfter) {
   return applyNetRecordState(state, balanceBefore, balanceAfter);
 }
@@ -2053,10 +2177,12 @@ const gamblingPersistence = createGamblingPersistence({
   }
 });
 
+/** Persist a gambling event without touching the balance (e.g. pushes — bankroll unchanged). */
 function recordGamblingEvent(event) {
   gamblingPersistence.recordEvent(event);
 }
 
+/** Load the player's live bankroll from the backend on page open, then refresh the stats. */
 async function loadPlayerBalance() {
   if (!state.username) {
     return;
@@ -2080,6 +2206,10 @@ async function loadPlayerBalance() {
   }
 }
 
+/**
+ * Persist the current bankroll, optionally bundled with a settlement event. No-op while the
+ * balance is still loading (so the initial fetch can't be clobbered by an early write).
+ */
 function savePlayerBalance(event = null) {
   if (!state.username || state.balanceLoading) {
     return;
@@ -2093,6 +2223,11 @@ function savePlayerBalance(event = null) {
   gamblingPersistence.saveBalance(state.credits);
 }
 
+// ---------------------------------------------------------------------------
+// Blackjack total badges & table rendering
+// ---------------------------------------------------------------------------
+
+/** Pick the CSS state class for a hand's total badge: blackjack / bust / hot / safe. */
 function totalStateClass(hand, hidden = false, naturalBlackjack = true) {
   if (!hand.length) {
     return "";
@@ -2111,6 +2246,10 @@ function totalStateClass(hand, hidden = false, naturalBlackjack = true) {
   return "safe";
 }
 
+/**
+ * Update a total badge's text + state class. When `hidden` (dealer hole card face down)
+ * only the first card counts, so the shown total matches the visible cards.
+ */
 function updateTotalBadge(badgeEl, hand, hidden = false, naturalBlackjack = true) {
   const visibleHand = hidden ? hand.slice(0, 1) : hand;
   const total = visibleHand.length ? handTotal(visibleHand) : "--";
@@ -2131,12 +2270,14 @@ function updateTotalBadge(badgeEl, hand, hidden = false, naturalBlackjack = true
   }
 }
 
+/** Refresh both total badges (dealer respects the hidden hole card) and split-hand shells. */
 function updateBlackjackTotals() {
   updateTotalBadge(dealerTotalEl, state.dealerHand, state.hideDealerHole);
   updateTotalBadge(playerTotalEl, activeBlackjackHand() || state.playerHand, false, !state.blackjackSplitActive);
   updateSplitHandShells();
 }
 
+/** Append a card element to a blackjack hand (dealer / player / active split), deal-animate it. */
 function appendBlackjackCard(hand, card, options = {}) {
   const cardEl = createCard(card, options.hidden);
   const target = hand === "dealer"
@@ -2152,6 +2293,7 @@ function appendBlackjackCard(hand, card, options = {}) {
   return cardEl;
 }
 
+/** Flip the dealer's face-down hole card and recompute totals (idempotent if already shown). */
 function revealDealerHoleCard() {
   const hole = blackjackCards.dealer[1];
   if (!hole || !hole.hidden) {
@@ -2166,6 +2308,7 @@ function revealDealerHoleCard() {
   updateBlackjackTotals();
 }
 
+/** Empty both hands' card containers and reset the total badges (new round prep). */
 function clearBlackjackTable() {
   dealerHandEl.innerHTML = "";
   playerHandEl.innerHTML = "";
@@ -2178,6 +2321,15 @@ function clearBlackjackTable() {
   playerTotalEl.className = "total-badge";
 }
 
+// ===========================================================================
+// Central render & bet/auto-reroll controls
+// ===========================================================================
+
+/**
+ * Single source of UI truth: reflect `state` into the scoreboard, active tab/panel,
+ * and the enabled/visible state of every control (buttons disabled while a round is in
+ * flight, during balance load, or when out of credits). Call after any state mutation.
+ */
 function render() {
   creditsEl.textContent = formatDollars(state.credits);
   streakEl.textContent = state.streak;
@@ -2238,19 +2390,23 @@ function render() {
   }
 }
 
+/** Whether the bet can be changed right now (idle, funded, no round/bonus in progress). */
 function canChangeBet() {
   return !state.balanceLoading && state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
 }
 
+/** Cancel any pending auto-reroll timer. */
 function clearAutoRerollTimer() {
   window.clearTimeout(state.autoRerollTimer);
   state.autoRerollTimer = null;
 }
 
+/** Auto-reroll is only offered for the continuous-spin games (roulette, slots). */
 function supportsAutoReroll(game = state.game) {
   return game === "roulette" || game === "slots";
 }
 
+/** Toggle auto-reroll for the current game and (when enabling) kick off the loop. */
 function setAutoReroll(enabled) {
   state.autoReroll = Boolean(enabled && supportsAutoReroll());
   clearAutoRerollTimer();
@@ -2264,6 +2420,7 @@ function setAutoReroll(enabled) {
   render();
 }
 
+/** Turn auto-reroll off (e.g. ran out of bankroll) and surface a reason. */
 function stopAutoReroll(copy = "Auto stopped.") {
   if (!state.autoReroll && !state.autoRerollTimer) {
     return;
@@ -2274,6 +2431,7 @@ function stopAutoReroll(copy = "Auto stopped.") {
   render();
 }
 
+/** Guard for whether the next auto-spin may fire now (idle + funded, or free spins left). */
 function canAutoRerollNow() {
   if (!state.autoReroll || state.balanceLoading || !supportsAutoReroll()) {
     return false;
@@ -2284,6 +2442,10 @@ function canAutoRerollNow() {
   return !state.slotActive && !state.rouletteActive && !state.blackjackActive && (state.slotFreeSpins > 0 || state.credits >= state.bet);
 }
 
+/**
+ * Schedule the next auto-spin after `delay` ms. If a spin is still animating it re-polls
+ * shortly; if the bankroll/state no longer allows a spin it stops auto-reroll cleanly.
+ */
 function scheduleAutoReroll(delay = 850) {
   clearAutoRerollTimer();
   if (!state.autoReroll || !supportsAutoReroll()) {
@@ -2309,6 +2471,7 @@ function scheduleAutoReroll(delay = 850) {
   }, delay);
 }
 
+/** Adjust the bet by `amount` (clamped to [5, maxBet]); no-op when betting is locked. */
 function changeBet(amount) {
   if (!canChangeBet()) {
     return;
@@ -2327,6 +2490,7 @@ function changeBet(amount) {
   render();
 }
 
+/** Set the bet to an absolute `amount` (clamped to [5, maxBet]); used by Min/Max buttons. */
 function setBet(amount) {
   if (!canChangeBet()) {
     return;
@@ -2341,6 +2505,10 @@ function setBet(amount) {
   render();
 }
 
+/**
+ * Wire a bet +/- button for press-and-hold auto-repeat: one step on press, then a faster
+ * repeat after a hold delay; also handles keyboard (Enter/Space) for a single step.
+ */
 function bindHoldToRepeat(button, amount) {
   let repeatTimer;
   let repeatDelay;
@@ -2369,6 +2537,15 @@ function bindHoldToRepeat(button, amount) {
   });
 }
 
+// ===========================================================================
+// Round settlement (shared) & per-game actions
+// ===========================================================================
+
+/**
+ * Win settlement shared by High Card / Blackjack / Roulette: credit the payout, update the
+ * win/loss record, show the message + win FX, and persist the event. `options.betAmount`
+ * overrides the staked amount (e.g. blackjack natural); `options.details` adds event data.
+ */
 function settleWin(amount, title, copy, options = {}) {
   const balanceBefore = state.credits;
   const payoutAmount = Math.round(amount);
@@ -2386,6 +2563,7 @@ function settleWin(amount, title, copy, options = {}) {
   }));
 }
 
+/** Loss settlement shared across games: debit the stake, record it, show loss FX, persist. */
 function settleLoss(title, copy, options = {}) {
   const balanceBefore = state.credits;
   const betAmount = options.betAmount ?? state.bet;
@@ -2403,6 +2581,7 @@ function settleLoss(title, copy, options = {}) {
   }));
 }
 
+/** Record a push (tie): bankroll unchanged, just log the event for the activity feed/stats. */
 function recordPush(details = {}) {
   recordGamblingEvent(buildEvent({
     payoutAmount: 0,
@@ -2412,6 +2591,7 @@ function recordPush(details = {}) {
   }));
 }
 
+/** Mark a split hand settled in its UI state and persist its individual settlement event. */
 function recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, balanceAfter, details = {}) {
   const handState = state.blackjackHandStates[index];
   if (handState) {
@@ -2429,6 +2609,7 @@ function recordSplitHandSettlement(index, outcome, payoutAmount, balanceBefore, 
   }));
 }
 
+/** Settle one split hand (win/loss/push at even money), adjust bankroll, and persist it. */
 function settleSplitHand(index, outcome, title, details = {}) {
   const hand = state.blackjackHands[index];
   const balanceBefore = state.credits;
@@ -2452,6 +2633,7 @@ function settleSplitHand(index, outcome, title, details = {}) {
   });
 }
 
+/** Settle a split hand that busted on a hit (immediate loss) and message it. */
 function settleSplitBust(index) {
   settleSplitHand(index, "loss", "Bust", {
     player_bust: true
@@ -2460,6 +2642,7 @@ function settleSplitBust(index) {
   pulseStats(creditsStatEl, streakStatEl, recordStatEl);
 }
 
+/** Move to the next unfinished split hand, or — if none remain — play the dealer and resolve. */
 function advanceSplitHandOrResolve() {
   const nextIndex = state.blackjackHandStates.findIndex((handState, index) =>
     index > state.blackjackActiveHandIndex && !handState.settled && !handState.stood
@@ -2477,6 +2660,10 @@ function advanceSplitHandOrResolve() {
   resolveSplitDealerAndHands();
 }
 
+/**
+ * Final phase of a split: reveal the hole card, draw the dealer to 17 (unless every hand
+ * already busted), then settle each not-yet-settled hand vs. the dealer and summarise.
+ */
 function resolveSplitDealerAndHands() {
   state.blackjackActive = false;
   state.blackjackResolving = true;
@@ -2527,6 +2714,7 @@ function resolveSplitDealerAndHands() {
   render();
 }
 
+/** High Card round: deal one card each; higher rank wins, equal rank pushes. */
 function dealHighCard() {
   resetEffects();
   const playerCard = drawCard();
@@ -2565,6 +2753,11 @@ function dealHighCard() {
   render();
 }
 
+/**
+ * Deal a new blackjack round (two cards each, dealer hole card hidden) and resolve
+ * naturals immediately: player natural pays 3:2, dealer natural loses, both push.
+ * A `blackjackRound` token guards the delayed hole-card reveal against a reset.
+ */
 function startBlackjack() {
   resetEffects();
   clearBlackjackTable();
@@ -2628,6 +2821,10 @@ function startBlackjack() {
   render();
 }
 
+/**
+ * Split a matching opening pair into two hands (a second bet is staked), deal one card to
+ * each, and start playing hand 1. Split aces get exactly one card each and auto-resolve.
+ */
 function splitBlackjack() {
   if (!canSplitBlackjack()) {
     return;
@@ -2675,6 +2872,10 @@ function splitBlackjack() {
   render();
 }
 
+/**
+ * Hit the active hand. On a bust: in a split, settle that hand and advance; otherwise reveal
+ * the dealer and settle the loss after a short delay (guarded by the round token).
+ */
 function hitBlackjack() {
   const hand = activeBlackjackHand();
   const card = drawCard();
@@ -2719,6 +2920,10 @@ function hitBlackjack() {
   render();
 }
 
+/**
+ * Stand on the active hand. In a split, mark it stood and advance; otherwise play out the
+ * dealer (draws to 17) and settle player vs. dealer (win / loss / dealer-bust / push).
+ */
 function standBlackjack() {
   if (state.blackjackSplitActive) {
     const handState = activeBlackjackHandState();
@@ -2780,12 +2985,14 @@ function standBlackjack() {
   render();
 }
 
+/** Human-readable label for the current roulette bet (a colour, or "number N"). */
 function rouletteBetLabel() {
   return state.rouletteBetType === "number"
     ? `number ${state.rouletteChoice}`
     : state.rouletteChoice;
 }
 
+/** Set the current roulette bet (colour or specific number); ignored mid-spin. */
 function selectRouletteBet(type, value) {
   if (state.rouletteActive) {
     return;
@@ -2798,6 +3005,10 @@ function selectRouletteBet(type, value) {
   render();
 }
 
+/**
+ * Spin the wheel: pick a random pocket, drive the wheel/ball CSS rotations to land on it,
+ * then after the animation settle the bet (number pays 35:1, colour pays 1:1) and reroll.
+ */
 function spinRoulette() {
   if (state.rouletteActive) {
     return;
@@ -2863,6 +3074,7 @@ function spinRoulette() {
   }, 3185);
 }
 
+/** Switch the active game tab (blocked while a round/bonus is in progress); disables auto-reroll on non-supported games. */
 function switchGame(game) {
   if (state.blackjackActive || state.rouletteActive || state.slotActive || state.slotFreeSpins > 0) {
     return;
@@ -2880,6 +3092,10 @@ function switchGame(game) {
   showResult(gameMeta[game].title);
   render();
 }
+
+// ===========================================================================
+// Bootstrap: build the static UI, wire all DOM events, then load the bankroll.
+// ===========================================================================
 
 initializeRouletteUi();
 initializeSlotLineExamples();
@@ -2941,6 +3157,8 @@ splitButton.addEventListener("click", splitBlackjack);
 autoRerollToggleEl.addEventListener("change", () => setAutoReroll(autoRerollToggleEl.checked));
 soundToggleEl.addEventListener("change", () => setSoundEnabled(soundToggleEl.checked));
 
+// Reset: restore the default bankroll, clear every game's in-flight state and the table,
+// and persist a "bankroll_reset" event.
 resetButton.addEventListener("click", () => {
   playSound("reset");
   const balanceBefore = state.credits;

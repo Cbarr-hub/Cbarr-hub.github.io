@@ -84,11 +84,25 @@ node src/cli.js delete-user
 | GET    | `/api/events`                         | public   |
 | POST   | `/api/events`                         | session  |
 | GET    | `/api/games`                          | public   |
+| GET    | `/api/reviews`                        | public   |
+| POST   | `/api/reviews`                        | public   |
+| GET    | `/api/auth/gate`                      | public   |
 | GET    | `/api/admin/users`                    | admin    |
 | POST   | `/api/admin/users`                    | admin    |
 | DELETE | `/api/admin/users/:id`                | admin    |
+| GET    | `/api/admin/db/tables`                | admin    |
+| GET    | `/api/admin/db/tables/:table`         | admin    |
+| GET    | `/api/admin/db/query?sql=…`           | admin    |
+| GET    | `/api/admin/economy/settings`         | admin    |
+| PUT    | `/api/admin/economy/settings`         | admin    |
+| GET    | `/api/admin/economy/players`          | admin    |
+| GET    | `/api/admin/economy/users`            | admin    |
+| PUT    | `/api/admin/economy/players/:playerId/account` | admin |
+| POST   | `/api/admin/economy/credit`           | admin    |
 | GET    | `/api/servers?mode=quick|full`        | admin    |
 | GET    | `/api/servers/node`                   | admin    |
+| GET    | `/api/servers/online`                 | admin    |
+| GET    | `/api/servers/activity?limit=1..500`  | admin    |
 | GET    | `/api/servers/:id?mode=quick|full`    | admin    |
 | POST   | `/api/servers/:id/actions/:action`    | admin    |
 | GET    | `/api/servers/:id/settings`           | admin    |
@@ -149,6 +163,45 @@ node src/cli.js delete-user
 > A game wired for profiles trims its `getSettings` to operations only (or just the
 > live-map block) so config doesn't double-render beside the Profiles panel. See
 > the CLAUDE.md GMOD gotchas.
+
+> **Presence + Activity** (`/api/servers/online`, `/api/servers/activity`) are
+> read-only views over the player-session rows the **host** session-tracker writes
+> (`players` + `server_sessions`). `online` is "who is connected right now" (open
+> sessions, `left_at IS NULL`); `activity` is the recent join/leave timeline
+> (`limit` 1–500). The app never collects sessions — it only reads them; collection
+> is a host systemd service (see CLAUDE.md → *Player-session tracking*). The servers
+> panel renders these in its standalone **Activity** view.
+
+> **Playtime economy** (`/api/admin/economy/*`, migration 007) turns closed
+> game-server sessions into gambling dollars. `GET/PUT /settings` is the admin-editable
+> rate (`dollarsPerHour`) + per-session cap (`maxSessionMinutes`); `GET /players` is the
+> seen-players roster with lifetime playtime + any linked account; `GET /users` feeds the
+> link dropdown; `PUT /players/:playerId/account` links a tracked identity to a site user
+> (`userId: null` unlinks); `POST /credit` runs the reconciler on demand. The reconciler
+> (`backend/src/economy.js`, decorated as `app.economy`) also runs **once at boot and on a
+> 5-minute timer** — it credits each CLOSED, uncredited, LINKED session exactly once
+> (idempotent via a `credited_at` marker; the per-session cap bounds each award), and
+> linking settles a player's pre-link sessions so only post-link playtime earns. The
+> servers panel renders this as the admin **Economy** view.
+
+> **Admin DB viewer** (`/api/admin/db/*`) powers the servers panel's **Data** tab. It is
+> **admin-gated and strictly read-only**: `GET /tables` is the schema overview (tables +
+> column metadata + row counts), `GET /tables/:table` is a paged/sorted/searched grid
+> (server-capped at 200 rows), and `GET /query?sql=…` is a free-form **SELECT-only** box
+> that runs on a dedicated read-only connection and is gated on SQLite's `stmt.readonly`
+> flag (rejects writes incl. `… RETURNING`). `:table`/`sort` are allowlisted against the
+> live schema, and `password_hash` is value-masked + excluded from search/queries. All
+> routes are GET (mutation-free → no CSRF).
+
+> **Caddy auth gate** — `GET /api/auth/gate` is the endpoint Caddy's `forward_auth`
+> calls on every gated request (returns 204 when logged in, else redirects to
+> `/signin.html`). It also gates the embedded BlueMap **Minecraft world map** that Caddy
+> reverse-proxies at `/map/*` (see `Caddyfile`).
+
+> **Reviews** (`/api/reviews`, "testimony registry", `reviews.html`) are public +
+> anonymous: a review carries a free-text `name`, not a user id, so listing and posting
+> need no login (preserving the page's pre-backend Supabase behavior). `POST` is
+> CSRF-protected and route-rate-limited.
 
 ## What's not here yet
 

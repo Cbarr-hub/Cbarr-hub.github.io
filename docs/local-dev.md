@@ -16,7 +16,7 @@ tools/gt.sh dev --fresh        # macOS/Linux
 `gt dev --fresh` does all of it in order: installs deps, pulls + decrypts secrets from R2
 (age prompts for the passphrase — needs a real terminal), **pre-seeds the app DB** into the
 volume so login works, builds + starts the full stack (app, Caddy, docker-proxy, 5 game
-servers; localhost self-signed + live reload), and waits for `/api/health`. Then open
+servers, BlueMap; localhost self-signed + live reload), and waits for `/api/health`. Then open
 **https://localhost** (accept the self-signed cert) and sign in. Re-running it is
 non-destructive (it preserves `.env.local` keys like `DEV_PUBLIC_HOST` and skips the DB
 restore if one already exists — pass `--restore` to force a fresh pull).
@@ -298,13 +298,14 @@ Need a brand-new account instead of a restore? Create one interactively:
 docker exec -it <project>-app-1 node src/cli.js create-admin
 ```
 
-### Player-session collector (Events section) in dev
+### Player-session collector (Activity section) in dev
 
-The **Events** section on the servers panel is fed by `tools/gt-session-tracker.mjs`, which in
-production runs as a **host systemd service** (`gt-session-tracker.service`) — NOT a compose
-service. It needs full `docker` + direct DB-volume access, which the app (behind the scoped
-`docker-proxy`) deliberately can't reach. So the dev stack does **not** start it, and the Events
-section stays empty until you run the collector yourself.
+The **Activity** section on the servers panel (live presence + the recent join/leave timeline)
+is fed by `tools/gt-session-tracker.mjs`, which in production runs as a **host systemd service**
+(`gt-session-tracker.service`) — NOT a compose service. It needs full `docker` + direct DB-volume
+access, which the app (behind the scoped `docker-proxy`) deliberately can't reach. So the dev
+stack does **not** start it, and the Activity section (and the playtime economy that consumes the
+same session rows) stays empty until you run the collector yourself.
 
 To exercise it locally, run it in a throwaway container that mirrors the keeper (host `docker` +
 `sqlite3` + the DB volume) on the compose network:

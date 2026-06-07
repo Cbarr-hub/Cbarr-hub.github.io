@@ -19,7 +19,12 @@ node_modules
 SECRETS.local.md
 secrets.env
 
-# Build artifacts / junk
+# Build artifacts / junk. NOTE: excluding Dockerfile* / docker-compose*.yml here
+# only keeps them OUT OF /srv (so they're never web-served) — it does NOT stop the
+# Caddy image from building. The build's Dockerfile (Dockerfile.caddy, named via the
+# compose `dockerfile:` key) is sent to the daemon separately from the context, so
+# .dockerignore can't hide it from itself; only the later `COPY . /srv` is filtered.
+# The Caddyfile is deliberately NOT excluded — `COPY Caddyfile …` needs it in context.
 Dockerfile*
 docker-compose*.yml
 *.log

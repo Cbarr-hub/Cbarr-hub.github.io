@@ -19,6 +19,10 @@ export class ServerControlError extends Error {
 }
 
 const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame']);
+// Status-cache freshness windows. 'quick' lists skip per-container stats so they
+// poll fast and tolerate only ~1s of staleness; 'full' lists carry cpu/mem and
+// refresh less often. The host dashboard (containers count etc.) moves slowly, so
+// it caches for a minute. clearStatusCache() drops all of these on a mutation.
 const LIST_CACHE_TTL_MS = { quick: 1_000, full: 3_000 };
 const NODE_CACHE_TTL_MS = 60_000;
 
@@ -46,6 +50,15 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   const connectors = dockerClient
     ? buildConnectors({ docker: dockerClient }, store)
     : null;
+  // Status caches. The servers panel polls `listServers`/`getNodeStatus` on a
+  // short interval and several browser tabs can poll at once, so each compute is
+  // an expensive fan-out of Docker stats calls. Two caches absorb that:
+  //   - `listCache`: per-mode (one entry each for 'quick'/'full'), TTL'd + with
+  //     in-flight dedup. See cachedServerList for the full contract.
+  //   - `nodeCache`: a single 60s entry for the host dashboard.
+  // Both are deliberately allowed to serve data up to TTL_MS stale; a mutation
+  // (power action / settings / profile apply / update) calls clearStatusCache to
+  // drop everything so the next read reflects the change immediately.
   const listCache = new Map();
   let nodeCache = null;
 
@@ -77,6 +90,19 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     }));
   }
 
+  // Per-mode cached server list with in-flight de-duplication. Cache contract:
+  //   - While a compute is in flight (`!settled`), every caller for that mode
+  //     shares the SAME promise — N concurrent pollers trigger ONE fan-out.
+  //   - Once settled, a fulfilled entry is reused for up to LIST_CACHE_TTL_MS[mode]
+  //     (quick 1s / full 3s), so callers may see data that is at-most-TTL stale.
+  //     This bounded staleness is intentional; mutations clearStatusCache() to
+  //     force a fresh read. After the TTL, the next caller recomputes.
+  //   - A REJECTED compute is never cached: the .catch guard evicts the failing
+  //     entry (only if it's still the live one — `=== promise` avoids clobbering a
+  //     newer entry that already replaced it after clearStatusCache or a recompute),
+  //     so the very next caller retries instead of being served a cached error.
+  // `entry.settled` is flipped in .finally (after .catch), so an in-flight entry
+  // reads as `!settled` for the whole compute regardless of outcome.
   async function cachedServerList(mode) {
     const now = Date.now();
     const cached = listCache.get(mode);

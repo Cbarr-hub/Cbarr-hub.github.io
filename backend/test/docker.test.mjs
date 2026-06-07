@@ -178,6 +178,22 @@ test('DockerClient.agentExec runs to completion and agentExecStatus returns the 
   assert.match(create.body, /"Cmd":\["\/bin\/sh","-lc","echo hello"\]/);
 });
 
+test('DockerClient.agentExecStatus is idempotent: a repeat poll returns the same result', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'exec123' } })],
+    [/^POST \/exec\/exec123\/start$/, () => res({ bytes: new Uint8Array(frame(1, 'hello\n')) })],
+    [/^GET \/exec\/exec123\/json$/, () => res({ json: { ExitCode: 0, Running: false } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const { pid } = await c.agentExec('mc', { command: ['/bin/sh', '-lc', 'echo hello'] });
+  const a = await c.agentExecStatus('mc', pid);
+  const b = await c.agentExecStatus('mc', pid);
+  // The second poll must NOT masquerade as an unknown-pid failure (null exitcode).
+  assert.deepEqual(a, b);
+  assert.equal(b.exitcode, 0);
+  assert.equal(b['out-data'], 'hello\n');
+});
+
 test('DockerClient.agentExec rejects stdin input (use TCP for interactive I/O)', async () => {
   const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl: async () => res({}) });
   await assert.rejects(() => c.agentExec('mc', { command: ['x'], input: 'hi' }), (e) => e.code === 'NO_STDIN');

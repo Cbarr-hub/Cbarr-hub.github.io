@@ -1,6 +1,30 @@
 // Pure Counter-Strike 2 profile/validation logic + curated RCON actions, shared
 // by the base (LinuxGSM) and Docker connectors. Transport-agnostic: no file or
 // container access here, just validation, the editor schema, and command builders.
+//
+// PROFILE SCHEMA (what a CS profile stores + how it round-trips)
+//   Fields (defaultProfileSettings):
+//     map         - 'de_dust2' (stock, MAP_NAME_RE) or 'ws:<id>' (1–20 digit
+//                   Workshop id); a Workshop map overrides the stock map.
+//     gameMode    - key of GAME_ALIASES (competitive/casual/deathmatch/wingman).
+//     hostname    - server name; no quotes/newlines, ≤ MAX_HOSTNAME_CHARS.
+//     rawConfig   - extra live RCON lines; bounded total + per-line, no NUL.
+//     <CS_CVAR_FIELDS> - the "Match Rules" mp_/sv_/bot_ cvars, each seeded to its
+//                   `def` and validated to [min,max] (ints rounded-checked, bools
+//                   as 0/1). NOTE: maxPlayers is deliberately NOT a field — the
+//                   joedwards32/cs2 image reads it from CS2_MAXPLAYERS (compose
+//                   env), which a live RCON Apply can't change, so a stray
+//                   maxPlayers is dropped by validateProfileSettings.
+//   validate (validateProfileSettings): coerces/clamps every field above, throwing
+//     badSetting on any out-of-range/invalid input; returns a clean settings doc.
+//   apply: there is NO applyX here — CS Apply is LIVE over RCON in the Docker
+//     connector (docker/counterstrike.js applyProfileSettings), built from the
+//     command helpers here (buildChangeMapCmd + the CS_CVAR_FIELDS → cvar lines).
+//     profileGroups() carries an `apply: { mode:'live', … }` descriptor so the
+//     panel relabels the button and skips the restart a file-based game would do.
+//   capture: env-driven boot config isn't readable from a file, so the connector's
+//     captureProfileSettings just returns these validated defaults (the editor is
+//     the source of truth).
 
 import { badSetting, MAP_NAME_RE } from '../errors.js';
 

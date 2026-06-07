@@ -37,12 +37,13 @@ const MC_ACTION_CMDS = {
   mobs_off: 'gamerule spawn_mobs false',
 };
 
-// Continuous live cvars → sliders. Each clamps to its bounds in runLiveAction.
-// NOTE: gamerule identifiers on the deployed build (validated live against
-// itzg/minecraft-server v26.1.2) are snake_case — keep_inventory, random_tick_speed,
-// players_sleeping_percentage — and mob spawning is the renamed `spawn_mobs` rule
-// (NOT do_mob_spawning). Re-validate with backend/test-live/rcon-smoke.mjs if the
-// pinned VERSION changes.
+// Continuous live cvars → sliders. Each clamps to its bounds in runLiveAction via
+// clampNumber, which treats 0 as a real value (time 0 stays 0) but maps an empty/
+// non-numeric value to `default`. NOTE: gamerule identifiers on the deployed build
+// (validated live against itzg/minecraft-server v26.1.2) are snake_case —
+// keep_inventory, random_tick_speed, players_sleeping_percentage — and mob spawning
+// is the renamed `spawn_mobs` rule (NOT do_mob_spawning). Re-validate with
+// backend/test-live/rcon-smoke.mjs if the pinned VERSION changes.
 const MC_LIVE_CONTROLS = [
   { key: 'time',       label: 'Time of Day',       min: 0, max: 24000, step: 1000, default: 6000 },
   { key: 'randomtick', label: 'Random Tick Speed', min: 0, max: 20,    step: 1,    default: 3 },

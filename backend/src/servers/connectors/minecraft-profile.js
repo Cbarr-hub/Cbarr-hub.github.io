@@ -2,6 +2,26 @@
 // Minecraft connectors. Everything here is transport-agnostic: it operates on the
 // server.properties TEXT, so each connector just supplies read/write of that file
 // (via the guest agent on a VM, or `cat`/`tee` in a container).
+//
+// PROFILE SCHEMA (a profile materializes onto server.properties keys)
+//   Fields (defaultProfileSettings → on-disk key):
+//     world (level-name, '' = keep current; SAFE_NAME_RE), gamemode (one of
+//     GAMEMODES, else 'survival'), difficulty (DIFFICULTIES, else 'normal'),
+//     maxPlayers (max-players, 1–200), motd (≤200, single line), pvp, hardcore,
+//     whitelist (white-list), onlineMode (online-mode), allowNether (allow-nether),
+//     spawnMonsters (spawn-monsters), commandBlocks (enable-command-block) — all
+//     bool '1'/'0' here, written 'true'/'false' — viewDistance (view-distance,
+//     3–32), simulationDistance (simulation-distance, 3–32), spawnProtection
+//     (spawn-protection, 0–1000), playerIdleTimeout (player-idle-timeout, 0–1440).
+//   validate (validateProfileSettings): integer-bounds-checks the numbers (throws
+//     badSetting out of range), normalizes enums to their fallbacks, coerces bools
+//     to '1'/'0', and bounds the motd. Used directly by applyProps + captureProps.
+//   apply (applyProps): validates `settings`, then setProp's each managed key onto
+//     the existing server.properties text (empty world keeps the current level-name)
+//     and returns the new text — the connector just writes it back.
+//   capture (captureProps): getProp's each managed key out of the text into a doc,
+//     then runs it back through validateProfileSettings (so capture also bounds-
+//     checks). CVAR_REF is the on-disk key reference for the Raw Config editor.
 
 import { badSetting, SAFE_NAME_RE } from '../errors.js';
 

@@ -1,5 +1,5 @@
-import argon2 from 'argon2';
 import { requireAdmin } from '../middleware/auth.js';
+import { createUser, isDuplicateUserError } from '../users.js';
 
 export default async function adminRoutes(app) {
   app.post('/users', {
@@ -20,21 +20,17 @@ export default async function adminRoutes(app) {
     },
   }, async (req, reply) => {
     const { username, displayName, password, isAdmin } = req.body;
-    const hash = await argon2.hash(password, { type: argon2.argon2id });
     try {
-      const result = app.db.transaction(() => {
-        const r = app.db.prepare(
-          'INSERT INTO users (username, display_name, password_hash, is_admin) VALUES (?, ?, ?, ?)'
-        ).run(username, displayName, hash, isAdmin ? 1 : 0);
-        app.db.prepare(
-          'INSERT INTO balances (user_id, dollars) VALUES (?, 5000)'
-        ).run(r.lastInsertRowid);
-        return r.lastInsertRowid;
-      })();
-      return { id: result };
+      return { id: await createUser(app.db, { username, displayName, password, isAdmin }) };
     } catch (err) {
-      if (String(err.message).includes('UNIQUE')) {
+      if (isDuplicateUserError(err)) {
         return reply.code(409).send({ error: 'username taken' });
+      }
+      // createUser re-validates after trimming (e.g. an all-whitespace displayName
+      // that slips past the schema's pre-trim minLength) — surface that as a 400,
+      // not a generic 500.
+      if (err.code === 'VALIDATION_ERROR') {
+        return reply.code(400).send({ error: err.message });
       }
       throw err;
     }

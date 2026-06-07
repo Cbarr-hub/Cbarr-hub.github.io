@@ -7,7 +7,7 @@
 //   2. live control is real Source-RCON over TCP (the app reaches the container's
 //      RCON port by service name) — not the VM's tmux-console read-back.
 
-import { DockerBaseConnector } from '../docker-base.js';
+import { DockerBaseConnector, clampNumber } from '../docker-base.js';
 import * as mcProfile from '../minecraft-profile.js';
 import { rconExchange } from '../../rcon-tcp.js';
 import { validateLiveCommand } from '../../rcon.js';
@@ -48,8 +48,6 @@ const MC_LIVE_CONTROLS = [
   { key: 'randomtick', label: 'Random Tick Speed', min: 0, max: 20,    step: 1,    default: 3 },
   { key: 'sleeppct',   label: 'Sleep %',           min: 0, max: 100,   step: 5,    default: 100, suffix: '%' },
 ];
-const clamp = (v, lo, hi, def) => Math.max(lo, Math.min(hi, Number(v) || def));
-
 export class DockerMinecraftConnector extends DockerBaseConnector {
   configFiles = {
     'server.properties':   PROPS,
@@ -130,9 +128,9 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
 
   async runLiveAction(key, value) {
     // Range sliders (clamped to their bounds) come first, then keyed actions.
-    if (key === 'time')       return { output: await this.#rcon(`time set ${clamp(value, 0, 24000, 6000)}`) };
-    if (key === 'randomtick') return { output: await this.#rcon(`gamerule random_tick_speed ${clamp(value, 0, 20, 3)}`) };
-    if (key === 'sleeppct')   return { output: await this.#rcon(`gamerule players_sleeping_percentage ${clamp(value, 0, 100, 100)}`) };
+    if (key === 'time')       return { output: await this.#rcon(`time set ${clampNumber(value, 0, 24000, 6000)}`) };
+    if (key === 'randomtick') return { output: await this.#rcon(`gamerule random_tick_speed ${clampNumber(value, 0, 20, 3)}`) };
+    if (key === 'sleeppct')   return { output: await this.#rcon(`gamerule players_sleeping_percentage ${clampNumber(value, 0, 100, 100)}`) };
     const cmd = MC_ACTION_CMDS[key];
     if (!cmd) { const e = new Error(`unknown live action: ${key}`); e.code = 'BAD_SETTING'; throw e; }
     return { output: await this.#rcon(cmd) };

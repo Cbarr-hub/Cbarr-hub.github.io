@@ -25,10 +25,13 @@ Production runs as a **`docker compose` stack on the keeper** (Proxmox VM 106): 
 
 ```bash
 # on the keeper, from /root/gamertown
-docker compose -f docker-compose.yml -f servers.compose.yml up -d --build
-docker exec -it gamertown-app-1 npm run migrate
-docker exec -it gamertown-app-1 node src/cli.js create-admin
+tools/gt.sh prod
 ```
+
+Use raw `docker compose -f docker-compose.yml -f servers.compose.yml up -d --build`
+only as a break-glass path; it skips the predeploy backup and rollback metadata.
+Running migrations or `create-admin` manually is first-bootstrap work, not the normal
+deploy path for a restored production DB.
 
 The app binds `HOST=0.0.0.0` **inside its container** (so the separate Caddy container
 can reach it); the host publishes only Caddy's `:443`. Runtime secrets load from
@@ -52,8 +55,8 @@ node src/cli.js delete-user
   the row.
 - CSRF: double-submit token on every non-GET request. The browser fetches a
   token from `GET /api/csrf` once per page and sends it as `x-csrf-token`.
-- Rate limit: 10 login attempts per IP per minute, plus a global 300/min
-  fallback on all routes.
+- Rate limit: route-scoped limits on sensitive public/admin routes, including
+  login and anonymous review posting.
 - No public sign-up. Accounts are admin-issued via the CLI or
   `POST /api/admin/users`.
 - Same-origin: cookies are not cross-site, so there is no CORS surface to
@@ -84,14 +87,33 @@ node src/cli.js delete-user
 | GET    | `/api/admin/users`                    | admin    |
 | POST   | `/api/admin/users`                    | admin    |
 | DELETE | `/api/admin/users/:id`                | admin    |
+| GET    | `/api/servers?mode=quick|full`        | admin    |
 | GET    | `/api/servers/node`                   | admin    |
+| GET    | `/api/servers/:id?mode=quick|full`    | admin    |
+| POST   | `/api/servers/:id/actions/:action`    | admin    |
+| GET    | `/api/servers/:id/settings`           | admin    |
+| PUT    | `/api/servers/:id/settings`           | admin    |
+| GET    | `/api/servers/:id/maps`               | admin    |
+| POST   | `/api/servers/:id/maps`               | admin    |
+| POST   | `/api/servers/:id/maps/sync`          | admin    |
+| POST   | `/api/servers/:id/maps/collection`    | admin    |
+| PATCH/DELETE | `/api/servers/:id/maps/:workshopId` | admin |
+| GET/POST | `/api/servers/:id/configs`          | admin    |
+| GET/PUT/DELETE | `/api/servers/:id/configs/:configId` | admin |
 | GET    | `/api/servers/:id/profiles`           | admin    |
 | GET    | `/api/servers/:id/profiles/schema`    | admin    |
 | POST   | `/api/servers/:id/profiles`           | admin    |
 | POST   | `/api/servers/:id/profiles/capture`   | admin    |
 | GET/PUT/DELETE | `/api/servers/:id/profiles/:profileId` | admin |
 | POST   | `/api/servers/:id/profiles/:profileId/apply` | admin |
-| GET    | `/api/servers/:id/sessions`           | admin    |
+| GET    | `/api/servers/:id/live`               | admin    |
+| POST   | `/api/servers/:id/live/command`       | admin    |
+| POST   | `/api/servers/:id/live/action`        | admin    |
+| GET    | `/api/servers/:id/sessions?limit=1..500` | admin |
+| GET    | `/api/servers/:id/config`             | admin    |
+| GET    | `/api/servers/:id/config/:file`       | admin    |
+| PUT    | `/api/servers/:id/config/:file`       | admin    |
+| POST   | `/api/servers/:id/update`             | admin    |
 
 > Backups are **not** an app feature — the app holds no R2 credentials. Production
 > backups (app DB + Factorio save + Minecraft world → Cloudflare R2) run from a host
@@ -100,7 +122,7 @@ node src/cli.js delete-user
 > `GET /api/servers/node` is the host snapshot powering the servers-page dashboard:
 > it returns `{kind:'docker', …}` from the Docker Engine `/info` (engine/OS/kernel +
 > container counts, via the socket-proxy with `INFO=1`) plus a CPU/RAM aggregate of the
-> containers. The UI renders it in `servers.html` `renderDashboard`.
+> containers. The UI renders it in `servers.html` `renderHost`.
 
 > Game servers are wired in `src/servers/registry.js` — each entry carries a
 > `backend: 'docker'` flag + a container-name locator and a connector in
@@ -109,7 +131,9 @@ node src/cli.js delete-user
 > run as Docker containers.** GMOD/PH reuse the LinuxGSM + Source-RCON pattern;
 > `getSettings`/profiles expose the TTT/PH knobs (map, workshop collection, round/time
 > limits, ratios + caps, map cycle) and the Runtime panel drives them live over RCON
-> (TCP). See `infrastructure.md` → *Current architecture*.
+> (TCP). Prop Hunt shows its Workshop collection as read-only in Profiles because
+> Apply deliberately does not rewrite the X2Z mount collection. See
+> `infrastructure.md` → *Current architecture*.
 
 > **Startup-config profiles** (`server_profiles` + `server_active_profile`,
 > migration 003) are named, structured startup configs per server — the durable
@@ -118,8 +142,10 @@ node src/cli.js delete-user
 > "Default"); each game supplies five hooks (`profileSchema`,
 > `defaultProfileSettings`, `validateProfileSettings`, `applyProfileSettings`,
 > `captureProfileSettings`). **All five games (GMOD, Prop Hunt, Factorio, CS, Minecraft)
-> are wired.** `…/apply` writes the config + marks the profile active;
-> the panel pairs it with a restart so a GMOD workshop collection actually mounts.
+> are wired.** For GMOD/PH/Minecraft/Factorio, `…/apply` writes the config + marks
+> the profile active; the panel pairs it with a restart so boot-only settings mount
+> or load. Counter-Strike is the exception: Apply pushes the profile live over RCON
+> and does not restart, because persistent boot defaults live in `servers.compose.yml`.
 > A game wired for profiles trims its `getSettings` to operations only (or just the
 > live-map block) so config doesn't double-render beside the Profiles panel. See
 > the CLAUDE.md GMOD gotchas.

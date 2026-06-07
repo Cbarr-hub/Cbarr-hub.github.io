@@ -1,8 +1,8 @@
 # Gamertown documentation
 
-All project documentation lives here. Two files stay at the repo root by convention:
-[`../README.md`](../README.md) (GitHub landing) and [`../CLAUDE.md`](../CLAUDE.md) (the
-operations quick-reference + game-config gotchas, auto-loaded by Claude Code).
+All project documentation lives here. Root-level files are only the landing page
+and agent quick refs: [`../README.md`](../README.md), [`../CLAUDE.md`](../CLAUDE.md),
+and [`../AGENTS.md`](../AGENTS.md).
 
 | Doc | What it covers |
 |---|---|
@@ -13,7 +13,7 @@ operations quick-reference + game-config gotchas, auto-loaded by Claude Code).
 | [`design-system.md`](design-system.md) | Frontend design reference — colour scheme, layout, responsive breakpoints |
 
 For day-to-day operations and the game-server gotchas (GMOD workshop, Factorio saves,
-RCON ports, Prop Hunt), see [`../CLAUDE.md`](../CLAUDE.md).
+RCON ports, Prop Hunt), see [`../CLAUDE.md`](../CLAUDE.md) / [`../AGENTS.md`](../AGENTS.md).
 
 > The pre-Docker Proxmox topology (`INFRA_LEGACY.md`) and the completed
 > `DOCKER_MIGRATION_PLAN.md` were retired on 2026-06-05 — recover them from git history

@@ -149,12 +149,12 @@ export async function dbAddReview({ name, rating, message }) {
 
 // ── game-server control (servers page, admin-only) ────────────────────────────
 
-export async function dbGetServers() {
-  return (await api('/servers')) ?? [];
+export async function dbGetServers({ mode } = {}) {
+  return (await api('/servers', { query: { mode } })) ?? [];
 }
 
-export async function dbGetServerStatus(id) {
-  return api(`/servers/${encodeURIComponent(id)}`);
+export async function dbGetServerStatus(id, { mode } = {}) {
+  return api(`/servers/${encodeURIComponent(id)}`, { query: { mode } });
 }
 
 // Host-level Proxmox node snapshot (CPU/RAM/load/uptime) for the dashboard.
@@ -299,6 +299,23 @@ export async function dbApplyProfile(id, profileId) {
 
 export async function dbCaptureProfile(id, name) {
   return api(`/servers/${encodeURIComponent(id)}/profiles/capture`, { method: 'POST', body: { name } });
+}
+
+// ── admin DB viewer (read-only, admin-only) ───────────────────────────────────
+// All GET → no CSRF needed; api() supplies cookies. Return shapes are exactly the
+// /api/admin/db/* route responses (see backend/src/routes/admin-db.js).
+export async function dbAdminTables() {
+  return (await api('/admin/db/tables')) ?? [];
+}
+
+export async function dbAdminTableRows(table, { limit, offset, sort, dir, q } = {}) {
+  return api(`/admin/db/tables/${encodeURIComponent(table)}`, {
+    query: { limit, offset, sort, dir, q },
+  });
+}
+
+export async function dbAdminQuery(sql) {
+  return api('/admin/db/query', { query: { sql } });
 }
 
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────

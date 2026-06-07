@@ -30,8 +30,8 @@ export class BaseConnector {
   get configFiles() { return {}; }
 
   // ── status ─────────────────────────────────────────────────────────────────
-  async status() {
-    const data = await this.client.statusCurrent(this.vmid);
+  async status(options = {}) {
+    const data = await this.client.statusCurrent(this.vmid, options);
     const base = normalizeStatus(data);
     if (base.status === 'running') {
       try {
@@ -80,7 +80,7 @@ export class BaseConnector {
   // up to this long before giving up — letting actions like Start Hosting wait
   // out a freshly-booted VM instead of erroring. Passive reads leave it at 0.
   async runCommand(command, { input, timeoutMs = 120_000, pollMs = 1000, awaitAgentMs = 0 } = {}) {
-    const { pid } = await this.#execAwaitingAgent(command, input, awaitAgentMs, pollMs);
+    const { pid } = await this.#execAwaitingAgent(command, input, awaitAgentMs, pollMs, timeoutMs);
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const st = await this.client.agentExecStatus(this.vmid, pid);
@@ -103,11 +103,11 @@ export class BaseConnector {
   // Kick off agentExec, retrying ONLY the "guest agent is not running" upstream
   // error for up to `awaitAgentMs` (the post-boot window). Any other error, or
   // exhausting the window, rethrows so callers still see real failures.
-  async #execAwaitingAgent(command, input, awaitAgentMs, pollMs) {
+  async #execAwaitingAgent(command, input, awaitAgentMs, pollMs, timeoutMs) {
     const deadline = Date.now() + awaitAgentMs;
     for (;;) {
       try {
-        return await this.client.agentExec(this.vmid, { command, input });
+        return await this.client.agentExec(this.vmid, { command, input, timeoutMs });
       } catch (err) {
         const agentDown = /guest agent is not running/i.test(err?.message ?? '');
         if (agentDown && Date.now() < deadline) {

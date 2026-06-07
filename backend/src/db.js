@@ -6,6 +6,15 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, 'migrations');
 
+function ensureMigrationTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+  `);
+}
+
 export function openDb(dbPath) {
   const absolute = resolve(dbPath);
   mkdirSync(dirname(absolute), { recursive: true });
@@ -15,17 +24,14 @@ export function openDb(dbPath) {
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      name TEXT PRIMARY KEY,
-      applied_at INTEGER NOT NULL DEFAULT (unixepoch())
-    );
-  `);
+  ensureMigrationTable(db);
 
   return db;
 }
 
 export function runMigrations(db) {
+  ensureMigrationTable(db);
+
   const applied = new Set(
     db.prepare('SELECT name FROM schema_migrations').all().map(r => r.name)
   );

@@ -1,27 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import Database from 'better-sqlite3';
 
-import { runMigrations } from '../src/db.js';
+import { testDb } from './test-db.js';
 import { createServerStore } from '../src/servers/store.js';
 import { buildConnectors } from '../src/servers/connectors/index.js';
 import { listServers } from '../src/servers/registry.js';
 
-// In-memory DB with all migrations applied (mirrors what openDb does, minus the
-// file/WAL setup which an in-memory DB doesn't need).
-function testDb() {
-  const db = new Database(':memory:');
-  db.pragma('foreign_keys = ON'); // match openDb so the new FK REFERENCES are exercised
-  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-    name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL DEFAULT (unixepoch())
-  );`);
-  runMigrations(db);
-  return db;
-}
+const storeDb = () => testDb({ foreignKeys: true });
 
 // ── seed ────────────────────────────────────────────────────────────────────────
 test('migration seeds the Assembly workshop map for counterstrike', () => {
-  const store = createServerStore(testDb());
+  const store = createServerStore(storeDb());
   const maps = store.listWorkshopMaps('counterstrike');
   assert.equal(maps.length, 1);
   assert.equal(maps[0].workshopId, '3071005299');
@@ -30,7 +19,7 @@ test('migration seeds the Assembly workshop map for counterstrike', () => {
 
 // ── workshop map catalog ─────────────────────────────────────────────────────────
 test('workshop maps: add, get, rename, delete, and server isolation', () => {
-  const store = createServerStore(testDb());
+  const store = createServerStore(storeDb());
 
   const added = store.addWorkshopMap('counterstrike', { workshopId: '12345', name: 'Cobblestone' });
   assert.equal(added.workshopId, '12345');
@@ -65,7 +54,7 @@ test('workshop maps: add, get, rename, delete, and server isolation', () => {
 
 // ── config library ───────────────────────────────────────────────────────────────
 test('configs: create, get, update (partial), list, delete', () => {
-  const store = createServerStore(testDb());
+  const store = createServerStore(storeDb());
 
   const cfg = store.createConfig('counterstrike', {
     name: 'bunnyhop',
@@ -102,7 +91,7 @@ test('configs: create, get, update (partial), list, delete', () => {
 });
 
 test('config names are unique per server', () => {
-  const store = createServerStore(testDb());
+  const store = createServerStore(storeDb());
   store.createConfig('counterstrike', { name: 'dup', body: 'a' });
   assert.throws(() => store.createConfig('counterstrike', { name: 'dup', body: 'b' }));
   // same name under a different server is fine
@@ -111,7 +100,7 @@ test('config names are unique per server', () => {
 
 // ── wiring ───────────────────────────────────────────────────────────────────────
 test('buildConnectors injects the store into every connector', () => {
-  const store = createServerStore(testDb());
+  const store = createServerStore(storeDb());
   const connectors = buildConnectors({ docker: /* client */ {} }, store);
   for (const c of connectors.values()) {
     assert.equal(c.store, store);
@@ -137,7 +126,7 @@ const openCount = (db, slug) =>
   ).get(slug).n;
 
 test('seedHostedGames registers the five servers in games(hosted=1)', () => {
-  const db = testDb();
+  const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
   const hosted = db.prepare('SELECT slug, identity_kind AS k FROM games WHERE hosted = 1 ORDER BY slug').all();
@@ -150,7 +139,7 @@ test('seedHostedGames registers the five servers in games(hosted=1)', () => {
 });
 
 test('recordJoin opens a session + upserts the global player; closeSession ends it', () => {
-  const db = testDb();
+  const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
 
@@ -175,7 +164,7 @@ test('recordJoin opens a session + upserts the global player; closeSession ends 
 });
 
 test('a rejoin updates the player name/last_seen without a duplicate player row', () => {
-  const db = testDb();
+  const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
@@ -191,7 +180,7 @@ test('a rejoin updates the player name/last_seen without a duplicate player row'
 });
 
 test('a SteamID player spans games as ONE player row (whitelist seed)', () => {
-  const db = testDb();
+  const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
@@ -204,7 +193,7 @@ test('a SteamID player spans games as ONE player row (whitelist seed)', () => {
 });
 
 test('a null-uid session (CS2-redacted) records no player row', () => {
-  const db = testDb();
+  const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
   const sid = store.recordJoin('counterstrike', steam('Carol', null), 1000, 'rcon');
@@ -216,7 +205,7 @@ test('a null-uid session (CS2-redacted) records no player row', () => {
 });
 
 test('closeAllOpenSessions reconciles every open row', () => {
-  const db = testDb();
+  const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
@@ -227,7 +216,7 @@ test('closeAllOpenSessions reconciles every open row', () => {
 });
 
 test('session methods on an unknown slug return [] / null instead of throwing', () => {
-  const store = createServerStore(testDb());
+  const store = createServerStore(storeDb());
   store.seedHostedGames(listServers());
   assert.deepEqual(store.listSessions('nope'), []);
   assert.equal(store.recordJoin('nope', steam('x', '1'), 1, 'rcon'), null);

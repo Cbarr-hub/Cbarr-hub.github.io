@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as mp from '../src/servers/connectors/minecraft-profile.js';
+import { clampNumber } from '../src/servers/connectors/docker-base.js';
 import { DockerMinecraftConnector } from '../src/servers/connectors/docker/minecraft.js';
 
 // ── pure profile module (shared server.properties logic) ─────────────────────────
@@ -191,11 +192,15 @@ test('DockerMinecraft runLiveAction rejects unknown keys with BAD_SETTING', asyn
 // contract against MC_LIVE_CONTROLS bounds without touching the network. We mirror the
 // exact clamp the connector uses so a bounds regression in the controls table is caught.
 test('DockerMinecraft live-control bounds clamp slider values', () => {
-  const clamp = (v, lo, hi, def) => Math.max(lo, Math.min(hi, Number(v) || def));
+  const clamp = clampNumber;
   // time 0..24000, randomtick 0..20, sleeppct 0..100 (mirrors MC_LIVE_CONTROLS)
-  assert.equal(clamp(99999, 0, 24000, 6000), 24000);
-  assert.equal(clamp(-5, 0, 24000, 6000), 0);
+  assert.equal(clampNumber(99999, 0, 24000, 6000), 24000);
+  assert.equal(clampNumber(-5, 0, 24000, 6000), 0);
+  assert.equal(clampNumber(0, 0, 24000, 6000), 0);
+  assert.equal(clampNumber('', 0, 24000, 6000), 6000);
+  assert.equal(clampNumber(null, 0, 24000, 6000), 6000);
   assert.equal(clamp('abc', 0, 24000, 6000), 6000); // non-numeric → default
-  assert.equal(clamp(50, 0, 20, 3), 20);
-  assert.equal(clamp(200, 0, 100, 100), 100);
+  assert.equal(clampNumber(50, 0, 20, 3), 20);
+  assert.equal(clampNumber(0, 0, 20, 3), 0);
+  assert.equal(clampNumber(200, 0, 100, 100), 100);
 });

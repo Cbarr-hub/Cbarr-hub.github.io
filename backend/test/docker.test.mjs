@@ -63,6 +63,23 @@ test('DockerClient.statusCurrent maps a running container to normalizeStatus sha
   assert.ok(s.cpu > 0); // (100/400)*2 = 0.5
 });
 
+test('DockerClient.statusCurrent can skip the slow stats sample', async () => {
+  const startedAt = new Date(Date.now() - 60_000).toISOString();
+  const { fetchImpl, calls } = fakeFetch([
+    [/^GET \/containers\/mc\/json$/, () => res({ json: {
+      State: { Running: true, StartedAt: startedAt }, HostConfig: { Memory: 1234 },
+    } })],
+    [/^GET \/containers\/mc\/stats/, () => res({ ok: false, status: 500 })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const s = await c.statusCurrent('mc', { stats: false });
+  assert.equal(s.status, 'running');
+  assert.equal(s.cpu, null);
+  assert.equal(s.mem, null);
+  assert.equal(s.maxmem, 1234);
+  assert.deepEqual(calls.map((x) => x.path), ['/containers/mc/json']);
+});
+
 test('DockerClient.statusCurrent reports stopped, and tolerates missing stats', async () => {
   const { fetchImpl } = fakeFetch([
     [/^GET \/containers\/mc\/json$/, () => res({ json: { State: { Running: false } } })],
@@ -82,6 +99,62 @@ test('DockerClient power actions hit the right endpoints (stop=kill, shutdown=st
   assert.deepEqual(calls.map((x) => x.path), [
     '/containers/mc/start', '/containers/mc/stop', '/containers/mc/kill', '/containers/mc/restart',
   ]);
+});
+
+test('DockerClient power actions treat expected already-state responses as no-ops (reboot still surfaces 409)', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/start$/, () => res({ ok: false, status: 304, text: 'already started' })],
+    [/^POST \/containers\/mc\/stop$/, () => res({ ok: false, status: 304, text: 'already stopped' })],
+    [/^POST \/containers\/mc\/kill$/, () => res({ ok: false, status: 409, text: 'not running' })],
+    [/^POST \/containers\/mc\/restart$/, () => res({ ok: false, status: 409, text: 'engine refused restart' })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  assert.deepEqual(await c.start('mc'), { ok: true, noop: true, status: 304 });
+  assert.deepEqual(await c.shutdown('mc'), { ok: true, noop: true, status: 304 });
+  assert.deepEqual(await c.stop('mc'), { ok: true, noop: true, status: 409 });
+  // reboot does NOT swallow 409: a genuine restart refusal must surface as an error.
+  await assert.rejects(() => c.reboot('mc'), (e) => e.name === 'DockerError' && e.status === 409);
+});
+
+test('DockerClient.agentExec aborts the Docker exec start stream at timeoutMs', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'slow' } })],
+    [/^POST \/exec\/slow\/start$/, (_l, init) => new Promise((resolve, reject) => {
+      init.signal.addEventListener('abort', () => {
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        reject(err);
+      });
+    })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  await assert.rejects(
+    () => c.agentExec('mc', { command: ['/bin/sh', '-lc', 'sleep 999'], timeoutMs: 10 }),
+    (e) => e.name === 'DockerError' && e.code === 'DOCKER_TIMEOUT',
+  );
+});
+
+test('DockerClient.agentExec aborts Docker exec create response reads at timeoutMs', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, (_l, init) => ({
+      ok: true,
+      status: 200,
+      statusText: '200',
+      text: () => new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      }),
+      arrayBuffer: async () => new ArrayBuffer(0),
+    })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  await assert.rejects(
+    () => c.agentExec('mc', { command: ['/bin/sh', '-lc', 'sleep 999'], timeoutMs: 10 }),
+    (e) => e.name === 'DockerError' && e.code === 'DOCKER_TIMEOUT',
+  );
 });
 
 test('DockerClient.agentExec runs to completion and agentExecStatus returns the exited shape', async () => {

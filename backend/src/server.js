@@ -5,7 +5,7 @@ import csrf from '@fastify/csrf-protection';
 
 import { loadEnv } from './env.js';
 import { openDb, runMigrations, purgeExpiredSessions } from './db.js';
-import { loadOrCreateSessionKey, SESSION_TTL_SECONDS } from './session.js';
+import { loadOrCreateSessionKey, SESSION_COOKIE, SESSION_TTL_SECONDS } from './session.js';
 import { attachSession } from './middleware/auth.js';
 import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
@@ -19,6 +19,7 @@ import leaderboardRoutes from './routes/leaderboard.js';
 import eventsRoutes from './routes/events.js';
 import gamesRoutes from './routes/games.js';
 import adminRoutes from './routes/admin.js';
+import adminDbRoutes from './routes/admin-db.js';
 import serversRoutes from './routes/servers.js';
 
 export async function buildApp(env = loadEnv()) {
@@ -35,7 +36,7 @@ export async function buildApp(env = loadEnv()) {
 
   await app.register(secureSession, {
     key: loadOrCreateSessionKey(env.SESSION_KEY_PATH),
-    cookieName: 'gt_session',
+    cookieName: SESSION_COOKIE,
     cookie: {
       path: '/',
       httpOnly: true,
@@ -85,6 +86,7 @@ export async function buildApp(env = loadEnv()) {
   await app.register(eventsRoutes,     { prefix: '/api/events' });
   await app.register(gamesRoutes,      { prefix: '/api/games' });
   await app.register(adminRoutes,      { prefix: '/api/admin' });
+  await app.register(adminDbRoutes,    { prefix: '/api/admin/db' });
   await app.register(serversRoutes,    { prefix: '/api/servers' });
 
   return app;

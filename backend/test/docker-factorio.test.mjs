@@ -237,6 +237,7 @@ async function captureLive(key, value) {
 test('DockerFactorio runLiveAction clamps game_speed to its bounds and pushes /sc', async () => {
   assert.equal(await captureLive('game_speed', 99), '/sc game.speed=4');    // clamp high
   assert.equal(await captureLive('game_speed', -5), '/sc game.speed=0.25'); // clamp low
+  assert.equal(await captureLive('game_speed', 0),  '/sc game.speed=0.25'); // zero parses, then clamps low
   assert.equal(await captureLive('game_speed', 2),  '/sc game.speed=2');    // in range
 });
 
@@ -245,6 +246,8 @@ test('DockerFactorio runLiveAction clamps evolution and pushes set_evolution_fac
     '/sc game.forces["enemy"].set_evolution_factor(1)');  // clamp high
   assert.equal(await captureLive('evolution', -1),
     '/sc game.forces["enemy"].set_evolution_factor(0)');  // clamp low
+  assert.equal(await captureLive('evolution', 0),
+    '/sc game.forces["enemy"].set_evolution_factor(0)');  // zero is preserved
 });
 
 test('DockerFactorio runLiveAction maps the new actions to their commands', async () => {

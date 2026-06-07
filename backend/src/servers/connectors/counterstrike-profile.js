@@ -20,7 +20,6 @@ export const STOCK_FALLBACK = [
 // Live (RCON) curated actions. CS2 serves Source RCON on the game port (27015).
 export const CS_LIVE_ACTIONS = [
   { key: 'restart_round', label: 'Restart Round' },
-  { key: 'apply_config',  label: 'Apply Config' },
   { key: 'cheats_on',     label: 'Cheats On' },
   { key: 'cheats_off',    label: 'Cheats Off' },
   { key: 'bunnyhop_on',   label: 'Bunnyhop On' },
@@ -28,12 +27,15 @@ export const CS_LIVE_ACTIONS = [
 ];
 export const CS_ACTION_CMDS = {
   restart_round: 'mp_restartgame 1',
-  apply_config:  'exec gamertown/active',
   cheats_on:     'sv_cheats 1',
   cheats_off:    'sv_cheats 0',
   bunnyhop_on:   'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_staminamax 0; sv_airaccelerate 1000',
   bunnyhop_off:  'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_staminamax 14; sv_airaccelerate 12',
 };
+
+export const MAX_RAW_CONFIG_CHARS = 16_000;
+export const MAX_RAW_CONFIG_LINE_CHARS = 512;
+export const MAX_HOSTNAME_CHARS = 128;
 
 // Live (RCON) range sliders — continuous cvars pushed via runLiveAction(key, value),
 // each clamped to its bounds in csRangeCmd. Gravity is cheats-gated, so it
@@ -105,10 +107,16 @@ export function validateProfileSettings(s = {}) {
   out.gameMode = s.gameMode;
   const hostname = String(s.hostname ?? '');
   if (/["\n\r]/.test(hostname)) throw badSetting('server name may not contain quotes or newlines');
+  if (hostname.length > MAX_HOSTNAME_CHARS) throw badSetting(`server name too long (max ${MAX_HOSTNAME_CHARS} chars)`);
   out.hostname = hostname;
   const raw = String(s.rawConfig ?? '');
-  if (raw.length > 100_000) throw badSetting('extra cvars too large (max 100000 chars)');
+  if (raw.length > MAX_RAW_CONFIG_CHARS) throw badSetting(`extra cvars too large (max ${MAX_RAW_CONFIG_CHARS} chars)`);
   if (raw.includes('\0')) throw badSetting('extra cvars may not contain null bytes');
+  for (const line of raw.split(/\r?\n/)) {
+    if (line.length > MAX_RAW_CONFIG_LINE_CHARS) {
+      throw badSetting(`extra cvar lines must be ${MAX_RAW_CONFIG_LINE_CHARS} chars or shorter`);
+    }
+  }
   out.rawConfig = raw;
   // Structured Match-Rules cvars: bounded numbers (bools validate as 0/1 numbers).
   for (const f of CS_CVAR_FIELDS) {
@@ -150,7 +158,7 @@ export function profileGroups(mapOpts, note) {
         key: 'advanced', title: 'Advanced',
         fields: [
           { key: 'hostname', label: 'Server Name', type: 'text' },
-          { key: 'rawConfig', label: 'Extra cvars (deployed as a live-execable config)', type: 'textarea',
+          { key: 'rawConfig', label: 'Extra live RCON commands', type: 'textarea',
             placeholder: 'sv_cheats 1\nsv_autobunnyhopping 1\nsv_enablebunnyhopping 1' },
         ],
       },
@@ -207,7 +215,12 @@ export function validConfigName(name) {
 }
 export function validConfigBody(body) {
   const b = String(body ?? '');
-  if (b.length > 100_000) throw badSetting('config body too large (max 100000 chars)');
+  if (b.length > MAX_RAW_CONFIG_CHARS) throw badSetting(`config body too large (max ${MAX_RAW_CONFIG_CHARS} chars)`);
   if (b.includes('\0')) throw badSetting('config body may not contain null bytes');
+  for (const line of b.split(/\r?\n/)) {
+    if (line.length > MAX_RAW_CONFIG_LINE_CHARS) {
+      throw badSetting(`config lines must be ${MAX_RAW_CONFIG_LINE_CHARS} chars or shorter`);
+    }
+  }
   return b;
 }

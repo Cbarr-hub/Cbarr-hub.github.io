@@ -1,6 +1,6 @@
 // One-shot seed: inserts the original Gamertown roster (all admin) and the
 // canonical party-games list. Safe to re-run — idempotent by name so existing
-// rows are preserved. Passwords are pre-hashed with argon2id.
+// rows are preserved. Passwords are hashed with argon2id.
 //
 // Party games are seeded WITHOUT explicit ids (auto-assigned): the `games` table is
 // now shared with the hosted game *servers* (hosted=1, auto-inserted on app boot —
@@ -8,10 +8,9 @@
 // rows on a fresh DB and silently drop party games. Keying by name (hosted=0)
 // avoids that coupling entirely.
 
-import argon2 from 'argon2';
-
 import { loadEnv } from './env.js';
 import { openDb, runMigrations } from './db.js';
+import { createUser } from './users.js';
 
 const SEED_USERS = [
   { username: 'Wiley',   displayName: 'Wiley',   password: 'tree', isAdmin: true },
@@ -48,10 +47,6 @@ const db = openDb(env.DB_PATH);
 runMigrations(db);
 
 const userExists = db.prepare('SELECT id FROM users WHERE username = ?');
-const insertUser = db.prepare(
-  'INSERT INTO users (username, display_name, password_hash, is_admin) VALUES (?, ?, ?, ?)'
-);
-const insertBalance = db.prepare('INSERT INTO balances (user_id, dollars) VALUES (?, 5000)');
 // Idempotent by name, scoped to party games (hosted=0) — never touches the hosted
 // server rows and never assumes a fixed id.
 const insertGame = db.prepare(`
@@ -63,12 +58,7 @@ const insertGame = db.prepare(`
 let usersCreated = 0;
 for (const u of SEED_USERS) {
   if (userExists.get(u.username)) continue;
-  const hash = await argon2.hash(u.password, { type: argon2.argon2id });
-  const tx = db.transaction(() => {
-    const r = insertUser.run(u.username, u.displayName, hash, u.isAdmin ? 1 : 0);
-    insertBalance.run(r.lastInsertRowid);
-  });
-  tx();
+  await createUser(db, { ...u, minPasswordLength: 1 });
   usersCreated += 1;
 }
 

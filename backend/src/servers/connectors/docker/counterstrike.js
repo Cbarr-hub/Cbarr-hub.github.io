@@ -24,6 +24,7 @@ import { badSetting, notFound, duplicateError } from '../../errors.js';
 
 // joedwards32/cs2 install/cfg layout (image-dependent — validate on the host).
 const CFG = '/home/steam/cs2-dedicated/game/csgo/cfg';
+const RCON_BATCH_LIMIT = 1800;
 
 // Steam Workshop titles are free-text (quotes, newlines, arbitrary length); the
 // catalog stores short display names, so coerce an auto-fetched title into one.
@@ -94,9 +95,9 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     for (const f of csProfile.CS_CVAR_FIELDS) {
       parts.push(`${f.cvar} ${f.bool ? (s[f.key] ? 1 : 0) : s[f.key]}`);
     }
+    parts.push(...rawConfigCommands(s.rawConfig));
     parts.push(csProfile.buildChangeMapCmd(s.map)); // changelevel / host_workshop_map
-    if (s.rawConfig) parts.push(...s.rawConfig.split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
-    await this.#rcon(parts.join('; '));
+    for (const batch of rconBatches(parts)) await this.#rcon(batch);
     return {
       ok: true,
       note: 'Applied live via RCON. Max-players and persistent boot defaults live in servers.compose.yml env (edit + recreate the container to change them).',
@@ -224,4 +225,32 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     if (!cmd) throw badSetting(`unknown live action: ${key}`);
     return { output: await this.#rcon(cmd) };
   }
+}
+
+function rawConfigCommands(raw) {
+  return String(raw ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('//'));
+}
+
+function rconBatches(commands) {
+  const batches = [];
+  let cur = [];
+  let len = 0;
+  for (const cmd of commands) {
+    if (cmd.length > RCON_BATCH_LIMIT) {
+      throw badSetting(`RCON command too large (max ${RCON_BATCH_LIMIT} chars)`);
+    }
+    const extra = cur.length ? 2 : 0; // "; "
+    if (cur.length && len + extra + cmd.length > RCON_BATCH_LIMIT) {
+      batches.push(cur.join('; '));
+      cur = [];
+      len = 0;
+    }
+    cur.push(cmd);
+    len += (cur.length > 1 ? 2 : 0) + cmd.length;
+  }
+  if (cur.length) batches.push(cur.join('; '));
+  return batches;
 }

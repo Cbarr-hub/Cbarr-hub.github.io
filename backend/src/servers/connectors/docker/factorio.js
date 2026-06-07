@@ -13,7 +13,7 @@
 // NOTE: container-side world operations (save-as / generate) need validation on a
 // real container; save-as (a file copy) is wired here, world-gen is a follow-up.
 
-import { DockerBaseConnector } from '../docker-base.js';
+import { DockerBaseConnector, clampNumber } from '../docker-base.js';
 import * as fctrProfile from '../factorio-profile.js';
 import { rconExchange } from '../../rcon-tcp.js';
 import { validateLiveCommand } from '../../rcon.js';
@@ -174,11 +174,11 @@ export class DockerFactorioConnector extends DockerBaseConnector {
     const exec = (command) => rconExchange({ host: this.server.container, port, password, command });
     // Range sliders — clamp to bounds, push via /silent-command (disables achievements).
     if (key === 'game_speed') {
-      const n = Math.max(0.25, Math.min(4, Number(value) || 1));
+      const n = clampNumber(value, 0.25, 4, 1);
       return { output: await exec(`/sc game.speed=${n}`) };
     }
     if (key === 'evolution') {
-      const n = Math.max(0, Math.min(1, Number(value) || 0));
+      const n = clampNumber(value, 0, 1, 0);
       return { output: await exec(`/sc game.forces["enemy"].set_evolution_factor(${n})`) };
     }
     const cmd = FACTORIO_ACTION_CMDS[key];

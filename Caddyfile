@@ -1,12 +1,8 @@
-# Gamertown reverse proxy + static site (container variant of backend/Caddyfile.example).
+# Gamertown reverse proxy + static site for the Docker stack.
 #
-# Out of the box: SITE_ADDRESS=localhost + CADDY_TLS="tls internal" → self-signed, no
-# domain required. For production set in the host secrets file:
-#   SITE_ADDRESS=gamertown.solutions, www.gamertown.solutions
-#   CADDY_TLS=tls /etc/caddy/certs/gamertown.solutions.pem /etc/caddy/certs/gamertown.solutions.key
-# and bind-mount the certs to /etc/caddy/certs (see docker-compose.yml). This mirrors
-# the CT-103 production Caddy: a forward_auth gate, public assets, and long backup
-# timeouts — only the upstream is the `app` container instead of 127.0.0.1.
+# Defaults: SITE_ADDRESS=localhost + CADDY_TLS="tls internal" gives local
+# self-signed HTTPS. Production sets SITE_ADDRESS and a Cloudflare Origin cert in
+# the host secrets file, then bind-mounts certs to /etc/caddy/certs.
 
 {$SITE_ADDRESS:localhost} {
 	encode gzip
@@ -17,29 +13,17 @@
 		respond 403
 	}
 
-	# Long-running backup streams (Factorio/MC tar→R2) need generous timeouts.
-	@backups path /api/servers/*/backups*
-	handle @backups {
-		reverse_proxy app:3000 {
-			transport http {
-				response_header_timeout 20m
-				read_timeout 20m
-				write_timeout 20m
-			}
-		}
-	}
-
-	# API → the backend container.
+	# API -> the backend container.
 	handle /api/* {
 		reverse_proxy app:3000
 	}
 
 	# Public assets (sign-in page + static media) served WITHOUT the auth gate.
 	# `no-cache` = browsers may store but MUST revalidate (ETag → cheap 304 when
-	# unchanged). Without it, Cloudflare stamps a 4h browser-cache TTL on these, so a
-	# deploy that changes a JS module leaves clients on a stale copy for up to 4h —
-	# fresh HTML (no-store, below) importing an old module → "missing export" / blank
-	# page. Revalidation makes a deploy take effect on the next load instead.
+	# unchanged). Without it, Cloudflare stamps a ~4h browser-cache TTL on these, so
+	# a deploy that changes a JS module leaves clients on a stale copy — fresh HTML
+	# (no-store, below) importing an old module → "missing export" / blank page.
+	# Revalidation makes a deploy take effect on the next load instead.
 	@public path /signin.html *.css *.js *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2 *.ttf *.webp *.mp4
 	handle @public {
 		header Cache-Control "no-cache"
@@ -47,8 +31,8 @@
 		file_server
 	}
 
-	# Everything else is gated behind login: Caddy asks the app's /api/auth/gate,
-	# which returns 204 (logged in) or 302 → /signin.html.
+	# Everything else is gated behind login. Caddy asks the app's /api/auth/gate,
+	# which returns 204 when logged in or redirects to /signin.html.
 	handle {
 		forward_auth app:3000 {
 			uri /api/auth/gate
@@ -59,6 +43,5 @@
 		file_server
 	}
 
-	# Self-signed by default; override CADDY_TLS for a real cert (see header).
 	{$CADDY_TLS:tls internal}
 }

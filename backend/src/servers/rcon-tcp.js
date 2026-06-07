@@ -33,7 +33,7 @@ function encode(id, type, body) {
  */
 export function rconExchange({ host, port = 25575, password, command, timeoutMs = 8000 }) {
   return new Promise((resolve, reject) => {
-    if (!password) { reject(rconErr('RCON password is not set')); return; }
+    if (!password) { reject(rconErr('RCON password is not set', 'NO_RCON')); return; }
 
     const AUTH_ID = 1, CMD_ID = 2, END_ID = 3;
     const socket = net.connect({ host, port });
@@ -51,11 +51,11 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
       socket.destroy();
       err ? reject(err) : resolve(val);
     };
-    const timer = setTimeout(() => finish(rconErr(`RCON timeout after ${timeoutMs}ms`)), timeoutMs);
+    const timer = setTimeout(() => finish(rconErr(`RCON timeout after ${timeoutMs}ms`, 'RCON_ERROR')), timeoutMs);
 
     socket.on('connect', () => socket.write(encode(AUTH_ID, 3, password)));
-    socket.on('error', (e) => finish(rconErr(`RCON connection failed: ${e.message}`)));
-    socket.on('end', () => finish(authed ? null : rconErr('RCON closed before auth'), out));
+    socket.on('error', (e) => finish(rconErr(`RCON connection failed: ${e.message}`, 'RCON_ERROR')));
+    socket.on('end', () => finish(authed ? null : rconErr('RCON closed before auth', 'RCON_ERROR'), out));
 
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
@@ -68,7 +68,7 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
         buf = buf.subarray(4 + size);
 
         if (!authed) {
-          if (id === -1) { finish(rconErr('RCON auth failed (bad password)')); return; }
+          if (id === -1) { finish(rconErr('RCON auth failed (bad password)', 'RCON_AUTH')); return; }
           if (type === 2) {
             authed = true;
             socket.write(encode(CMD_ID, 2, command));
@@ -88,8 +88,8 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
   });
 }
 
-function rconErr(message) {
+function rconErr(message, code) {
   const e = new Error(message);
-  e.code = 'NO_RCON';
+  e.code = code;
   return e;
 }

@@ -19,7 +19,7 @@
 //     ph_*/phx_* cvars + rcon_password + `exec gamertown/active`
 //   escape hatch : cfg/gamertown/active.cfg  (free-text extra cvars; re-execable live)
 
-import { GmodConnector, GMOD_LIVE_CONTROLS, gmodRangeCmd } from './gmod.js';
+import { GmodConnector, GMOD_SHARED_LIVE_CONTROLS, gmodRangeCmd } from './gmod.js';
 import { getVar, setVars } from '../cfgvars.js';
 import { getCvar, setCvars } from '../cvars.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
@@ -69,8 +69,8 @@ const PH_CONTROLS = [
 ];
 
 // Live (RCON) curated actions — real X2Z console commands + the genuinely binary
-// toggles. The gravity/speed/timescale on-off pairs are now sliders (shared
-// GMOD_LIVE_CONTROLS / gmodRangeCmd, advertised by getLive below).
+// toggles. The gravity/timescale on-off pairs are now sliders (shared
+// GMOD_SHARED_LIVE_CONTROLS / gmodRangeCmd, advertised by getLive below).
 const PH_LIVE_ACTIONS = [
   { key: 'next_round',     label: 'Next Round' },
   { key: 'map_vote',       label: 'Start Map Vote' },
@@ -102,12 +102,11 @@ const PH_ACTION_CMDS = {
   players:        'status',
 };
 
-// Live RANGE controls — the shared GMOD sliders (gravity / speed / timescale +
-// the TTT next-round tuners, harmless on PH) plus two PH-specific next-round timers
-// (round + hide time). PH-local sliders are dispatched in runLiveAction below; the
-// shared ones fall through to gmodRangeCmd.
+// Live RANGE controls: the shared GMOD sliders plus two PH-specific next-round
+// timers (round + hide time). PH-local sliders are dispatched in runLiveAction
+// below; the shared ones fall through to gmodRangeCmd.
 const PH_LIVE_CONTROLS = [
-  ...GMOD_LIVE_CONTROLS,
+  ...GMOD_SHARED_LIVE_CONTROLS,
   { key: 'ph_round_time', label: 'Round Time', min: 60, max: 600, step: 10, default: 250, suffix: 's' },
   { key: 'ph_blind_time', label: 'Hide Time',  min: 10, max: 60,  step: 5,  default: 30,  suffix: 's' },
 ];
@@ -198,7 +197,8 @@ export class PropHuntConnector extends GmodConnector {
               help: 'The ph_ map the server boots into (default ph_restaurant). Pick any installed map; change maps live in the Runtime panel.' },
             { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
               placeholder: '3737190377',
-              help: 'The Steam Workshop collection GMOD mounts at boot — the X2Z gamemode + ph_ maps + extras. Default 3737190377.' },
+              readOnly: true,
+              help: 'Read-only here: Apply does not rewrite the Prop Hunt collection, because changing it can break the X2Z mount. Use Import Collection or Raw Config when you intentionally need to change it.' },
             { key: 'syncMaps', label: 'Sync Maps', type: 'mapsync',
               help: 'Refresh the installed ph_ map list from the mounted collection (run after the collection changes + a restart).' },
             { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1 },
@@ -314,7 +314,7 @@ export class PropHuntConnector extends GmodConnector {
     if (key === 'ph_blind_time') {
       return this.runRcon(`ph_hunter_blindlock_time ${Math.max(10, Math.min(60, Math.round(Number(value) || 30)))}`);
     }
-    const range = gmodRangeCmd(key, value);
+    const range = gmodRangeCmd(key, value, GMOD_SHARED_LIVE_CONTROLS);
     if (range) return this.runRcon(range);
     const cmd = PH_ACTION_CMDS[key];
     if (!cmd) throw badSetting(`unknown live action: ${key}`);

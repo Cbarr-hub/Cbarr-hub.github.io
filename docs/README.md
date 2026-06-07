@@ -6,7 +6,7 @@ operations quick-reference + game-config gotchas, auto-loaded by Claude Code).
 
 | Doc | What it covers |
 |---|---|
-| [`local-dev.md`](local-dev.md) | Run the full stack locally (Windows/macOS/Linux): `tools/setup.*` → `tools/dev.*` → `tools/db-restore.*` |
+| [`local-dev.md`](local-dev.md) | Run the full stack locally (Windows/macOS/Linux): one command `gt … dev --fresh` (over `tools/setup.*` + `tools/dev.*` + `tools/db-restore.*`) |
 | [`infrastructure.md`](infrastructure.md) | Current architecture — the Docker stack on the keeper (VM 106), containers, volumes, edge, forwarded ports |
 | [`disaster-recovery.md`](disaster-recovery.md) | Rebuild from GitHub + R2 + the age passphrase; the R2 backup inventory + partial-recovery recipes |
 | [`backend.md`](backend.md) | Backend API surface, the auth/security model, the CLI, and the game-server control panel |

@@ -10,9 +10,11 @@ deployed game images — catching image-specific command mismatches that unit te
 
 ## Run
 
-Bring the dev stack up first (`tools/dev.ps1`). Then, from the repo root, copy a script into the
-running app container (which has `DOCKER_HOST`, every `*_RCON_PASSWORD`, and compose-network reach
-to each game service) and run it:
+Bring the dev stack up first (`tools/gt.ps1 dev --fresh`, or just `tools/gt.ps1 dev` if secrets
+are already set up — both use the compose project `cbarr-hubgithubio`, so the container is
+`cbarr-hubgithubio-app-1`). Then, from the repo root, copy a script into the running app container
+(which has `DOCKER_HOST`, every `*_RCON_PASSWORD`, and compose-network reach to each game service)
+and run it:
 
 ```powershell
 # Full matrix across all 5 games:
@@ -40,4 +42,4 @@ cvar is read back), plus a per-game sanity query, and prints a matrix + a `FAILU
 
 The data is junk/local, so these are destructive by design (they set gravity, gamerules, maps,
 etc.); the harness resets the few visible Source cvars at the end. Prod data is separate and
-restorable from R2 (`tools/db-restore.ps1`). Re-run after any game image version bump.
+restorable from R2 (`tools/gt.ps1 restore-db`, or the underlying `tools/db-restore.ps1`). Re-run after any game image version bump.

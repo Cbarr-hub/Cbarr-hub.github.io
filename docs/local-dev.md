@@ -4,24 +4,45 @@ This guide walks through setting up Gamertown locally on your machine for parall
 
 ## Quickstart (dev, full stack)
 
-From a fresh clone, three commands stand up the whole stack **and a working login**:
+From a fresh clone, **one command** stands up the whole stack **and a working login**:
 
 ```powershell
-.\tools\setup.ps1        # 1. pull + decrypt secrets from R2 -> .env.local (age prompts for the passphrase)
-.\tools\dev.ps1          # 2. build + start the full stack (app, Caddy, docker-proxy, 5 game servers)
-.\tools\db-restore.ps1   # 3. restore the app DB from R2 (users) so you can log in
+.\tools\gt.ps1 dev --fresh     # Windows
+```
+```bash
+tools/gt.sh dev --fresh        # macOS/Linux
 ```
 
-Then open **https://localhost** (accept the self-signed cert) and sign in.
+`gt dev --fresh` does all of it in order: installs deps, pulls + decrypts secrets from R2
+(age prompts for the passphrase — needs a real terminal), **pre-seeds the app DB** into the
+volume so login works, builds + starts the full stack (app, Caddy, docker-proxy, 5 game
+servers; localhost self-signed + live reload), and waits for `/api/health`. Then open
+**https://localhost** (accept the self-signed cert) and sign in. Re-running it is
+non-destructive (it preserves `.env.local` keys like `DEV_PUBLIC_HOST` and skips the DB
+restore if one already exists — pass `--restore` to force a fresh pull).
 
-> **Why three steps:** `setup.ps1` restores **secrets** only. The app **database** is a
-> separate R2 backup, so without step 3 the DB is empty (no users) and login fails. The
-> app, login, Minecraft and Factorio are usable within minutes; CS2/GMOD/Prop Hunt
-> download their game files on first boot (CS2 is ~30GB).
+> The app, login, Minecraft and Factorio are usable within minutes; CS2/GMOD/Prop Hunt
+> download their game files on first boot (CS2 is ~30GB) — check `gt … dev ps` /
+> `gt … dev logs -f counterstrike`.
 
-macOS/Linux equivalents: `tools/setup.sh`, `tools/dev.sh`, and `tools/db-restore.sh`
-(see [Database restore](#database-restore-required-for-login)). The rest of this guide
-explains each step and the other run modes.
+**Day-to-day** (secrets already set up): `gt … dev` brings the stack up, and any compose
+verb passes through — `gt … dev ps`, `gt … dev logs -f app`, `gt … dev down`,
+`gt … dev up -d minecraft`.
+
+**Production-equivalent rehearsal** (existing data, prod-shaped — real Origin cert,
+`gamertown.solutions`, VAC servers, no nodemon): `gt … dev --prod-like` (or
+`gt … dev --prod-like --app` for the app only, no game servers). It tells you whether the
+`gamertown.solutions` hosts entry is present.
+
+The dispatcher's mode → {compose files, env-file chain, project name} mapping lives in
+[`tools/gt-modes.conf`](../tools/gt-modes.conf) (shared by both `gt.ps1` and `gt.sh`); it
+calls the primitives below, which still work standalone. The rest of this guide explains each
+step and the other run modes.
+
+> **Under the hood (the original three steps, still valid):** `setup.*` restores **secrets**
+> only; the app **database** is a separate R2 backup (`db-restore.*`); `dev.*` builds + starts
+> the stack. `gt dev --fresh` simply sequences them (and pre-seeds the DB before `up` instead
+> of restarting afterwards).
 
 ## Prerequisites
 
@@ -320,9 +341,17 @@ Sessions appear when a player **joins after the collector starts** — the log t
 
 ## For production deployment
 
-On the keeper (Proxmox VM 106):
+On the keeper (Proxmox VM 106) — **one command**, backup-first:
 ```bash
 cd /root/gamertown
+tools/gt.sh prod            # predeploy DB snapshot (abort on fail) -> reset to origin/main
+                            # -> up -d --build -> health check
+#   tools/gt.sh prod --dry-run    # print every resolved command, change nothing
+#   tools/gt.sh prod --rollback   # restore predeploy DB + checkout last SHA + redeploy
+```
+
+Manual fallback (no pre-deploy backup):
+```bash
 git pull origin main
 COMPOSE="docker compose -f docker-compose.yml -f servers.compose.yml"
 $COMPOSE up -d --build

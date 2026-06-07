@@ -10,7 +10,7 @@ Full infra details → [`docs/infrastructure.md`](docs/infrastructure.md)
 Disaster recovery → [`docs/disaster-recovery.md`](docs/disaster-recovery.md)  
 Backend API reference → [`docs/backend.md`](docs/backend.md)  
 Design system → [`docs/design-system.md`](docs/design-system.md)  
-Local dev (Windows/macOS/Linux) → [`docs/local-dev.md`](docs/local-dev.md) — `tools/setup.*` (secrets from R2) + `tools/dev.*` (full stack, localhost/self-signed, live reload) + `tools/db-restore.*` (app DB for login)
+Local dev (Windows/macOS/Linux) → [`docs/local-dev.md`](docs/local-dev.md) — **one command**: `gt … dev --fresh` (`tools/gt.ps1` / `tools/gt.sh`) does secrets + DB + full stack + health; `gt … dev --prod-like` rehearses the real deploy on existing data. Dispatcher reads `tools/gt-modes.conf` and calls the primitives `tools/setup.*` (secrets from R2) + `tools/dev.*` (full stack, localhost/self-signed, live reload) + `tools/db-restore.*` (app DB for login).
 
 ---
 
@@ -60,9 +60,13 @@ All commands run **on the keeper** (`ssh root@192.168.1.241`, passwordless from 
 `COMPOSE="docker compose -f docker-compose.yml -f servers.compose.yml"` (run from `/root/gamertown`).
 
 ```bash
-# Deploy a code update
-cd /root/gamertown && git pull
-$COMPOSE up -d --build                  # rebuilds changed images, recreates affected containers
+# Deploy a code update (PREFERRED: backup-first, fail-fast, rollback-capable)
+cd /root/gamertown && tools/gt.sh prod   # DB->predeploy/ backup (abort on fail) -> reset to
+                                         # origin/main -> up -d --build -> health check
+#   tools/gt.sh prod --dry-run           # print every resolved command, change nothing
+#   tools/gt.sh prod --rollback          # restore predeploy DB + checkout last SHA + redeploy
+# Manual equivalent (no pre-deploy backup):
+#   git pull && $COMPOSE up -d --build   # rebuilds changed images, recreates affected containers
 
 # Restart / logs (services: app, caddy, minecraft, gmod, prophunt, counterstrike, factorio)
 $COMPOSE restart app

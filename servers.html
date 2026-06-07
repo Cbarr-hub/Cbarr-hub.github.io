@@ -199,6 +199,46 @@ header.top{position:sticky; top:0; z-index:40;
 .ev .gone{font-size:var(--t-xs);color:var(--txt-faint);letter-spacing:.5px}
 .ev-empty,.view-msg{padding:var(--s7) var(--s4);text-align:center;color:var(--txt-faint);font-size:var(--t-sm)}
 
+/* ============ presence badge on fleet tiles ============ */
+.art .playing{position:absolute;right:14px;bottom:12px;display:inline-flex;align-items:center;gap:6px;font-size:var(--t-xs);letter-spacing:.5px;color:#d6ffe8;background:rgba(6,26,14,.72);border:1px solid rgba(72,255,155,.4);border-radius:99px;padding:4px 9px;backdrop-filter:blur(6px)}
+.art .playing .d{width:7px;height:7px;border-radius:50%;background:var(--grn-hot);box-shadow:0 0 7px var(--grn-hot)}
+/* map-link: the world-map variant of the steam-launch button */
+.card .map-link{background:rgba(20,40,90,.5);border-color:rgba(95,140,255,.5);color:#cfe0ff}
+.card .map-link:hover{background:rgba(95,140,255,.9);color:#04122a}
+
+/* ============ activity: online-now strip ============ */
+.online-strip{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s4)}
+.online-h{display:flex;align-items:center;gap:8px;width:100%;font-size:var(--t-xs);letter-spacing:1px;text-transform:uppercase;color:var(--grn);margin-bottom:2px}
+.online-h .d{width:8px;height:8px;border-radius:50%;background:var(--grn-hot);box-shadow:0 0 8px var(--grn-hot)}
+.online-empty{display:flex;align-items:center;gap:8px;color:var(--txt-faint);font-size:var(--t-sm)}
+.online-empty .d.off{width:8px;height:8px;border-radius:50%;background:var(--grey)}
+.ochip{display:flex;align-items:center;gap:10px;padding:7px 13px 7px 7px;border:1px solid var(--line);border-radius:99px;background:var(--bg-1)}
+.ochip .pav{width:30px;height:30px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;font-weight:700;color:#06140a}
+.ochip .ometa{display:flex;flex-direction:column;line-height:1.2}
+.ochip .ometa b{font-size:var(--t-sm);color:var(--txt)}
+.ochip .ometa .gtag{font-size:10px;color:var(--txt-dim)}
+.ochip .odur{font-size:var(--t-xs);color:var(--grn);margin-left:4px}
+
+/* ============ economy admin ============ */
+.eco-card{border:1px solid var(--line);border-radius:var(--r);background:var(--bg-1);padding:var(--s4);margin-bottom:var(--s4)}
+.eco-note{font-size:var(--t-xs);color:var(--txt-dim);margin:4px 0 var(--s3);max-width:64ch;line-height:1.5}
+.eco-fields{display:flex;align-items:flex-end;gap:var(--s3);flex-wrap:wrap}
+.eco-fields label{display:flex;flex-direction:column;gap:5px;font-size:var(--t-xs);letter-spacing:.5px;color:var(--txt-dim)}
+.eco-fields input{width:150px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:9px 12px;font-size:var(--t-md)}
+.eco-fields input:focus{outline:none;border-color:var(--grn)}
+.eco-btn{font-size:var(--t-xs);letter-spacing:1px;padding:10px 16px;border-radius:99px;border:1px solid var(--line);background:var(--bg-1);color:var(--txt-dim);transition:.16s var(--ease);cursor:pointer}
+.eco-btn:hover{border-color:var(--grn);color:var(--grn)}
+.eco-btn.primary{background:var(--grn-deep);border-color:var(--grn);color:var(--grn-hot)}
+.eco-btn.primary:hover{background:var(--grn);color:#06140a}
+.eco-btn:disabled{opacity:.5;cursor:default}
+.eco-msg{font-size:var(--t-xs);letter-spacing:.5px}
+.eco-msg.ok{color:var(--grn)}
+.eco-msg.err{color:#ff6a6a}
+.eco-players-h{font-size:var(--t-xs);letter-spacing:1px;text-transform:uppercase;color:var(--txt-faint);margin-bottom:var(--s3)}
+.ev .sel{position:relative}
+.ev select.eco-link{appearance:none;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:7px 30px 7px 12px;font-size:var(--t-sm);min-width:130px;cursor:pointer}
+.ev select.eco-link:focus{outline:none;border-color:var(--grn)}
+
 /* ============ DETAIL (immersive sheet) ============ */
 .scrim{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .28s var(--ease)}
 .scrim.open{opacity:1;pointer-events:auto}
@@ -582,8 +622,10 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
     <div class="toolbar">
       <div class="tabs" id="viewTabs">
         <button class="on" data-view="fleet">Fleet</button>
+        <button data-view="activity">Activity</button>
         <button data-view="events">Events</button>
         <button data-view="data">Data</button>
+        <button data-view="economy">Economy</button>
       </div>
       <div class="spacer"></div>
       <div class="tcount" id="tcount">&hellip;</div>
@@ -653,6 +695,34 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
       </div>
     </div>
 
+    <!-- ACTIVITY VIEW (who's playing now + cross-game timeline) -->
+    <div class="view activity" id="view-activity">
+      <div class="evbar">
+        <span class="ev-note">Live presence + recent join/leave across every server — collected on the host.</span>
+        <div class="spacer"></div>
+        <button class="refresh-btn" id="actRefresh" type="button">↻ Refresh</button>
+      </div>
+      <div class="online-strip" id="onlineStrip"></div>
+      <div class="evlist" id="actlist"><div class="ev-empty">Loading…</div></div>
+    </div>
+
+    <!-- ECONOMY VIEW (admin: playtime → gambling dollars) -->
+    <div class="view economy" id="view-economy">
+      <div class="eco-card">
+        <div class="section-h">Playtime earnings</div>
+        <div class="eco-note">Linked players earn gambling dollars when a game-server session ends. Set the rate, then map each player to a site account below.</div>
+        <div class="eco-fields">
+          <label>Dollars per hour<input id="ecoRate" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label>Max paid minutes / session<input id="ecoCap" type="number" min="1" step="1" inputmode="numeric"></label>
+          <button class="eco-btn primary" id="ecoSave" type="button">Save</button>
+          <button class="eco-btn" id="ecoCredit" type="button">Credit now</button>
+          <span class="eco-msg" id="ecoMsg"></span>
+        </div>
+      </div>
+      <div class="eco-players-h">Players → accounts</div>
+      <div class="evlist" id="ecoPlayers"><div class="ev-empty">Loading…</div></div>
+    </div>
+
   </div>
 </div>
 
@@ -705,10 +775,12 @@ import {
   dbListServerConfig, dbReadServerConfig, dbWriteServerConfig,
   dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
   dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbDeleteServerConfig,
-  dbGetServerSessions,
+  dbGetServerSessions, dbGetOnline, dbGetActivity,
   dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile, dbUpdateProfile,
   dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
   dbAdminTables, dbAdminTableRows, dbAdminQuery,
+  dbGetEconomySettings, dbSetEconomySettings, dbGetEconomyPlayers, dbGetEconomyUsers,
+  dbLinkPlayerAccount, dbCreditPlaytime,
 } from './db.js'
 import { loadSession } from './auth.js'
 
@@ -725,6 +797,11 @@ let dashboardInFlight = false
 let eventsFilter = 'all'
 let eventsTimer = null
 let eventsLoadSeq = 0
+// activity (presence + cross-game timeline)
+let activityTimer = null
+let activityLoadSeq = 0
+// economy (admin)
+let ecoUsers = []
 // data viewer
 let dataLoaded = false
 let dbTables = []
@@ -905,6 +982,8 @@ function tileArt(bg){
     <div class="veil" style="background:${veil}"></div>`
 }
 
+const MAP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg>'
+
 /* ───────────────────────── status mapping ───────────────────────── */
 const STATUS_LABEL = { hosting:'Hosting', idle:'Idle', down:'Down', busy:'Busy', unknown:'Unknown' }
 const STATUS_COLOR = { hosting:'var(--grn-hot)', idle:'var(--amber)', down:'var(--grey)', busy:'var(--acc)', unknown:'var(--grey)' }
@@ -1054,6 +1133,7 @@ function cardHTML(s){
       ${bg ? '' : `<div class="mono" style="background:${monoBg(s)}">${esc(a.mono)}</div>`}
       <div class="stat" style="color:${STATUS_COLOR[cls]}"><span class="d ${cls}"></span>${STATUS_LABEL[cls]}</div>
       ${port ? `<div class="port">:${esc(port)}</div>` : ''}
+      ${s.online ? `<div class="playing" title="players online right now"><span class="d"></span>${s.online} playing</div>` : ''}
     </div>
     <div class="body">
       <div class="name"><b>${esc(s.name)}</b></div>
@@ -1072,6 +1152,7 @@ function cardHTML(s){
         <span class="go">${ICONS.chev}</span>
       </div>
       ${up && launch ? `<a class="steam-launch" href="${esc(launch)}" data-launch title="Launch via Steam">${ICONS.steam} Launch via Steam</a>` : ''}
+      ${up && s.id === 'minecraft' ? `<a class="steam-launch map-link" href="/map/" target="_blank" rel="noopener" data-launch title="Open the world map">${MAP_ICON} World Map</a>` : ''}
     </div>
   </article>`
 }
@@ -1094,14 +1175,17 @@ function renderFeed(){
 function switchView(v){
   curView = v
   document.querySelectorAll('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === v))
-  document.getElementById('view-fleet').classList.toggle('show', v === 'fleet')
-  document.getElementById('view-events').classList.toggle('show', v === 'events')
-  document.getElementById('view-data').classList.toggle('show', v === 'data')
-  // teardown the events timer when leaving Events
+  for (const name of ['fleet', 'activity', 'events', 'data', 'economy']) {
+    document.getElementById('view-' + name).classList.toggle('show', v === name)
+  }
+  // teardown the auto-refresh timers when leaving their views
   if (v !== 'events' && eventsTimer) { clearInterval(eventsTimer); eventsTimer = null }
+  if (v !== 'activity' && activityTimer) { clearInterval(activityTimer); activityTimer = null }
   if (v === 'fleet') { if (lastNode) renderHost(lastNode); document.getElementById('tcount').textContent = `${servers.length} servers` }
+  else if (v === 'activity') startActivity()
   else if (v === 'events') startEvents()
   else if (v === 'data') startData()
+  else if (v === 'economy') startEconomy()
 }
 document.querySelectorAll('#viewTabs button').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)))
 
@@ -1156,13 +1240,16 @@ async function loadEvents(){
   }
   if (seq !== eventsLoadSeq) return     // latest-wins
   if (!rows.length) { list.innerHTML = '<div class="ev-empty">No sessions recorded yet.</div>'; return }
-  list.innerHTML = rows.map(s => {
-    const online = s.left_at == null
-    const right = online
-      ? `<div class="live"><span class="d"></span>ONLINE</div>`
-      : `<div class="gone">left ${evClock(s.left_at)}</div>`
-    const uid = s.uid ? `<span class="uid" title="${esc(s.uid)}">${esc(String(s.uid).length > 14 ? String(s.uid).slice(0,6)+'…'+String(s.uid).slice(-4) : s.uid)}</span>` : '<span class="uid" title="CS2 redacts SteamIDs">—</span>'
-    return `
+  list.innerHTML = rows.map(evRowHTML).join('')
+}
+// One join/leave row. `serverName` is the display label for the source server.
+function evRowHTML(s){
+  const online = s.left_at == null
+  const right = online
+    ? `<div class="live"><span class="d"></span>ONLINE</div>`
+    : `<div class="gone">left ${evClock(s.left_at)}</div>`
+  const uid = s.uid ? `<span class="uid" title="${esc(s.uid)}">${esc(String(s.uid).length > 14 ? String(s.uid).slice(0,6)+'…'+String(s.uid).slice(-4) : s.uid)}</span>` : '<span class="uid" title="CS2 redacts SteamIDs">—</span>'
+  return `
     <div class="ev fadein">
       <div class="pav" style="${pAvatar(s.name)}">${esc(String(s.name || '?')[0].toUpperCase())}</div>
       <div class="pmeta">
@@ -1171,7 +1258,122 @@ async function loadEvents(){
       </div>
       <div class="right"><div class="dur">${evDur(s)}</div>${right}</div>
     </div>`
+}
+
+/* ═════════════════════════ ACTIVITY VIEW (presence + timeline) ═════════════════════════ */
+function startActivity(){
+  document.getElementById('tcount').textContent = 'activity'
+  document.getElementById('actRefresh').onclick = () => loadActivity()
+  if (activityTimer) clearInterval(activityTimer)
+  activityTimer = setInterval(() => {
+    if (curView === 'activity') loadActivity()
+    else { clearInterval(activityTimer); activityTimer = null }
+  }, 20000)
+  loadActivity()
+}
+async function loadActivity(){
+  const strip = document.getElementById('onlineStrip')
+  const list = document.getElementById('actlist')
+  const seq = ++activityLoadSeq
+  let online, rows
+  try {
+    [online, rows] = await Promise.all([dbGetOnline(), dbGetActivity({ limit: 150 })])
+  } catch (e) {
+    if (seq !== activityLoadSeq) return
+    strip.innerHTML = ''
+    list.innerHTML = `<div class="ev-empty pane-err">activity unavailable: ${esc(errMsg(e))}</div>`
+    return
+  }
+  if (seq !== activityLoadSeq) return     // latest-wins
+  strip.innerHTML = !online.length
+    ? `<div class="online-empty"><span class="d off"></span>Nobody's online right now.</div>`
+    : `<div class="online-h"><span class="d"></span>${online.length} online now</div>` + online.map(o => `
+        <div class="ochip">
+          <div class="pav" style="${pAvatar(o.name)}">${esc(String(o.name || '?')[0].toUpperCase())}</div>
+          <div class="ometa"><b>${esc(o.name)}</b><span class="gtag">${esc(o.gameName)}</span></div>
+          <div class="odur">${evDur({ joined_at: o.joined_at, left_at: null })}</div>
+        </div>`).join('')
+  list.innerHTML = rows.length
+    ? rows.map(s => evRowHTML({ ...s, serverName: s.gameName })).join('')
+    : '<div class="ev-empty">No sessions recorded yet.</div>'
+}
+
+/* ═════════════════════════ ECONOMY VIEW (admin: playtime → dollars) ═════════════════════════ */
+function startEconomy(){
+  document.getElementById('tcount').textContent = 'economy'
+  document.getElementById('ecoSave').onclick = saveEconomy
+  document.getElementById('ecoCredit').onclick = creditNow
+  loadEconomy()
+}
+async function loadEconomy(){
+  const list = document.getElementById('ecoPlayers')
+  let settings, users, players
+  try {
+    [settings, users, players] = await Promise.all([dbGetEconomySettings(), dbGetEconomyUsers(), dbGetEconomyPlayers()])
+  } catch (e) {
+    list.innerHTML = `<div class="ev-empty pane-err">economy unavailable: ${esc(errMsg(e))}</div>`
+    return
+  }
+  ecoUsers = users
+  document.getElementById('ecoRate').value = settings.dollarsPerHour
+  document.getElementById('ecoCap').value = settings.maxSessionMinutes
+  renderEcoPlayers(players)
+}
+function ecoUserOptions(selected){
+  return ['<option value="">— none —</option>']
+    .concat(ecoUsers.map(u => `<option value="${u.id}"${u.id === selected ? ' selected' : ''}>${esc(u.name)}</option>`))
+    .join('')
+}
+function renderEcoPlayers(players){
+  const list = document.getElementById('ecoPlayers')
+  if (!players.length) { list.innerHTML = '<div class="ev-empty">No players seen yet — they appear here once they join a server.</div>'; return }
+  list.innerHTML = players.map(p => {
+    const uid = p.uid ? `<span class="uid" title="${esc(p.uid)}">${esc(String(p.uid).length > 16 ? String(p.uid).slice(0,8)+'…'+String(p.uid).slice(-4) : p.uid)}</span>` : ''
+    const hrs = (p.totalMinutes || 0) / 60
+    const playtime = hrs >= 1 ? `${hrs.toFixed(1)}h` : `${p.totalMinutes || 0}m`
+    return `
+    <div class="ev">
+      <div class="pav" style="${pAvatar(p.name)}">${esc(String(p.name || '?')[0].toUpperCase())}</div>
+      <div class="pmeta">
+        <b>${esc(p.name)}</b>
+        <div class="sub"><span class="gtag">${esc(p.identityKind)}</span>${uid} · ${p.sessions} sessions · ${esc(playtime)}</div>
+      </div>
+      <div class="right"><div class="sel"><select class="eco-link" data-player="${p.id}" aria-label="link ${esc(p.name)} to an account">${ecoUserOptions(p.userId)}</select></div></div>
+    </div>`
   }).join('')
+  list.querySelectorAll('.eco-link').forEach(sel => {
+    sel.onchange = async () => {
+      const playerId = Number(sel.dataset.player)
+      const userId = sel.value ? Number(sel.value) : null
+      sel.disabled = true
+      try { await dbLinkPlayerAccount(playerId, userId); ecoMsg(userId ? 'Linked.' : 'Unlinked.', false) }
+      catch (e) { ecoMsg(errMsg(e), true) }
+      finally { sel.disabled = false }
+    }
+  })
+}
+function ecoMsg(text, isErr){
+  const m = document.getElementById('ecoMsg')
+  m.textContent = text
+  m.className = 'eco-msg' + (isErr ? ' err' : ' ok')
+  setTimeout(() => { if (m.textContent === text) { m.textContent = ''; m.className = 'eco-msg' } }, 4000)
+}
+async function saveEconomy(){
+  const dollarsPerHour = Math.max(0, Math.round(Number(document.getElementById('ecoRate').value) || 0))
+  const maxSessionMinutes = Math.max(1, Math.round(Number(document.getElementById('ecoCap').value) || 1))
+  try {
+    const r = await dbSetEconomySettings({ dollarsPerHour, maxSessionMinutes })
+    document.getElementById('ecoRate').value = r.dollarsPerHour
+    document.getElementById('ecoCap').value = r.maxSessionMinutes
+    ecoMsg('Saved.', false)
+  } catch (e) { ecoMsg(errMsg(e), true) }
+}
+async function creditNow(){
+  const btn = document.getElementById('ecoCredit')
+  btn.disabled = true
+  try { const r = await dbCreditPlaytime(); ecoMsg(`Credited ${r.sessions} session(s) · $${r.dollars}.`, false); loadEconomy() }
+  catch (e) { ecoMsg(errMsg(e), true) }
+  finally { btn.disabled = false }
 }
 
 /* ═════════════════════════ DETAIL SHEET ═════════════════════════ */

@@ -119,9 +119,33 @@ services:
       - "27067:27067/tcp"
       - "27067:27067/udp"
 
+  # BlueMap: a 3D web map of the Minecraft world. Renders from a READ-ONLY mount
+  # of the mc-data volume (never writes the world) and serves its web UI on
+  # :8100, which Caddy reverse-proxies at /map/ behind the auth gate (NOT host-
+  # published). Starter config is bind-mounted from docker/bluemap/config
+  # (accept-download=true so it runs unattended; the map points at /app/world/<MC_LEVEL>).
+  # NOTE (host validation): the FIRST run downloads Minecraft client assets and
+  # renders the whole world — this can take a while and use CPU; the web UI is up
+  # immediately but tiles fill in as the render progresses. If MC_LEVEL isn't
+  # "world", update docker/bluemap/config/maps/overworld.conf to match.
+  bluemap:
+    image: ghcr.io/bluemap-minecraft/bluemap:latest
+    container_name: bluemap
+    restart: unless-stopped
+    command: ["-r", "-u", "-w"]   # render, watch for changes, run the webserver
+    volumes:
+      - mc-data:/app/world:ro     # the Minecraft world (read-only)
+      - ./docker/bluemap/config:/app/config
+      - bluemap-data:/app/data    # render state + downloaded assets
+      - bluemap-web:/app/web      # generated web app + map tiles
+    expose:
+      - "8100"                    # internal only; Caddy reaches it as bluemap:8100
+
 volumes:
   mc-data:
   factorio-data:
   cs2-data:
   gmod-data:
   ph-data:
+  bluemap-data:
+  bluemap-web:

@@ -154,7 +154,7 @@ header.top{
 .card.down{opacity:.92}
 .card:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 
-/* generated art header per game (gradient + monogram + sparkline) */
+/* generated art header per game (gradient + monogram + game key-art) */
 .art{position:relative;height:128px;overflow:hidden;border-bottom:1px solid var(--line)}
 .art .glow{position:absolute;inset:0}
 .art svg.deco{position:absolute;inset:0;width:100%;height:100%}
@@ -206,11 +206,9 @@ header.top{
 .go{flex:0 0 auto;width:34px;height:34px;border-radius:var(--r-sm);display:grid;place-items:center;border:1px solid var(--line);background:var(--bg-2);color:var(--txt-dim);transition:.18s var(--ease)}
 .card:hover .go{color:var(--grn);border-color:var(--grn)}
 
-/* DOWN card state */
-.card.down .art{filter:grayscale(.8) brightness(.6)}
-.card.down .body{position:relative}
-.downflag{display:inline-flex;align-items:center;gap:8px;font-size:var(--t-xs);letter-spacing:1px;color:var(--red);padding:7px 11px;border:1px dashed rgba(184,95,95,.4);border-radius:var(--r-sm);background:rgba(184,95,95,.06)}
-.card.down .statrow{opacity:.45}
+/* DOWN card state — identical footprint to the others, just greyed art + dimmed metrics */
+.card.down .art{filter:grayscale(.7) brightness(.62)}
+.card.down .statrow,.card.down .dualbar{opacity:.45}
 
 /* ============ EVENTS FEED ============ */
 .events{display:none;flex-direction:column;gap:var(--s2)}
@@ -590,37 +588,60 @@ const STATUS_COLOR = { hosting:'var(--grn-hot)', idle:'var(--amber)', down:'var(
 const servById = id => SERVERS.find(s=>s.id===id);
 
 /* =========================================================================
-   GENERATED ART  (gradient + scanlines + plotted sparkline, per game hue)
+   GENERATED ART  (gradient ground + per-game key-art scene, per game hue)
+   Drawn in a 0 0 320 128 box and `slice`-fitted so it works as a tile header
+   AND as the full-bleed detail hero. Pure inline SVG — stays offline.
    ========================================================================= */
+function artScene(id, c){
+  // iso voxel cube at top-apex (x,y), edge e
+  const cube = (x,y,e)=>`
+    <polygon points="${x},${y} ${x+e},${y+e/2} ${x},${y+e} ${x-e},${y+e/2}" fill="${c.hi}" fill-opacity=".72"/>
+    <polygon points="${x-e},${y+e/2} ${x},${y+e} ${x},${y+2*e} ${x-e},${y+e/2+e}" fill="${c.mid}" fill-opacity=".66"/>
+    <polygon points="${x+e},${y+e/2} ${x},${y+e} ${x},${y+2*e} ${x+e},${y+e/2+e}" fill="${c.dark}" fill-opacity=".82"/>`;
+  // cog (dashed-stroke ring reads as teeth)
+  const gear = (cx,cy,r)=>`
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${c.mid}" stroke-width="7" stroke-dasharray="7 8" stroke-opacity=".8"/>
+    <circle cx="${cx}" cy="${cy}" r="${r-8}" fill="none" stroke="${c.mid}" stroke-width="2" stroke-opacity=".55"/>
+    <circle cx="${cx}" cy="${cy}" r="4" fill="${c.hi}"/>`;
+  switch(id){
+    case 'mc':   // Minecraft — iso voxel terrain
+      return `${cube(96,70,16)}${cube(128,70,16)}${cube(160,70,16)}${cube(128,38,16)}`;
+    case 'fac':  // Factorio — gears + conveyor chevrons
+      return `${gear(118,60,30)}${gear(176,84,22)}
+        <g stroke="${c.hi}" stroke-width="3" stroke-opacity=".5" fill="none" stroke-linecap="round">
+          <path d="M214 104 l10 -8 l-10 -8"/><path d="M234 104 l10 -8 l-10 -8"/><path d="M254 104 l10 -8 l-10 -8"/></g>`;
+    case 'cs':   // CS2 — crosshair + map lines + C4
+      return `
+        <g stroke="${c.mid}" stroke-width="2" stroke-opacity=".35" fill="none"><path d="M16 112 L128 18"/><path d="M58 118 L184 26"/></g>
+        <g stroke="${c.hi}" stroke-width="3" stroke-opacity=".85" stroke-linecap="round">
+          <path d="M189 64 H207"/><path d="M221 64 H239"/><path d="M214 39 V57"/><path d="M214 71 V89"/></g>
+        <circle cx="214" cy="64" r="2.5" fill="${c.hi}"/>
+        <rect x="30" y="86" width="34" height="22" rx="3" fill="${c.dark}" fill-opacity=".7" stroke="${c.mid}" stroke-opacity=".5"/>
+        <circle cx="38" cy="94" r="3" fill="#ff5555"><animate attributeName="opacity" values="1;.15;1" dur="1.3s" repeatCount="indefinite"/></circle>`;
+    case 'gmod': // TTT — investigation grid + magnifier + ?
+      return `
+        <g stroke="${c.mid}" stroke-width="1.5" stroke-opacity=".25"><path d="M0 46 H320 M0 86 H320 M84 0 V128 M168 0 V128 M252 0 V128"/></g>
+        <circle cx="150" cy="56" r="26" fill="none" stroke="${c.hi}" stroke-width="4" stroke-opacity=".8"/>
+        <line x1="169" y1="75" x2="196" y2="102" stroke="${c.hi}" stroke-width="7" stroke-opacity=".8" stroke-linecap="round"/>
+        <text x="150" y="65" text-anchor="middle" font-family="monospace" font-size="26" font-weight="700" fill="${c.hi}" fill-opacity=".8">?</text>`;
+    case 'ph':   // Prop Hunt — prop silhouettes (crate / barrel / chair)
+      return `
+        <g transform="translate(58,58)"><rect width="44" height="44" rx="3" fill="${c.dark}" fill-opacity=".75" stroke="${c.mid}" stroke-opacity=".7" stroke-width="2"/><path d="M0 0 L44 44 M44 0 L0 44" stroke="${c.mid}" stroke-opacity=".45" stroke-width="2"/></g>
+        <g transform="translate(140,54)"><rect width="34" height="54" rx="11" fill="${c.mid}" fill-opacity=".55" stroke="${c.hi}" stroke-opacity=".5"/><path d="M0 18 H34 M0 38 H34" stroke="${c.dark}" stroke-opacity=".8" stroke-width="3"/></g>
+        <g transform="translate(214,50)" stroke="${c.hi}" stroke-opacity=".7" stroke-width="5" fill="none" stroke-linecap="round"><path d="M4 22 H34 M4 22 V58 M34 22 V58 M34 22 V2"/></g>`;
+    default: return '';
+  }
+}
 function artSVG(s, big){
   const [h1,h2] = s.hue;
-  const grad = `hsl(${h1} 55% 18%)`, grad2 = `hsl(${h2} 45% 9%)`, line = `hsl(${(h1+h2)/2} 70% 55%)`;
-  // deterministic sparkline from id chars
-  const seed = s.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
-  const pts = [];
-  const N = big?28:18, W = big?560:300, H = big?188:128;
-  for(let i=0;i<N;i++){
-    const v = (Math.sin(seed*0.7+i*0.9)+Math.sin(seed+i*0.37)*0.6+1.6)/3.6; // 0..~1
-    pts.push([ (i/(N-1))*W, H - 14 - v*(H*0.5) ]);
-  }
-  const path = pts.map((p,i)=> (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const area = path + ` L ${W} ${H} L 0 ${H} Z`;
+  const grad = `hsl(${h1} 55% 16%)`, grad2 = `hsl(${h2} 45% 8%)`;
+  const c = { hi:`hsl(${h2} 80% 62%)`, mid:`hsl(${Math.round((h1+h2)/2)} 55% 42%)`, dark:`hsl(${h1} 45% 14%)` };
   return `
   <div class="glow" style="background:
     radial-gradient(120% 130% at 18% 0%, ${grad}, transparent 60%),
     radial-gradient(120% 120% at 100% 100%, ${grad2}, transparent 55%),
-    linear-gradient(160deg, ${grad2}, #0a0a0a 90%)"></div>
-  <svg class="deco" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    <defs>
-      <linearGradient id="af-${s.id}${big?'b':''}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${line}" stop-opacity="0.22"/>
-        <stop offset="1" stop-color="${line}" stop-opacity="0"/>
-      </linearGradient>
-    </defs>
-    <path d="${area}" fill="url(#af-${s.id}${big?'b':''})"/>
-    <path d="${path}" fill="none" stroke="${line}" stroke-width="${big?2:1.5}" stroke-opacity="0.7" stroke-linejoin="round"/>
-    ${pts.filter((_,i)=>i%(big?4:3)===0).map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${big?2.4:1.8}" fill="${line}" fill-opacity="0.9"/>`).join('')}
-  </svg>`;
+    linear-gradient(160deg, ${grad2}, #0a0a0a 92%)"></div>
+  <svg class="deco" viewBox="0 0 320 128" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${artScene(s.id, c)}</svg>`;
 }
 function monoBg(s){ const [h1,h2]=s.hue; return `linear-gradient(135deg, hsl(${h1} 60% 30%), hsl(${h2} 55% 18%))`; }
 
@@ -647,17 +668,16 @@ function cardHTML(s){
       <div class="name"><b>${s.name}</b></div>
       <div class="img">${s.game}</div>
 
-      ${down ? `<div class="downflag">${ICONS.down} container stopped</div>` : `
       <div class="statrow">
         <span class="kv ${s.players>0?'on':''}">${ICONS.players}<b>${plTxt}</b></span>
         <span class="kv">${ICONS.map}${s.map}</span>
       </div>
       <div class="dualbar" title="CPU ${cpuTxt} · RAM ${ramTxt}">
         <span class="kv">${ICONS.cpu}<b>${cpuTxt}</b></span>
-        <span class="seg"><i class="cpu" style="width:${s.cpu}%"></i></span>
+        <span class="seg"><i class="cpu" style="width:${down?0:s.cpu}%"></i></span>
         <span class="kv">${ICONS.ram}<b>${ramTxt}</b></span>
-        <span class="seg"><i class="ram" style="width:${pct(s.ram,s.ramCap)}%"></i></span>
-      </div>`}
+        <span class="seg"><i class="ram" style="width:${down?0:pct(s.ram,s.ramCap)}%"></i></span>
+      </div>
 
       <div class="foot">
         ${down ? `

@@ -202,9 +202,13 @@ header.top{position:sticky; top:0; z-index:40;
 /* ============ presence badge on fleet tiles ============ */
 .art .playing{position:absolute;right:14px;bottom:12px;display:inline-flex;align-items:center;gap:6px;font-size:var(--t-xs);letter-spacing:.5px;color:#d6ffe8;background:rgba(6,26,14,.72);border:1px solid rgba(72,255,155,.4);border-radius:99px;padding:4px 9px;backdrop-filter:blur(6px)}
 .art .playing .d{width:7px;height:7px;border-radius:50%;background:var(--grn-hot);box-shadow:0 0 7px var(--grn-hot)}
-/* map-link: the world-map variant of the steam-launch button */
-.card .map-link{background:rgba(20,40,90,.5);border-color:rgba(95,140,255,.5);color:#cfe0ff}
+/* map-link: the world-map variant of the steam-launch button (a <button>) */
+.card .map-link{background:rgba(20,40,90,.5);border-color:rgba(95,140,255,.5);color:#cfe0ff;cursor:pointer;font-family:inherit}
 .card .map-link:hover{background:rgba(95,140,255,.9);color:#04122a}
+
+/* ============ embedded map view ============ */
+.map-bar{display:flex;align-items:center;gap:var(--s2);margin-bottom:var(--s3);flex-wrap:wrap}
+.map-frame{width:100%;height:78vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r);background:#06140a;display:block}
 
 /* ============ activity: online-now strip ============ */
 .online-strip{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s4)}
@@ -625,6 +629,7 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
         <button data-view="activity">Activity</button>
         <button data-view="events">Events</button>
         <button data-view="data">Data</button>
+        <button data-view="map">Map</button>
         <button data-view="economy">Economy</button>
       </div>
       <div class="spacer"></div>
@@ -693,6 +698,16 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
           </section>
         </div>
       </div>
+    </div>
+
+    <!-- MAP VIEW (embedded BlueMap Minecraft world map; iframe is lazy-loaded) -->
+    <div class="view map" id="view-map">
+      <div class="map-bar">
+        <span class="ev-note">Live 3D map of the Minecraft world (BlueMap) — rendered on the host; switch dimensions (Overworld · Nether · End) inside the map.</span>
+        <div class="spacer"></div>
+        <a class="refresh-btn" href="/map/" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <iframe id="mapFrame" class="map-frame" title="Minecraft world map" referrerpolicy="no-referrer"></iframe>
     </div>
 
     <!-- ACTIVITY VIEW (who's playing now + cross-game timeline) -->
@@ -802,6 +817,8 @@ let activityTimer = null
 let activityLoadSeq = 0
 // economy (admin)
 let ecoUsers = []
+// map (embedded BlueMap)
+let mapLoaded = false
 // data viewer
 let dataLoaded = false
 let dbTables = []
@@ -1152,7 +1169,7 @@ function cardHTML(s){
         <span class="go">${ICONS.chev}</span>
       </div>
       ${up && launch ? `<a class="steam-launch" href="${esc(launch)}" data-launch title="Launch via Steam">${ICONS.steam} Launch via Steam</a>` : ''}
-      ${up && s.id === 'minecraft' ? `<a class="steam-launch map-link" href="/map/" target="_blank" rel="noopener" data-launch title="Open the world map">${MAP_ICON} World Map</a>` : ''}
+      ${up && s.id === 'minecraft' ? `<button type="button" class="steam-launch map-link" data-mapview title="Open the world map">${MAP_ICON} World Map</button>` : ''}
     </div>
   </article>`
 }
@@ -1168,6 +1185,9 @@ function renderFeed(){
   feed.querySelectorAll('.join[data-join]').forEach(j => {
     j.addEventListener('click', e => { e.stopPropagation(); copyText(j.dataset.join, j) })
   })
+  feed.querySelectorAll('[data-mapview]').forEach(b => {
+    b.addEventListener('click', e => { e.stopPropagation(); switchView('map') })
+  })
   document.getElementById('tcount').textContent = `${servers.length} servers`
 }
 
@@ -1175,7 +1195,7 @@ function renderFeed(){
 function switchView(v){
   curView = v
   document.querySelectorAll('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === v))
-  for (const name of ['fleet', 'activity', 'events', 'data', 'economy']) {
+  for (const name of ['fleet', 'activity', 'events', 'data', 'map', 'economy']) {
     document.getElementById('view-' + name).classList.toggle('show', v === name)
   }
   // teardown the auto-refresh timers when leaving their views
@@ -1185,6 +1205,7 @@ function switchView(v){
   else if (v === 'activity') startActivity()
   else if (v === 'events') startEvents()
   else if (v === 'data') startData()
+  else if (v === 'map') startMap()
   else if (v === 'economy') startEconomy()
 }
 document.querySelectorAll('#viewTabs button').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)))
@@ -1374,6 +1395,14 @@ async function creditNow(){
   try { const r = await dbCreditPlaytime(); ecoMsg(`Credited ${r.sessions} session(s) · $${r.dollars}.`, false); loadEconomy() }
   catch (e) { ecoMsg(errMsg(e), true) }
   finally { btn.disabled = false }
+}
+
+/* ═════════════════════════ MAP VIEW (embedded BlueMap) ═════════════════════════ */
+function startMap(){
+  document.getElementById('tcount').textContent = 'world map'
+  // Lazy-load the BlueMap app only when the Map tab is first opened (it's a heavy
+  // 3D canvas). Same-origin iframe → the session cookie passes the /map auth gate.
+  if (!mapLoaded) { document.getElementById('mapFrame').src = '/map/'; mapLoaded = true }
 }
 
 /* ═════════════════════════ DETAIL SHEET ═════════════════════════ */

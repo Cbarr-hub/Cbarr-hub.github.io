@@ -13,6 +13,13 @@ import { DockerPropHuntConnector } from './docker/prophunt.js';
 // connector key -> class, per backend. A backend's fallback (used when a server
 // names no custom connector) is its generic base connector. Docker is the only
 // backend today; the per-backend shape is kept cheap so another could be added.
+//
+// COUPLING NOTE (PR follow-up, not fixed here): this map's keys (minecraft,
+// factorio, …) must stay in lock-step with the registry's `connector` field — a
+// typo or rename on either side silently drops to FALLBACK (the generic
+// DockerBaseConnector) instead of failing loudly, so a custom connector would
+// just stop being used with no error. A future hardening could assert at build
+// time that every registry `connector` has a class here (or warn on FALLBACK).
 const CONNECTOR_CLASSES = {
   docker: {
     minecraft: DockerMinecraftConnector,

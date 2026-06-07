@@ -6,6 +6,11 @@
 
 import { BaseConnector } from './base.js';
 
+// Coerce a slider/profile value into [min, max], substituting `fallback` for
+// empty/null/undefined/non-finite input. Shared by every Docker connector that
+// pushes a clamped numeric cvar (e.g. live range sliders → RCON). The final
+// Math.max(min, Math.min(max, …)) also guards `fallback` itself being out of
+// range, so the return is always within bounds.
 export function clampNumber(value, min, max, fallback) {
   if (value === null || value === undefined || value === '') {
     return Math.max(min, Math.min(max, fallback));
@@ -15,9 +20,13 @@ export function clampNumber(value, min, max, fallback) {
   return Math.max(min, Math.min(max, effective));
 }
 
-// If the container is running, the game is hosting. There is no separate
-// in-guest service to start or stop, so game lifecycle actions are container
-// power actions.
+// Mixin: the container IS the game. If the container is running, the game is
+// hosting, so there is no separate in-guest service to start/stop — the
+// game-lifecycle actions (startGame/stopGame/restartGame) alias straight onto
+// container power (start/shutdown/reboot). Applied to BaseConnector below, and
+// reused by the LinuxGSM Docker connectors (GMOD/Prop Hunt) so they share the
+// same alias instead of throwing BAD_ACTION. Each action returns
+// { ok: true, action } so callers/tests can assert which alias fired.
 export function containerGameLifecycle(Base) {
   return class extends Base {
     async gameRunning() { return true; }

@@ -37,6 +37,40 @@
 //   • collect 'rcon' → poll RCON `status`; `rconEnvKey` names the env var holding
 //     that game's RCON password (the Source games — GMOD/Prop Hunt/CS2).
 // Games with no `collect` are not session-tracked.
+//
+// ── full per-entry field reference ───────────────────────────────────────────
+//   id            string  the opaque public key the HTTP/UI layer uses; the only
+//                         identifier that crosses the API boundary (never the
+//                         locator). Also the connector-map key (see below).
+//   name          string  human-readable display name shown in the panel.
+//   backend       string  selects the transport client; 'docker' for all entries
+//                         today (defaults to 'docker'). A server whose backend
+//                         client isn't configured on this host is skipped.
+//   container     string  the Docker container name = the locator. Surfaced to
+//                         BaseConnector through the inherited `vmid` getter
+//                         (DockerBaseConnector.vmid → server.container). Must NEVER
+//                         come from a request — only from this table.
+//   connector     string  the per-backend connector-class key in connectors/
+//                         index.js (CONNECTOR_CLASSES[backend][connector]); falls
+//                         back to the backend's generic base connector if unknown.
+//                         Conventionally equals `id`, but the two are distinct
+//                         (id = public/DB key; connector = which class to build).
+//   port          number  the game's public, port-forwarded port; one source of
+//                         truth for the join string + Steam launch URL.
+//   connect       string  join-string render style: 'cs' → `connect host:port`
+//                         (Source console form); 'address' → plain `host:port`.
+//   identityKind  string  native player-id namespace ('steam' | 'minecraft' |
+//                         'factorio'); the key that lets one player record span
+//                         games (SteamID64 is shared across the three Source games).
+//   collect       string  host session-collector mode ('log' | 'rcon'); absent
+//                         → not session-tracked. See the block above.
+//   rconEnvKey    string  (collect 'rcon' only) env-var name holding that game's
+//                         RCON password, read by the host collector.
+//   rconPort      number  (optional) overrides a game image's default RCON port
+//                         (e.g. itzg Minecraft's 25575). Connectors read it.
+//   steam         object  (optional) one-click launch: { appid, arg } → a
+//                         `steam://run/<appid>//<arg host:port>` URL. Absent for
+//                         Minecraft (Java has no launch-and-connect scheme).
 export const SERVERS = [
   { id: 'counterstrike', name: 'Counter-Strike',     backend: 'docker', container: 'counterstrike', connector: 'counterstrike', port: 27015, connect: 'cs',      identityKind: 'steam',     collect: 'rcon', rconEnvKey: 'CS2_RCON_PASSWORD',      steam: { appid: 730,    arg: '+connect' } },
   { id: 'factorio',      name: 'Factorio',           backend: 'docker', container: 'factorio', connector: 'factorio',      port: 34197, connect: 'address', identityKind: 'factorio',  collect: 'log',                                       steam: { appid: 427520, arg: '--mp-connect' } },

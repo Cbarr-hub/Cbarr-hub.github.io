@@ -132,6 +132,11 @@ header.top{position:sticky; top:0; z-index:40;
 .art{position:relative;height:128px;overflow:hidden;border-bottom:1px solid var(--line)}
 .art .glow{position:absolute;inset:0}
 .art svg.deco{position:absolute;inset:0;width:100%;height:100%}
+/* Per-game photographic background: recognizable scene, darkened + accent-tinted
+   for legibility (see TILE_BG). `.contain` is for logo art (e.g. Minecraft). */
+.art .img{position:absolute;inset:0;background-size:cover;background-position:center;background-repeat:no-repeat}
+.art .img.contain{background-size:contain;background-position:center;background-color:#0b1008}
+.art .veil{position:absolute;inset:0;pointer-events:none}
 .mono{position:absolute;left:16px;top:14px;width:48px;height:48px;border-radius:12px;
   display:grid;place-items:center;font-size:22px;font-weight:700;letter-spacing:-1px;
   background:rgba(10,10,10,.55);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(6px);color:#fff;}
@@ -206,6 +211,9 @@ header.top{position:sticky; top:0; z-index:40;
 .dhero{position:relative;height:188px;flex:0 0 auto;overflow:hidden;border-bottom:1px solid var(--line)}
 .dhero svg.deco{position:absolute;inset:0;width:100%;height:100%}
 .dhero .glow{position:absolute;inset:0}
+.dhero .img{position:absolute;inset:0;background-size:cover;background-position:center;background-repeat:no-repeat}
+.dhero .img.contain{background-size:contain;background-position:center;background-color:#0b1008}
+.dhero .veil{position:absolute;inset:0;pointer-events:none}
 .dclose{position:absolute;top:14px;right:14px;z-index:3;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:rgba(10,10,10,.6);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px);color:#fff;transition:.16s var(--ease)}
 .dclose:hover{background:rgba(10,10,10,.85);transform:rotate(90deg)}
 .dhero .dmono{position:absolute;left:20px;bottom:18px;width:56px;height:56px;border-radius:14px;display:grid;place-items:center;font-size:26px;font-weight:700;background:rgba(10,10,10,.55);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px);color:#fff}
@@ -877,6 +885,26 @@ function artSVG(s){
 }
 function monoBg(s){ const [h1,h2] = artFor(s).hue; return `linear-gradient(135deg, hsl(${h1} 60% 30%), hsl(${h2} 55% 18%))` }
 
+/* Per-game photographic tile backgrounds. Recognizable, darkened scenes with a
+   per-game accent tint so each server has its own identity while staying legible
+   under the overlaid mono/status/port chips. `fit:'contain'` is for logo art
+   (Minecraft wordmark) which sits centered on a dark base instead of cover. */
+const TILE_BG = {
+  counterstrike: { src:'assets/tiles/counterstrike.jpg', accent:'255,80,64'  },
+  factorio:      { src:'assets/tiles/factorio.jpg',      accent:'58,220,110' },
+  gmod:          { src:'assets/tiles/gmod.webp',         accent:'220,70,210' },
+  prophunt:      { src:'assets/tiles/prophunt.jpg',      accent:'40,210,210' },
+  minecraft:     { src:'assets/tiles/minecraft.png',     accent:'95,110,255', fit:'contain' },
+}
+function tileArt(bg){
+  const contain = bg.fit === 'contain'
+  const veil = contain
+    ? `linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.20)), radial-gradient(circle at 50% 45%, rgba(${bg.accent},.20), transparent 60%)`
+    : `linear-gradient(to bottom, rgba(0,0,0,.34), rgba(0,0,0,.22) 38%, rgba(0,0,0,.76)), radial-gradient(circle at 20% 12%, rgba(${bg.accent},.26), transparent 46%)`
+  return `<div class="img${contain ? ' contain' : ''}" style="background-image:url('${bg.src}')"></div>
+    <div class="veil" style="background:${veil}"></div>`
+}
+
 /* ───────────────────────── status mapping ───────────────────────── */
 const STATUS_LABEL = { hosting:'Hosting', idle:'Idle', down:'Down', busy:'Busy', unknown:'Unknown' }
 const STATUS_COLOR = { hosting:'var(--grn-hot)', idle:'var(--amber)', down:'var(--grey)', busy:'var(--acc)', unknown:'var(--grey)' }
@@ -1018,11 +1046,12 @@ function cardHTML(s){
   const launch = s.connect?.launch
   const port = s.connect?.port
   const a = artFor(s)
+  const bg = TILE_BG[s.id]
   return `
   <article class="card ${down ? 'down' : ''}" data-id="${esc(s.id)}" tabindex="0" role="button" aria-label="${esc(s.name)} — ${STATUS_LABEL[cls]}">
     <div class="art">
-      ${artSVG(s)}
-      <div class="mono" style="background:${monoBg(s)}">${esc(a.mono)}</div>
+      ${bg ? tileArt(bg) : artSVG(s)}
+      ${bg ? '' : `<div class="mono" style="background:${monoBg(s)}">${esc(a.mono)}</div>`}
       <div class="stat" style="color:${STATUS_COLOR[cls]}"><span class="d ${cls}"></span>${STATUS_LABEL[cls]}</div>
       ${port ? `<div class="port">:${esc(port)}</div>` : ''}
     </div>
@@ -1226,11 +1255,12 @@ const DTABS = [
 function detailShell(s){
   const cls = statusCls(s)
   const a = artFor(s)
+  const bg = TILE_BG[s.id]
   const port = s.connect?.port
   const tabs = DTABS.map(t => `<button${t.key === 'overview' ? ' class="on"' : ''} data-pane="${t.key}">${t.label}</button>`).join('')
   return `
   <div class="dhero">
-    ${artSVG(s)}
+    ${bg ? tileArt(bg) : artSVG(s)}
     <button class="dclose" id="dClose" aria-label="close">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>

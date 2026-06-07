@@ -358,20 +358,20 @@ export class GmodConnector extends LinuxGsmConnector {
         {
           key: 'map', title: 'Maps & Rotation',
           fields: [
-            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
+            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text', basic: true,
               placeholder: 'Steam Workshop collection id',
               help: 'Steam stores & manages these maps. Set this, build the rotation, then Apply — that restarts the server so Steam downloads the collection.' },
-            { key: 'syncMaps', label: 'Workshop Maps', type: 'mapsync',
+            { key: 'syncMaps', label: 'Workshop Maps', type: 'mapsync', basic: true,
               help: 'Added a map to the collection? Restart Hosting to download it, then Sync to install it into the list below.' },
-            { key: 'mapcycle', label: 'Map Rotation', type: 'maplist', custom: true, options: mapOpts,
+            { key: 'mapcycle', label: 'Map Rotation', type: 'maplist', custom: true, basic: true, options: mapOpts,
               help: 'The server boots into the FIRST map and (with auto-rotate on) advances down the list after each round/time limit. Type collection map names; gm_construct is the always-available fallback.' },
-            { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },
+            { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool', basic: true },
           ],
         },
         {
           key: 'gameplay', title: 'Gameplay',
           fields: [
-            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1 },
+            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1, basic: true },
             ...TTT_FIELDS.map(numField),
           ],
         },

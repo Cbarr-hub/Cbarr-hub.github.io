@@ -139,21 +139,21 @@ export function profileGroups(worldOpts) {
     {
       key: 'world', title: 'World',
       fields: [
-        { key: 'world', label: 'Active World', type: 'select', options: worldOpts,
+        { key: 'world', label: 'Active World', type: 'select', options: worldOpts, basic: true,
           help: 'Which world the server loads on (re)start. Snapshot/back up worlds in Quick Settings below.' },
       ],
     },
     {
       key: 'gameplay', title: 'Gameplay',
       fields: [
-        { key: 'gamemode',   label: 'Game Mode',  type: 'select', options: enumOpts(GAMEMODES) },
-        { key: 'difficulty', label: 'Difficulty', type: 'select', options: enumOpts(DIFFICULTIES) },
+        { key: 'gamemode',   label: 'Game Mode',  type: 'select', options: enumOpts(GAMEMODES), basic: true },
+        { key: 'difficulty', label: 'Difficulty', type: 'select', options: enumOpts(DIFFICULTIES), basic: true },
         { key: 'hardcore',   label: 'Hardcore',   type: 'bool' },
-        { key: 'pvp',        label: 'PvP',        type: 'bool' },
+        { key: 'pvp',        label: 'PvP',        type: 'bool', basic: true },
         { key: 'allowNether',   label: 'Allow Nether',   type: 'bool' },
         { key: 'spawnMonsters', label: 'Spawn Monsters', type: 'bool' },
         { key: 'commandBlocks', label: 'Command Blocks',  type: 'bool' },
-        { key: 'maxPlayers',      label: 'Max Players',   type: 'number', min: 1, max: 200, step: 1 },
+        { key: 'maxPlayers',      label: 'Max Players',   type: 'number', min: 1, max: 200, step: 1, basic: true },
         { key: 'viewDistance',    label: 'View Distance', type: 'number', min: 3, max: 32, step: 1 },
         { key: 'simulationDistance', label: 'Simulation Distance', type: 'number', min: 3, max: 32, step: 1 },
         { key: 'spawnProtection', label: 'Spawn Protection (blocks)', type: 'number', min: 0, max: 1000, step: 1 },
@@ -163,10 +163,10 @@ export function profileGroups(worldOpts) {
     {
       key: 'access', title: 'Access',
       fields: [
-        { key: 'whitelist',  label: 'Whitelist enabled', type: 'bool',
+        { key: 'whitelist',  label: 'Whitelist enabled', type: 'bool', basic: true,
           help: 'Manage the player list with the in-game whitelist command or whitelist.json (Raw Config Files).' },
         { key: 'onlineMode', label: 'Online Mode (Mojang auth)', type: 'bool' },
-        { key: 'motd',       label: 'MOTD (server-list message)', type: 'text' },
+        { key: 'motd',       label: 'MOTD (server-list message)', type: 'text', basic: true },
       ],
     },
   ];

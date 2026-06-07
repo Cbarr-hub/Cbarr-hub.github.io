@@ -161,18 +161,18 @@ export function profileGroups(saveOpts) {
     {
       key: 'world', title: 'World',
       fields: [
-        { key: 'saveName', label: 'Active World', type: 'select', options: saveOpts,
+        { key: 'saveName', label: 'Active World', type: 'select', options: saveOpts, basic: true,
           help: 'Which saved world the server loads on (re)start. Create/copy/generate worlds in Quick Settings below.' },
       ],
     },
     {
       key: 'server', title: 'Server Settings',
       fields: [
-        { key: 'serverName',  label: 'Server Name',  type: 'text' },
+        { key: 'serverName',  label: 'Server Name',  type: 'text', basic: true },
         { key: 'description', label: 'Description',   type: 'text' },
-        { key: 'maxPlayers',  label: 'Max Players (0 = unlimited)', type: 'number', min: 0, max: 500, step: 1 },
-        { key: 'visibility',  label: 'Visibility',    type: 'select', options: VISIBILITY_OPTS },
-        { key: 'password',    label: 'Game Password (blank = none)', type: 'text' },
+        { key: 'maxPlayers',  label: 'Max Players (0 = unlimited)', type: 'number', min: 0, max: 500, step: 1, basic: true },
+        { key: 'visibility',  label: 'Visibility',    type: 'select', options: VISIBILITY_OPTS, basic: true },
+        { key: 'password',    label: 'Game Password (blank = none)', type: 'text', basic: true },
         { key: 'autosaveInterval', label: 'Autosave Interval (min)', type: 'number', min: 1, max: 240, step: 1 },
       ],
     },

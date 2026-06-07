@@ -1900,11 +1900,37 @@ function renderProfiles(){
   const badge = isActive
     ? `<span class="pf-badge live">● live${DS.dirty ? ' · unsaved' : ''}</span>`
     : `<span class="pf-badge dirty">○ not applied${DS.dirty ? ' · unsaved' : ''}</span>`
-  const groups = (DS.schema.groups || []).map((g, gi) => `
+  // One layout for everyone: lead with the everyday fields (basic:true) in an
+  // open "Essentials" section, then keep the rest in their original groups but
+  // collapsed, so the power user can expand them without anyone scrolling past
+  // noise. If a game tags no basic fields, fall back to the legacy layout
+  // (first group open, rest collapsed) so the form is never empty.
+  const schemaGroups = DS.schema.groups || []
+  const basicFields = schemaGroups.flatMap(g => (g.fields || []).filter(f => f.basic))
+  let groups
+  if (basicFields.length) {
+    const essentials = `
+    <details class="fgroup" open>
+      <summary>Essentials</summary>
+      <div class="gbody">${basicFields.map(profFieldHTML).join('')}</div>
+    </details>`
+    const advanced = schemaGroups.map(g => {
+      const rest = (g.fields || []).filter(f => !f.basic)
+      if (!rest.length) return ''
+      return `
+    <details class="fgroup">
+      <summary>${esc(g.title)} (advanced)</summary>
+      <div class="gbody">${g.note ? `<div class="field-help">${esc(g.note)}</div>` : ''}${rest.map(profFieldHTML).join('')}</div>
+    </details>`
+    }).join('')
+    groups = essentials + advanced
+  } else {
+    groups = schemaGroups.map((g, gi) => `
     <details class="fgroup"${(gi === 0 && !g.advanced) ? ' open' : ''}>
       <summary>${esc(g.title)}${g.advanced ? ' (advanced)' : ''}</summary>
       <div class="gbody">${g.note ? `<div class="field-help">${esc(g.note)}</div>` : ''}${(g.fields || []).map(profFieldHTML).join('')}</div>
     </details>`).join('')
+  }
   const apply = DS.schema.apply || {}
   const liveApply = apply.mode === 'live'
   const applyLabel = apply.label || '▶ Apply & Restart'

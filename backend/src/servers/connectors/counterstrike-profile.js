@@ -165,9 +165,9 @@ export function profileGroups(mapOpts, note) {
       {
         key: 'map', title: 'Map & Mode',
         fields: [
-          { key: 'map', label: 'Map', type: 'select', addWorkshop: true, addCollection: true, options: mapOpts,
+          { key: 'map', label: 'Map', type: 'select', addWorkshop: true, addCollection: true, options: mapOpts, basic: true,
             help: 'Pick a stock map or a saved Workshop map (by name). Use “＋ Workshop Map” to add one by id, or “⤓ Import Collection” to pull every map from a Steam collection (names fetched automatically). A Workshop map overrides the stock map.' },
-          { key: 'gameMode', label: 'Game Mode', type: 'select',
+          { key: 'gameMode', label: 'Game Mode', type: 'select', basic: true,
             options: Object.entries(GAME_ALIASES).map(([value, label]) => ({ value, label })) },
         ],
       },

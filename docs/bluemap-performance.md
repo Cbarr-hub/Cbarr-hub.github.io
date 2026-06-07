@@ -8,8 +8,9 @@ with a 2D renderer.
 
 - `bluemap` runs as the standalone Docker CLI from `servers.compose.yml`, not as a
   Minecraft plugin.
-- The command stays `-r -u -w`: render/update configured maps, watch world-file
-  changes, and run the internal webserver.
+- The command stays `-r -u -w -m overworld,nether,end`: render/update the
+  configured dimensions, watch world-file changes, and run the internal
+  webserver.
 - The Minecraft world is mounted read-only at `/app/world`; BlueMap writes render
   state to `bluemap-data` and generated web/tile files to `bluemap-web`.
 - Caddy reverse-proxies `/map/*` to `bluemap:8100` behind the login gate.
@@ -36,7 +37,7 @@ render masks, resource packs, or texture/model behavior.
 
 ## Operational rules
 
-- Normal operation: `command: ["-r", "-u", "-w"]`.
+- Normal operation: `command: ["-r", "-u", "-w", "-m", "overworld,nether,end"]`.
 - Edge repair only: use BlueMap's edge-fix mode/command during a maintenance
   window.
 - Avoid routine `docker compose down -v`; it deletes the render state and turns
@@ -51,8 +52,12 @@ render masks, resource packs, or texture/model behavior.
 - BlueMap is pinned to a concrete Docker tag instead of `latest`.
 - `webapp.conf` is tracked so 3D browser defaults are deterministic.
 - Perspective/free-flight/high-res remain enabled for the Overworld.
-- The high-res and low-res slider defaults are lower than BlueMap's defaults, so
-  first load and pan/zoom use less geometry while users can still raise detail.
+- The map list is sorted so Overworld opens first; Nether and End remain
+  available from BlueMap's map selector.
+- The low-res default is high enough for the large Gamertown world to look
+  populated on first open; users can lower it from BlueMap's settings if needed.
+- BlueMap cookies are disabled so stale client-side map/distance settings do not
+  override these defaults after deploys.
 - File storage stays on `gzip`, which browsers can consume directly.
 
 ## Measurement checklist

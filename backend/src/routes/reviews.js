@@ -30,6 +30,10 @@ export default async function reviewsRoutes(app) {
   }, async (req, reply) => {
     const name = req.body.name.trim();
     const message = req.body.message.trim();
+    // The JSON schema already enforces name >= 1 / message >= 10, but it runs on
+    // the RAW (untrimmed) values. This post-trim re-check is the whitespace guard:
+    // e.g. a name of " " or a 10+ char all-whitespace message passes the schema
+    // yet collapses to empty / too-short after trim. Intentional, not redundant.
     if (!name || message.length < 10) {
       return reply.code(400).send({ error: 'invalid review' });
     }

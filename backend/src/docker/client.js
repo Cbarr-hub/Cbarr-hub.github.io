@@ -24,6 +24,7 @@ export class DockerError extends Error {
 }
 
 const MAX_OUTPUT = 1_000_000; // cap captured stdout/stderr, mirroring the agent's truncation
+const EXEC_RESULTS_CAP = 256; // bound the stashed-exec-result map (evict oldest on overflow)
 
 export class DockerClient {
   /**
@@ -48,10 +49,25 @@ export class DockerClient {
 
     // agentExec runs to completion and stashes the result here under a synthetic
     // pid (the exec id); agentExecStatus then returns it as already-exited.
+    //
+    // Reads are NON-destructive (idempotent): a repeat poll for the same pid —
+    // which the normal single-poll runCommand loop never does, but a retry or a
+    // future caller might — returns the SAME real result instead of a misleading
+    // unknown-pid failure. To stop the map growing without bound when a pid is
+    // never read (e.g. a command that times out before its first poll), insertion
+    // evicts the oldest entries past EXEC_RESULTS_CAP (Map preserves insertion
+    // order, so the first key is the oldest).
     this.execResults = new Map();
   }
 
   // ── low-level request ───────────────────────────────────────────────────────
+  // The one engine round-trip. `body` (if set) is JSON-encoded; `raw:true` returns
+  // the response as a Uint8Array (the demux'd exec attach stream) instead of parsed
+  // JSON. A timeout `signal` aborts the request, and EACH await that can observe the
+  // abort (the fetch, plus the body read — arrayBuffer/text — which can resolve after
+  // the fetch but still get cancelled mid-stream) maps the abort to a DockerError with
+  // code DOCKER_TIMEOUT; any other failure becomes a generic DockerError, and a non-2xx
+  // status throws with the parsed `message` (or status text) as the detail.
   async #request(method, path, { body, raw = false, signal } = {}) {
     const headers = { Accept: raw ? 'application/vnd.docker.raw-stream' : 'application/json' };
     const init = { method, headers };
@@ -208,6 +224,11 @@ export class DockerClient {
       if (stderr.length > MAX_OUTPUT) stderr = stderr.slice(0, MAX_OUTPUT);
 
       const inspect = await this.#request('GET', `/exec/${id}/json`, { signal: timeout.signal });
+      // Evict the oldest entries before stashing, so a never-polled pid can't grow
+      // the map without bound (Map iterates in insertion order → first key is oldest).
+      while (this.execResults.size >= EXEC_RESULTS_CAP) {
+        this.execResults.delete(this.execResults.keys().next().value);
+      }
       this.execResults.set(id, {
         exitcode: inspect?.ExitCode ?? null,
         stdout, stderr, truncated,
@@ -218,13 +239,17 @@ export class DockerClient {
     }
   }
 
+  // Report a stashed exec result as already-exited. Idempotent: the result is NOT
+  // removed on read, so a repeat poll for the same pid returns the same data (a
+  // destructive read would make a second poll masquerade as an unknown-pid failure
+  // with a null exitcode). Stale entries are reclaimed by the insertion-time cap in
+  // agentExec, not by reads.
   async agentExecStatus(container, pid) {
     const r = this.execResults.get(pid);
     if (!r) {
       // Unknown pid → report a clean non-zero exit rather than hanging the poll.
       return { exited: 1, exitcode: null, 'out-data': '', 'err-data': '' };
     }
-    this.execResults.delete(pid);
     return {
       exited: 1,
       exitcode: r.exitcode,

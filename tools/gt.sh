@@ -235,8 +235,9 @@ prod_rollback() {
 }
 
 prod_deploy() {
-  local branch sha
-  echo "== gt prod${DRYRUN:+ (dry-run)} =="
+  local branch sha label=""
+  [ "$DRYRUN" = "1" ] && label=" (dry-run)"
+  echo "== gt prod${label} =="
 
   # 1. cheap fail-fast checks BEFORE the backup
   run git -C "$REPO_ROOT" fetch --quiet origin

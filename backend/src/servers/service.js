@@ -9,6 +9,7 @@
 import { listServers, getServer, connectString, launchUrl } from './registry.js';
 import { buildConnectors } from './connectors/index.js';
 import { createServerStore } from './store.js';
+import { parseBlueMapStatus } from './bluemap-status.js';
 
 export class ServerControlError extends Error {
   constructor(message, code) {
@@ -305,6 +306,18 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     // Newest-first join/leave feed merged across all hosted servers (timeline).
     recentActivity(opts = {}) {
       return store ? store.recentSessions(opts) : [];
+    },
+
+    async getBlueMapStatus() {
+      if (!dockerClient) {
+        throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
+      }
+      const logs = await dockerClient.containerLogs('bluemap', { tail: 300 });
+      return {
+        container: 'bluemap',
+        checkedAt: new Date().toISOString(),
+        ...parseBlueMapStatus(logs),
+      };
     },
   };
 }

@@ -291,6 +291,10 @@ export async function dbGetActivity({ limit } = {}) {
   return (await api('/servers/activity', { query: { limit } })) ?? [];
 }
 
+export async function dbGetBlueMapStatus() {
+  return api('/servers/map/status');
+}
+
 // ── startup-config profiles (named, structured loadouts) ──────────────────────
 export async function dbListProfiles(id) {
   return api(`/servers/${encodeURIComponent(id)}/profiles`);

@@ -101,6 +101,7 @@ export default async function serversRoutes(app) {
       },
     },
   });
+  route('get', '/map/status', () => svc.getBlueMapStatus());
 
   route('get', '/:id', (req) => svc.getStatus(req.params.id, { mode: req.query.mode }), {
     schema: {

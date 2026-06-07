@@ -188,6 +188,13 @@ export class DockerClient {
     };
   }
 
+  async containerLogs(container, { tail = 240 } = {}) {
+    const n = Math.max(1, Math.min(1000, Number.isFinite(Number(tail)) ? Math.floor(Number(tail)) : 240));
+    const stream = await this.#request('GET', this.#c(container, `/logs?stdout=1&stderr=1&tail=${n}&timestamps=0`), { raw: true });
+    const { stdout, stderr } = demux(stream);
+    return [stdout, stderr].filter(Boolean).join('\n');
+  }
+
   // ── command execution (emulated guest-agent two-step) ───────────────────────
   // agentExec runs the command to completion and stashes the result; the matching
   // agentExecStatus then reports it as exited. This keeps BaseConnector.runCommand's

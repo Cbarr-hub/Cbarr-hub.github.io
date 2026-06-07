@@ -84,15 +84,25 @@
   </div>
 
   <script>
+  // Fish-tank canvas mini-game. Self-contained IIFE: pixel-art aquarium that
+  // doubles as a survival game — drive the submarine (arrow keys) and avoid the
+  // fish, the (eventually angry) octopus, and falling fishing hooks. Surviving
+  // time is the score, submitted to the shared leaderboard on game over.
   (() => {
     const canvas = document.getElementById('tank')
     const ctx    = canvas.getContext('2d')
 
-    const navH = document.querySelector('header').offsetHeight
-    canvas.style.top = navH + 'px'
-    canvas.width  = window.innerWidth
-    canvas.height = window.innerHeight - navH
-    window.addEventListener('resize', () => { initSeaweed(); initScenery() })
+    // Size the canvas to fill the viewport below the fixed header. Re-run on
+    // resize so the backing store matches the new viewport — without this the
+    // canvas keeps its initial pixel dimensions and the scene clips/stretches.
+    function resizeCanvas() {
+      const navH = document.querySelector('header').offsetHeight
+      canvas.style.top = navH + 'px'
+      canvas.width  = window.innerWidth
+      canvas.height = window.innerHeight - navH
+    }
+    resizeCanvas()
+    window.addEventListener('resize', () => { resizeCanvas(); initSeaweed(); initScenery() })
 
     // ── pixel art sprites (facing RIGHT: head=right, tail=left) ──────────
     // 0=transparent 1=body 2=stripe(dark) 3=eye pupil(black) 4=eye white
@@ -389,6 +399,10 @@
     }
 
     // ── octopus ───────────────────────────────────────────────────────────
+    // Roaming hazard. Idles by drifting and bouncing off the walls while its
+    // arms reach toward the nearest fish (cosmetic). After 60s of a live run
+    // (gameFrames >= 3600) it turns "angry": red, faster, and homes straight at
+    // the player — a soft difficulty ramp / time pressure.
     class Octopus {
       constructor() {
         this.px   = 8
@@ -669,6 +683,8 @@
     }
 
     // ── game state ────────────────────────────────────────────────────────
+    // gameFrames counts at a fixed 60 fps (the loop throttles to that), so it
+    // doubles as the survival timer: seconds = gameFrames / 60.
     let gameState  = 'idle'   // 'idle' | 'playing' | 'dead'
     let gameFrames = 0
 
@@ -678,6 +694,11 @@
       return s.toFixed(1) + 's'
     }
 
+    // End the run: spawn a particle burst, freeze the sub, show the game-over
+    // panel, and submit the score. A logged-in player's score saves silently
+    // under their account (the backend derives the name from the session, so the
+    // manual name box is hidden); anonymous players get the name box, but the
+    // backend requires auth to save — see the go-submit handler below.
     async function killPlayer() {
       gameState = 'dead'
       for (let i = 0; i < 40; i++)
@@ -691,7 +712,9 @@
         if (typeof window.saveScore === 'function') await window.saveScore(loggedIn, secs)
       } else {
         document.getElementById('go-entry').style.display = 'flex'
-        document.getElementById('go-submit').textContent = 'SUBMIT'
+        const submitBtn = document.getElementById('go-submit')
+        submitBtn.textContent = 'SUBMIT'
+        submitBtn.disabled = false
         document.getElementById('go-name').value = ''
         document.getElementById('go-name').focus()
       }
@@ -709,14 +732,26 @@
 
     document.getElementById('go-reset').addEventListener('click', resetGame)
 
+    // Manual score submit (anonymous players). saveScore reports whether the
+    // write actually persisted: the backend requires a logged-in session, so an
+    // anonymous submit fails — surface that instead of hiding the form as if it
+    // had saved.
     document.getElementById('go-submit').addEventListener('click', async () => {
+      const submitBtn = document.getElementById('go-submit')
       const name = document.getElementById('go-name').value.trim()
       if (!name) return
-      document.getElementById('go-submit').textContent = '...'
-      if (typeof window.saveScore === 'function')
-        await window.saveScore(name, Math.round(gameFrames / 60))
-      document.getElementById('go-entry').style.display = 'none'
-      if (typeof window.loadLeaderboard === 'function') window.loadLeaderboard()
+      submitBtn.disabled = true
+      submitBtn.textContent = '...'
+      const saved = typeof window.saveScore === 'function'
+        && await window.saveScore(name, Math.round(gameFrames / 60))
+      if (saved) {
+        document.getElementById('go-entry').style.display = 'none'
+        if (typeof window.loadLeaderboard === 'function') window.loadLeaderboard()
+      } else {
+        // Couldn't save (e.g. not signed in). Let the player retry / sign in.
+        submitBtn.disabled = false
+        submitBtn.textContent = 'SIGN IN TO SAVE'
+      }
     })
 
     window.addEventListener('keydown', e => {
@@ -847,6 +882,10 @@
     })
 
     // ── loop ──────────────────────────────────────────────────────────────
+    // Single rAF loop throttled to a fixed 60 fps: `t` is the animation clock
+    // (always ticking, drives bobbing/waving), `gameFrames` only advances while
+    // playing (the survival timer). Update runs collision/hazard logic first,
+    // then everything is repainted back-to-front each frame.
     let t = 0
     let lastTs = 0
     function loop(ts) {
@@ -890,17 +929,27 @@
   </script>
 
   <script type="module">
+    // Leaderboard bridge. The canvas game (a plain IIFE above) talks to the
+    // backend through these globals so it doesn't need to be a module itself.
     import { dbInsertScore, dbGetTopScores } from './db.js'
     import { loadSession, getSession } from './auth.js'
 
     await loadSession()
+    // Returns the signed-in username (used to decide whether to auto-save), or
+    // null when nobody is logged in.
     window.getLoggedInUser = function() { return getSession() }
 
+    // Persist a score. The backend records it against the *session* user and
+    // ignores `name` (and rejects the request entirely when nobody is signed
+    // in), so we report success/failure to the caller instead of swallowing it —
+    // an anonymous submit would otherwise look like it saved when it didn't.
     window.saveScore = async function(name, seconds) {
       try {
         await dbInsertScore(name, seconds)
+        return true
       } catch (error) {
         console.error('saveScore:', error)
+        return false
       }
     }
 

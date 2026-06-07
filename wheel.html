@@ -108,6 +108,12 @@
   </div>
 
   <script type="module">
+    // Game Spinner page. Two independent pickers:
+    //   1. Horizontal slot machine — picks a random game from the (filtered) DB,
+    //      themed with CS2-case rarity colors.
+    //   2. User Roulette — a conic-gradient wheel that picks a random user.
+    // The result of each is decided up front in JS; the CSS transition is purely
+    // cosmetic and is aimed so the pre-chosen item lands under the marker.
     let dbGetAllGames, dbGetAllBalances;
     const slotColors = ['blue', 'purple', 'pink', 'red', 'gold'];
     const slotColorMap = {
@@ -362,10 +368,15 @@
       return slotColors[Math.floor(Math.random() * slotColors.length)];
     }
 
+    // Wrap any angle into [0, 360).
     function normalizeAngle(angle) {
       return ((angle % 360) + 360) % 360;
     }
 
+    // Compute an absolute rotation (degrees) that lands the wheel on
+    // `targetAngle` after `spins` full turns, always moving clockwise from the
+    // current rotation. Returns the new absolute value so each spin keeps
+    // accumulating (the wheel never "rewinds" between spins).
     function nextClockwiseRotation(current, targetAngle, spins) {
       const currentAngle = normalizeAngle(current);
       const target = normalizeAngle(targetAngle);
@@ -510,6 +521,11 @@
       renderUserWheel();
     }
 
+    // Spin the user wheel: pick a winner, rotate so the center of the winner's
+    // slice (targetAngle) lands under the top pointer. The conic-gradient slices
+    // and the labels are both laid out at index*segment + segment/2 clockwise
+    // from the top (0deg), so rotating by -targetAngle brings that slice up to
+    // the pointer. The result is announced after the CSS transition (4.2s).
     function spinUserRoulette() {
       if (userWheelState.isSpinning) {
         return;
@@ -548,8 +564,14 @@
       }
     }
 
-    // buildSlot now accepts optional resultColor and selectedIndex so
-    // we can ensure the landing tile shows the chosen rarity
+    // Render the slot strip. `names` is rendered repeatCount (=6) times in a row
+    // so there's always strip on both sides of the centered window during the
+    // scroll. Tiles are tinted by CS2 rarity using a deterministic largest-
+    // remainder split of `cs2Odds` across all tiles (so the visible mix matches
+    // the odds), then shuffled for variety. When called from spinSlot,
+    // `resultColor`/`selectedIndex` force the exact landing tile to show the
+    // pre-chosen rarity. Also stashes the measured tile width on the dataset so
+    // spinSlot can reuse it for the target offset.
     function buildSlot(names, resultColor = null, selectedIndex = 0) {
       slotTrack.innerHTML = '';
       if (!names || names.length === 0) {
@@ -590,7 +612,11 @@
       });
       shuffleArray(colorKeysPerTile);
 
-      // Compute landing index within repeatedNames and force that tile to the resultColor
+      // Landing tile index inside repeatedNames. The strip starts centered on
+      // the 2nd copy (initialIndex = names.length); the scroll then advances
+      // `loopCount` more copies before landing on `selectedIndex` within the
+      // final copy. Since targetIndex % names.length === selectedIndex, the tile
+      // that stops under the marker is exactly names[selectedIndex].
       const targetIndex = names.length + selectedIndex + loopCount * names.length;
       if (resultColor && targetIndex >= 0 && targetIndex < colorKeysPerTile.length) {
         colorKeysPerTile[targetIndex] = resultColor;
@@ -619,6 +645,9 @@
       slotTrack.dataset.itemWidth = String(itemWidth);
     }
 
+    // Run one slot spin: pick the winner, build the strip with that tile forced,
+    // animate the strip's translateX to center the winning tile, then reveal the
+    // result + popup when the transition ends.
     function spinSlot() {
       if (isSpinning) return;
       const names = getFilteredGames();

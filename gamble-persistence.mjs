@@ -1,3 +1,10 @@
+// Write coordinator for gambling balance + event persistence. Returns a small
+// facade (saveBalance / saveBalanceAndEvent / recordEvent / flush) that serializes
+// all writes through a single promise chain, debounces standalone balance saves,
+// swallows+reports errors so the UI never breaks, and refreshes stats only after
+// the latest queued write. Dependencies (persist/insert/refresh, timers) are
+// injected so it stays framework- and DOM-agnostic and unit-testable.
+
 export function createGamblingPersistence({
   getUsername,
   persistBalance,

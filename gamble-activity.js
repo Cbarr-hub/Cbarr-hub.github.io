@@ -1,3 +1,7 @@
+// Recent-activity feed for the gambling page: loads the latest events, applies
+// the selected filter (wins / losses / resets / big / all), and renders each as
+// a row with title, meta line, net swing, and timestamp. Pure presentation.
+
 import { getRecentGamblingEvents } from './gamble-data.js?v=money-events-2';
 import { gameLabels, normalizeGamblingEvent, selectRecentEvents } from './gamble-events.mjs?v=money-events-2';
 import { esc, formatSignedDollars, formatWholeDollars } from './gamble-utils.mjs?v=money-events-2';
@@ -9,10 +13,6 @@ const filterLabels = {
   resets: 'Resets',
   big: 'Big Events'
 };
-
-function formatDollars(value) {
-  return formatWholeDollars(value);
-}
 
 function formatTime(value) {
   return new Date(value).toLocaleString('en-US', {
@@ -61,9 +61,9 @@ function eventMeta(event) {
     return `${formatSignedDollars(event.net_change)} reset swing`;
   }
   if (playLabel) {
-    return `${playLabel} / Bet ${formatDollars(event.bet_amount)} / payout ${formatDollars(event.payout_amount)}`;
+    return `${playLabel} / Bet ${formatWholeDollars(event.bet_amount)} / payout ${formatWholeDollars(event.payout_amount)}`;
   }
-  return `Bet ${formatDollars(event.bet_amount)} / payout ${formatDollars(event.payout_amount)}`;
+  return `Bet ${formatWholeDollars(event.bet_amount)} / payout ${formatWholeDollars(event.payout_amount)}`;
 }
 
 function eventClass(event) {

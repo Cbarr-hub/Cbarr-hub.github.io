@@ -1,3 +1,8 @@
+-- Initial schema for the core site: accounts + auth, the gambling economy, the
+-- forum, the leaderboard, and the party-games catalog. Later migrations extend
+-- `games` (005/006 add the hosted-server columns) and add the control-panel and
+-- session-tracking tables. (`PRAGMA foreign_keys` here is a no-op inside the
+-- migration transaction; openDb() enables FK enforcement on the live connection.)
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE users (

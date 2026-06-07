@@ -10,9 +10,10 @@
 //     a client identifier is never interpolated into SQL until it has been
 //     verified to be a real table/column name from sqlite_master / PRAGMA;
 //   - `password_hash` (and anything in MASKED) is value-masked to "[masked]" in
-//     the structured grid and excluded from search; the free-form box additionally
-//     REJECTS any query that names a masked column (output-name masking can't be
-//     trusted once the caller controls aliases/expressions).
+//     the structured grid and excluded from BOTH search (`q`) and sort (`ORDER BY`)
+//     so neither a filter nor a row-ordering can leak the hidden value as an oracle;
+//     the free-form box additionally REJECTS any query that names a masked column
+//     (output-name masking can't be trusted once the caller controls aliases/exprs).
 //
 // All routes are GET → no CSRF (mutation-free). DB handle is app.db
 // (better-sqlite3, decorated in server.js).
@@ -151,10 +152,14 @@ export default async function adminDbRoutes(app) {
     const offset = req.query.offset ?? 0;
     const dir = req.query.dir === 'desc' ? 'DESC' : 'ASC';
 
-    // sort: only when it names a REAL column (allowlist check).
+    // sort: only when it names a REAL, NON-masked column. The allowlist check
+    // (against the live schema) is what makes interpolating `sort` into ORDER BY
+    // safe. Masked columns are additionally barred: ORDER BY a masked column would
+    // leak the masked value's relative ordering as an oracle, the same way search
+    // could — so it's rejected here for symmetry with `searchCols` below.
     let sort;
     if (req.query.sort !== undefined) {
-      if (!cols.includes(req.query.sort)) {
+      if (!cols.includes(req.query.sort) || MASKED.has(req.query.sort)) {
         return reply.code(400).send({ error: 'bad sort column' });
       }
       sort = req.query.sort;

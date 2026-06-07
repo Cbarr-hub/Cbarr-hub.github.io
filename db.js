@@ -8,6 +8,12 @@
 
 const API = '/api';
 
+// CSRF token cache. The backend's @fastify/csrf-protection is session-bound
+// (sessionPlugin: '@fastify/secure-session'), so a token stays valid for the
+// life of the secure-session cookie — including across login, since login
+// reuses the same cookie rather than rotating its CSRF secret. We therefore
+// fetch once and reuse. dbLogout() clears it (defensive); a hard navigation
+// after sign-in resets this module's state anyway.
 let csrfToken = null;
 
 async function getCsrfToken() {
@@ -19,6 +25,15 @@ async function getCsrfToken() {
   return token;
 }
 
+// Single fetch wrapper every db* helper goes through. Contract:
+//   - Always same-origin with cookies (the session is an HttpOnly cookie).
+//   - GET/HEAD send no body and no CSRF header; any other method sends a JSON
+//     body (when `body` is given) and an `x-csrf-token` header.
+//   - `query` is an object → URLSearchParams; null/undefined values are dropped.
+//   - Response shape: HTTP 204 → null; otherwise the parsed JSON body (or null
+//     for an empty body). Non-2xx throws an Error whose `.message` is the
+//     server's `error` field (falling back to `request failed (<status>)`),
+//     with `.status` and `.data` attached for callers that need them.
 async function api(path, { method = 'GET', body, query } = {}) {
   const headers = { 'Accept': 'application/json' };
   const init = { method, credentials: 'same-origin', headers };

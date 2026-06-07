@@ -33,9 +33,10 @@ so they're reused almost unchanged. RCON is spoken **over TCP**
 **Minecraft world map (BlueMap).** The `bluemap` container renders a 3D web map from a
 **read-only** mount of the Minecraft world volume and serves it on `:8100` (not host-
 published). Caddy reverse-proxies it at `/map/*` behind the same `forward_auth` login gate
-as the rest of the panel, and `servers.html` embeds it in a **Map** tab. Starter config is
-bind-mounted from `docker/bluemap/config`; the first render downloads client assets and can
-take a while. See `servers.compose.yml` + `Caddyfile` for the gating + mount details.
+as the rest of the panel, and `servers.html` embeds it in a **Map** tab. Config is
+bind-mounted from `docker/bluemap/config`; `bluemap-data` and `bluemap-web` must be
+preserved so restarts use BlueMap's changed-region update path instead of rebuilding the
+whole map. See `servers.compose.yml`, `Caddyfile`, and [`bluemap-performance.md`](bluemap-performance.md).
 
 **App-side economy + presence (no new infra).** The app reads the host session-tracker's
 `players`/`server_sessions` rows to drive the panel's **Activity** view (live presence +

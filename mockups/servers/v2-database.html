@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Gamertown · Data</title>
+<title>cyberbarn · Data</title>
 <style>
 /* ============================================================
    v2 · DATABASE  —  read-only SQLite browser
@@ -79,7 +79,7 @@ header.top{
   backdrop-filter:blur(2px);
 }
 .logo{display:flex; align-items:center; gap:var(--s2); flex:0 0 auto}
-.logo .dot{width:9px;height:9px;border-radius:2px;background:var(--grn-hot);box-shadow:0 0 12px var(--grn-hot);animation:pulse 2.6s var(--ease) infinite}
+.logo .mark{color:var(--grn-hot);filter:drop-shadow(0 0 7px rgba(66,245,39,.55));animation:pulse 2.6s var(--ease) infinite;flex:0 0 auto}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 .logo b{font-size:var(--t-lg);letter-spacing:1px;color:var(--txt)}
 .logo b span{color:var(--grn)}
@@ -362,8 +362,13 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
   <!-- ============ TOP BAR ============ -->
   <header class="top">
     <div class="logo">
-      <span class="dot"></span>
-      <b>game<span>town</span><span class="cur">_</span></b>
+      <svg class="mark" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path d="M3.5 21V11L7 7l5-3.5L17 7l3.5 4v10Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M9.5 21v-6.5h5V21" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M9.5 14.5 14.5 21M14.5 14.5 9.5 21" stroke="currentColor" stroke-width="1" opacity=".55"/>
+        <circle cx="12" cy="9.6" r="1.3" fill="currentColor"/>
+      </svg>
+      <b>cyber<span>barn</span><span class="cur">_</span></b>
     </div>
     <div class="spacer"></div>
     <div class="who"><span class="av">W</span> admin@keeper</div>
@@ -1229,10 +1234,9 @@ function jumpFk(refTable, id){
    ========================================================================= */
 document.querySelectorAll('.tabs button').forEach(b=>{
   b.addEventListener('click',()=>{
-    if(b.dataset.view!=='data'){
-      toast(b.textContent+' view — see v2-listing-feed');
-      return;
-    }
+    const v=b.dataset.view;
+    if(v==='fleet'){ location.href='v2-listing-feed.html'; return; }
+    if(v==='events'){ location.href='v2-listing-feed.html#events'; return; }
   });
 });
 

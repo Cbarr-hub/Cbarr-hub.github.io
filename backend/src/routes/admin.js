@@ -1,6 +1,12 @@
 import { requireAdmin } from '../middleware/auth.js';
 import { createUser, isDuplicateUserError } from '../users.js';
 
+// Admin user-management routes (mounted at /api/admin). Every route is
+// admin-gated via requireAdmin, and the mutating ones (POST/DELETE) also run
+// app.csrfProtection:
+//   POST   /users      create a user (409 on dup, 400 on validation)
+//   GET    /users      list users (no password hashes)
+//   DELETE /users/:id  delete a user (400 self-delete, 404 if missing)
 export default async function adminRoutes(app) {
   app.post('/users', {
     preHandler: requireAdmin,

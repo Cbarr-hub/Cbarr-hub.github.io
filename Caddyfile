@@ -8,7 +8,7 @@
 	encode gzip
 
 	# Never serve backend source / infra files that ride along in the image.
-	@infra path /backend/* /Dockerfile* /docker-compose* /Caddyfile* /*.md
+	@infra path /backend/* /docker/* /Dockerfile* /docker-compose* /Caddyfile* /*.md
 	handle @infra {
 		respond 403
 	}
@@ -16,6 +16,19 @@
 	# API -> the backend container.
 	handle /api/* {
 		reverse_proxy app:3000
+	}
+
+	# Minecraft world map (BlueMap), gated behind login like the rest of the panel.
+	# handle_path strips the /map prefix so BlueMap (which serves at root on :8100
+	# over the compose network) gets clean paths. The BlueMap webapp uses RELATIVE
+	# asset paths (./assets/…), so the trailing slash matters — redirect /map→/map/
+	# so those resolve under /map/. (Verified on the keeper for a full authed pass.)
+	redir /map /map/
+	handle_path /map/* {
+		forward_auth app:3000 {
+			uri /api/auth/gate
+		}
+		reverse_proxy bluemap:8100
 	}
 
 	# Public assets (sign-in page + static media) served WITHOUT the auth gate.

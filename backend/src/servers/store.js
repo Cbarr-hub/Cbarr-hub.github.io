@@ -132,6 +132,31 @@ export function createServerStore(db) {
         ORDER BY joined_at DESC
         LIMIT ?`,
     ),
+    // ── presence + cross-game activity ──
+    // Open-session counts per hosted slug (uses idx_sessions_game_open).
+    onlineCounts: db.prepare(
+      `SELECT g.slug AS slug, COUNT(*) AS n
+         FROM server_sessions s JOIN games g ON g.id = s.game_id
+        WHERE s.left_at IS NULL AND g.hosted = 1
+        GROUP BY g.slug`,
+    ),
+    // Who's online right now, across every hosted server (newest join first).
+    listOnline: db.prepare(
+      `SELECT g.slug AS slug, g.name AS gameName, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.source
+         FROM server_sessions s JOIN games g ON g.id = s.game_id
+        WHERE s.left_at IS NULL AND g.hosted = 1
+        ORDER BY s.joined_at DESC`,
+    ),
+    // Recent join/leave activity merged across all hosted servers (the timeline).
+    recentSessions: db.prepare(
+      `SELECT s.id, g.slug AS slug, g.name AS gameName, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source
+         FROM server_sessions s JOIN games g ON g.id = s.game_id
+        WHERE g.hosted = 1
+        ORDER BY s.joined_at DESC
+        LIMIT ?`,
+    ),
   };
 
   const parseSettings = (json) => { try { return JSON.parse(json); } catch { return {}; } };
@@ -279,6 +304,23 @@ export function createServerStore(db) {
       if (gid == null) return [];
       const lim = Math.min(500, Math.max(1, Number(limit) || 200));
       return stmts.listSessions.all(gid, lim);
+    },
+
+    // ── presence + cross-game activity ───────────────────────────────────────
+    // { slug: openCount } for the fleet tiles' "playing now" badge.
+    onlineCountsBySlug() {
+      const out = {};
+      for (const r of stmts.onlineCounts.all()) out[r.slug] = r.n;
+      return out;
+    },
+    // The live roster across all hosted servers.
+    listOnline() {
+      return stmts.listOnline.all();
+    },
+    // Newest-first join/leave feed across all hosted servers (the timeline).
+    recentSessions({ limit = 100 } = {}) {
+      const lim = Math.min(500, Math.max(1, Number(limit) || 100));
+      return stmts.recentSessions.all(lim);
     },
   };
 }

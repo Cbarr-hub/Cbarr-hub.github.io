@@ -9,6 +9,7 @@ import { loadOrCreateSessionKey, SESSION_COOKIE, SESSION_TTL_SECONDS } from './s
 import { attachSession } from './middleware/auth.js';
 import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
+import { createEconomy } from './economy.js';
 
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
@@ -20,6 +21,7 @@ import eventsRoutes from './routes/events.js';
 import gamesRoutes from './routes/games.js';
 import adminRoutes from './routes/admin.js';
 import adminDbRoutes from './routes/admin-db.js';
+import adminEconomyRoutes from './routes/admin-economy.js';
 import serversRoutes from './routes/servers.js';
 
 export async function buildApp(env = loadEnv()) {
@@ -71,6 +73,19 @@ export async function buildApp(env = loadEnv()) {
     dockerClient: docker, publicHost: env.PUBLIC_HOST, db,
   }));
 
+  // Playtime economy: credit closed game-server sessions to linked accounts.
+  // Runs once at boot, then on a timer (idempotent — each session is paid once).
+  const economy = createEconomy(db);
+  app.decorate('economy', economy);
+  const creditNow = () => {
+    try { economy.creditPlaytime(); }
+    catch (err) { app.log.error({ err }, 'playtime credit failed'); }
+  };
+  creditNow();
+  const creditTimer = setInterval(creditNow, 5 * 60_000);
+  creditTimer.unref?.();
+  app.addHook('onClose', async () => clearInterval(creditTimer));
+
   app.get('/api/health', async () => ({ ok: true }));
 
   app.get('/api/csrf', async (req, reply) => {
@@ -85,9 +100,10 @@ export async function buildApp(env = loadEnv()) {
   await app.register(leaderboardRoutes,{ prefix: '/api/leaderboard' });
   await app.register(eventsRoutes,     { prefix: '/api/events' });
   await app.register(gamesRoutes,      { prefix: '/api/games' });
-  await app.register(adminRoutes,      { prefix: '/api/admin' });
-  await app.register(adminDbRoutes,    { prefix: '/api/admin/db' });
-  await app.register(serversRoutes,    { prefix: '/api/servers' });
+  await app.register(adminRoutes,        { prefix: '/api/admin' });
+  await app.register(adminDbRoutes,      { prefix: '/api/admin/db' });
+  await app.register(adminEconomyRoutes, { prefix: '/api/admin/economy' });
+  await app.register(serversRoutes,      { prefix: '/api/servers' });
 
   return app;
 }

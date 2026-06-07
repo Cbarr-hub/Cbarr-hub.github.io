@@ -234,6 +234,13 @@ function rawConfigCommands(raw) {
     .filter((l) => l && !l.startsWith('//'));
 }
 
+// Pack the ordered command list into the fewest "a; b; c" batches that each stay
+// within RCON_BATCH_LIMIT chars, preserving order (so applyProfileSettings's
+// map-change stays LAST). `len` tracks the actual joined length: the first command
+// in a batch adds its bare length, each subsequent one adds 2 ("; ") + its length;
+// the flush check predicts the post-append length before committing. A single
+// command over the limit throws (it can't be split). One await per batch in the
+// caller means any RCON rejection (auth/timeout/connection) propagates.
 function rconBatches(commands) {
   const batches = [];
   let cur = [];

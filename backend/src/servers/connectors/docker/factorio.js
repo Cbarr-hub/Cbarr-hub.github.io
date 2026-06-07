@@ -43,6 +43,10 @@ const FACTORIO_ACTION_CMDS = {
   alwaysday_off:'/sc game.surfaces[1].always_day=false',
 };
 // Sliders — game speed + live evolution factor (pushed via /silent-command).
+// runLiveAction clamps each value to [min,max] with clampNumber (note: a 0 value
+// is a real input, not "missing" — game_speed 0 clamps UP to 0.25, evolution 0 is
+// kept as 0; an empty/non-numeric value falls back to `default`). /sc commands
+// disable Steam achievements for the save (surfaced in getLive's commandHint).
 const FACTORIO_LIVE_CONTROLS = [
   { key: 'game_speed', label: 'Game Speed', min: 0.25, max: 4, step: 0.25, default: 1, suffix: '×' },
   { key: 'evolution',  label: 'Evolution',  min: 0,    max: 1, step: 0.05, default: 0 },

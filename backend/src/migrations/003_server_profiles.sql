@@ -1,3 +1,8 @@
+-- Startup-config "profiles" for the control panel: each server stores named,
+-- structured boot configs (server_profiles) plus a pointer to the one it currently
+-- boots as (server_active_profile). Backed by store.js + each connector's
+-- profileSchema(). (`PRAGMA foreign_keys` is a no-op inside the migration
+-- transaction; openDb() enables FK enforcement on the live connection.)
 PRAGMA foreign_keys = ON;
 
 -- Named startup-config "profiles": the full, structured set of settings a server

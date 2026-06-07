@@ -1,3 +1,8 @@
+-- Game-server control panel persistence: the per-server Steam Workshop map
+-- catalog and the reusable raw-cfg library (both backed by store.js). Rows are
+-- scoped by `server_id` (the registry id). Seeds CS's one previously-hardcoded
+-- workshop map so the catalog starts non-empty. (`PRAGMA foreign_keys` is a no-op
+-- inside the migration transaction; openDb() enables FK on the live connection.)
 PRAGMA foreign_keys = ON;
 
 -- Persisted Steam Workshop map catalog. CS is the only consumer today, but the

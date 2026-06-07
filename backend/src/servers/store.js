@@ -1,11 +1,21 @@
-// Persistence for the game-server control panel: the Steam Workshop map catalog
-// and the reusable game-state config library.
+// Persistence for the game-server control panel.
 //
 // Pure DB access over better-sqlite3 — no Fastify, no transport, no game knowledge.
 // One store is created per app from the shared DB and injected into the
 // connectors (servers/service.js → connectors). Connectors call these methods;
-// the store never touches a VM. All ids are scoped by `serverId` (the registry
-// id, e.g. 'counterstrike') so one server can never see another's rows.
+// the store never touches a container/VM. All control-panel rows are scoped by
+// `serverId` (the registry id, e.g. 'counterstrike') so one server can never see
+// another's rows; the session-tracking rows are scoped by hosted-game slug.
+//
+// Five concerns, in section order below:
+//   1. Workshop map catalog  — persisted Steam Workshop maps (migration 002).
+//   2. Config library        — reusable raw cfg snippets (migration 002).
+//   3. Startup-config profiles — named structured boot configs (migration 003).
+//   4. Player-session tracking — who joined/left each hosted server. WRITES here
+//      are the tested canonical SQL; the host collector (tools/gt-session-tracker.mjs)
+//      mirrors the same statements via the sqlite3 CLI (migration 005/006).
+//   5. Presence + cross-game activity — read-only roster/timeline views over the
+//      session rows for the panel's "Events"/fleet badges.
 
 export function createServerStore(db) {
   const stmts = {
@@ -294,8 +304,10 @@ export function createServerStore(db) {
     closeSession(id, leftAt) {
       return stmts.closeSession.run(leftAt, id).changes > 0;
     },
-    // Close every still-open session (collector/container restart: we can't know
-    // the real leave time, so stamp `leftAt` and tag the rows as reconciled).
+    // Close every still-open session across ALL hosted servers at once (collector
+    // or container restart: we can't know the real leave time, so stamp `leftAt`
+    // on every open row and tag them with `source` — 'reconciled' by default — so
+    // the timeline shows the leave was inferred). Returns the number of rows closed.
     closeAllOpenSessions(leftAt, source = 'reconciled') {
       return stmts.closeAllOpen.run(leftAt, source).changes;
     },
@@ -307,17 +319,25 @@ export function createServerStore(db) {
     },
 
     // ── presence + cross-game activity ───────────────────────────────────────
-    // { slug: openCount } for the fleet tiles' "playing now" badge.
+    // These are read-only aggregate views over server_sessions for the panel.
+    //
+    // Open-session count per hosted slug, e.g. { gmod: 2, minecraft: 1 } — drives
+    // the fleet tiles' "playing now" badge. Slugs with nobody online are omitted
+    // (GROUP BY only yields rows that have at least one open session).
     onlineCountsBySlug() {
       const out = {};
       for (const r of stmts.onlineCounts.all()) out[r.slug] = r.n;
       return out;
     },
-    // The live roster across all hosted servers.
+    // The live roster across all hosted servers (every session with left_at NULL),
+    // newest join first. Each row carries the player snapshot plus the game's slug
+    // and display name for rendering "who's on which server right now".
     listOnline() {
       return stmts.listOnline.all();
     },
-    // Newest-first join/leave feed across all hosted servers (the timeline).
+    // Newest-first join/leave feed across all hosted servers (the Events timeline).
+    // Includes closed sessions (left_at set), unlike listOnline. `limit` is clamped
+    // to 1..500 (default 100) to bound the read.
     recentSessions({ limit = 100 } = {}) {
       const lim = Math.min(500, Math.max(1, Number(limit) || 100));
       return stmts.recentSessions.all(lim);

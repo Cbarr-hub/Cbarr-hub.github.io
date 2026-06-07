@@ -7,7 +7,12 @@
 
 services:
   app:
-    build: ./backend
+    build:
+      context: ./backend
+      # Pin the production runtime stage. The Dockerfile's LAST stage is `dev`
+      # (nodemon, runs as root), so without an explicit target Compose would
+      # build that here. docker-compose.dev.yml overrides target: dev for local.
+      target: runtime
     restart: unless-stopped
     env_file:
       - path: backend/.env

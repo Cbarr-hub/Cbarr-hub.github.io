@@ -7,6 +7,7 @@ import { DockerMinecraftConnector } from '../src/servers/connectors/docker/minec
 import { DockerFactorioConnector } from '../src/servers/connectors/docker/factorio.js';
 import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/counterstrike.js';
 import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
+import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
 import { buildConnectors } from '../src/servers/connectors/index.js';
 
 // ── a fake fetch that records calls and returns canned Engine responses ─────────
@@ -63,6 +64,27 @@ test('DockerClient.statusCurrent maps a running container to normalizeStatus sha
   assert.ok(s.cpu > 0); // (100/400)*2 = 0.5
 });
 
+// cpu is cores'-worth (0..ncpu), NOT a 0..1 fraction: when the container's CPU
+// delta equals the system delta (every cycle on every core), a 2-core host reads
+// 2.0. Pins the cores'-worth contract the frontend unit-converts for display.
+test('DockerClient.statusCurrent reports cpu as cores\'-worth (can exceed 1 on multi-core)', async () => {
+  const startedAt = new Date(Date.now() - 60_000).toISOString();
+  const { fetchImpl } = fakeFetch([
+    [/^GET \/containers\/mc\/json$/, () => res({ json: {
+      State: { Running: true, StartedAt: startedAt }, HostConfig: { Memory: 0 },
+    } })],
+    [/^GET \/containers\/mc\/stats/, () => res({ json: {
+      memory_stats: { usage: 500, limit: 2000 },
+      // cpuDelta (1000-600=400) == sysDelta (1000-600=400) → all cores busy.
+      cpu_stats:    { cpu_usage: { total_usage: 1000 }, system_cpu_usage: 1000, online_cpus: 2 },
+      precpu_stats: { cpu_usage: { total_usage: 600 }, system_cpu_usage: 600 },
+    } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const s = await c.statusCurrent('mc');
+  assert.equal(s.cpu, 2); // (400/400)*2 — two full cores
+});
+
 test('DockerClient.statusCurrent can skip the slow stats sample', async () => {
   const startedAt = new Date(Date.now() - 60_000).toISOString();
   const { fetchImpl, calls } = fakeFetch([
@@ -103,6 +125,57 @@ test('DockerClient.containerLogs tails and demuxes container logs', async () => 
   assert.match(logs, /line one/);
   assert.match(logs, /line two/);
   assert.deepEqual(calls.map((x) => x.path), ['/containers/bluemap/logs?stdout=1&stderr=1&tail=50&timestamps=0']);
+});
+
+// FINDING A: the raw branch reads the error body too — its detail (the engine's
+// `{ message }`) must survive into the thrown DockerError, like the JSON branch.
+test('DockerClient raw request surfaces the engine error body on non-2xx', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^GET \/containers\/missing\/logs/, () => res({
+      ok: false, status: 404,
+      bytes: new Uint8Array(Buffer.from(JSON.stringify({ message: 'No such container: missing' }))),
+    })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  await assert.rejects(
+    () => c.containerLogs('missing', { tail: 50 }),
+    (e) => e.name === 'DockerError' && e.status === 404
+      && /No such container/.test(e.message) && /-> 404/.test(e.message),
+  );
+});
+
+// FINDING B: a non-abort body-read failure (e.g. a mid-stream socket reset) must
+// become a DockerError (→ 502), not a raw Error (→ 500). Both branches: raw
+// (arrayBuffer) and non-raw (text). It carries NO DOCKER_TIMEOUT code (that's for
+// genuine aborts only).
+test('DockerClient raw body-read failure wraps as a DockerError (not a 500)', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^GET \/containers\/mc\/logs/, () => ({
+      ok: true, status: 200, statusText: '200',
+      arrayBuffer: async () => { throw new Error('socket reset'); },
+      text: async () => '',
+    })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  await assert.rejects(
+    () => c.containerLogs('mc', { tail: 50 }),
+    (e) => e.name === 'DockerError' && e.code === undefined && /body read failed/.test(e.message),
+  );
+});
+
+test('DockerClient non-raw body-read failure wraps as a DockerError (not a 500)', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^GET \/containers\/mc\/json$/, () => ({
+      ok: true, status: 200, statusText: '200',
+      text: async () => { throw new Error('socket reset'); },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  await assert.rejects(
+    () => c.statusCurrent('mc'),
+    (e) => e.name === 'DockerError' && e.code === undefined && /body read failed/.test(e.message),
+  );
 });
 
 test('DockerClient.setNanoCpus updates live container cpu quota', async () => {
@@ -299,10 +372,15 @@ test('DockerMinecraftConnector.getLive is unavailable without an RCON password',
 // ── factory wiring: backend selection ───────────────────────────────────────────
 test('buildConnectors builds every docker-backed entry, and skips when no client', () => {
   const docker = fakeDockerClient();
-  // A docker client → all five (docker-backed) registry entries build.
+  // A docker client → all five (docker-backed) registry entries build, EACH wired
+  // to its concrete custom class (a missing class would now throw, not fall back).
   const built = buildConnectors({ docker });
   assert.equal(built.size, 5);
   assert.ok(built.get('minecraft') instanceof DockerMinecraftConnector);
+  assert.ok(built.get('factorio') instanceof DockerFactorioConnector);
+  assert.ok(built.get('counterstrike') instanceof DockerCounterStrikeConnector);
+  assert.ok(built.get('gmod') instanceof DockerGmodConnector);
+  assert.ok(built.get('prophunt') instanceof DockerPropHuntConnector);
 
   // No docker client → every entry is skipped (nothing to build).
   const none = buildConnectors({ docker: null });

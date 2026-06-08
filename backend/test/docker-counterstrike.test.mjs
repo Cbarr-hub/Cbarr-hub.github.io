@@ -124,6 +124,12 @@ test('cs-profile csRangeCmd: clamps to bounds, gravity gates cheats, unknown →
   assert.throws(() => cs.csRangeCmd('gravity', 'NaN'), /invalid value/);
 });
 
+test('cs-profile botQuotaCmd: zero also kicks, non-zero sets the quota (rounded)', () => {
+  assert.equal(cs.botQuotaCmd(0), 'bot_quota 0; bot_kick');
+  assert.equal(cs.botQuotaCmd(5), 'bot_quota 5');
+  assert.equal(cs.botQuotaCmd(0.4), 'bot_quota 0; bot_kick'); // rounds to 0 → kick
+});
+
 test('cs-profile buildChangeMapCmd: stock vs workshop vs invalid', () => {
   assert.equal(cs.buildChangeMapCmd('de_dust2'), 'changelevel de_dust2');
   assert.equal(cs.buildChangeMapCmd('ws:123'), 'host_workshop_map 123');
@@ -145,6 +151,18 @@ test('DockerCS profileSchema includes stock + saved workshop maps', async () => 
   const mapField = groups[0].fields.find((f) => f.key === 'map');
   assert.ok(mapField.options.some((o) => o.value === 'de_dust2'));
   assert.ok(mapField.options.some((o) => o.value === 'ws:777' && o.label === 'My WS Map'));
+});
+
+test('DockerCS connectPassword is always empty (live sv_password reverts on restart)', async () => {
+  const store = createServerStore(testDb());
+  const prof = store.createProfile('counterstrike', {
+    name: 'pw', settings: { ...cs.defaultProfileSettings(), password: 'secret123' },
+  });
+  store.setActiveProfile('counterstrike', prof.id);
+  const conn = new DockerCounterStrikeConnector(CS, {}, store);
+  // Even with an active profile carrying a password, the join string must advertise
+  // none — a freshly-booted container enforces no password (compose env / unset).
+  assert.equal(await conn.connectPassword(), '');
 });
 
 test('DockerCS reuses the DB-backed workshop catalog + config library', () => {
@@ -306,13 +324,13 @@ test('DockerCS applyProfileSettings pushes Match-Rules cvars in the live RCON ba
     const conn = new DockerCounterStrikeConnector(
       { ...CS, container: '127.0.0.1', rconPort: server.port }, {});
     try {
-      await conn.applyProfileSettings({ ...cs.defaultProfileSettings(), maxRounds: 30, friendlyFire: 0, overtime: 1 });
+      await conn.applyProfileSettings({ ...cs.defaultProfileSettings(), maxRounds: 30, friendlyFire: 0, overtime: 1, botQuota: 0 });
     } finally { delete process.env.CS2_RCON_PASSWORD; }
   });
   assert.ok(command.includes('mp_maxrounds 30'), 'maxRounds pushed');
   assert.ok(command.includes('mp_friendlyfire 0'), 'bool friendlyFire pushed as 0');
   assert.ok(command.includes('mp_overtime_enable 1'), 'bool overtime pushed as 1');
-  assert.ok(command.includes('bot_quota 0'), 'bot_quota pushed');
+  assert.ok(command.includes('bot_quota 0; bot_kick'), 'botQuota 0 emits the combined kick command');
   assert.ok(command.includes('game_alias competitive') && command.includes('changelevel de_dust2'),
     'map + mode still in the batch');
 });

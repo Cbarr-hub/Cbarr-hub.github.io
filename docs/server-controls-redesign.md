@@ -3,6 +3,17 @@
 > Generated from the Phase-1 ultracode research+design workflow (run wf_da0bf12a-18b), then
 > reconciled against the live code. This is the build contract for the feature/server-controls-redesign branch.
 
+> **UPDATE (2026-06-07, `feature/servers-intent-switch`):** the detail slide-over's flat tab
+> strip (`DTABS` / `gateTabs` / one-pane-at-a-time `activatePane`) was reorganized into a
+> **persona "Intent Switch"** — a 3-way mode control (`MODES`: **Connect · Tweak · Full**) in
+> `detailShell`, dispatched by `applyMode()`. **Connect** (`renderConnect`) = Joiner: join +
+> Steam launch + live tiles + trimmed power. **Tweak** (`renderTweak` + the `TWEAK` per-game
+> copy map) = Tinkerer: the schema's `basic:true` fields with a game-native header + a fenced
+> "Live Now" group (`getLive` actions/controls). **Full** = the original tab surface unchanged
+> (it still calls `gateTabs()`), where Force Stop + Update live. The fleet tiles are untouched.
+> Unsaved edits survive mode/refresh via `snapshotFormIfDirty()`. The capability-organized IA
+> below is the *Full* surface; the persona layering is purely additive on top of it.
+
 ## Goal
 All-new servers.html layout; far more per-game configurable surface (gameplay cvars, live
 runtime controls, presets/sharing, raw-config power-tools); and a UNIFIED Steam Workshop

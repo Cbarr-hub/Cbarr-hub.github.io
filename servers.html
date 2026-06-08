@@ -280,6 +280,15 @@ header.top{position:sticky; top:0; z-index:40;
 .dtabs button.on::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:2px;background:var(--grn);border-radius:2px}
 .dtabs button:hover:not(.on){color:var(--txt)}
 .dtabs button[hidden]{display:none}
+.dtabs[hidden]{display:none}
+/* Intent-Switch mode control (Connect · Tweak · Full) — lives below the hero. */
+.dmode{display:flex;gap:6px;padding:var(--s3) var(--s4);border-bottom:1px solid var(--line);flex:0 0 auto}
+.dmode button{flex:1;padding:9px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg-1);color:var(--txt-dim);font-size:var(--t-xs);letter-spacing:1px;text-transform:uppercase;transition:.16s var(--ease)}
+.dmode button:hover:not(.on){color:var(--txt);border-color:var(--line-2)}
+.dmode button.on{background:var(--grn-deep);border-color:var(--grn);color:var(--grn-hot)}
+.connect-actions{display:flex;gap:var(--s2);flex-wrap:wrap}
+.connect-actions .steam-launch{margin-top:var(--s2)}
+.tweakbar{display:flex;gap:var(--s2);margin-top:var(--s4);flex-wrap:wrap}
 .dbody{flex:1;overflow-y:auto;overflow-x:hidden;padding:var(--s5) var(--s4) var(--s7);-webkit-overflow-scrolling:touch}
 .pane{display:none;flex-direction:column;gap:var(--s5)}
 .pane.on{display:flex;animation:fade .24s var(--ease)}
@@ -1496,14 +1505,14 @@ async function openDetail(id){
     id, server: s, schema: null, cvarRef: [],
     list: [], activeProfileId: null, editId: null, values: {}, dirty: false,
     maps: [], live: null, files: [], curFile: null, fileBaseline: '', configs: [],
-    loaded: {}, activeTab: null,
+    loaded: {}, activeTab: null, mode: 'connect',
   }
   detail.innerHTML = detailShell(s)
   detail.setAttribute('aria-hidden', 'false')
   wireDetailChrome(s)
   requestAnimationFrame(() => { scrim.classList.add('open'); detail.classList.add('open') })
   document.body.style.overflow = 'hidden'
-  gateTabs()
+  applyMode()
   // Hydrate fresh status + schema in parallel; the overview stays usable while
   // Docker/profile metadata arrives.
   const [fresh, schema] = await Promise.all([
@@ -1524,10 +1533,11 @@ async function openDetail(id){
 }
 
 function rerenderDetail(){
+  snapshotFormIfDirty()
   const s = DS.server
   detail.innerHTML = detailShell(s)
   wireDetailChrome(s)
-  gateTabs()
+  applyMode()
 }
 
 const DTABS = [
@@ -1537,12 +1547,21 @@ const DTABS = [
   { key:'maps',     label:'Maps' },
   { key:'raw',      label:'Config' },
 ]
+/* Intent Switch: the side-menu's three depths. Connect = Joiner, Tweak = friendly
+   game-native knobs, Full = the full power surface (today's tab strip). */
+const MODES = [
+  { key:'connect', label:'Connect' },
+  { key:'tweak',   label:'Tweak' },
+  { key:'full',    label:'Full' },
+]
 function detailShell(s){
   const cls = statusCls(s)
   const a = artFor(s)
   const bg = TILE_BG[s.id]
   const port = s.connect?.port
+  const mode = DS?.mode || 'connect'
   const tabs = DTABS.map(t => `<button${t.key === 'overview' ? ' class="on"' : ''} data-pane="${t.key}">${t.label}</button>`).join('')
+  const modes = MODES.map(m => `<button${m.key === mode ? ' class="on"' : ''} data-mode="${m.key}">${m.label}</button>`).join('')
   return `
   <div class="dhero">
     ${bg ? tileArt(bg) : artSVG(s)}
@@ -1553,14 +1572,44 @@ function detailShell(s){
     <div class="dmono" style="background:${monoBg(s)}">${esc(a.mono)}</div>
     <div class="dtitle"><b>${esc(s.name)}</b><span>${s.id}${port ? ' · :' + esc(port) : ''}</span></div>
   </div>
-  <div class="dtabs" id="dTabs">${tabs}</div>
+  <div class="dmode" id="dMode">${modes}</div>
+  <div class="dtabs" id="dTabs"${mode === 'full' ? '' : ' hidden'}>${tabs}</div>
   <div class="dbody" id="dBody"></div>`
 }
 
 function wireDetailChrome(s){
   detail.querySelector('#dClose').addEventListener('click', closeDetail)
+  detail.querySelectorAll('#dMode button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)))
   const tabs = [...detail.querySelectorAll('#dTabs button')]
   tabs.forEach(t => t.addEventListener('click', () => activatePane(t.dataset.pane)))
+}
+
+/* Switch the side-menu depth. In-progress form edits are snapshotted into DS.values
+   (not discarded) so a Tinkerer can flip Tweak↔Full without losing work. */
+function setMode(mode){
+  if (!DS || mode === DS.mode) return
+  snapshotFormIfDirty()
+  DS.mode = mode
+  applyMode()   // single owner of #dMode/#dTabs visibility + body render
+}
+
+/* Render the body for the current mode. Full reuses the existing tab strip + panes;
+   Connect/Tweak hide the tabs and render their own bodies. */
+function applyMode(){
+  if (!DS) return
+  const mode = DS.mode || 'connect'
+  const tabsEl = detail.querySelector('#dTabs')
+  if (tabsEl) tabsEl.hidden = mode !== 'full'
+  detail.querySelectorAll('#dMode button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode))
+  if (mode === 'full') { gateTabs(); return }
+  if (mode === 'tweak') { if (DS.loaded.tweak) renderTweak(); else loadTweak(); return }
+  renderConnect()
+}
+
+/* Capture an in-progress profile/tweak form into DS.values before any re-render that
+   would rebuild it (mode switch, status refresh), so unsaved edits survive. */
+function snapshotFormIfDirty(){
+  if (DS && DS.dirty && detail.querySelector('#dBody [data-pf]')) { try { readProfileForm() } catch {} }
 }
 
 /* Tab visibility gates: overview always; runtime when hosting; profiles/maps/raw when running. */
@@ -1672,9 +1721,12 @@ function consoleHTML(s){
     </div>
   </div>`
 }
-function powerGridHTML(s){
+function powerGridHTML(s, trim){
   const running = s.status === 'running'
-  const b = (key, cls, icon, label, attrs='') => `<button class="pbtn${cls ? ' '+cls : ''}" data-pw="${key}"${attrs}${(running ? (key==='start') : (key!=='start' && key!=='refresh')) ? ' hidden' : ''}>${icon}${label}</button>`
+  // `trim` (Connect depth) drops the destructive/heavy controls — Force Stop + Update
+  // live only in Full.
+  const b = (key, cls, icon, label, attrs='') => (trim && (key === 'stop' || key === 'update')) ? '' :
+    `<button class="pbtn${cls ? ' '+cls : ''}" data-pw="${key}"${attrs}${(running ? (key==='start') : (key!=='start' && key!=='refresh')) ? ' hidden' : ''}>${icon}${label}</button>`
   return `
   <div class="power">
     ${b('start','primary',ICONS.play,'Start')}
@@ -1689,6 +1741,273 @@ function wireOverview(){
   const dJoin = detail.querySelector('#dJoin')
   if (dJoin) dJoin.addEventListener('click', () => copyText(DS.server.connect.string, dJoin))
   detail.querySelectorAll('[data-pw]').forEach(b => b.addEventListener('click', () => powerAction(b.dataset.pw, b)))
+}
+
+/* ───── CONNECT (Joiner): join + Steam launch + live tiles + trimmed power ───── */
+function renderConnect(){
+  const s = DS.server
+  const body = detail.querySelector('#dBody')
+  if (s.status !== 'running') { body.innerHTML = downPaneHTML(s); wireOverview(); return }
+  const conn = s.connect?.string
+  const launch = s.connect?.launch
+  const cpuPct = s.cpu != null ? s.cpu * 100 : 0
+  const ramPct = s.maxmem ? (s.mem / s.maxmem) * 100 : 0
+  body.innerHTML = `
+  <div class="pane on">
+    <div>
+      <div class="section-h">Connect</div>
+      ${conn ? `<div class="joinbig" id="dJoin"><code>${esc(conn)}</code><button>COPY</button></div>` : '<div class="note-block">No join address.</div>'}
+      ${(launch || s.id === 'minecraft') ? `<div class="connect-actions">
+        ${launch ? `<a class="steam-launch" href="${esc(launch)}" title="Launch via Steam">${ICONS.steam} Launch via Steam</a>` : ''}
+        ${s.id === 'minecraft' ? `<button type="button" class="steam-launch map-link" data-mapview title="Open the world map">${MAP_ICON} World Map</button>` : ''}
+      </div>` : ''}
+    </div>
+    <div>
+      <div class="section-h">Live</div>
+      <div class="tiles">
+        <div class="tile"><div class="tl">${ICONS.cpu} CPU</div><div class="tv">${cpuPct.toFixed(0)}<small>%</small></div><div class="tbar"><i style="width:${Math.min(100,cpuPct)}%;background:var(--acc)"></i></div></div>
+        <div class="tile"><div class="tl">${ICONS.ram} Memory</div><div class="tv">${esc(fmtBytes(s.mem))}<small>${s.maxmem ? ' / ' + esc(fmtBytes(s.maxmem)) : ''}</small></div><div class="tbar"><i style="width:${Math.min(100,ramPct)}%;background:var(--grn)"></i></div></div>
+        <div class="tile"><div class="tl">${ICONS.refresh} Uptime</div><div class="tv" style="font-size:16px">${esc(fmtUptime(s.uptime) || '—')}</div></div>
+        <div class="tile"><div class="tl">▣ Status</div><div class="tv" style="font-size:16px;color:${STATUS_COLOR[statusCls(s)]}">${STATUS_LABEL[statusCls(s)]}</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="section-h">Power</div>
+      ${powerGridHTML(s, true)}
+    </div>
+    ${consoleHTML(s)}
+  </div>`
+  wireConnect()
+}
+function wireConnect(){
+  wireOverview()
+  // Honor closeDetail()'s cancel guard — don't strand the panel over the Map view.
+  detail.querySelector('[data-mapview]')?.addEventListener('click', () => { if (closeDetail()) switchView('map') })
+}
+
+/* Poll container status until running (or timeout) — a restart-apply on a heavier game
+   (e.g. GMOD remounting a workshop collection) takes well over a couple seconds. */
+async function waitForRunning(id, timeoutMs){
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let st; try { st = await dbGetServerStatus(id, { mode: 'quick' }) } catch {}
+    if (st && st.status === 'running') return true
+    if (Date.now() > deadline) return false
+    await new Promise(r => setTimeout(r, 2000))
+  }
+}
+
+/* ───── TWEAK (Tinkerer): game-native friendly form + a fenced Live Now group ─────
+   Per-game copy supplies the section HEADER + a plain-language note; the field set is
+   the schema's basic:true "essentials" (curated server-side). The form is the active
+   profile; Apply saves + (for non-CS2) restarts. Live Now = the ephemeral getLive
+   actions/controls, clearly fenced as "resets on reboot". */
+const TWEAK = {
+  minecraft:     { title: 'World & Game Rules', note: 'Difficulty “Peaceful” disables hostile mobs at boot. Live toggles below reset when the server restarts.' },
+  factorio:      { title: 'Biters & World',     note: 'Biter, pollution and research rules only change a newly generated world.' },
+  gmod:          { title: 'Round & Roles',      note: 'Saved settings apply on restart, which also remounts the workshop collection.' },
+  prophunt:      { title: 'Hunt Rules',         note: 'Saved settings apply on restart.' },
+  counterstrike: { title: 'Match Rules',        note: 'Settings apply instantly over RCON and revert if the container restarts.' },
+}
+
+async function loadTweak(){
+  if (DS.tweakLoading) return   // re-entry guard: don't render against half-loaded DS
+  DS.tweakLoading = true
+  const body = detail.querySelector('#dBody')
+  body.innerHTML = `<div class="pane on"><div class="note-block">Loading…</div></div>`
+  try {
+    try { if (!DS.schema) { DS.schema = await dbGetProfileSchema(DS.id); DS.cvarRef = DS.schema?.cvarRef || [] } } catch {}
+    // Active profile values (shared with Full's Profiles pane via DS.loaded.profiles).
+    try {
+      if (!DS.loaded.profiles) {
+        const { profiles, activeId } = await dbListProfiles(DS.id)
+        DS.list = profiles || []; DS.activeProfileId = activeId ?? null
+        DS.editId = DS.activeProfileId ?? DS.list[0]?.id ?? null
+        if (DS.editId != null) { const full = await dbGetProfile(DS.id, DS.editId); DS.values = { ...(full?.settings || {}) } }
+        DS.loaded.profiles = true
+      } else if (DS.editId == null && DS.list[0]) {
+        DS.editId = DS.activeProfileId ?? DS.list[0].id
+      }
+    } catch {}
+    // Live actions/controls. Key off DS.live (not the loaded flag) so a prior FAILED
+    // Full>Runtime fetch — which leaves loaded.runtime=true but DS.live=null — is retried.
+    try {
+      if (!DS.live) {
+        const [live, settings] = await Promise.all([ dbGetServerLive(DS.id), dbGetServerSettings(DS.id).catch(() => null) ])
+        DS.live = live; DS.liveSettings = settings; DS.loaded.runtime = true
+      }
+    } catch {}
+    DS.loaded.tweak = true
+  } finally { DS.tweakLoading = false }
+  if (!DS || DS.mode !== 'tweak') return
+  renderTweak()
+}
+
+function renderTweak(){
+  const s = DS.server
+  const body = detail.querySelector('#dBody')
+  if (s.status !== 'running') { body.innerHTML = downPaneHTML(s); wireOverview(); return }
+  const schema = DS.schema
+  const copy = TWEAK[s.id] || { title: 'Settings' }
+  const conn = s.connect?.string
+  const groups = (schema && schema.groups) || []
+  let fields = groups.flatMap(g => (g.fields || []).filter(f => f.basic))
+  if (!fields.length && groups[0]) fields = (groups[0].fields || []).filter(f => f.type !== 'info')
+  const apply = (schema && schema.apply) || {}
+  const liveApply = apply.mode === 'live'
+  const applyLabel = liveApply ? (apply.label || '▶ Apply Live') : 'Save & Restart'
+  const formBadge = liveApply ? '<span class="pf-badge live">applies instantly</span>' : '<span class="pf-badge">applies on restart</span>'
+  const dirtyBadge = `<span class="pf-badge dirty" data-tweak-dirty${DS.dirty ? '' : ' hidden'}>unsaved</span>`
+  const formHtml = fields.map(profFieldHTML).join('')
+  body.innerHTML = `
+  <div class="pane on">
+    ${conn ? `<div class="joinbig" id="dJoin"><code>${esc(conn)}</code><button>COPY</button></div>` : ''}
+    ${formHtml ? `<div>
+      <div class="section-h">${esc(copy.title)} ${formBadge} ${dirtyBadge}</div>
+      ${copy.note ? `<div class="field-help">${esc(copy.note)}</div>` : ''}
+      <div class="fgroup"><div class="gbody">${formHtml}</div></div>
+      <div class="tweakbar"><button class="btn-primary" data-tweak-apply${DS.editId == null ? ' disabled' : ''}>${ICONS.apply} ${esc(applyLabel)}</button></div>
+    </div>` : `<div class="note-block">No quick settings for this game — open <b>Full</b> for the advanced surface.</div>`}
+    ${liveNowHTML()}
+    ${consoleHTML(s)}
+  </div>`
+  wireTweak(fields)
+}
+
+function liveNowHTML(){
+  const data = DS.live
+  if (!data || !data.available) return ''
+  const actions = (data.actions || []).map(a =>
+    `<button class="chip${a.danger ? ' danger' : ''}" data-ln-act="${esc(a.key)}"${a.arg ? ` data-ln-arg="${esc(a.arg)}"` : ''}>${esc(a.label)}</button>`).join('')
+  const controls = data.controls || []
+  const sliders = controls.map(c => {
+    const def = c.default ?? c.min ?? 0
+    return `<div class="slider">
+      <div class="sh"><span>${esc(c.label)}</span><b data-ln-rangeval="${esc(c.key)}">${esc(def)}${esc(c.suffix || '')}</b><button class="set" data-ln-set="${esc(c.key)}">Set</button></div>
+      <input type="range" data-ln-range="${esc(c.key)}" min="${esc(c.min)}" max="${esc(c.max)}" step="${esc(c.step)}" value="${esc(def)}"></div>`
+  }).join('')
+  const changeMap = data.changeMap
+    ? `<div class="mapline"><div class="sel"><select data-ln-map><option value="">— loading maps… —</option></select></div><button class="btn-go" data-ln-changemap>LOAD</button></div>`
+    : ''
+  if (!actions && !sliders && !changeMap) return ''
+  return `<div>
+    <div class="section-h">Live Now <span class="pf-badge live">resets on reboot</span></div>
+    ${actions ? `<div class="chips">${actions}</div>` : ''}
+    ${sliders}
+    ${changeMap}
+  </div>`
+}
+
+/* Generic field-widget wiring (toggles / slider-number mirror / segmented / reveal /
+   dirty-on-input). Shared by the Tweak form; Full's renderProfiles keeps its own copy. */
+function wireFieldWidgets(body, markDirty){
+  body.querySelectorAll('[data-pf]').forEach(el => {
+    if (el.dataset.ro === '1') return
+    el.addEventListener('input', markDirty); el.addEventListener('change', markDirty)
+  })
+  body.querySelectorAll('.tog[data-pf]:not([data-ro])').forEach(t => t.addEventListener('click', () => { t.classList.toggle('on'); markDirty() }))
+  body.querySelectorAll('.pf-range:not([data-ro])').forEach(rng => {
+    const slider = rng.querySelector('[data-pf-slider]'), num = rng.querySelector('[data-pf-num]')
+    if (!slider || !num) return
+    const val = rng.querySelector('[data-pf-val]'); const suffix = val ? val.textContent : ''
+    const sync = (src) => { if (src === 'slider') num.value = slider.value; else slider.value = num.value; if (val) val.textContent = `${slider.value}${suffix}` }
+    if (val) val.textContent = `${slider.value}${suffix}`
+    slider.addEventListener('input', () => { sync('slider'); markDirty() })
+    num.addEventListener('input', () => { sync('num'); markDirty() })
+  })
+  body.querySelectorAll('.seg:not([data-ro])').forEach(seg => seg.querySelectorAll('.seg-btn').forEach(btn => btn.addEventListener('click', () => {
+    seg.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('on')); btn.classList.add('on'); markDirty()
+  })))
+  body.querySelectorAll('[data-pf-reveal]').forEach(btn => btn.addEventListener('click', () => {
+    const inp = btn.parentElement.querySelector('input'); inp.type = inp.type === 'password' ? 'text' : 'password'
+  }))
+}
+
+function wireTweak(fields){
+  const body = detail.querySelector('#dBody')
+  const dJoin = body.querySelector('#dJoin')
+  if (dJoin) dJoin.addEventListener('click', () => copyText(DS.server.connect.string, dJoin))
+  const markDirty = () => { DS.dirty = true; const d = body.querySelector('[data-tweak-dirty]'); if (d) d.hidden = false }
+  wireFieldWidgets(body, markDirty)
+  ;(fields || []).forEach(f => {
+    if (fieldReadOnly(f)) return
+    if (f.type === 'maplist') wireMaplist(f, body, markDirty)
+    if (f.type === 'select' && f.addWorkshop) wireMapCatalog(f, body, markDirty)
+  })
+  body.querySelector('[data-mapsync]')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget
+    busy(btn, async () => { try { readProfileForm(); const r = await dbSyncServerMaps(DS.id); DS.schema = await dbGetProfileSchema(DS.id); DS.cvarRef = DS.schema.cvarRef || DS.cvarRef; renderTweak(); logLine(`Synced maps ✓ — ${(r?.maps || []).length} installed`) } catch (er) { toast(errMsg(er), 'err') } })
+  })
+  body.querySelector('[data-tweak-apply]')?.addEventListener('click', (e) => tweakApply(e.currentTarget))
+  wireLiveNow(body)
+}
+
+function tweakApply(btn){
+  if (DS.editId == null) { toast('no profile to apply', 'err'); return }
+  const apply = DS.schema?.apply || {}
+  const liveApply = apply.mode === 'live'
+  const msg = apply.confirm || (liveApply
+    ? 'Apply these settings live now? They take effect over RCON and revert on restart.'
+    : 'Save these settings and restart the server now? The server reloads with this config and briefly disconnects any players.')
+  showConfirm({ title: liveApply ? 'Apply live?' : 'Save & restart?', message: esc(msg), yesLabel: liveApply ? 'Apply Live' : 'Save & Restart', danger: !liveApply }).then(ok => {
+    if (!ok) return
+    busy(btn, async () => {
+      try {
+        readProfileForm()
+        await dbUpdateProfile(DS.id, DS.editId, { settings: DS.values }); DS.dirty = false
+        const r = await dbApplyProfile(DS.id, DS.editId)
+        if (liveApply) logLine(`Applied "${r?.name}" live ✓`)
+        else {
+          logLine(`Saved "${r?.name}" — restarting to apply…`)
+          await dbServerAction(DS.id, 'reboot')
+          const up = await waitForRunning(DS.id, 30000)
+          try { await refreshActive() }
+          catch (e) { logLine(`Status refresh — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+          logLine(up ? `Restarted ✓ — now running "${r?.name}"` : 'Restarting… still starting — hit Refresh shortly')
+        }
+      } catch (e) { logLine(`Apply — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+    })
+  })
+}
+
+function wireLiveNow(body){
+  const data = DS.live
+  if (!data || !data.available) return
+  const controls = data.controls || []
+  body.querySelectorAll('[data-ln-act]').forEach(btn => btn.addEventListener('click', () => {
+    let value
+    if (btn.dataset.lnArg) { value = window.prompt(`${btn.textContent.trim()} — ${btn.dataset.lnArg}:`); if (value == null) return }
+    busy(btn, async () => {
+      try { const r = await dbServerLiveAction(DS.id, btn.dataset.lnAct, value); logLine(`> ${btn.textContent.trim()}`, r?.output) }
+      catch (e) { logLine(`${btn.textContent.trim()} — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+    })
+  }))
+  body.querySelectorAll('[data-ln-range]').forEach(slider => {
+    const key = slider.dataset.lnRange
+    const ctl = controls.find(c => c.key === key)
+    const valEl = body.querySelector(`[data-ln-rangeval="${key}"]`)
+    slider.addEventListener('input', () => { if (valEl) valEl.textContent = slider.value + (ctl?.suffix || '') })
+  })
+  body.querySelectorAll('[data-ln-set]').forEach(btn => {
+    const key = btn.dataset.lnSet
+    const slider = body.querySelector(`[data-ln-range="${key}"]`)
+    const ctl = controls.find(c => c.key === key)
+    btn.addEventListener('click', () => busy(btn, async () => {
+      try { const r = await dbServerLiveAction(DS.id, key, String(slider.value)); logLine(`> ${ctl?.label || key} → ${slider.value}${ctl?.suffix || ''}`, r?.output) }
+      catch (e) { logLine(`Set ${ctl?.label || key} — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+    }))
+  })
+  if (data.changeMap) {
+    const mapSel = body.querySelector('[data-ln-map]')
+    populateMapSelect(mapSel)
+    body.querySelector('[data-ln-changemap]')?.addEventListener('click', () => {
+      const val = mapSel.value; if (!val) return
+      busy(body.querySelector('[data-ln-changemap]'), async () => {
+        try { const r = await dbServerLiveAction(DS.id, 'change_map', val); logLine(`> change map → ${val}`, r?.output) }
+        catch (e) { logLine(`Change map — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+      })
+    })
+  }
 }
 
 async function powerAction(act, btn){
@@ -1744,13 +2063,14 @@ async function powerAction(act, btn){
 
 /* Re-fetch the active server's status + the fleet, then re-render the open pane + feed. */
 async function refreshActive(){
+  snapshotFormIfDirty()
   const fresh = await dbGetServerStatus(DS.id, { mode: 'quick' })
   const i = servers.findIndex(x => x.id === DS.id)
   if (i >= 0) servers[i] = { ...servers[i], ...fresh }
   DS.server = servers[i] || fresh
   if (curView === 'fleet') renderFeed()
   if (lastNode) renderHost(lastNode)
-  gateTabs()
+  applyMode()
   refreshDashboard()
 }
 

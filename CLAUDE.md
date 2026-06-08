@@ -10,7 +10,7 @@ Full infra details → [`docs/infrastructure.md`](docs/infrastructure.md)
 Disaster recovery → [`docs/disaster-recovery.md`](docs/disaster-recovery.md)  
 Backend API reference → [`docs/backend.md`](docs/backend.md)  
 Design system → [`docs/design-system.md`](docs/design-system.md)  
-Local dev (Windows/macOS/Linux) → [`docs/local-dev.md`](docs/local-dev.md) — **one command**: `gt … dev --fresh` (`tools/gt.ps1` / `tools/gt.sh`) does secrets + DB + full stack + health; `gt … dev --prod-like` rehearses the real deploy on existing data. Dispatcher reads `tools/gt-modes.conf` and calls the primitives `tools/setup.*` (secrets from R2) + `tools/dev.*` (full stack, localhost/self-signed, live reload) + `tools/db-restore.*` (app DB for login).
+Local dev (Windows/macOS/Linux) → [`docs/local-dev.md`](docs/local-dev.md) — **one command**: `gt … dev --fresh` (`tools/gt.ps1` / `tools/gt.sh`) does secrets + DB + full stack + health; `gt … dev --fresh --seed-dev` restores the prod DB + Factorio/Minecraft snapshots before the first start; `gt … dev --prod-like` rehearses the real deploy on existing data. Dispatcher reads `tools/gt-modes.conf` and calls the primitives `tools/setup.*` (secrets from R2) + `tools/dev.*` (full stack, localhost/self-signed, live reload) + `tools/db-restore.*` / `tools/dev-restore-data.*` (app DB + prod snapshots for local dev).
 
 Dev data seeding: `gt ... seed-dev` restores production R2 snapshots into the local dev volumes (app DB + Factorio `_active.zip` + Minecraft world) and then drifts independently; it does not sync continuously or write to production.
 

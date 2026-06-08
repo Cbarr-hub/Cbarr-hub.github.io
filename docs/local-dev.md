@@ -21,6 +21,16 @@ servers, BlueMap; localhost self-signed + live reload), and waits for `/api/heal
 non-destructive (it preserves `.env.local` keys like `DEV_PUBLIC_HOST` and skips the DB
 restore if one already exists — pass `--restore` to force a fresh pull).
 
+For a first install that should start from the newest production snapshots, seed before the
+first stack start:
+
+```powershell
+.\tools\gt.ps1 dev --fresh --seed-dev     # app DB + Factorio save + Minecraft world, then up
+```
+```bash
+tools/gt.sh dev --fresh --seed-dev
+```
+
 To make an existing dev stack look like production again, use **seed-dev**. It pulls the
 newest R2 snapshots into the local dev volumes, then dev drifts independently:
 
@@ -56,9 +66,10 @@ calls the primitives below, which still work standalone. The rest of this guide 
 step and the other run modes.
 
 > **Under the hood (the original three steps, still valid):** `setup.*` restores **secrets**
-> only; the app **database** is a separate R2 backup (`db-restore.*`); `dev.*` builds + starts
-> the stack. `gt dev --fresh` simply sequences them (and pre-seeds the DB before `up` instead
-> of restarting afterwards).
+> only; the app **database** is a separate R2 backup (`db-restore.*`); prod-like game data
+> is restored by `dev-restore-data.*`. `gt dev --fresh` sequences setup + DB pre-seed + `up`;
+> `gt dev --fresh --seed-dev` restores DB/world snapshots before `up` so the first boot
+> starts on production data.
 
 ## Running tests / CI
 

@@ -3,6 +3,7 @@
 #
 # One command per mode (the Windows counterpart is tools/gt.ps1):
 #   gt.sh dev --fresh           blank machine -> working dev stack (deps, secrets, DB, up)
+#   gt.sh dev --fresh --seed-dev blank machine -> prod DB + worlds, then dev stack
 #   gt.sh dev --prod-like       existing data, prod-shaped (real cert, gamertown.solutions, VAC)
 #   gt.sh dev --prod-like --app app only (no game servers)
 #   gt.sh dev <compose args...> passthrough (ps / logs -f app / down / up -d minecraft)
@@ -24,6 +25,7 @@ CONF="$SCRIPT_DIR/gt-modes.conf"
 # prod-flag globals (defaults satisfy set -u)
 FORCE=0; DRYRUN=0; PULL=0; AUTORB=0
 RESTORE_FORCE=0
+SEED_PROD_DATA=0
 
 # ── shared mode config (no associative arrays → portable to bash 3.2) ───────────
 conf_get() {   # $1=key → prints the (space-separated) value, trimmed
@@ -117,13 +119,22 @@ preseed_db() {   # create the gt-data volume and seed the app DB BEFORE `up`
     echo "[WARN] DB restore failed — login may not work; retry later with: tools/gt.sh restore-db" >&2
 }
 
+seed_dev_data() {
+  echo "[*] restoring app DB + Factorio + Minecraft snapshots from R2 before first start..."
+  bash "$SCRIPT_DIR/dev-restore-data.sh" || { echo "ERROR: dev data seed failed." >&2; exit 1; }
+}
+
 dev_fresh() {
   require_tty
   echo "== gt dev --fresh =="
   "$SCRIPT_DIR/setup.sh"            # deps + secrets + .env.local (age prompts on the TTY)
   require_dev_files
   require_rcon_keys
-  preseed_db
+  if [ "$SEED_PROD_DATA" = "1" ]; then
+    seed_dev_data
+  else
+    preseed_db
+  fi
   echo "[*] building + starting the dev stack…"
   compose_for dev-fresh up -d --build || { echo "ERROR: compose up failed (see output above)." >&2; exit 1; }
   poll_health app "https://localhost/api/health" || true
@@ -166,6 +177,7 @@ cmd_dev() {
       --prod-like)  mode="prodlike" ;;
       --app)        shape="app" ;;
       --restore)    RESTORE_FORCE=1 ;;
+      --seed-dev|--prod-data) SEED_PROD_DATA=1 ;;
       *)            pass+=("$1") ;;
     esac
     shift
@@ -343,6 +355,7 @@ usage() {
 gt — Gamertown dispatcher (Linux/macOS/keeper)
 
   gt.sh dev --fresh            blank machine -> working dev stack (deps, secrets, DB, up)
+  gt.sh dev --fresh --seed-dev blank machine -> prod DB + worlds, then dev stack
   gt.sh dev --prod-like        existing data, prod-shaped (real cert + gamertown.solutions)
   gt.sh dev --prod-like --app  app only (no game servers)
   gt.sh dev <compose args...>  passthrough: ps | logs -f app | down | up -d minecraft

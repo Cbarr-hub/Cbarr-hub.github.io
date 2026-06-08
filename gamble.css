@@ -231,6 +231,49 @@ main {
   }
 }
 
+@keyframes baccaratRoadPop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.82);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.06);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes plinkoBucketHit {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+
+  45% {
+    transform: translateY(-7px) scale(1.08);
+  }
+}
+
+@keyframes plinkoBoardPulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+      inset 0 0 0 8px rgba(242, 193, 78, 0.08),
+      0 24px 52px rgba(0, 0, 0, 0.32);
+  }
+
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+      inset 0 0 0 8px rgba(242, 193, 78, 0.18),
+      0 28px 64px rgba(0, 0, 0, 0.4);
+  }
+}
+
 @keyframes slotGlow {
   0%, 100% {
     box-shadow: 0 0 0 rgba(242, 193, 78, 0);
@@ -572,7 +615,7 @@ main {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -631,6 +674,16 @@ main {
   transform: rotate(5deg) scale(1.13);
 }
 
+.tab[data-game="baccarat"]::before {
+  background:
+    linear-gradient(108deg, transparent 0 25%, rgba(255, 250, 240, 0.88) 26% 47%, transparent 48%),
+    linear-gradient(118deg, transparent 30%, rgba(255, 250, 240, 0.68) 31% 55%, transparent 56%),
+    radial-gradient(circle at 70% 42%, rgba(242, 193, 78, 0.95) 0 10%, transparent 11%),
+    radial-gradient(circle at 28% 35%, rgba(192, 57, 43, 0.74) 0 9%, transparent 10%),
+    linear-gradient(135deg, #7f1d1d, #0f513f 58%, #3f2a13);
+  transform: rotate(-3deg) scale(1.15);
+}
+
 .tab[data-game="roulette"]::before {
   background:
     radial-gradient(circle at 72% 44%, var(--rail) 0 16%, transparent 17%),
@@ -647,6 +700,17 @@ main {
     radial-gradient(circle at 28% 40%, rgba(236, 72, 153, 0.88) 0 10%, transparent 11%),
     linear-gradient(135deg, #25104d, #08111f 58%, #451a03);
   transform: rotate(-2deg) scale(1.16);
+}
+
+.tab[data-game="plinko"]::before {
+  background:
+    radial-gradient(circle at 50% 22%, rgba(242, 193, 78, 0.9) 0 7%, transparent 8%),
+    radial-gradient(circle at 35% 42%, rgba(255, 255, 255, 0.62) 0 4%, transparent 5%),
+    radial-gradient(circle at 50% 52%, rgba(255, 255, 255, 0.62) 0 4%, transparent 5%),
+    radial-gradient(circle at 65% 42%, rgba(255, 255, 255, 0.62) 0 4%, transparent 5%),
+    linear-gradient(180deg, transparent 0 74%, rgba(14, 165, 233, 0.76) 75%),
+    linear-gradient(135deg, #082f49, #172554 58%, #312e81);
+  transform: scale(1.14);
 }
 
 .tab:hover::before,
@@ -1115,6 +1179,147 @@ main {
 .total-badge.loser {
   border-color: rgba(192, 57, 43, 0.6);
   background: rgba(192, 57, 43, 0.85);
+}
+
+.baccarat-layout {
+  display: grid;
+  gap: clamp(1rem, 3vw, 1.35rem);
+  padding: 0.5rem 0;
+}
+
+.baccarat-table {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(0.75rem, 2vw, 1.2rem);
+}
+
+.baccarat-side {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  min-width: 0;
+  padding: clamp(0.85rem, 2vw, 1.1rem);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.08)),
+    rgba(0, 0, 0, 0.18);
+  transition: transform 180ms ease, border-color 180ms ease, filter 180ms ease;
+}
+
+.baccarat-side.outcome-win {
+  border-color: rgba(242, 193, 78, 0.68);
+  filter: drop-shadow(0 0 18px rgba(242, 193, 78, 0.42));
+  transform: translateY(-4px);
+}
+
+.baccarat-side.outcome-loss {
+  opacity: 0.72;
+  filter: saturate(0.7);
+}
+
+.baccarat-vs {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: clamp(46px, 7vw, 64px);
+  aspect-ratio: 1;
+  color: #111;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe59b, var(--gold));
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.baccarat-hand {
+  min-height: 158px;
+}
+
+.baccarat-hand .card {
+  width: clamp(78px, 11vw, 112px);
+}
+
+.baccarat-controls {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(127, 29, 29, 0.24), rgba(15, 81, 63, 0.18)),
+    rgba(0, 0, 0, 0.22);
+}
+
+.baccarat-picks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.baccarat-pick {
+  display: grid;
+  gap: 0.15rem;
+  min-height: 68px;
+  padding: 0.7rem;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.baccarat-pick strong,
+.baccarat-pick span {
+  overflow-wrap: anywhere;
+}
+
+.baccarat-pick span {
+  color: var(--gold);
+  font-size: 0.82rem;
+}
+
+.baccarat-pick.active {
+  border-color: rgba(242, 193, 78, 0.78);
+  background:
+    linear-gradient(180deg, rgba(242, 193, 78, 0.22), rgba(255, 255, 255, 0.04)),
+    rgba(0, 0, 0, 0.28);
+  box-shadow: 0 0 0 4px rgba(242, 193, 78, 0.18);
+}
+
+.baccarat-road {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  min-height: 42px;
+  align-items: center;
+}
+
+.baccarat-road-empty,
+.plinko-history-empty {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.baccarat-road-chip {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  aspect-ratio: 1;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.38);
+  border-radius: 50%;
+  background: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 900;
+  animation: baccaratRoadPop 360ms ease both;
+}
+
+.baccarat-road-chip.banker {
+  background: var(--red);
+}
+
+.baccarat-road-chip.tie {
+  background: #0f766e;
 }
 
 .roulette-layout {
@@ -2312,6 +2517,214 @@ body.slots-crazy-active .primary {
   transition: width 220ms ease;
 }
 
+.plinko-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 290px);
+  gap: clamp(1rem, 3vw, 1.35rem);
+  align-items: stretch;
+  padding: 0.5rem 0;
+}
+
+.plinko-board {
+  position: relative;
+  min-height: 430px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 20%),
+    linear-gradient(135deg, rgba(8, 47, 73, 0.94), rgba(23, 37, 84, 0.94) 56%, rgba(49, 46, 129, 0.92));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 8px rgba(242, 193, 78, 0.08),
+    0 24px 52px rgba(0, 0, 0, 0.32);
+}
+
+.plinko-board.dropping {
+  animation: plinkoBoardPulse 1.5s ease-in-out infinite;
+}
+
+.plinko-pins {
+  position: absolute;
+  inset: 0 6% 15%;
+}
+
+.plinko-pin {
+  position: absolute;
+  width: clamp(7px, 1.05vw, 11px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, #fff, #cbd5e1 58%, #64748b);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.22), 0 4px 8px rgba(0, 0, 0, 0.34);
+  transform: translate(-50%, -50%);
+}
+
+.plinko-chip {
+  position: absolute;
+  left: 50%;
+  top: 6%;
+  z-index: 2;
+  display: none;
+  width: clamp(24px, 4vw, 38px);
+  aspect-ratio: 1;
+  border: 4px dashed rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow:
+    inset 0 0 0 4px rgba(0, 0, 0, 0.16),
+    0 10px 22px rgba(0, 0, 0, 0.36),
+    0 0 24px rgba(242, 193, 78, 0.45);
+  transform: translate(-50%, -50%);
+}
+
+.plinko-chip.active {
+  display: block;
+}
+
+.plinko-buckets {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+.plinko-bucket {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  padding: 0.15rem;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.78);
+  font-size: clamp(0.55rem, 1vw, 0.78rem);
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.plinko-bucket[data-tier="top"] {
+  color: #111;
+  background: linear-gradient(180deg, #ffe59b, var(--gold));
+}
+
+.plinko-bucket[data-tier="win"] {
+  background: #1d4ed8;
+}
+
+.plinko-bucket[data-tier="push"] {
+  background: #0f766e;
+}
+
+.plinko-bucket[data-tier="loss"] {
+  background: #7f1d1d;
+}
+
+.plinko-bucket.hit {
+  border-color: rgba(255, 255, 255, 0.74);
+  animation: plinkoBucketHit 520ms ease both;
+}
+
+.plinko-bucket.hit.win,
+.plinko-bucket.hit.push {
+  box-shadow: 0 0 24px rgba(242, 193, 78, 0.45);
+}
+
+.plinko-bucket.hit.loss {
+  box-shadow: 0 0 20px rgba(192, 57, 43, 0.44);
+}
+
+.plinko-controls {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(49, 46, 129, 0.28)),
+    rgba(0, 0, 0, 0.24);
+}
+
+.plinko-risk-picks {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.plinko-risk {
+  min-height: 54px;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.plinko-risk.active {
+  color: #111;
+  border-color: transparent;
+  background: linear-gradient(180deg, #ffe59b, var(--gold));
+  box-shadow: 0 12px 24px rgba(242, 193, 78, 0.2);
+}
+
+.plinko-readout {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 82px;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.plinko-readout span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.plinko-readout strong {
+  color: var(--gold);
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+}
+
+.plinko-history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.plinko-history-chip {
+  display: grid;
+  place-items: center;
+  min-width: 46px;
+  min-height: 34px;
+  padding: 0.3rem 0.42rem;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.82);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.plinko-history-chip.win {
+  color: #111;
+  background: var(--gold);
+}
+
+.plinko-history-chip.loss {
+  background: #7f1d1d;
+}
+
+.plinko-history-chip.push {
+  background: #0f766e;
+}
+
 .controls {
   position: relative;
   z-index: 1;
@@ -2939,6 +3352,7 @@ button:disabled {
 
   .tabs {
     width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.55rem;
   }
 
@@ -2974,6 +3388,27 @@ button:disabled {
 
   .roulette-number-grid {
     grid-template-columns: repeat(6, minmax(34px, 1fr));
+  }
+
+  .baccarat-table {
+    grid-template-columns: 1fr;
+  }
+
+  .baccarat-vs {
+    justify-self: center;
+    width: 54px;
+  }
+
+  .plinko-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .plinko-board {
+    min-height: 400px;
+  }
+
+  .plinko-risk-picks {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .slot-reels {
@@ -3021,6 +3456,32 @@ button:disabled {
 
   .hand-row {
     min-height: 140px;
+  }
+
+  .baccarat-picks,
+  .plinko-risk-picks {
+    grid-template-columns: 1fr;
+  }
+
+  .baccarat-hand .card {
+    width: clamp(72px, 24vw, 104px);
+  }
+
+  .plinko-board {
+    min-height: 340px;
+  }
+
+  .plinko-buckets {
+    left: 0.4rem;
+    right: 0.4rem;
+    bottom: 0.4rem;
+    gap: 0.14rem;
+  }
+
+  .plinko-bucket {
+    min-height: 36px;
+    border-radius: 4px;
+    font-size: 0.5rem;
   }
 
   .slot-header {

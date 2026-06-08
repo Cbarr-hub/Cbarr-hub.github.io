@@ -2,6 +2,7 @@
 #
 # One command per mode (the Linux/keeper counterpart is tools/gt.sh):
 #   .\tools\gt.ps1 dev --fresh            blank machine -> working dev stack (deps, secrets, DB, up)
+#   .\tools\gt.ps1 dev --fresh --seed-dev blank machine -> prod DB + worlds, then dev stack
 #   .\tools\gt.ps1 dev --prod-like        existing data, prod-shaped (real cert, gamertown.solutions)
 #   .\tools\gt.ps1 dev --prod-like --app  app only (no game servers)
 #   .\tools\gt.ps1 dev <compose args...>  passthrough (ps / logs -f app / down / up -d minecraft)
@@ -114,7 +115,13 @@ function Preseed-Db([bool]$force) {
     if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] DB restore failed - retry later: .\tools\gt.ps1 restore-db" -ForegroundColor Yellow }
 }
 
-function Dev-Fresh([bool]$restoreForce) {
+function Seed-DevData {
+    Write-St "restoring app DB + Factorio + Minecraft snapshots from R2 before first start..."
+    & (Join-Path $PSScriptRoot 'dev-restore-data.ps1')
+    if ($LASTEXITCODE -ne 0) { Write-Err2 "dev data seed failed"; exit $LASTEXITCODE }
+}
+
+function Dev-Fresh([bool]$restoreForce, [bool]$seedProdData) {
     Write-Host "== gt dev --fresh ==" -ForegroundColor Green
     Update-EnvPath
     & (Join-Path $PSScriptRoot 'setup.ps1')         # deps + secrets + .env.local (age prompts)
@@ -122,7 +129,11 @@ function Dev-Fresh([bool]$restoreForce) {
     Update-EnvPath
     Require-DevFiles
     Require-RconKeys
-    Preseed-Db $restoreForce
+    if ($seedProdData) {
+        Seed-DevData
+    } else {
+        Preseed-Db $restoreForce
+    }
     Write-St "building + starting the dev stack..."
     $code = Invoke-Compose 'dev-fresh' @('up','-d','--build')
     if ($code -ne 0) { Write-Err2 "compose up failed (see output above)."; exit $code }
@@ -157,7 +168,7 @@ function Dev-ProdLike([string]$shape) {
 }
 
 function Cmd-Dev([string[]]$rest) {
-    $mode = ''; $shape = 'fleet'; $restoreForce = $false
+    $mode = ''; $shape = 'fleet'; $restoreForce = $false; $seedProdData = $false
     $pass = @()
     foreach ($a in $rest) {
         switch ($a) {
@@ -165,12 +176,14 @@ function Cmd-Dev([string[]]$rest) {
             '--prod-like' { $mode = 'prodlike' }
             '--app'       { $shape = 'app' }
             '--restore'   { $restoreForce = $true }
+            '--seed-dev'  { $seedProdData = $true }
+            '--prod-data' { $seedProdData = $true }
             default       { $pass += $a }
         }
     }
     if ($mode -and $pass.Count -gt 0) { Write-Err2 "don't mix a mode flag with passthrough args ($($pass -join ' '))."; exit 1 }
     switch ($mode) {
-        'fresh'    { Dev-Fresh $restoreForce }
+        'fresh'    { Dev-Fresh $restoreForce $seedProdData }
         'prodlike' { Dev-ProdLike $shape }
         default {
             Require-DevFiles
@@ -259,6 +272,7 @@ function Usage {
 gt - Gamertown dispatcher (Windows)
 
   .\tools\gt.ps1 dev --fresh            blank machine -> working dev stack (deps, secrets, DB, up)
+  .\tools\gt.ps1 dev --fresh --seed-dev blank machine -> prod DB + worlds, then dev stack
   .\tools\gt.ps1 dev --prod-like        existing data, prod-shaped (real cert + gamertown.solutions)
   .\tools\gt.ps1 dev --prod-like --app  app only (no game servers)
   .\tools\gt.ps1 dev <compose args...>  passthrough: ps | logs -f app | down | up -d minecraft

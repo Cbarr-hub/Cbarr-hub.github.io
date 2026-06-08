@@ -259,3 +259,19 @@ test('servers routes map typed RCON and Docker errors', async () => {
     assert.equal(timeout.json().code, 'DOCKER_TIMEOUT');
   } finally { await app.close(); }
 });
+
+test('servers /:id/sessions + /activity share one querystring schema (valid honored, unknown ignored, bounds enforced)', async () => {
+  const app = await routeApp({ service: baseService({ recentActivity: async () => [], listSessions: async () => [] }) });
+  try {
+    // Valid params accepted on BOTH routes (the shared SESSION_LIST_QS schema).
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=5&includeUnlinked=true' })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?limit=5&includeUnlinked=true' })).statusCode, 200);
+    // Unknown query params are harmlessly stripped (Fastify removeAdditional), not rejected —
+    // behavior is unchanged by the DRY refactor; the two routes now behave identically.
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?bogus=1' })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?bogus=1' })).statusCode, 200);
+    // The shared `limit` bound is enforced on each route (proves the schema is actually applied to both).
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=9999' })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?limit=0' })).statusCode, 400);
+  } finally { await app.close(); }
+});

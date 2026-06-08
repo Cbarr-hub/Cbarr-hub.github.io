@@ -87,6 +87,9 @@ sqlite3 /var/lib/docker/volumes/gamertown_gt-data/_data/gamertown.sqlite
 # Migrations / user management (inside the app container)
 docker exec -it gamertown-app-1 npm run migrate
 docker exec -it gamertown-app-1 node src/cli.js list-users
+
+# Run the tests (both suites: backend/test + root tests/) — same entrypoint CI uses
+tools/gt.sh test          # Windows: .\tools\gt.ps1 test
 ```
 
 ---

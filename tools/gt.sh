@@ -318,6 +318,26 @@ cmd_prod() {
   if [ "$rollback" = "1" ]; then prod_rollback; else prod_deploy; fi
 }
 
+# ── test (cross-platform; no keeper/secrets needed) ──────────────────────────────
+# Runs BOTH suites under one command: the backend suite (backend/test, via npm) and
+# the orphaned root suite (tests/*.test.mjs, which exercises the root gamble-*.mjs /
+# slot-rules.mjs logic and has no package.json of its own). Both ALWAYS run — the
+# statuses are OR'd so a backend failure can't mask a root failure (or vice-versa).
+cmd_test() {
+  local rc=0
+  echo "== gt test =="
+  if [ ! -d "$REPO_ROOT/backend/node_modules" ]; then
+    echo "[*] backend/node_modules missing — installing (npm ci)…"
+    ( cd "$REPO_ROOT/backend" && npm ci ) || { echo "ERROR: npm ci failed in backend/." >&2; return 1; }
+  fi
+  echo "[*] backend suite (backend/test)…"
+  ( cd "$REPO_ROOT/backend" && npm test ) || rc=1
+  echo "[*] root suite (tests/*.test.mjs)…"
+  ( cd "$REPO_ROOT" && node --test tests/*.test.mjs ) || rc=1
+  if [ "$rc" -eq 0 ]; then echo "[OK] all suites passed."; else echo "[FAIL] one or more suites failed." >&2; fi
+  return "$rc"
+}
+
 # ── usage ────────────────────────────────────────────────────────────────────────
 usage() {
   cat <<'EOF'
@@ -335,6 +355,7 @@ gt — Gamertown dispatcher (Linux/macOS/keeper)
        --pull-images           also `docker compose pull` (game-image version bumps)
        --auto-rollback         roll back automatically if the post-deploy health check fails
   gt.sh restore-db [name]      restore the app DB from R2 (newest, or a named snapshot)
+  gt.sh test                   run both test suites (backend/test + root tests/) — also CI's entrypoint
 
 seed-dev flags: --db --factorio --minecraft --worlds --all --keep-bluemap
                 --db-name NAME --factorio-name NAME --minecraft-name NAME
@@ -350,6 +371,7 @@ case "$sub" in
   prod)        cmd_prod "$@" ;;
   restore-db)  GT_DATA_VOLUME="$(data_volume)" "$SCRIPT_DIR/db-restore.sh" "$@" ;;
   seed-dev)    bash "$SCRIPT_DIR/dev-restore-data.sh" "$@" ;;
+  test)        cmd_test "$@" ;;
   ""|help|-h|--help) usage ;;
   *) echo "unknown command: $sub" >&2; usage; exit 1 ;;
 esac

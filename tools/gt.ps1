@@ -190,6 +190,27 @@ function Cmd-RestoreDb([string[]]$rest) {
     exit $LASTEXITCODE
 }
 
+# Run BOTH suites under one command: the backend suite (backend/test, via npm) and the
+# orphaned root suite (tests/*.test.mjs over the root gamble-*.mjs / slot-rules.mjs logic,
+# which has no package.json). Both ALWAYS run — failures are OR'd so neither masks the other.
+function Cmd-Test([string[]]$rest) {
+    Update-EnvPath
+    Write-St "gt test"
+    $backend = Join-Path $REPO 'backend'
+    $rc = 0
+    if (-not (Test-Path (Join-Path $backend 'node_modules'))) {
+        Write-St "backend/node_modules missing - installing (npm ci)..."
+        Push-Location $backend; npm ci; $code = $LASTEXITCODE; Pop-Location
+        if ($code -ne 0) { Write-Err2 "npm ci failed in backend/."; exit 1 }
+    }
+    Write-St "backend suite (backend/test)..."
+    Push-Location $backend; npm test; if ($LASTEXITCODE -ne 0) { $rc = 1 }; Pop-Location
+    Write-St "root suite (tests/*.test.mjs)..."
+    Push-Location $REPO; node --test (Get-ChildItem 'tests/*.test.mjs').FullName; if ($LASTEXITCODE -ne 0) { $rc = 1 }; Pop-Location
+    if ($rc -eq 0) { Write-Ok "all suites passed." } else { Write-Err2 "one or more suites failed." }
+    exit $rc
+}
+
 function Cmd-SeedDev([string[]]$rest) {
     Update-EnvPath
     if ($rest -contains '--help' -or $rest -contains '-h' -or $rest -contains 'help') {
@@ -243,6 +264,7 @@ gt - Gamertown dispatcher (Windows)
   .\tools\gt.ps1 dev <compose args...>  passthrough: ps | logs -f app | down | up -d minecraft
   .\tools\gt.ps1 restore-db [name]      restore the app DB from R2 (newest, or a named snapshot)
   .\tools\gt.ps1 seed-dev [flags]       restore prod DB + Factorio + Minecraft snapshots into dev
+  .\tools\gt.ps1 test                   run both test suites (backend/test + root tests/)
   .\tools\gt.ps1 prod                   refused on Windows - prod runs on the keeper
 
 seed-dev flags: --db --factorio --minecraft --worlds --all --keep-bluemap
@@ -260,6 +282,7 @@ switch ($sub) {
     'dev'        { Cmd-Dev $rest }
     'restore-db' { Cmd-RestoreDb $rest }
     'seed-dev'   { Cmd-SeedDev $rest }
+    'test'       { Cmd-Test $rest }
     'prod' {
         Write-Err2 "'gt prod' runs ON THE KEEPER, not on Windows."
         Write-Host "  ssh root@192.168.1.241   then:   cd /root/gamertown && tools/gt.sh prod" -ForegroundColor Yellow

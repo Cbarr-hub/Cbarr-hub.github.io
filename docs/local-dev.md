@@ -60,6 +60,30 @@ step and the other run modes.
 > the stack. `gt dev --fresh` simply sequences them (and pre-seeds the DB before `up` instead
 > of restarting afterwards).
 
+## Running tests / CI
+
+One command runs **both** suites — the backend suite (`backend/test/*.test.mjs`, in-memory
+SQLite, no Docker needed) and the root suite (`tests/*.test.mjs`, which covers the root
+`gamble-*.mjs` / `slot-rules.mjs` logic and has no `package.json` of its own):
+
+```bash
+tools/gt.sh test            # Linux/macOS/keeper   (Windows: .\tools\gt.ps1 test)
+```
+
+It installs `backend/node_modules` on first run (via `npm ci`) if missing, runs both suites,
+and exits non-zero if **either** fails. This is the exact entrypoint
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every push and PR, so a green
+local `gt test` means a green CI `test` job. (CI also runs `shellcheck` over the deploy/backup
+scripts as an advisory job.)
+
+**Web sessions (Claude Code on the web):** a fresh container has no `backend/node_modules`.
+Run [`tools/session-start.sh`](../tools/session-start.sh) once to install them (idempotent, never
+blocks), or wire it as a `SessionStart` hook in `.claude/settings.json`:
+
+```json
+{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "bash tools/session-start.sh" } ] } ] } }
+```
+
 ## Prerequisites
 
 1. **Docker Desktop** (Windows/Mac) or Docker Engine (Linux)

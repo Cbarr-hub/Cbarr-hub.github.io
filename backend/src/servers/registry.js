@@ -73,7 +73,7 @@
 //                         Minecraft (Java has no launch-and-connect scheme).
 export const SERVERS = [
   { id: 'counterstrike', name: 'Counter-Strike',     backend: 'docker', container: 'counterstrike', connector: 'counterstrike', port: 27015, connect: 'cs',      identityKind: 'steam',     collect: 'rcon', rconEnvKey: 'CS2_RCON_PASSWORD',      steam: { appid: 730,    arg: '+connect' } },
-  { id: 'factorio',      name: 'Factorio',           backend: 'docker', container: 'factorio', connector: 'factorio',      port: 34197, connect: 'address', identityKind: 'factorio',  collect: 'log',                                       steam: { appid: 427520, arg: '--mp-connect' } },
+  { id: 'factorio',      name: 'Factorio',           backend: 'docker', container: 'factorio', connector: 'factorio',      port: 34197, connect: 'address', identityKind: 'factorio',  collect: 'log', rconPort: 27015,                      steam: { appid: 427520, arg: '--mp-connect' } },
   { id: 'gmod',          name: 'TTT',                backend: 'docker', container: 'gmod', connector: 'gmod',          port: 27066, connect: 'cs',      identityKind: 'steam',     collect: 'rcon', rconEnvKey: 'GMOD_RCON_PASSWORD',     steam: { appid: 4000,   arg: '+connect' } },
   { id: 'prophunt',      name: 'Prop Hunt',          backend: 'docker', container: 'prophunt', connector: 'prophunt',      port: 27067, connect: 'cs',      identityKind: 'steam',     collect: 'rcon', rconEnvKey: 'PROPHUNT_RCON_PASSWORD', steam: { appid: 4000,   arg: '+connect' } },
   { id: 'minecraft',     name: 'Minecraft',          backend: 'docker', container: 'minecraft', connector: 'minecraft',     port: 25565, connect: 'address', identityKind: 'minecraft', collect: 'log' },

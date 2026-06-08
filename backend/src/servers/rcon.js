@@ -1,5 +1,5 @@
 // Live command transport (Phase 3). CS2 and Factorio both speak the Source RCON
-// protocol (CS2 on the game TCP port 27015; Factorio on rcon-port 34198), so we
+// protocol (CS2 on the game TCP port 27015; Factorio on rcon-port 27015), so we
 // run a tiny embedded Source-RCON client in the guest via the QEMU guest agent.
 //
 // Safety: the command text is passed as a single argv element (never through a

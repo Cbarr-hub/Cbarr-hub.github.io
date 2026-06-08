@@ -95,6 +95,13 @@ function parseMinecraftVector(text, count) {
   return values;
 }
 
+// Whether an RCON `data get entity … Pos` reply contains a vector-looking value at all.
+// A "no entity" reply (offline player) carries no `[…]` bracket ("No entity was found",
+// "Found no elements"); a bracketed reply whose numbers don't parse is genuine corruption.
+function hasVectorBracket(text) {
+  return /\[/.test(String(text || ''));
+}
+
 function parseMinecraftDimension(text) {
   return String(text || '').match(/"([^"]+)"/)?.[1]
     || String(text || '').match(/\b(minecraft:[a-z0-9_./-]+)\b/)?.[1]
@@ -197,6 +204,9 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
   }
 
   async listOnlinePlayers() {
+    // Match getLive()'s gate: with no RCON password there's nothing to ask the server,
+    // so short-circuit instead of opening a socket that rconExchange would just reject.
+    if (!process.env.MINECRAFT_RCON_PASSWORD) return [];
     const output = await this.#rcon('list');
     return parseMinecraftPlayerList(output).map((name) => ({
       name,
@@ -229,7 +239,21 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
       this.#rcon(`data get entity ${entity} Rotation`).catch(() => ''),
     ]);
     const pos = parseMinecraftVector(posOut, 3);
-    if (!pos) throw badSetting('could not parse Minecraft player position');
+    if (!pos) {
+      // An offline / just-left player has no entity to query, so RCON answers with a
+      // not-found message (no `[x, y, z]` vector). Mirror the Factorio connector's
+      // graceful offline shape so the map UI gets `connected:false` instead of a 400.
+      // Only a vector-LOOKING reply whose numbers aren't finite is genuine corruption.
+      if (!hasVectorBracket(posOut)) {
+        return {
+          connected: false,
+          reason: 'player is not online',
+          name: entity,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      throw badSetting('could not parse Minecraft player position');
+    }
     const rot = parseMinecraftVector(rotOut, 2) || [null, null];
     const dimension = parseMinecraftDimension(dimOut);
     const out = {

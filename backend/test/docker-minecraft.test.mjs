@@ -339,6 +339,23 @@ test('DockerMinecraft listOnlinePlayers parses the RCON list output', async () =
   assert.deepEqual(players, [{ name: 'dheagman', uid: null, identityKind: 'minecraft' }]);
 });
 
+test('listOnlinePlayers short-circuits without MINECRAFT_RCON_PASSWORD', async () => {
+  const prev = process.env.MINECRAFT_RCON_PASSWORD;
+  delete process.env.MINECRAFT_RCON_PASSWORD;
+  try {
+    // Spy RCON client: every issued command lands in `commands`. With no password set,
+    // listOnlinePlayers must return [] AND never touch the socket (zero commands).
+    const commands = await withRconCapture(async ({ port }) => {
+      const conn = new DockerMinecraftConnector({ ...MC, container: '127.0.0.1', rconPort: port }, fakeMcClient());
+      assert.deepEqual(await conn.listOnlinePlayers(), []);
+    }, () => 'There are 1 of a max of 20 players online: dheagman');
+    assert.deepEqual(commands, []);
+  } finally {
+    if (prev === undefined) delete process.env.MINECRAFT_RCON_PASSWORD;
+    else process.env.MINECRAFT_RCON_PASSWORD = prev;
+  }
+});
+
 test('DockerMinecraft getPlayerPosition parses position, dimension, and BlueMap anchor', async () => {
   let position;
   const commands = await captureMinecraftRcon(async (conn) => {
@@ -362,6 +379,38 @@ test('DockerMinecraft getPlayerPosition parses position, dimension, and BlueMap 
   assert.equal(position.yaw, 90);
   assert.equal(position.pitch, 10);
   assert.equal(position.anchor, 'nether:13:65:-30:390:0.1:0.19:0:0:perspective');
+});
+
+// An offline / just-left player has no entity to query — RCON answers "No entity was
+// found" (no vector), so getPlayerPosition must RESOLVE to the graceful offline shape
+// (mirroring Factorio) rather than throwing BAD_SETTING → HTTP 400 at the map UI.
+test('DockerMinecraft getPlayerPosition returns offline shape when the player has no entity', async () => {
+  let position;
+  await captureMinecraftRcon(async (conn) => {
+    position = await conn.getPlayerPosition('Notch');
+  }, (command) => {
+    if (command.endsWith(' Pos')) return 'No entity was found';
+    if (command.endsWith(' Dimension')) return 'No entity was found';
+    return '';
+  });
+  assert.equal(position.connected, false);
+  assert.equal(typeof position.reason, 'string');
+  assert.ok(position.reason.length);
+  assert.equal(position.name, 'Notch');
+
+  // The vector path is unaffected: a real Pos reply still parses to a position.
+  let online;
+  await captureMinecraftRcon(async (conn) => {
+    online = await conn.getPlayerPosition('Notch');
+  }, (command) => {
+    if (command.endsWith(' Pos')) return '[12.5d, 65.0d, -30.25d]';
+    if (command.endsWith(' Dimension')) return '"minecraft:overworld"';
+    return '';
+  });
+  assert.equal(online.connected, undefined); // online result carries no `connected` flag
+  assert.equal(online.x, 12.5);
+  assert.equal(online.y, 65);
+  assert.equal(online.z, -30.25);
 });
 
 // Range clamping is pure arithmetic on the issued command; verify the clamp helper's

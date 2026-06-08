@@ -58,6 +58,26 @@ export function createEconomy(db) {
       `UPDATE server_sessions SET credited_at = unixepoch()
         WHERE player_id = ? AND left_at IS NOT NULL AND credited_at IS NULL`,
     ),
+    // A session still OPEN at first link straddles the link boundary: its whole
+    // span (pre- + post-link) would otherwise be paid when it later closes. So
+    // at link time we close+settle each open row (settlePastSessions only touches
+    // already-closed rows) and re-open a fresh uncredited session from now, so
+    // only the post-link remainder earns when it eventually closes.
+    closeOpenSessions: db.prepare(
+      `UPDATE server_sessions SET left_at = unixepoch(), credited_at = unixepoch()
+        WHERE player_id = ? AND left_at IS NULL`,
+    ),
+    openSessionsToSplit: db.prepare(
+      `SELECT game_id AS gameId, player_id AS playerId, identity_kind AS identityKind,
+              uid, name
+         FROM server_sessions
+        WHERE player_id = ? AND left_at IS NULL`,
+    ),
+    reopenSession: db.prepare(
+      `INSERT INTO server_sessions
+         (game_id, player_id, identity_kind, uid, name, joined_at, source)
+       VALUES (?, ?, ?, ?, ?, unixepoch(), 'reconciled')`,
+    ),
     // The reconciler scan: closed + uncredited + linked sessions only.
     creditable: db.prepare(
       `SELECT s.id, s.joined_at AS joinedAt, s.left_at AS leftAt, pa.user_id AS userId
@@ -107,8 +127,9 @@ export function createEconomy(db) {
     },
 
     // Link a tracked identity to a site user (or unlink with userId = null).
-    // On link, settle the player's pre-existing closed sessions so only playtime
-    // AFTER linking earns. Returns { ok } or throws a coded error.
+    // On first link, settle the player's pre-existing closed sessions and split
+    // any still-open session at the link boundary, so only playtime AFTER linking
+    // earns. Returns { ok } or throws a coded error.
     linkAccount(playerId, userId) {
       if (!stmts.playerExists.get(playerId)) {
         throw Object.assign(new Error('unknown player'), { code: 'UNKNOWN_PLAYER' });
@@ -126,7 +147,17 @@ export function createEconomy(db) {
         // Only settle-without-paying when this identity had no prior link (a
         // first link). Re-pointing an already-linked identity keeps its pending
         // sessions creditable to the new owner.
-        if (!had) stmts.settlePastSessions.run(playerId);
+        if (!had) {
+          stmts.settlePastSessions.run(playerId); // already-closed pre-link rows
+          // Split any session still open at link time so only post-link minutes
+          // bill: snapshot the open rows (before closing flips left_at), close +
+          // settle the pre-link span, then re-open a fresh uncredited session.
+          const open = stmts.openSessionsToSplit.all(playerId);
+          stmts.closeOpenSessions.run(playerId);
+          for (const s of open) {
+            stmts.reopenSession.run(s.gameId, s.playerId, s.identityKind, s.uid, s.name);
+          }
+        }
       });
       tx();
       return { ok: true, linked: true };

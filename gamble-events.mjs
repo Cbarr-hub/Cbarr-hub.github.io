@@ -10,8 +10,10 @@ export const BIG_EVENT_AMOUNT = 1000;
 export const gameLabels = {
   high_card: 'High Card',
   blackjack: 'Blackjack',
+  baccarat: 'Baccarat',
   roulette: 'Roulette',
   slots: 'Slots',
+  plinko: 'Plinko',
   system: 'System'
 };
 

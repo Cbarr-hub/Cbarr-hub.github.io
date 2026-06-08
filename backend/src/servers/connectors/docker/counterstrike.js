@@ -89,12 +89,16 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     const s = this.validateProfileSettings(settings);
     const parts = [];
     if (s.hostname) parts.push(`hostname "${s.hostname}"`);
-    parts.push(`game_alias ${s.gameMode}`);
+    parts.push(`sv_password "${s.password}"`);
+    parts.push(`game_alias ${csProfile.gameAliasForProfile(s)}`);
     // Structured Match-Rules cvars (bools as 0/1). Pushed before the map change so
     // mp_roundtime_defuse etc. bite on the reload the changelevel/host_workshop_map triggers.
     for (const f of csProfile.CS_CVAR_FIELDS) {
-      parts.push(`${f.cvar} ${f.bool ? (s[f.key] ? 1 : 0) : s[f.key]}`);
+      const value = f.bool ? (s[f.key] ? 1 : 0) : s[f.key];
+      parts.push(f.cvar === 'bot_quota' ? csProfile.botQuotaCmd(value) : `${f.cvar} ${value}`);
     }
+    const loadout = csProfile.loadoutModeCmd(s.loadoutMode);
+    if (loadout) parts.push(loadout);
     parts.push(...rawConfigCommands(s.rawConfig));
     parts.push(csProfile.buildChangeMapCmd(s.map)); // changelevel / host_workshop_map
     for (const batch of rconBatches(parts)) await this.#rcon(batch);
@@ -108,6 +112,16 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
   // returns the validated defaults (the profile editor is the source of truth).
   async captureProfileSettings() {
     return this.validateProfileSettings(csProfile.defaultProfileSettings());
+  }
+
+  // The public join string must reflect the password a freshly-booted container
+  // actually enforces — which is none. A profile's sv_password is only ever pushed
+  // LIVE over RCON (applyProfileSettings) and reverts on ANY restart; the compose
+  // env (CS2_PW/unset) isn't readable through the scoped socket-proxy. Advertising
+  // the saved profile password would tell joiners to enter one the server has
+  // dropped, so always report "no password".
+  async connectPassword() {
+    return '';
   }
 
   // ── workshop map catalog (DB-backed; transport-agnostic) ────────────────────

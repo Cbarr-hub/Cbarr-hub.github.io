@@ -148,7 +148,7 @@ export function profileGroups(worldOpts) {
       fields: [
         { key: 'gamemode',   label: 'Game Mode',  type: 'select', options: enumOpts(GAMEMODES), basic: true },
         { key: 'difficulty', label: 'Difficulty', type: 'select', options: enumOpts(DIFFICULTIES), basic: true },
-        { key: 'hardcore',   label: 'Hardcore',   type: 'bool' },
+        { key: 'hardcore',   label: 'Hardcore',   type: 'bool', basic: true },
         { key: 'pvp',        label: 'PvP',        type: 'bool', basic: true },
         { key: 'allowNether',   label: 'Allow Nether',   type: 'bool' },
         { key: 'spawnMonsters', label: 'Spawn Monsters', type: 'bool' },

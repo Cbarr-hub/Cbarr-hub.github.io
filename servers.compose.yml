@@ -90,8 +90,8 @@ services:
       PORT: "27066"
       GSLT: ${GMOD_GSLT:-}
       RCON_PASSWORD: ${GMOD_RCON_PASSWORD:?set GMOD_RCON_PASSWORD in project .env}
-      WORKSHOP_COLLECTION: ${GMOD_WORKSHOP_COLLECTION:-}
-      DEFAULT_MAP: ${GMOD_DEFAULT_MAP:-gm_construct}
+      WORKSHOP_COLLECTION: ${GMOD_WORKSHOP_COLLECTION:-3736674438}
+      DEFAULT_MAP: ${GMOD_DEFAULT_MAP:-ttt_clue_se}
       SKIP_CSS: ${SKIP_CSS:-}
     volumes:
       - gmod-data:/data
@@ -129,8 +129,10 @@ services:
   # downloads Minecraft client assets again and
   # renders the whole world; this can take a while and use CPU; the web UI is up
   # immediately but tiles fill in as the render progresses. The map config does NOT
-  # need editing per environment: the volume subpath below mounts the active world
-  # (mc-data/${MC_LEVEL}) at the fixed path /app/world, which overworld.conf targets.
+  # need editing per environment: the full mc-data volume is mounted read-only, then
+  # the container symlinks the active world (${MC_LEVEL}) to /app/world, which
+  # overworld.conf targets. Avoid Docker volume.subpath here: a clean first boot can
+  # create BlueMap before Minecraft has created the world directory.
   # The app/host maintenance runner dynamically adjusts the Docker CPU quota from
   # player presence. `cpus` is only the safe startup cap before that tuner runs.
   bluemap:
@@ -138,18 +140,21 @@ services:
     container_name: bluemap
     restart: unless-stopped
     cpus: ${BLUEMAP_CPUS:-4}
-    command: ["-r", "-u", "-w", "-m", "overworld,nether,end"] # render/watch all map dimensions
+    depends_on:
+      minecraft:
+        condition: service_healthy
+    environment:
+      MC_LEVEL: ${MC_LEVEL:-world}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        set -eu;
+        case "$${MC_LEVEL}" in ""|/*|.*|*../*|*\\*) echo "unsafe MC_LEVEL: $${MC_LEVEL}" >&2; exit 1;; esac;
+        ln -sfn "/app/mc-data/$${MC_LEVEL}" /app/world;
+        exec java -jar cli.jar -r -u -w -m overworld,nether,end
     volumes:
-      # Mount the ACTIVE world folder (mc-data/<MC_LEVEL>) straight to /app/world,
-      # read-only. Using the volume subpath + ${MC_LEVEL} keeps the BlueMap map
-      # config env-portable: it always points at /app/world regardless of the
-      # level name (dev 'world_GTown', prod whatever MC_LEVEL is set to).
-      - type: volume
-        source: mc-data
-        target: /app/world
-        read_only: true
-        volume:
-          subpath: ${MC_LEVEL:-world}
+      # Full volume, read-only; /app/world is a symlink to /app/mc-data/<MC_LEVEL>.
+      - mc-data:/app/mc-data:ro
       - ./docker/bluemap/config:/app/config
       - bluemap-data:/app/data    # render state + downloaded assets; preserve for diff updates
       - bluemap-web:/app/web      # generated web app + map tiles; preserve to avoid full rebuilds

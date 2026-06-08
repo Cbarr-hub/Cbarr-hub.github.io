@@ -3,6 +3,7 @@
 #
 # One command per mode (the Windows counterpart is tools/gt.ps1):
 #   gt.sh dev --fresh           blank machine -> working dev stack (deps, secrets, DB, up)
+#   gt.sh dev --fresh --seed-dev blank machine -> prod DB + worlds, then dev stack
 #   gt.sh dev --prod-like       existing data, prod-shaped (real cert, gamertown.solutions, VAC)
 #   gt.sh dev --prod-like --app app only (no game servers)
 #   gt.sh dev <compose args...> passthrough (ps / logs -f app / down / up -d minecraft)
@@ -24,6 +25,7 @@ CONF="$SCRIPT_DIR/gt-modes.conf"
 # prod-flag globals (defaults satisfy set -u)
 FORCE=0; DRYRUN=0; PULL=0; AUTORB=0
 RESTORE_FORCE=0
+SEED_PROD_DATA=0
 
 # ── shared mode config (no associative arrays → portable to bash 3.2) ───────────
 conf_get() {   # $1=key → prints the (space-separated) value, trimmed
@@ -93,9 +95,8 @@ require_tty() {
 
 poll_health() {   # $1=label $2=url, rest = extra curl args. Bounded ~60s.
   local label="$1" url="$2"; shift 2
-  local i
   echo "[*] waiting for $label health: $url"
-  for i in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     if curl -sk --max-time 4 "$@" "$url" 2>/dev/null | grep -q '"ok":true'; then
       echo "[OK] $label healthy"; return 0
     fi
@@ -118,13 +119,22 @@ preseed_db() {   # create the gt-data volume and seed the app DB BEFORE `up`
     echo "[WARN] DB restore failed — login may not work; retry later with: tools/gt.sh restore-db" >&2
 }
 
+seed_dev_data() {
+  echo "[*] restoring app DB + Factorio + Minecraft snapshots from R2 before first start..."
+  bash "$SCRIPT_DIR/dev-restore-data.sh" || { echo "ERROR: dev data seed failed." >&2; exit 1; }
+}
+
 dev_fresh() {
   require_tty
   echo "== gt dev --fresh =="
   "$SCRIPT_DIR/setup.sh"            # deps + secrets + .env.local (age prompts on the TTY)
   require_dev_files
   require_rcon_keys
-  preseed_db
+  if [ "$SEED_PROD_DATA" = "1" ]; then
+    seed_dev_data
+  else
+    preseed_db
+  fi
   echo "[*] building + starting the dev stack…"
   compose_for dev-fresh up -d --build || { echo "ERROR: compose up failed (see output above)." >&2; exit 1; }
   poll_health app "https://localhost/api/health" || true
@@ -167,6 +177,7 @@ cmd_dev() {
       --prod-like)  mode="prodlike" ;;
       --app)        shape="app" ;;
       --restore)    RESTORE_FORCE=1 ;;
+      --seed-dev|--prod-data) SEED_PROD_DATA=1 ;;
       *)            pass+=("$1") ;;
     esac
     shift
@@ -318,12 +329,33 @@ cmd_prod() {
   if [ "$rollback" = "1" ]; then prod_rollback; else prod_deploy; fi
 }
 
+# ── test (cross-platform; no keeper/secrets needed) ──────────────────────────────
+# Runs BOTH suites under one command: the backend suite (backend/test, via npm) and
+# the orphaned root suite (tests/*.test.mjs, which exercises the root gamble-*.mjs /
+# slot-rules.mjs logic and has no package.json of its own). Both ALWAYS run — the
+# statuses are OR'd so a backend failure can't mask a root failure (or vice-versa).
+cmd_test() {
+  local rc=0
+  echo "== gt test =="
+  if [ ! -d "$REPO_ROOT/backend/node_modules" ]; then
+    echo "[*] backend/node_modules missing — installing (npm ci)…"
+    ( cd "$REPO_ROOT/backend" && npm ci ) || { echo "ERROR: npm ci failed in backend/." >&2; return 1; }
+  fi
+  echo "[*] backend suite (backend/test)…"
+  ( cd "$REPO_ROOT/backend" && npm test ) || rc=1
+  echo "[*] root suite (tests/*.test.mjs)…"
+  ( cd "$REPO_ROOT" && node --test tests/*.test.mjs ) || rc=1
+  if [ "$rc" -eq 0 ]; then echo "[OK] all suites passed."; else echo "[FAIL] one or more suites failed." >&2; fi
+  return "$rc"
+}
+
 # ── usage ────────────────────────────────────────────────────────────────────────
 usage() {
   cat <<'EOF'
 gt — Gamertown dispatcher (Linux/macOS/keeper)
 
   gt.sh dev --fresh            blank machine -> working dev stack (deps, secrets, DB, up)
+  gt.sh dev --fresh --seed-dev blank machine -> prod DB + worlds, then dev stack
   gt.sh dev --prod-like        existing data, prod-shaped (real cert + gamertown.solutions)
   gt.sh dev --prod-like --app  app only (no game servers)
   gt.sh dev <compose args...>  passthrough: ps | logs -f app | down | up -d minecraft
@@ -335,6 +367,7 @@ gt — Gamertown dispatcher (Linux/macOS/keeper)
        --pull-images           also `docker compose pull` (game-image version bumps)
        --auto-rollback         roll back automatically if the post-deploy health check fails
   gt.sh restore-db [name]      restore the app DB from R2 (newest, or a named snapshot)
+  gt.sh test                   run both test suites (backend/test + root tests/) — also CI's entrypoint
 
 seed-dev flags: --db --factorio --minecraft --worlds --all --keep-bluemap
                 --db-name NAME --factorio-name NAME --minecraft-name NAME
@@ -350,6 +383,7 @@ case "$sub" in
   prod)        cmd_prod "$@" ;;
   restore-db)  GT_DATA_VOLUME="$(data_volume)" "$SCRIPT_DIR/db-restore.sh" "$@" ;;
   seed-dev)    bash "$SCRIPT_DIR/dev-restore-data.sh" "$@" ;;
+  test)        cmd_test "$@" ;;
   ""|help|-h|--help) usage ;;
   *) echo "unknown command: $sub" >&2; usage; exit 1 ;;
 esac

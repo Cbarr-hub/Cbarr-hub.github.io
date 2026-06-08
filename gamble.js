@@ -2,7 +2,7 @@
  * gamble.js — front-end controller for the Gamertown gambling section (gamble.html).
  *
  * Single ES-module entry point (loaded via <script type="module"> in gamble.html) that
- * drives four fictional-dollar games behind one shared bankroll and bet UI:
+ * drives six fictional-dollar games behind one shared bankroll and bet UI:
  *   - High Card   — one card each, higher rank wins (push on a tie).
  *   - Blackjack   — vs. dealer, with split support and 3:2 naturals.
  *   - Roulette    — single-zero wheel, color (1:1) or number (35:1) bets.
@@ -22,7 +22,7 @@
  * never re-declare that math locally or the two copies will silently diverge.
  *
  * Event-name convention used in persisted events: the slug "high-card" maps to the event
- * game key "high_card" (see gameEventKey); the other three games use their own slug.
+ * game key "high_card" (see gameEventKey); the other games use their own slug.
  */
 import { requireAuth, updateNavbar } from './auth.js';
 import {
@@ -123,6 +123,12 @@ const state = {
   rouletteChoice: "red",
   rouletteWheelRotation: 0,
   rouletteBallRotation: 0,
+  baccaratActive: false,
+  baccaratBet: "player",
+  baccaratHistory: [],
+  plinkoActive: false,
+  plinkoRisk: "medium",
+  plinkoHistory: [],
   slotActive: false,
   slotFreeSpins: 0,
   slotMultiplier: 1,
@@ -177,10 +183,23 @@ const dealerZoneEl = document.getElementById("dealer-zone");
 const playerZoneEl = document.getElementById("player-zone");
 const dealerTotalEl = document.getElementById("dealer-total");
 const playerTotalEl = document.getElementById("player-total");
+const baccaratPlayerZoneEl = document.getElementById("baccarat-player-zone");
+const baccaratBankerZoneEl = document.getElementById("baccarat-banker-zone");
+const baccaratPlayerHandEl = document.getElementById("baccarat-player-hand");
+const baccaratBankerHandEl = document.getElementById("baccarat-banker-hand");
+const baccaratPlayerTotalEl = document.getElementById("baccarat-player-total");
+const baccaratBankerTotalEl = document.getElementById("baccarat-banker-total");
+const baccaratRoadEl = document.getElementById("baccarat-road");
 const rouletteWheelEl = document.getElementById("roulette-wheel");
 const rouletteBallTrackEl = document.getElementById("roulette-ball-track");
 const rouletteResultEl = document.getElementById("roulette-result");
 const rouletteNumberBoardEl = document.getElementById("roulette-number-board");
+const plinkoBoardEl = document.getElementById("plinko-board");
+const plinkoPinsEl = document.getElementById("plinko-pins");
+const plinkoBucketsEl = document.getElementById("plinko-buckets");
+const plinkoChipEl = document.getElementById("plinko-chip");
+const plinkoLastResultEl = document.getElementById("plinko-last-result");
+const plinkoHistoryEl = document.getElementById("plinko-history");
 const slotCabinetEl = document.getElementById("slot-cabinet");
 const slotReelsEl = document.getElementById("slot-reels");
 const slotModeEl = document.getElementById("slot-mode");
@@ -222,11 +241,16 @@ const tabs = Array.from(document.querySelectorAll(".tab"));
 const panels = {
   "high-card": document.getElementById("high-card-panel"),
   blackjack: document.getElementById("blackjack-panel"),
+  baccarat: document.getElementById("baccarat-panel"),
   roulette: document.getElementById("roulette-panel"),
-  slots: document.getElementById("slots-panel")
+  slots: document.getElementById("slots-panel"),
+  plinko: document.getElementById("plinko-panel")
 };
 const chipButtons = Array.from(document.querySelectorAll("[data-chip]"));
+const baccaratPickButtons = Array.from(document.querySelectorAll("[data-baccarat-bet]"));
+const plinkoRiskButtons = Array.from(document.querySelectorAll("[data-plinko-risk]"));
 let roulettePickButtons = Array.from(document.querySelectorAll("[data-roulette-type]"));
+let plinkoBucketEls = [];
 const blackjackCards = {
   dealer: [],
   player: []
@@ -252,6 +276,10 @@ const gameMeta = {
     title: "Blackjack",
     action: "Deal Blackjack"
   },
+  baccarat: {
+    title: "Baccarat",
+    action: "Deal Baccarat"
+  },
   roulette: {
     title: "Roulette",
     action: "Spin Wheel"
@@ -259,6 +287,10 @@ const gameMeta = {
   slots: {
     title: "Slots",
     action: "Spin Reels"
+  },
+  plinko: {
+    title: "Plinko",
+    action: "Drop Chip"
   }
 };
 const cardMarkMarkup = `<div class="card-mark">GTS&reg;</div>`;
@@ -273,6 +305,22 @@ const crazyModeConfig = {
   stickyWildChance: 0.32,
   maxStickyWilds: 6,
   winMultiplierStep: 1
+};
+
+const PLINKO_ROWS = 12;
+const PLINKO_RISK_PROFILES = {
+  low: {
+    label: "Low",
+    multipliers: [5.6, 2.3, 1.55, 1.18, 1.02, 0.9, 0.78, 0.9, 1.02, 1.18, 1.55, 2.3, 5.6]
+  },
+  medium: {
+    label: "Medium",
+    multipliers: [22, 9, 3.8, 2, 1.12, 0.62, 0.28, 0.62, 1.12, 2, 3.8, 9, 22]
+  },
+  high: {
+    label: "High",
+    multipliers: [70, 22, 8, 2.8, 0.95, 0.12, 0, 0.12, 0.95, 2.8, 8, 22, 70]
+  }
 };
 
 /** Crazy-Mode cascade chain multiplier: 1x at chain 0, +0.5x per chained win (capped at 4 -> 3x). */
@@ -508,6 +556,20 @@ function playSound(name, details = {}) {
       tone(180, 0, 0.09, { type: "square", gain: 0.035, to: 120 });
       tone(620, 0.075, 0.08, { type: "triangle", gain: 0.026 });
       break;
+    case "plinko_drop":
+      tone(360, 0, 0.08, { type: "triangle", gain: 0.03, to: 520 });
+      noise(0, 0.24, { type: "bandpass", frequency: 1200, q: 0.8, gain: 0.014 });
+      break;
+    case "plinko_pin": {
+      const step = Number(details.step) || 0;
+      tone(420 + step * 18, 0, 0.035, { type: "triangle", gain: 0.018, to: 520 + step * 18 });
+      break;
+    }
+    case "plinko_land":
+      noise(0, 0.055, { type: "highpass", frequency: 2400, q: 1.1, gain: 0.03 });
+      tone(240, 0, 0.08, { type: "square", gain: 0.03, to: 160 });
+      tone(760, 0.07, 0.1, { type: "triangle", gain: 0.024 });
+      break;
     case "slot_spin":
       noise(0, 0.7, { type: "bandpass", frequency: 1150, q: 0.9, gain: 0.02, attack: 0.02 });
       tone(82, 0, 0.52, { type: "sawtooth", gain: 0.022, to: 122, filter: { type: "lowpass", frequency: 420, q: 0.7 } });
@@ -605,8 +667,13 @@ function resetEffects() {
   messageEl.classList.remove("impact");
   dealerZoneEl.classList.remove("outcome-win", "outcome-loss");
   playerZoneEl.classList.remove("outcome-win", "outcome-loss");
+  baccaratPlayerZoneEl.classList.remove("outcome-win", "outcome-loss");
+  baccaratBankerZoneEl.classList.remove("outcome-win", "outcome-loss");
   effectLayerEl.innerHTML = "";
   rouletteResultEl.classList.remove("pop");
+  plinkoBoardEl.classList.remove("dropping");
+  plinkoChipEl.classList.remove("active");
+  plinkoBucketEls.forEach((bucketEl) => bucketEl.classList.remove("hit", "win", "loss", "push"));
   slotCabinetEl.classList.remove("big-win", "crazy-trigger", "crazy-retrigger", "crazy-spin", "crazy-win", "crazy-multiplier-up");
   slotWinPanelEl.classList.remove("win", "bonus", "running");
   slotCabinetEl.querySelectorAll(".slot-coin, .crazy-confetti").forEach((coinEl) => coinEl.remove());
@@ -690,6 +757,415 @@ function maxBet() {
 // ===========================================================================
 // Roulette — wheel geometry & UI
 // ===========================================================================
+
+// ===========================================================================
+// Baccarat card values, third-card rules, and table rendering
+// ===========================================================================
+
+function baccaratCardValue(card) {
+  if (card.rank.label === "A") {
+    return 1;
+  }
+  if (["10", "J", "Q", "K"].includes(card.rank.label)) {
+    return 0;
+  }
+  return Number(card.rank.label);
+}
+
+function baccaratTotal(hand) {
+  return hand.reduce((sum, card) => sum + baccaratCardValue(card), 0) % 10;
+}
+
+function baccaratBetLabel(choice = state.baccaratBet) {
+  if (choice === "player") return "Player";
+  if (choice === "banker") return "Banker";
+  return "Tie";
+}
+
+function updateBaccaratTotalBadge(badgeEl, hand) {
+  const total = hand.length ? baccaratTotal(hand) : "--";
+  badgeEl.textContent = total;
+  badgeEl.className = "total-badge";
+  if (!hand.length) return;
+  if (total >= 8) {
+    badgeEl.classList.add("blackjack");
+  } else if (total >= 6) {
+    badgeEl.classList.add("hot");
+  } else {
+    badgeEl.classList.add("safe");
+  }
+}
+
+function updateBaccaratTotals(playerHand = [], bankerHand = []) {
+  updateBaccaratTotalBadge(baccaratPlayerTotalEl, playerHand);
+  updateBaccaratTotalBadge(baccaratBankerTotalEl, bankerHand);
+}
+
+function clearBaccaratTable() {
+  baccaratPlayerHandEl.innerHTML = "";
+  baccaratBankerHandEl.innerHTML = "";
+  updateBaccaratTotals([], []);
+}
+
+function appendBaccaratCard(side, card, playerHand, bankerHand, delay = 0) {
+  const target = side === "player" ? baccaratPlayerHandEl : baccaratBankerHandEl;
+  const cardEl = createCard(card);
+  target.appendChild(cardEl);
+  requestAnimationFrame(() => dealFromDeck(cardEl, delay));
+  window.setTimeout(() => updateBaccaratTotals(playerHand, bankerHand), delay + 220);
+  return cardEl;
+}
+
+function baccaratDrawResult() {
+  const playerHand = [drawCard(), drawCard()];
+  const bankerHand = [drawCard(), drawCard()];
+  const playerInitial = baccaratTotal(playerHand);
+  const bankerInitial = baccaratTotal(bankerHand);
+  const natural = playerInitial >= 8 || bankerInitial >= 8;
+  let playerThird = null;
+  let bankerThird = null;
+
+  if (!natural) {
+    if (playerInitial <= 5) {
+      playerThird = drawCard();
+      playerHand.push(playerThird);
+    }
+
+    if (!playerThird) {
+      if (bankerInitial <= 5) {
+        bankerThird = drawCard();
+      }
+    } else {
+      const thirdValue = baccaratCardValue(playerThird);
+      if (
+        bankerInitial <= 2 ||
+        (bankerInitial === 3 && thirdValue !== 8) ||
+        (bankerInitial === 4 && thirdValue >= 2 && thirdValue <= 7) ||
+        (bankerInitial === 5 && thirdValue >= 4 && thirdValue <= 7) ||
+        (bankerInitial === 6 && thirdValue >= 6 && thirdValue <= 7)
+      ) {
+        bankerThird = drawCard();
+      }
+    }
+
+    if (bankerThird) {
+      bankerHand.push(bankerThird);
+    }
+  }
+
+  const playerTotal = baccaratTotal(playerHand);
+  const bankerTotal = baccaratTotal(bankerHand);
+  const winner = playerTotal > bankerTotal ? "player" : bankerTotal > playerTotal ? "banker" : "tie";
+
+  return { playerHand, bankerHand, playerThird, bankerThird, playerTotal, bankerTotal, winner, natural };
+}
+
+function renderBaccaratRoad() {
+  if (!state.baccaratHistory.length) {
+    baccaratRoadEl.innerHTML = '<span class="baccarat-road-empty">No hands yet</span>';
+    return;
+  }
+
+  baccaratRoadEl.innerHTML = state.baccaratHistory.map((item) => `
+    <span class="baccarat-road-chip ${item.winner}" title="${baccaratBetLabel(item.winner)} ${item.playerTotal}-${item.bankerTotal}">
+      ${item.winner === "player" ? "P" : item.winner === "banker" ? "B" : "T"}
+    </span>
+  `).join("");
+}
+
+function selectBaccaratBet(choice) {
+  if (state.baccaratActive) {
+    return;
+  }
+  state.baccaratBet = choice;
+  playSound("ui");
+  showResult("Baccarat", `Betting ${baccaratBetLabel(choice)}.`);
+  render();
+}
+
+function settleBaccarat(result) {
+  const { playerHand, bankerHand, playerTotal, bankerTotal, winner, natural } = result;
+  const choice = state.baccaratBet;
+  const playerWon = winner === "player";
+  const bankerWon = winner === "banker";
+  const tieWon = winner === "tie";
+  const winnerLabel = baccaratBetLabel(winner);
+  const details = {
+    bet_choice: choice,
+    winning_side: winner,
+    player_total: playerTotal,
+    banker_total: bankerTotal,
+    player_cards: playerHand.map(cardCode),
+    banker_cards: bankerHand.map(cardCode),
+    natural
+  };
+
+  state.baccaratHistory.unshift({ winner, playerTotal, bankerTotal });
+  state.baccaratHistory = state.baccaratHistory.slice(0, 14);
+  renderBaccaratRoad();
+
+  baccaratPlayerZoneEl.classList.toggle("outcome-win", playerWon || tieWon);
+  baccaratBankerZoneEl.classList.toggle("outcome-win", bankerWon || tieWon);
+  baccaratPlayerZoneEl.classList.toggle("outcome-loss", bankerWon);
+  baccaratBankerZoneEl.classList.toggle("outcome-loss", playerWon);
+
+  if (choice === winner) {
+    const payout = winner === "tie" ? state.bet * 8 : winner === "banker" ? Math.round(state.bet * 0.95) : state.bet;
+    const commissionCopy = winner === "banker" ? " after banker commission" : "";
+    settleWin(payout, `${winnerLabel} wins`, `${winnerLabel} ${playerTotal}-${bankerTotal}. You earned ${formatDollars(payout)}${commissionCopy}.`, {
+      details: {
+        ...details,
+        commission: winner === "banker" ? state.bet - payout : 0
+      }
+    });
+  } else if (tieWon && choice !== "tie") {
+    state.streak = 0;
+    showResult("Tie hand", `${playerTotal}-${bankerTotal}. Player and Banker bets push.`);
+    pulseStats(streakStatEl);
+    playOutcomeEffect("push");
+    recordPush(details);
+  } else {
+    settleLoss(`${winnerLabel} wins`, `${winnerLabel} ${playerTotal}-${bankerTotal}. You lost ${formatDollars(state.bet)} on ${baccaratBetLabel(choice)}.`, {
+      details
+    });
+  }
+}
+
+function dealBaccarat() {
+  if (state.baccaratActive || state.credits < state.bet) {
+    return;
+  }
+
+  resetEffects();
+  clearBaccaratTable();
+  const result = baccaratDrawResult();
+  state.baccaratActive = true;
+  showResult("Baccarat dealt", `${formatDollars(state.bet)} on ${baccaratBetLabel(state.baccaratBet)}.`);
+
+  appendBaccaratCard("player", result.playerHand[0], result.playerHand.slice(0, 1), [], 0);
+  appendBaccaratCard("banker", result.bankerHand[0], result.playerHand.slice(0, 1), result.bankerHand.slice(0, 1), 120);
+  appendBaccaratCard("player", result.playerHand[1], result.playerHand.slice(0, 2), result.bankerHand.slice(0, 1), 240);
+  appendBaccaratCard("banker", result.bankerHand[1], result.playerHand.slice(0, 2), result.bankerHand.slice(0, 2), 360);
+
+  let delay = 620;
+  if (result.playerThird) {
+    appendBaccaratCard("player", result.playerThird, result.playerHand, result.bankerHand.slice(0, 2), delay);
+    delay += 170;
+  }
+  if (result.bankerThird) {
+    appendBaccaratCard("banker", result.bankerThird, result.playerHand, result.bankerHand, delay);
+    delay += 170;
+  }
+
+  window.setTimeout(() => {
+    state.baccaratActive = false;
+    updateBaccaratTotals(result.playerHand, result.bankerHand);
+    settleBaccarat(result);
+    render();
+  }, delay + 560);
+
+  render();
+}
+
+// ===========================================================================
+// Plinko board generation, animated path, and risk profiles
+// ===========================================================================
+
+function currentPlinkoProfile() {
+  return PLINKO_RISK_PROFILES[state.plinkoRisk] ?? PLINKO_RISK_PROFILES.medium;
+}
+
+function plinkoBucketTier(multiplier) {
+  if (multiplier >= 5) return "top";
+  if (multiplier > 1) return "win";
+  if (multiplier === 1) return "push";
+  return "loss";
+}
+
+function initializePlinkoBoard() {
+  plinkoPinsEl.innerHTML = "";
+  for (let row = 0; row < PLINKO_ROWS; row += 1) {
+    const pinCount = row + 3;
+    for (let index = 0; index < pinCount; index += 1) {
+      const pin = document.createElement("span");
+      pin.className = "plinko-pin";
+      pin.style.left = `${((index + 1) / (pinCount + 1)) * 100}%`;
+      pin.style.top = `${10 + row * 5.85}%`;
+      plinkoPinsEl.appendChild(pin);
+    }
+  }
+
+  plinkoBucketsEl.innerHTML = "";
+  for (let index = 0; index <= PLINKO_ROWS; index += 1) {
+    const bucket = document.createElement("span");
+    bucket.className = "plinko-bucket";
+    bucket.dataset.bucket = String(index);
+    plinkoBucketsEl.appendChild(bucket);
+  }
+  plinkoBucketEls = Array.from(plinkoBucketsEl.children);
+  updatePlinkoBuckets();
+}
+
+function updatePlinkoBuckets() {
+  const { multipliers } = currentPlinkoProfile();
+  plinkoBucketEls.forEach((bucketEl, index) => {
+    const multiplier = multipliers[index] ?? 0;
+    bucketEl.textContent = formatMultiplier(multiplier);
+    bucketEl.dataset.tier = plinkoBucketTier(multiplier);
+  });
+}
+
+function renderPlinkoHistory() {
+  if (!state.plinkoHistory.length) {
+    plinkoHistoryEl.innerHTML = '<span class="plinko-history-empty">No drops yet</span>';
+    return;
+  }
+
+  plinkoHistoryEl.innerHTML = state.plinkoHistory.map((drop) => `
+    <span class="plinko-history-chip ${drop.outcome}">
+      ${formatMultiplier(drop.multiplier)}
+    </span>
+  `).join("");
+}
+
+function selectPlinkoRisk(risk) {
+  if (state.plinkoActive) {
+    return;
+  }
+  state.plinkoRisk = PLINKO_RISK_PROFILES[risk] ? risk : "medium";
+  updatePlinkoBuckets();
+  playSound("ui");
+  showResult("Plinko", `${currentPlinkoProfile().label} risk selected.`);
+  render();
+}
+
+function buildPlinkoPath() {
+  let rights = 0;
+  const directions = [];
+  const points = [{ x: 50, y: 6 }];
+
+  for (let row = 0; row < PLINKO_ROWS; row += 1) {
+    const right = Math.random() >= 0.5;
+    directions.push(right ? "R" : "L");
+    if (right) {
+      rights += 1;
+    }
+    const horizontal = 50 + (rights * 2 - (row + 1)) * (42 / PLINKO_ROWS);
+    points.push({ x: horizontal, y: 12 + row * 5.85 });
+  }
+
+  points.push({ x: 6 + rights * (88 / PLINKO_ROWS), y: 91 });
+  return { directions, bucket: rights, points };
+}
+
+function animatePlinkoChip(points) {
+  plinkoChipEl.getAnimations?.().forEach((animation) => animation.cancel());
+  plinkoChipEl.classList.add("active");
+  plinkoBoardEl.classList.add("dropping");
+  plinkoChipEl.style.left = `${points[0].x}%`;
+  plinkoChipEl.style.top = `${points[0].y}%`;
+
+  points.slice(1, -1).forEach((_, index) => {
+    window.setTimeout(() => playSound("plinko_pin", { step: index }), 120 + index * 92);
+  });
+
+  const keyframes = points.map((point, index) => ({
+    left: `${point.x}%`,
+    top: `${point.y}%`,
+    offset: index / (points.length - 1)
+  }));
+
+  if (plinkoChipEl.animate) {
+    const animation = plinkoChipEl.animate(keyframes, {
+      duration: 1650,
+      easing: "cubic-bezier(0.18, 0.72, 0.2, 1)",
+      fill: "forwards"
+    });
+    return animation.finished.then(() => {
+      const finalPoint = points[points.length - 1];
+      plinkoChipEl.style.left = `${finalPoint.x}%`;
+      plinkoChipEl.style.top = `${finalPoint.y}%`;
+      animation.cancel();
+    }).catch(() => {});
+  }
+
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      const finalPoint = points[points.length - 1];
+      plinkoChipEl.style.left = `${finalPoint.x}%`;
+      plinkoChipEl.style.top = `${finalPoint.y}%`;
+      resolve();
+    }, 1650);
+  });
+}
+
+function settlePlinkoDrop(path) {
+  const profile = currentPlinkoProfile();
+  const multiplier = profile.multipliers[path.bucket] ?? 0;
+  const balanceBefore = state.credits;
+  const payoutAmount = Math.round(state.bet * multiplier);
+  const netChange = payoutAmount - state.bet;
+  state.credits += netChange;
+  const outcome = applyNetRecord(balanceBefore, state.credits);
+  const outcomeClass = outcome === "win" ? "win" : outcome === "loss" ? "loss" : "push";
+  const bucketEl = plinkoBucketEls[path.bucket];
+
+  plinkoBoardEl.classList.remove("dropping");
+  bucketEl?.classList.add("hit", outcomeClass);
+  plinkoLastResultEl.textContent = `${formatMultiplier(multiplier)} - ${formatDollars(payoutAmount)}`;
+  state.plinkoHistory.unshift({ multiplier, outcome: outcomeClass });
+  state.plinkoHistory = state.plinkoHistory.slice(0, 10);
+  renderPlinkoHistory();
+  pulseStats(creditsStatEl, streakStatEl, recordStatEl);
+  playSound("plinko_land");
+  playOutcomeEffect(outcomeClass, null, outcomeClass);
+
+  const netCopy = netChange > 0
+    ? `net ${formatDollars(netChange)}.`
+    : netChange < 0
+      ? `returned ${formatDollars(payoutAmount)}.`
+      : "your bet came back.";
+  showResult(`${formatMultiplier(multiplier)} bucket`, `Plinko ${netCopy}`);
+
+  savePlayerBalance(buildEvent({
+    game: "plinko",
+    betAmount: state.bet,
+    payoutAmount,
+    balanceBefore,
+    balanceAfter: state.credits,
+    details: {
+      risk: state.plinkoRisk,
+      rows: PLINKO_ROWS,
+      bucket: path.bucket,
+      multiplier,
+      path: path.directions
+    }
+  }));
+}
+
+function dropPlinko() {
+  if (state.plinkoActive || state.credits < state.bet) {
+    return;
+  }
+
+  resetEffects();
+  playSound("plinko_drop");
+  const path = buildPlinkoPath();
+  state.plinkoActive = true;
+  plinkoLastResultEl.textContent = "Dropping...";
+  showResult("Plinko dropping", `${formatDollars(state.bet)} on ${currentPlinkoProfile().label} risk.`);
+  render();
+
+  animatePlinkoChip(path.points).then(() => {
+    if (!state.plinkoActive) {
+      return;
+    }
+    state.plinkoActive = false;
+    settlePlinkoDrop(path);
+    render();
+    scheduleAutoReroll();
+  });
+}
 
 /** Roulette pocket colour for a number: 0 is green, otherwise red/black per redNumbers. */
 function rouletteColor(number) {
@@ -2340,24 +2816,24 @@ function render() {
   tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.game === state.game));
   tabs.forEach((tab) => {
     tab.setAttribute("aria-selected", String(tab.dataset.game === state.game));
-    tab.disabled = state.balanceLoading || ((state.blackjackActive || state.rouletteActive || state.slotActive || state.slotFreeSpins > 0) && tab.dataset.game !== state.game);
+    tab.disabled = state.balanceLoading || ((state.blackjackActive || state.baccaratActive || state.rouletteActive || state.plinkoActive || state.slotActive || state.slotFreeSpins > 0) && tab.dataset.game !== state.game);
   });
   Object.entries(panels).forEach(([game, panel]) => {
     panel.classList.toggle("active", game === state.game);
   });
-  deckShoeEl.hidden = state.game === "roulette" || state.game === "slots";
+  deckShoeEl.hidden = state.game === "roulette" || state.game === "slots" || state.game === "plinko";
 
   const outOfCredits = state.credits < 5;
   const balanceLoading = state.balanceLoading;
   const slotBonusLocked = state.slotActive || state.slotFreeSpins > 0;
-  const lockedBet = state.blackjackActive || state.blackjackResolving || state.rouletteActive || slotBonusLocked;
+  const lockedBet = state.blackjackActive || state.blackjackResolving || state.baccaratActive || state.rouletteActive || state.plinkoActive || slotBonusLocked;
   const canUseFreeSpin = state.game === "slots" && state.slotFreeSpins > 0;
-  const autoGame = state.game === "roulette" || state.game === "slots";
+  const autoGame = state.game === "roulette" || state.game === "slots" || state.game === "plinko";
   dealButton.hidden = state.game === "blackjack" && state.blackjackActive;
   hitButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
   standButton.hidden = state.game !== "blackjack" || (!state.blackjackActive && !state.blackjackResolving);
   splitButton.hidden = state.game !== "blackjack" || !canSplitBlackjack();
-  dealButton.disabled = balanceLoading || (outOfCredits && !canUseFreeSpin) || state.blackjackResolving || state.rouletteActive || state.slotActive;
+  dealButton.disabled = balanceLoading || (outOfCredits && !canUseFreeSpin) || state.blackjackResolving || state.baccaratActive || state.rouletteActive || state.plinkoActive || state.slotActive;
   hitButton.disabled = balanceLoading || outOfCredits || !state.blackjackActive || state.blackjackResolving;
   standButton.disabled = balanceLoading || outOfCredits || !state.blackjackActive || state.blackjackResolving;
   splitButton.disabled = balanceLoading || !canSplitBlackjack();
@@ -2380,6 +2856,16 @@ function render() {
     button.classList.toggle("active", isActive);
     button.disabled = balanceLoading || state.rouletteActive;
   });
+  baccaratPickButtons.forEach((button) => {
+    const isActive = button.dataset.baccaratBet === state.baccaratBet;
+    button.classList.toggle("active", isActive);
+    button.disabled = balanceLoading || state.baccaratActive;
+  });
+  plinkoRiskButtons.forEach((button) => {
+    const isActive = button.dataset.plinkoRisk === state.plinkoRisk;
+    button.classList.toggle("active", isActive);
+    button.disabled = balanceLoading || state.plinkoActive;
+  });
 
   const meta = gameMeta[state.game];
   dealButton.textContent = meta.action;
@@ -2392,7 +2878,7 @@ function render() {
 
 /** Whether the bet can be changed right now (idle, funded, no round/bonus in progress). */
 function canChangeBet() {
-  return !state.balanceLoading && state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.rouletteActive && !state.slotActive && state.slotFreeSpins === 0;
+  return !state.balanceLoading && state.credits >= 5 && !state.blackjackActive && !state.blackjackResolving && !state.baccaratActive && !state.rouletteActive && !state.plinkoActive && !state.slotActive && state.slotFreeSpins === 0;
 }
 
 /** Cancel any pending auto-reroll timer. */
@@ -2403,7 +2889,7 @@ function clearAutoRerollTimer() {
 
 /** Auto-reroll is only offered for the continuous-spin games (roulette, slots). */
 function supportsAutoReroll(game = state.game) {
-  return game === "roulette" || game === "slots";
+  return game === "roulette" || game === "slots" || game === "plinko";
 }
 
 /** Toggle auto-reroll for the current game and (when enabling) kick off the loop. */
@@ -2437,9 +2923,12 @@ function canAutoRerollNow() {
     return false;
   }
   if (state.game === "roulette") {
-    return !state.rouletteActive && !state.blackjackActive && !state.slotActive && state.credits >= state.bet;
+    return !state.rouletteActive && !state.blackjackActive && !state.baccaratActive && !state.plinkoActive && !state.slotActive && state.credits >= state.bet;
   }
-  return !state.slotActive && !state.rouletteActive && !state.blackjackActive && (state.slotFreeSpins > 0 || state.credits >= state.bet);
+  if (state.game === "plinko") {
+    return !state.plinkoActive && !state.rouletteActive && !state.blackjackActive && !state.baccaratActive && !state.slotActive && state.credits >= state.bet;
+  }
+  return !state.slotActive && !state.rouletteActive && !state.blackjackActive && !state.baccaratActive && !state.plinkoActive && (state.slotFreeSpins > 0 || state.credits >= state.bet);
 }
 
 /**
@@ -2454,7 +2943,7 @@ function scheduleAutoReroll(delay = 850) {
 
   state.autoRerollTimer = window.setTimeout(() => {
     state.autoRerollTimer = null;
-    if ((state.game === "roulette" && state.rouletteActive) || (state.game === "slots" && state.slotActive)) {
+    if ((state.game === "roulette" && state.rouletteActive) || (state.game === "slots" && state.slotActive) || (state.game === "plinko" && state.plinkoActive)) {
       scheduleAutoReroll(500);
       return;
     }
@@ -2465,6 +2954,8 @@ function scheduleAutoReroll(delay = 850) {
 
     if (state.game === "roulette") {
       spinRoulette();
+    } else if (state.game === "plinko") {
+      dropPlinko();
     } else {
       spinSlots();
     }
@@ -3076,7 +3567,7 @@ function spinRoulette() {
 
 /** Switch the active game tab (blocked while a round/bonus is in progress); disables auto-reroll on non-supported games. */
 function switchGame(game) {
-  if (state.blackjackActive || state.rouletteActive || state.slotActive || state.slotFreeSpins > 0) {
+  if (state.blackjackActive || state.baccaratActive || state.rouletteActive || state.plinkoActive || state.slotActive || state.slotFreeSpins > 0) {
     return;
   }
 
@@ -3098,7 +3589,10 @@ function switchGame(game) {
 // ===========================================================================
 
 initializeRouletteUi();
+initializePlinkoBoard();
 initializeSlotLineExamples();
+renderBaccaratRoad();
+renderPlinkoHistory();
 renderSlotGrid(generateSlotGrid());
 updateSlotMeta();
 
@@ -3124,6 +3618,14 @@ roulettePickButtons.forEach((button) => {
   button.addEventListener("click", () => selectRouletteBet(button.dataset.rouletteType, button.dataset.rouletteValue));
 });
 
+baccaratPickButtons.forEach((button) => {
+  button.addEventListener("click", () => selectBaccaratBet(button.dataset.baccaratBet));
+});
+
+plinkoRiskButtons.forEach((button) => {
+  button.addEventListener("click", () => selectPlinkoRisk(button.dataset.plinkoRisk));
+});
+
 activityTabs.forEach((button) => {
   button.addEventListener("click", async () => {
     activityFilter = button.dataset.activityFilter || "all";
@@ -3144,8 +3646,12 @@ dealButton.addEventListener("click", () => {
     dealHighCard();
   } else if (state.game === "blackjack") {
     startBlackjack();
+  } else if (state.game === "baccarat") {
+    dealBaccarat();
   } else if (state.game === "roulette") {
     spinRoulette();
+  } else if (state.game === "plinko") {
+    dropPlinko();
   } else {
     spinSlots();
   }
@@ -3172,6 +3678,12 @@ resetButton.addEventListener("click", () => {
   state.blackjackActive = false;
   state.blackjackResolving = false;
   resetBlackjackSplitState();
+  state.baccaratActive = false;
+  state.baccaratBet = "player";
+  state.baccaratHistory = [];
+  state.plinkoActive = false;
+  state.plinkoRisk = "medium";
+  state.plinkoHistory = [];
   state.rouletteActive = false;
   state.rouletteBetType = "color";
   state.rouletteChoice = "red";
@@ -3196,7 +3708,12 @@ resetButton.addEventListener("click", () => {
   state.hideDealerHole = false;
   state.blackjackRound += 1;
   clearBlackjackTable();
+  clearBaccaratTable();
   resetEffects();
+  renderBaccaratRoad();
+  updatePlinkoBuckets();
+  renderPlinkoHistory();
+  plinkoLastResultEl.textContent = "Ready";
   rouletteResultEl.textContent = "--";
   rouletteResultEl.className = "roulette-result";
   playerCardEl.classList.remove("winner");

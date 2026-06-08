@@ -44,6 +44,8 @@ import { fetchCollectionMaps } from '../steam-workshop.js';
 // Maps that ship with the base install, so they're always loadable even with no
 // workshop collection — the safe floor for defaults + the boot-map guard.
 const STOCK_ALWAYS = ['gm_construct', 'gm_flatgrass'];
+export const TTT_DEFAULT_COLLECTION = '3736674438';
+export const TTT_DEFAULT_MAPS = ['ttt_clue_se', 'ttt_diescraper', 'ttt_dolls', 'ttt_minecraft_b5', 'ttt_waterworld'];
 
 // Live (RCON) curated actions — the genuinely BINARY toggles + instant commands
 // that work in ANY GMOD gamemode (so TTT gets the same ones Prop Hunt offers; the
@@ -62,18 +64,27 @@ export const GMOD_LIVE_ACTIONS = [
   { key: 'cheats_off',    label: 'Cheats Off' },
   { key: 'players',       label: 'List Players' },
 ];
+// Shared bhop/cheats toggle strings — identical across every GMOD-family gamemode
+// (TTT, Prop Hunt). Exported so each connector's action map spreads in the same copy
+// instead of duplicating the literals (the change leaked into PH_ACTION_CMDS too).
+// GMOD's Source engine has NO sv_autobunnyhopping/sv_enablebunnyhopping (those are
+// CS2-only) — validated live, they error "Unknown command". The honest GMOD bhop is
+// loose air control via sv_airaccelerate (high = bhop-friendly; 12 ≈ default).
+export const GMOD_BHOP_CMDS = {
+  bhop_on:  'sv_cheats 1; sv_airaccelerate 1000',
+  bhop_off: 'sv_airaccelerate 12',
+};
+export const GMOD_CHEATS_CMDS = {
+  cheats_on:  'sv_cheats 1',
+  cheats_off: 'sv_cheats 0',
+};
 export const GMOD_ACTION_CMDS = {
   restart_round: 'ttt_roundrestart',
   cleanup:       'gmod_admin_cleanup',
-  // GMOD's Source engine has NO sv_autobunnyhopping/sv_enablebunnyhopping (those are
-  // CS2-only) — validated live, they error "Unknown command". The honest GMOD bhop is
-  // loose air control via sv_airaccelerate (high = bhop-friendly; 12 ≈ default).
-  bhop_on:       'sv_cheats 1; sv_airaccelerate 1000',
-  bhop_off:      'sv_airaccelerate 12',
+  ...GMOD_BHOP_CMDS,
   alltalk_on:    'sv_alltalk 1',
   alltalk_off:   'sv_alltalk 0',
-  cheats_on:     'sv_cheats 1',
-  cheats_off:    'sv_cheats 0',
+  ...GMOD_CHEATS_CMDS,
   players:       'status',
 };
 
@@ -141,6 +152,11 @@ const TTT_FIELDS = [
   { cvar: 'ttt_karma_low_ban',        key: 'karmaBan',       label: 'Karma Auto-ban',        def: 0,    min: 0,  max: 1,    int: true, bool: true, group: 'roles' },
 ];
 
+// Tinkerer "Tweak" surface: the high-value TTT knobs flagged basic so the persona
+// panel's Tweak mode shows just these (the rest stay in Full → Profiles). numField
+// propagates the flag onto the rendered field objects.
+const TTT_BASIC = new Set(['roundLimit', 'prepTime', 'haste', 'traitorPct', 'detMinPlayers', 'minPlayers', 'creditsStart', 'karma']);
+
 export class GmodConnector extends LinuxGsmConnector {
   gsmUser = 'miles';
   gsmDir = '/home/miles/gmodserver';
@@ -150,6 +166,14 @@ export class GmodConnector extends LinuxGsmConnector {
   gameCfgName = 'gmodserver.cfg';
   // Discoverable map-name prefixes (a subclass overrides, e.g. ph_ for Prop Hunt).
   mapPrefixes = ['ttt_', 'gm_'];
+
+  knownCollectionMaps() {
+    return this.server.id === 'gmod' ? TTT_DEFAULT_MAPS : [];
+  }
+
+  defaultWorkshopCollection() {
+    return this.server.id === 'gmod' ? TTT_DEFAULT_COLLECTION : '';
+  }
 
   // Install paths, derived from gsmDir so a subclass with a different instance dir
   // gets the right paths (lazy getter — a field would freeze the parent's gsmDir).
@@ -278,7 +302,7 @@ export class GmodConnector extends LinuxGsmConnector {
     ]);
     const defaultMap = (getVar(inst, 'defaultmap') || '').trim();
     const stock      = maps.filter((m) => STOCK_ALWAYS.includes(m));
-    const collection = maps.filter((m) => !STOCK_ALWAYS.includes(m));
+    const collection = [...new Set([...maps.filter((m) => !STOCK_ALWAYS.includes(m)), ...this.knownCollectionMaps()])].sort();
     return {
       game: this.server.id,
       // Stock vs collection maps as separate groups so the live change-map shows
@@ -301,8 +325,8 @@ export class GmodConnector extends LinuxGsmConnector {
     // The server boots into the FIRST map of the rotation; default it to a stock
     // map that always exists (TTT runs fine on it). Workshop maps need a collection.
     const d = {
-      maxPlayers: 16, workshopCollection: '',
-      useMapcycle: '1', mapcycle: ['gm_construct'],
+      maxPlayers: 16, workshopCollection: this.defaultWorkshopCollection(),
+      useMapcycle: '1', mapcycle: this.knownCollectionMaps().length ? [...this.knownCollectionMaps()] : ['gm_construct'],
     };
     for (const f of TTT_FIELDS) d[f.key] = f.def;
     return d;
@@ -343,7 +367,7 @@ export class GmodConnector extends LinuxGsmConnector {
     // the collection has downloaded. The map fields are combos (custom:true) so a
     // collection map can be typed as the start map even before its first download.
     // Tag each map Stock vs Collection so the rotation builder shows two groups.
-    const mapOpts = [...new Set([...STOCK_ALWAYS, ...discovered])].map((m) => ({
+    const mapOpts = [...new Set([...STOCK_ALWAYS, ...discovered, ...this.knownCollectionMaps()])].map((m) => ({
       value: m, label: m, group: STOCK_ALWAYS.includes(m) ? 'Stock' : 'Collection',
     }));
     // bool rows render as switches; numeric rows as bounded number inputs. The
@@ -351,8 +375,8 @@ export class GmodConnector extends LinuxGsmConnector {
     // panel can use to sub-head the list; the schema keeps the single Gameplay group
     // so the field order stays one flat, predictable list.
     const numField = (f) => f.bool
-      ? { key: f.key, label: f.label, type: 'bool', group: f.group }
-      : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01, group: f.group };
+      ? { key: f.key, label: f.label, type: 'bool', group: f.group, ...(TTT_BASIC.has(f.key) ? { basic: true } : {}) }
+      : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01, group: f.group, ...(TTT_BASIC.has(f.key) ? { basic: true } : {}) };
 
     return {
       groups: [
@@ -454,7 +478,10 @@ export class GmodConnector extends LinuxGsmConnector {
     // a mixed-case Workshop title, which validateProfileSettings (lowercase-only
     // MAP_NAME_RE) would reject — making capture throw instead of snapshotting.
     const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim().toLowerCase();
-    let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+    // Lowercase the rotation lines too (same reason as bootMap): a mixed-case
+    // Workshop title set out-of-band in mapcycle.txt would fail the lowercase-only
+    // MAP_NAME_RE in validateProfileSettings, making capture throw instead of snapshot.
+    let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim().toLowerCase()).filter(Boolean);
     if (cycle[0] !== bootMap) cycle = [bootMap, ...cycle.filter((m) => m !== bootMap)];
 
     const doc = {
@@ -475,6 +502,11 @@ export class GmodConnector extends LinuxGsmConnector {
   async rconPassword() {
     const game = await this.client.agentFileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
     return (getCvar(game, 'rcon_password') || '').trim();
+  }
+
+  async connectPassword() {
+    const game = await this.client.agentFileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
+    return (getCvar(game, 'sv_password') || '').trim();
   }
 
   async getLive() {
@@ -503,6 +535,15 @@ export class GmodConnector extends LinuxGsmConnector {
     return this.runRcon(validateLiveCommand(command));
   }
 
+  // Build the live change-map command, validating the map name (lowercase a-z0-9_).
+  // Shared with PropHuntConnector so the change_map branch + map guard live once
+  // (changelevel only reaches maps mounted at the last boot — see CLAUDE.md § GMOD workshop).
+  changeMapCmd(value) {
+    const v = String(value ?? '').trim();
+    if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
+    return `changelevel ${v}`;
+  }
+
   // Dispatch one Runtime-panel control to its RCON command, in priority order:
   //   1. the live change-map dropdown (`change_map`) → `changelevel <map>` (only
   //      reaches maps mounted at the last boot — see CLAUDE.md § GMOD workshop);
@@ -510,11 +551,7 @@ export class GmodConnector extends LinuxGsmConnector {
   //   3. a curated action button (`GMOD_ACTION_CMDS`).
   // `value` is only consumed by change_map + the sliders; action buttons ignore it.
   async runLiveAction(key, value) {
-    if (key === 'change_map') {
-      const v = String(value ?? '').trim();
-      if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
-      return this.runRcon(`changelevel ${v}`);
-    }
+    if (key === 'change_map') return this.runRcon(this.changeMapCmd(value));
     const range = gmodRangeCmd(key, value, TTT_LIVE_CONTROLS);
     if (range) return this.runRcon(range);
     const cmd = GMOD_ACTION_CMDS[key];

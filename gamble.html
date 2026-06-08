@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gambling Section | Gamertown Solutions</title>
-  <meta name="description" content="Fictional-dollar gambling games including High Card, Blackjack, Roulette, and Slots." />
-  <link rel="stylesheet" href="gamble.css?v=crazy-modes-2">
+  <meta name="description" content="Fictional-dollar gambling games including High Card, Blackjack, Baccarat, Roulette, Slots, and Plinko." />
+  <link rel="stylesheet" href="gamble.css?v=baccarat-plinko-1">
   <link rel="stylesheet" href="site-tabs.css" />
   <script src="site-tabs.js" defer></script>
 </head>
@@ -32,11 +32,17 @@
         <button class="tab" id="blackjack-tab" type="button" data-game="blackjack" aria-controls="blackjack-panel" aria-selected="false">
           <span class="tab-title">Blackjack</span>
         </button>
+        <button class="tab" id="baccarat-tab" type="button" data-game="baccarat" aria-controls="baccarat-panel" aria-selected="false">
+          <span class="tab-title">Baccarat</span>
+        </button>
         <button class="tab" id="roulette-tab" type="button" data-game="roulette" aria-controls="roulette-panel" aria-selected="false">
           <span class="tab-title">Roulette</span>
         </button>
         <button class="tab" id="slots-tab" type="button" data-game="slots" aria-controls="slots-panel" aria-selected="false">
           <span class="tab-title">Slots</span>
+        </button>
+        <button class="tab" id="plinko-tab" type="button" data-game="plinko" aria-controls="plinko-panel" aria-selected="false">
+          <span class="tab-title">Plinko</span>
         </button>
       </div>
     </div>
@@ -103,6 +109,45 @@
           <div class="hand" id="player-zone">
             <h2>You <span class="total-badge" id="player-total">--</span></h2>
             <div class="hand-row" id="blackjack-hand"></div>
+          </div>
+        </section>
+
+        <section class="game-panel" id="baccarat-panel" aria-label="Baccarat">
+          <div class="baccarat-layout">
+            <div class="baccarat-table">
+              <div class="baccarat-side" id="baccarat-player-zone">
+                <h2>Player <span class="total-badge" id="baccarat-player-total">--</span></h2>
+                <div class="hand-row baccarat-hand" id="baccarat-player-hand"></div>
+              </div>
+
+              <div class="baccarat-vs" aria-hidden="true">VS</div>
+
+              <div class="baccarat-side" id="baccarat-banker-zone">
+                <h2>Banker <span class="total-badge" id="baccarat-banker-total">--</span></h2>
+                <div class="hand-row baccarat-hand" id="baccarat-banker-hand"></div>
+              </div>
+            </div>
+
+            <div class="baccarat-controls">
+              <h2>Bet Target</h2>
+              <div class="baccarat-picks" aria-label="Baccarat bet target">
+                <button class="baccarat-pick active" type="button" data-baccarat-bet="player">
+                  <strong>Player</strong>
+                  <span>1:1</span>
+                </button>
+                <button class="baccarat-pick" type="button" data-baccarat-bet="banker">
+                  <strong>Banker</strong>
+                  <span>0.95:1</span>
+                </button>
+                <button class="baccarat-pick" type="button" data-baccarat-bet="tie">
+                  <strong>Tie</strong>
+                  <span>8:1</span>
+                </button>
+              </div>
+              <div class="baccarat-road" id="baccarat-road" aria-label="Recent Baccarat results">
+                <span class="baccarat-road-empty">No hands yet</span>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -218,6 +263,32 @@
                   <span>Target RTP</span>
                   <strong id="slot-rtp">96%</strong>
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="game-panel" id="plinko-panel" aria-label="Plinko">
+          <div class="plinko-layout">
+            <div class="plinko-board" id="plinko-board">
+              <div class="plinko-chip" id="plinko-chip" aria-hidden="true"></div>
+              <div class="plinko-pins" id="plinko-pins" aria-hidden="true"></div>
+              <div class="plinko-buckets" id="plinko-buckets" aria-label="Plinko payout buckets"></div>
+            </div>
+
+            <div class="plinko-controls">
+              <h2>Risk</h2>
+              <div class="plinko-risk-picks" aria-label="Plinko risk">
+                <button class="plinko-risk" type="button" data-plinko-risk="low">Low</button>
+                <button class="plinko-risk active" type="button" data-plinko-risk="medium">Medium</button>
+                <button class="plinko-risk" type="button" data-plinko-risk="high">High</button>
+              </div>
+              <div class="plinko-readout" aria-live="polite">
+                <span>Last Drop</span>
+                <strong id="plinko-last-result">Ready</strong>
+              </div>
+              <div class="plinko-history" id="plinko-history" aria-label="Recent Plinko drops">
+                <span class="plinko-history-empty">No drops yet</span>
               </div>
             </div>
           </div>
@@ -343,6 +414,6 @@
     </section>
   </main>
 
-  <script type="module" src="./gamble.js?v=crazy-modes-1"></script>
+  <script type="module" src="./gamble.js?v=baccarat-plinko-1"></script>
 </body>
 </html>

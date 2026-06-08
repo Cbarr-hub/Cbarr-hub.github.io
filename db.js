@@ -34,7 +34,7 @@ async function getCsrfToken() {
 //     for an empty body). Non-2xx throws an Error whose `.message` is the
 //     server's `error` field (falling back to `request failed (<status>)`),
 //     with `.status` and `.data` attached for callers that need them.
-async function api(path, { method = 'GET', body, query } = {}) {
+async function api(path, { method = 'GET', body, query, _retried = false } = {}) {
   const headers = { 'Accept': 'application/json' };
   const init = { method, credentials: 'same-origin', headers };
 
@@ -61,6 +61,22 @@ async function api(path, { method = 'GET', body, query } = {}) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
+    // Self-heal a stale CSRF token exactly once. The cached token (and the
+    // server's _csrf secret) can be dropped when the secure-session cookie is
+    // lost — an expired/invalid session, or the 30-day maxAge elapsing on a
+    // long-lived polling page — which makes csrfProtection 403 every mutating
+    // request. The stale cached token would then fail forever. So on a
+    // CSRF-shaped 403 from a mutating request, clear the cache and retry once
+    // (which re-fetches a fresh token via getCsrfToken). A genuinely logged-out
+    // user still fails the retry and sees the error as before; non-CSRF 403s
+    // (e.g. "admin required") are never retried.
+    const isMutating = method !== 'GET' && method !== 'HEAD';
+    const csrfShaped =
+      /csrf/i.test(data?.error ?? '') || String(data?.code ?? '').startsWith('FST_CSRF');
+    if (isMutating && res.status === 403 && csrfShaped && !_retried) {
+      csrfToken = null;
+      return api(path, { method, body, query, _retried: true });
+    }
     const err = new Error(data?.error ?? `request failed (${res.status})`);
     err.status = res.status;
     err.data = data;
@@ -276,9 +292,8 @@ export async function dbServerLiveAction(id, action, value) {
 }
 
 // ── player sessions (the standalone "Events" section; written host-side by the collector) ─
-export async function dbGetServerSessions(id, { limit } = {}) {
-  const qs = limit ? `?limit=${encodeURIComponent(limit)}` : '';
-  return (await api(`/servers/${encodeURIComponent(id)}/sessions${qs}`)) ?? [];
+export async function dbGetServerSessions(id, { limit, includeUnlinked } = {}) {
+  return (await api(`/servers/${encodeURIComponent(id)}/sessions`, { query: { limit, includeUnlinked } })) ?? [];
 }
 
 // ── presence + cross-game activity timeline ───────────────────────────────────
@@ -289,6 +304,26 @@ export async function dbGetOnline() {
 // Newest-first join/leave feed merged across all servers (the Activity view).
 export async function dbGetActivity({ limit } = {}) {
   return (await api('/servers/activity', { query: { limit } })) ?? [];
+}
+
+export async function dbGetActivityAll({ limit } = {}) {
+  return (await api('/servers/activity', { query: { limit, includeUnlinked: true } })) ?? [];
+}
+
+export async function dbGetMapMe() {
+  return api('/servers/map/me');
+}
+
+export async function dbGetServerMapMe(id) {
+  return api(`/servers/${encodeURIComponent(id)}/map/me`);
+}
+
+export async function dbGetServerMapSession(id, sessionId) {
+  return api(`/servers/${encodeURIComponent(id)}/map/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export async function dbGetServerMapPlayer(id, playerName) {
+  return api(`/servers/${encodeURIComponent(id)}/map/players/${encodeURIComponent(playerName)}`);
 }
 
 export async function dbGetBlueMapStatus() {
@@ -364,6 +399,14 @@ export async function dbGetEconomyPlayers() {
 
 export async function dbGetEconomyUsers() {
   return (await api('/admin/economy/users')) ?? [];
+}
+
+export async function dbAdminUsers() {
+  return (await api('/admin/users')) ?? [];
+}
+
+export async function dbAdminCreateUser({ username, displayName, password, isAdmin = false }) {
+  return api('/admin/users', { method: 'POST', body: { username, displayName, password, isAdmin } });
 }
 
 // userId: a users.id, or null to unlink.

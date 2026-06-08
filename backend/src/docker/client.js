@@ -66,8 +66,10 @@ export class DockerClient {
   // JSON. A timeout `signal` aborts the request, and EACH await that can observe the
   // abort (the fetch, plus the body read — arrayBuffer/text — which can resolve after
   // the fetch but still get cancelled mid-stream) maps the abort to a DockerError with
-  // code DOCKER_TIMEOUT; any other failure becomes a generic DockerError, and a non-2xx
-  // status throws with the parsed `message` (or status text) as the detail.
+  // code DOCKER_TIMEOUT; any other failure (including a non-abort body-read fault like
+  // a mid-stream socket reset) becomes a generic DockerError so routes map it to 502
+  // rather than a 500, and a non-2xx status throws with the engine's `message` (or the
+  // raw body / status text) as the detail — see errorDetail.
   async #request(method, path, { body, raw = false, signal } = {}) {
     const headers = { Accept: raw ? 'application/vnd.docker.raw-stream' : 'application/json' };
     const init = { method, headers };
@@ -96,10 +98,15 @@ export class DockerClient {
         if (signal?.aborted || err?.name === 'AbortError') {
           throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
         }
-        throw err;
+        // A mid-stream read failure (e.g. a socket reset) is an upstream-engine
+        // fault, not a 500 — wrap it as a DockerError so routes map it to 502.
+        throw new DockerError(`docker ${method} ${path} body read failed: ${err.message}`, { cause: err });
       }
       if (!res.ok) {
-        throw new DockerError(`docker ${method} ${path} -> ${res.status}`, { status: res.status });
+        // The error body was already read into `buf` — decode it so the engine's
+        // detail (e.g. "No such container") survives, matching the JSON branch.
+        const text = Buffer.from(buf).toString('utf8');
+        throw new DockerError(`docker ${method} ${path} -> ${res.status}: ${errorDetail(text, res.statusText)}`, { status: res.status });
       }
       return buf;
     }
@@ -111,14 +118,14 @@ export class DockerClient {
       if (signal?.aborted || err?.name === 'AbortError') {
         throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
       }
-      throw err;
+      // As in the raw branch: a body-read failure is an upstream fault → 502.
+      throw new DockerError(`docker ${method} ${path} body read failed: ${err.message}`, { cause: err });
     }
     let parsed = null;
     if (text) { try { parsed = JSON.parse(text); } catch { /* non-JSON body */ } }
 
     if (!res.ok) {
-      const detail = parsed?.message ?? (text || res.statusText);
-      throw new DockerError(`docker ${method} ${path} -> ${res.status}: ${detail}`, { status: res.status });
+      throw new DockerError(`docker ${method} ${path} -> ${res.status}: ${errorDetail(text, res.statusText)}`, { status: res.status });
     }
     return parsed;
   }
@@ -292,10 +299,21 @@ export class DockerClient {
   }
 
   async agentFileWrite(container, file, content) {
-    // Write via a base64 round-trip so arbitrary bytes/newlines survive the argv.
-    const b64 = Buffer.from(String(content), 'utf8').toString('base64');
+    return this.agentFileWriteBytes(container, file, Buffer.from(String(content), 'utf8'));
+  }
+
+  // Binary-safe sibling of agentFileWrite: base64-encodes the Buffer directly so
+  // arbitrary bytes (e.g. PNG skin heads for BlueMap) survive the round-trip,
+  // instead of being mangled by a utf8 String() coercion.
+  async agentFileWriteBytes(container, file, buffer) {
+    const b64 = Buffer.from(buffer).toString('base64');
+    // Decode into a temp file in the same dir, then atomically rename over the
+    // target. A concurrent reader (e.g. BlueMap polling players.json on its own
+    // interval) then always sees a complete old-or-new file, never a half-written
+    // one from the `>` truncate window.
+    const q = shq(file);
     const { pid } = await this.agentExec(container, {
-      command: ['/bin/sh', '-c', `printf %s "${b64}" | base64 -d > "${shq(file)}"`],
+      command: ['/bin/sh', '-c', `printf %s "${b64}" | base64 -d > "${q}.tmp.$$" && mv -f "${q}.tmp.$$" "${q}"`],
     });
     const r = await this.agentExecStatus(container, pid);
     if (r.exitcode !== 0) {
@@ -306,6 +324,15 @@ export class DockerClient {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// Build the detail suffix for a non-2xx error from a (possibly JSON) body text:
+// prefer the engine's `{ message }`, else the raw body, else the status text.
+// Shared by both the JSON and raw request branches.
+function errorDetail(text, statusText) {
+  let parsed = null;
+  if (text) { try { parsed = JSON.parse(text); } catch { /* non-JSON body */ } }
+  return parsed?.message ?? (text || statusText);
+}
 
 // Split DOCKER_HOST into an HTTP base URL (+ optional unix socketPath).
 function parseHost(host) {
@@ -323,8 +350,9 @@ function secondsSince(iso) {
   return Math.max(0, Math.floor((Date.now() - t) / 1000));
 }
 
-// CPU as a 0..1 fraction from a stats sample (delta vs the previous sample),
-// matching the qemu cpu field. Returns null when it can't be computed.
+// CPU as cores'-worth (0..ncpu) — one full core = 1.0; can exceed 1 on multi-core
+// — from a stats sample (delta vs the previous sample). Returns null when it can't
+// be computed. (The frontend converts this to a percent for display.)
 function cpuFraction(s) {
   // A one-shot /stats?stream=false can return a zeroed precpu_stats (no prior
   // sample). Differencing against that yields a cumulative-since-boot ratio, not a

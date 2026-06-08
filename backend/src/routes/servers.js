@@ -8,8 +8,24 @@ import { ServerControlError } from '../servers/service.js';
 const ID_PARAM = { type: 'string', pattern: '^[a-z0-9-]{1,32}$' };
 const WS_PARAM = { type: 'string', pattern: '^[0-9]{1,20}$' };
 const CONFIG_ID_PARAM = { type: 'integer', minimum: 1 };
+const SESSION_ID_PARAM = { type: 'integer', minimum: 1 };
+const PLAYER_PARAM = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
 const CONFIG_BODY_MAX = 16_000;
+
+// Shared querystring for the session-list (/:id/sessions) + activity-timeline
+// (/activity) reads — same `limit` bound + linked/unlinked toggle. Factored into one
+// constant so the two near-identical schemas can't drift. `additionalProperties: false`
+// documents the allowed keys; Fastify's default ajv strips unknowns (removeAdditional),
+// so an unknown query param is ignored rather than rejected — behavior is unchanged.
+const SESSION_LIST_QS = {
+  type: 'object',
+  properties: {
+    limit: { type: 'integer', minimum: 1, maximum: 500 },
+    includeUnlinked: { type: 'boolean', default: false },
+  },
+  additionalProperties: false,
+};
 
 // Map a typed error code → HTTP status. Covers the ServerControlError codes plus
 // the plain code-bearing errors the connectors' catalog/config/live ops throw.
@@ -92,16 +108,21 @@ export default async function serversRoutes(app) {
 
   // ── presence + activity (read-only). Static paths before '/:id'. ─────────────
   route('get', '/online', () => svc.listOnline());
-  route('get', '/activity', (req) => svc.recentActivity({ limit: req.query.limit }), {
-    schema: {
-      querystring: {
-        type: 'object',
-        properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } },
-        additionalProperties: false,
-      },
-    },
+  route('get', '/activity', (req) => svc.recentActivity({
+    limit: req.query.limit,
+    includeUnlinked: req.query.includeUnlinked,
+  }), {
+    schema: { querystring: SESSION_LIST_QS },
   });
   route('get', '/map/status', () => svc.getBlueMapStatus());
+  route('get', '/map/me', (req) => svc.getCurrentMinecraftPosition(req.currentUser.id));
+  route('get', '/:id/map/me', (req) => svc.getCurrentPlayerPosition(req.params.id, req.currentUser.id), { schema: P({ id: ID_PARAM }) });
+  route('get', '/:id/map/sessions/:sessionId', (req) => svc.getOnlinePlayerPosition(req.params.id, req.params.sessionId), {
+    schema: P({ id: ID_PARAM, sessionId: SESSION_ID_PARAM }),
+  });
+  route('get', '/:id/map/players/:player', (req) => svc.getOnlinePlayerPositionByName(req.params.id, req.params.player), {
+    schema: P({ id: ID_PARAM, player: PLAYER_PARAM }),
+  });
 
   route('get', '/:id', (req) => svc.getStatus(req.params.id, { mode: req.query.mode }), {
     schema: {
@@ -292,10 +313,13 @@ export default async function serversRoutes(app) {
   // ── player sessions (read-only; the host collector writes them) ───────────────
   // The frontend derives "online" from `left_at == null` in this list, so there's
   // no separate online endpoint.
-  route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, { limit: req.query.limit }), {
+  route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, {
+    limit: req.query.limit,
+    includeUnlinked: req.query.includeUnlinked,
+  }), {
     schema: {
       ...P({ id: ID_PARAM }),
-      querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } } },
+      querystring: SESSION_LIST_QS,
     },
   });
 

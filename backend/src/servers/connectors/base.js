@@ -330,7 +330,7 @@ export function normalizeStatus(data) {
   return {
     status: qmpStatus === 'running' ? 'running' : qmpStatus === 'stopped' ? 'stopped' : 'unknown',
     uptime: data?.uptime ?? 0,             // seconds (0 when stopped)
-    cpu: data?.cpu ?? null,                // fraction 0..1
+    cpu: data?.cpu ?? null,                // cores'-worth 0..ncpu
     maxmem: data?.maxmem ?? null,          // bytes
     mem: data?.mem ?? null,                // bytes
     raw: qmpStatus,

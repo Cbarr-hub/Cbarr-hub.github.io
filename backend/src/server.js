@@ -11,6 +11,7 @@ import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
 import { createEconomy } from './economy.js';
 import { createBlueMapResourceController } from './servers/bluemap-resources.js';
+import { createBlueMapPlayersController } from './servers/bluemap-players.js';
 
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
@@ -84,6 +85,19 @@ export async function buildApp(env = loadEnv()) {
   blueMapResources.start();
   app.decorate('blueMapResources', blueMapResources);
   app.addHook('onClose', async () => blueMapResources.stop());
+
+  // Live BlueMap player markers: write players.json + skin heads into the bluemap
+  // container from the app's RCON position lookup. Needs Docker + the Minecraft
+  // RCON password (the position queries go over RCON); otherwise it stays idle.
+  const blueMapPlayers = createBlueMapPlayersController({
+    dockerClient: docker,
+    serverService,
+    logger: app.log,
+    env,
+  });
+  if (process.env.MINECRAFT_RCON_PASSWORD) blueMapPlayers.start();
+  app.decorate('blueMapPlayers', blueMapPlayers);
+  app.addHook('onClose', async () => blueMapPlayers.stop());
 
   // Playtime economy: credit closed game-server sessions to linked accounts.
   // Runs once at boot, then on a timer (idempotent — each session is paid once).

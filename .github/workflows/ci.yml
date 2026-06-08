@@ -1,0 +1,36 @@
+name: CI
+
+# Runs the test suites on every push and PR. `tools/gt.sh test` is the single
+# entrypoint shared with local dev — it runs BOTH the backend suite (backend/test)
+# and the root suite (tests/*.test.mjs over the root gamble-*.mjs / slot-rules.mjs
+# logic), so neither can be silently skipped.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install backend deps
+        run: npm ci
+        working-directory: backend
+      - name: Run test suites
+        run: bash tools/gt.sh test
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    # Advisory for now: the deploy/backup scripts deliberately use bash-3.2-compatible
+    # constructs, so the first runs may surface style findings to triage. Flip this to
+    # required once the tree is clean.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck deploy/backup scripts
+        run: shellcheck --severity=warning tools/*.sh sync.sh

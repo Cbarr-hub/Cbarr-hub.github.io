@@ -29,6 +29,9 @@ export function clampNumber(value, min, max, fallback) {
 // { ok: true, action } so callers/tests can assert which alias fired.
 export function containerGameLifecycle(Base) {
   return class extends Base {
+    // Always true while reachable: the container IS the game (status running ==
+    // hosting), so base.js's separate 'idle' branch is intentionally unreachable
+    // for Docker games.
     async gameRunning() { return true; }
     async startGame()   { await this.start();    return { ok: true, action: 'startGame' }; }
     async stopGame()    { await this.shutdown(); return { ok: true, action: 'stopGame' }; }

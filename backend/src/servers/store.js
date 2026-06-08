@@ -18,6 +18,14 @@
 //      session rows for the panel's "Events"/fleet badges.
 
 export function createServerStore(db) {
+  // The session-projection reads all surface the linked site account (if any) via
+  // the same player_accounts→users hop. `kind` is INNER `JOIN` (linked-only) or
+  // `LEFT JOIN` (include unlinked); ACCOUNT_COLS are the two columns it contributes.
+  const accountJoin = (kind) => `
+         ${kind} player_accounts pa ON pa.player_id = s.player_id
+         ${kind} users u            ON u.id = pa.user_id`;
+  const ACCOUNT_COLS = 'pa.user_id AS userId, u.display_name AS userName';
+
   const stmts = {
     // ── workshop map catalog ──
     listMaps: db.prepare(
@@ -135,15 +143,28 @@ export function createServerStore(db) {
     closeAllOpen: db.prepare(
       `UPDATE server_sessions SET left_at = ?, source = ? WHERE left_at IS NULL`,
     ),
-    listSessions: db.prepare(
-      `SELECT id, name, uid, identity_kind AS identityKind, joined_at, left_at, source
-         FROM server_sessions
-        WHERE game_id = ?
-        ORDER BY joined_at DESC
+    listSessionsLinked: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
+              s.joined_at, s.left_at, s.source,
+              ${ACCOUNT_COLS}
+         FROM server_sessions s${accountJoin('JOIN')}
+        WHERE s.game_id = ?
+        ORDER BY s.joined_at DESC
+        LIMIT ?`,
+    ),
+    listSessionsAll: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
+              s.joined_at, s.left_at, s.source,
+              ${ACCOUNT_COLS}
+         FROM server_sessions s${accountJoin('LEFT JOIN')}
+        WHERE s.game_id = ?
+        ORDER BY s.joined_at DESC
         LIMIT ?`,
     ),
     // ── presence + cross-game activity ──
-    // Open-session counts per hosted slug (uses idx_sessions_game_open).
+    // Open-session counts per hosted slug (uses idx_sessions_game_open). Counts
+    // every open session, linked or not, so live presence does not disappear
+    // before a player has been mapped to a site account.
     onlineCounts: db.prepare(
       `SELECT g.slug AS slug, COUNT(*) AS n
          FROM server_sessions s JOIN games g ON g.id = s.game_id
@@ -152,24 +173,65 @@ export function createServerStore(db) {
     ),
     // Who's online right now, across every hosted server (newest join first).
     listOnline: db.prepare(
-      `SELECT g.slug AS slug, g.name AS gameName, s.name, s.uid,
-              s.identity_kind AS identityKind, s.joined_at, s.source
-         FROM server_sessions s JOIN games g ON g.id = s.game_id
+      `SELECT s.id, g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
+              s.name, s.uid, s.identity_kind AS identityKind, s.joined_at, s.source,
+              ${ACCOUNT_COLS}
+         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
         WHERE s.left_at IS NULL AND g.hosted = 1
         ORDER BY s.joined_at DESC`,
     ),
     // Recent join/leave activity merged across all hosted servers (the timeline).
-    recentSessions: db.prepare(
-      `SELECT s.id, g.slug AS slug, g.name AS gameName, s.name, s.uid,
-              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source
-         FROM server_sessions s JOIN games g ON g.id = s.game_id
+    recentSessionsLinked: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
+              ${ACCOUNT_COLS}
+         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('JOIN')}
         WHERE g.hosted = 1
         ORDER BY s.joined_at DESC
         LIMIT ?`,
     ),
+    recentSessionsAll: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
+              ${ACCOUNT_COLS}
+         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
+        WHERE g.hosted = 1
+        ORDER BY s.joined_at DESC
+        LIMIT ?`,
+    ),
+    linkedPlayerForUser: db.prepare(
+      `SELECT p.id, p.identity_kind AS identityKind, p.uid, p.name,
+              p.first_seen AS firstSeen, p.last_seen AS lastSeen
+         FROM player_accounts pa
+         JOIN players p ON p.id = pa.player_id
+        WHERE pa.user_id = ? AND p.identity_kind = ?
+        ORDER BY p.last_seen DESC
+        LIMIT 1`,
+    ),
+    openSessionForPlayer: db.prepare(
+      `SELECT s.id, s.name, s.uid, s.identity_kind AS identityKind, s.joined_at
+         FROM server_sessions s
+         JOIN games g ON g.id = s.game_id
+        WHERE g.slug = ? AND g.hosted = 1 AND s.player_id = ? AND s.left_at IS NULL
+        ORDER BY s.joined_at DESC
+        LIMIT 1`,
+    ),
+    openSessionById: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.source,
+              ${ACCOUNT_COLS}
+         FROM server_sessions s
+         JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
+        WHERE g.slug = ? AND g.hosted = 1 AND s.id = ? AND s.left_at IS NULL
+        LIMIT 1`,
+    ),
   };
 
   const parseSettings = (json) => { try { return JSON.parse(json); } catch { return {}; } };
+  // Profile settings are a plain-object contract (see getProfile). Coerce anything
+  // else (null/array/scalar) to {} on the way in so getProfile never yields a
+  // non-object back to callers.
+  const asSettings = (s) => (s && typeof s === 'object' && !Array.isArray(s) ? s : {});
 
   // Lazy slug→games.id cache for the hosted servers (rebuilt by seedHostedGames).
   let gameIdBySlug = null;
@@ -242,7 +304,7 @@ export function createServerStore(db) {
       return stmts.countProfiles.get(serverId).n;
     },
     createProfile(serverId, { name, settings = {} }) {
-      const { lastInsertRowid } = stmts.insertProfile.run(serverId, name, JSON.stringify(settings));
+      const { lastInsertRowid } = stmts.insertProfile.run(serverId, name, JSON.stringify(asSettings(settings)));
       return this.getProfile(serverId, lastInsertRowid);
     },
     // Partial update: only provided fields change. Returns the updated row or null.
@@ -250,7 +312,8 @@ export function createServerStore(db) {
       const existing = this.getProfile(serverId, id);
       if (!existing) return null;
       const nextName = name ?? existing.name;
-      const nextSettings = settings === undefined ? existing.settings : settings;
+      // existing.settings is already a parsed object; only sanitize a fresh value.
+      const nextSettings = settings === undefined ? existing.settings : asSettings(settings);
       stmts.updateProfile.run(nextName, JSON.stringify(nextSettings), serverId, id);
       return this.getProfile(serverId, id);
     },
@@ -311,11 +374,11 @@ export function createServerStore(db) {
     closeAllOpenSessions(leftAt, source = 'reconciled') {
       return stmts.closeAllOpen.run(leftAt, source).changes;
     },
-    listSessions(slug, { limit = 200 } = {}) {
+    listSessions(slug, { limit = 200, includeUnlinked = false } = {}) {
       const gid = gameId(slug);
       if (gid == null) return [];
       const lim = Math.min(500, Math.max(1, Number(limit) || 200));
-      return stmts.listSessions.all(gid, lim);
+      return (includeUnlinked ? stmts.listSessionsAll : stmts.listSessionsLinked).all(gid, lim);
     },
 
     // ── presence + cross-game activity ───────────────────────────────────────
@@ -338,9 +401,18 @@ export function createServerStore(db) {
     // Newest-first join/leave feed across all hosted servers (the Events timeline).
     // Includes closed sessions (left_at set), unlike listOnline. `limit` is clamped
     // to 1..500 (default 100) to bound the read.
-    recentSessions({ limit = 100 } = {}) {
+    recentSessions({ limit = 100, includeUnlinked = false } = {}) {
       const lim = Math.min(500, Math.max(1, Number(limit) || 100));
-      return stmts.recentSessions.all(lim);
+      return (includeUnlinked ? stmts.recentSessionsAll : stmts.recentSessionsLinked).all(lim);
+    },
+    linkedPlayerForUser(userId, identityKind) {
+      return stmts.linkedPlayerForUser.get(userId, identityKind) ?? null;
+    },
+    openSessionForPlayer(slug, playerId) {
+      return stmts.openSessionForPlayer.get(slug, playerId) ?? null;
+    },
+    openSessionById(slug, sessionId) {
+      return stmts.openSessionById.get(slug, Number(sessionId)) ?? null;
     },
   };
 }

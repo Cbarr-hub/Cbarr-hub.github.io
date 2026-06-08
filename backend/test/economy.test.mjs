@@ -117,6 +117,43 @@ test('unlinked players never earn; unlink removes the link', () => {
   assert.equal(balanceOf(), 5000);
 });
 
+test('a session open across the link earns only post-link minutes when it later closes', () => {
+  const { store, eco, userId, balanceOf, playerId, db } = setup();
+  const T0 = 10_000;
+  const T2 = 10_000 + 2 * 3600; // 2h later — the full uncapped span
+  // Player joins and stays ONLINE (no closeSession) when we link the account.
+  const sid = store.recordJoin('gmod', steam('A', '111'), T0, 'rcon');
+  eco.linkAccount(playerId('111'), userId);
+
+  // First link must have split the straddling session: the original row is now
+  // closed + settled (credited_at stamped) so its pre-link span can never pay…
+  const orig = db.prepare('SELECT left_at, credited_at FROM server_sessions WHERE id = ?').get(sid);
+  assert.equal(orig.left_at != null, true);
+  assert.equal(orig.credited_at != null, true);
+  // …and a fresh uncredited 'reconciled' session was re-opened from link time.
+  const reopened = db
+    .prepare("SELECT id, left_at, credited_at FROM server_sessions WHERE player_id = ? AND source = 'reconciled' AND id != ?")
+    .get(playerId('111'), sid);
+  assert.equal(reopened.left_at, null);     // still open
+  assert.equal(reopened.credited_at, null); // not yet paid
+
+  // The collector later observes the leave; closeSession targets the ORIGINAL id,
+  // which is already closed, so it's a no-op and the pre-link span stays settled.
+  store.closeSession(sid, T2);
+  // With the bug, this credits the full 2h ($200) for the pre-link window.
+  const res = eco.creditPlaytime();
+  assert.equal(res.dollars, 0);
+  assert.equal(balanceOf(), 5000); // only post-link playtime can earn — none yet
+
+  // Close the re-opened post-link session and confirm it bills only its own span
+  // (from link time forward), never the leaked pre-link 2h.
+  const linkAt = db.prepare('SELECT joined_at FROM server_sessions WHERE id = ?').get(reopened.id).joined_at;
+  store.closeSession(reopened.id, linkAt + 1800); // 30 min of genuine post-link time
+  const res2 = eco.creditPlaytime();
+  assert.equal(res2.dollars, 50);  // 0.5h * $100/h — strictly less than the full 2h $200
+  assert.equal(balanceOf(), 5050);
+});
+
 test('open (still-online) sessions are not credited until they close', () => {
   const { store, eco, userId, balanceOf, seenPlayer } = setup();
   eco.linkAccount(seenPlayer('111', 'A'), userId);

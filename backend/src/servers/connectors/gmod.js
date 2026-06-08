@@ -64,18 +64,27 @@ export const GMOD_LIVE_ACTIONS = [
   { key: 'cheats_off',    label: 'Cheats Off' },
   { key: 'players',       label: 'List Players' },
 ];
+// Shared bhop/cheats toggle strings — identical across every GMOD-family gamemode
+// (TTT, Prop Hunt). Exported so each connector's action map spreads in the same copy
+// instead of duplicating the literals (the change leaked into PH_ACTION_CMDS too).
+// GMOD's Source engine has NO sv_autobunnyhopping/sv_enablebunnyhopping (those are
+// CS2-only) — validated live, they error "Unknown command". The honest GMOD bhop is
+// loose air control via sv_airaccelerate (high = bhop-friendly; 12 ≈ default).
+export const GMOD_BHOP_CMDS = {
+  bhop_on:  'sv_cheats 1; sv_airaccelerate 1000',
+  bhop_off: 'sv_airaccelerate 12',
+};
+export const GMOD_CHEATS_CMDS = {
+  cheats_on:  'sv_cheats 1',
+  cheats_off: 'sv_cheats 0',
+};
 export const GMOD_ACTION_CMDS = {
   restart_round: 'ttt_roundrestart',
   cleanup:       'gmod_admin_cleanup',
-  // GMOD's Source engine has NO sv_autobunnyhopping/sv_enablebunnyhopping (those are
-  // CS2-only) — validated live, they error "Unknown command". The honest GMOD bhop is
-  // loose air control via sv_airaccelerate (high = bhop-friendly; 12 ≈ default).
-  bhop_on:       'sv_cheats 1; sv_airaccelerate 1000',
-  bhop_off:      'sv_airaccelerate 12',
+  ...GMOD_BHOP_CMDS,
   alltalk_on:    'sv_alltalk 1',
   alltalk_off:   'sv_alltalk 0',
-  cheats_on:     'sv_cheats 1',
-  cheats_off:    'sv_cheats 0',
+  ...GMOD_CHEATS_CMDS,
   players:       'status',
 };
 
@@ -469,7 +478,10 @@ export class GmodConnector extends LinuxGsmConnector {
     // a mixed-case Workshop title, which validateProfileSettings (lowercase-only
     // MAP_NAME_RE) would reject — making capture throw instead of snapshotting.
     const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim().toLowerCase();
-    let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
+    // Lowercase the rotation lines too (same reason as bootMap): a mixed-case
+    // Workshop title set out-of-band in mapcycle.txt would fail the lowercase-only
+    // MAP_NAME_RE in validateProfileSettings, making capture throw instead of snapshot.
+    let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim().toLowerCase()).filter(Boolean);
     if (cycle[0] !== bootMap) cycle = [bootMap, ...cycle.filter((m) => m !== bootMap)];
 
     const doc = {
@@ -523,6 +535,15 @@ export class GmodConnector extends LinuxGsmConnector {
     return this.runRcon(validateLiveCommand(command));
   }
 
+  // Build the live change-map command, validating the map name (lowercase a-z0-9_).
+  // Shared with PropHuntConnector so the change_map branch + map guard live once
+  // (changelevel only reaches maps mounted at the last boot — see CLAUDE.md § GMOD workshop).
+  changeMapCmd(value) {
+    const v = String(value ?? '').trim();
+    if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
+    return `changelevel ${v}`;
+  }
+
   // Dispatch one Runtime-panel control to its RCON command, in priority order:
   //   1. the live change-map dropdown (`change_map`) → `changelevel <map>` (only
   //      reaches maps mounted at the last boot — see CLAUDE.md § GMOD workshop);
@@ -530,11 +551,7 @@ export class GmodConnector extends LinuxGsmConnector {
   //   3. a curated action button (`GMOD_ACTION_CMDS`).
   // `value` is only consumed by change_map + the sliders; action buttons ignore it.
   async runLiveAction(key, value) {
-    if (key === 'change_map') {
-      const v = String(value ?? '').trim();
-      if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
-      return this.runRcon(`changelevel ${v}`);
-    }
+    if (key === 'change_map') return this.runRcon(this.changeMapCmd(value));
     const range = gmodRangeCmd(key, value, TTT_LIVE_CONTROLS);
     if (range) return this.runRcon(range);
     const cmd = GMOD_ACTION_CMDS[key];

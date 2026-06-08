@@ -19,7 +19,10 @@
 //     ph_*/phx_* cvars + rcon_password + `exec gamertown/active`
 //   escape hatch : cfg/gamertown/active.cfg  (free-text extra cvars; re-execable live)
 
-import { GmodConnector, GMOD_SHARED_LIVE_CONTROLS, gmodRangeCmd } from './gmod.js';
+import {
+  GmodConnector, GMOD_SHARED_LIVE_CONTROLS, GMOD_BHOP_CMDS, GMOD_CHEATS_CMDS, gmodRangeCmd,
+} from './gmod.js';
+import { clampNumber } from './docker-base.js';
 import { getVar, setVars } from '../cfgvars.js';
 import { getCvar, setCvars } from '../cvars.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
@@ -90,19 +93,17 @@ const PH_LIVE_ACTIONS = [
   { key: 'apply_config',   label: 'Apply Config' },
   { key: 'players',        label: 'List Players' },
 ];
-const PH_ACTION_CMDS = {
+export const PH_ACTION_CMDS = {
   next_round:     'ph_force_end_round',                               // X2Z: force-ends the round → next
   map_vote:       'mv_start',                                         // X2Z: start a map vote
   luckyballs_on:  'ph_enable_lucky_balls 1',
   luckyballs_off: 'ph_enable_lucky_balls 0',
   autotaunt_on:   'ph_autotaunt_enabled 1',
   autotaunt_off:  'ph_autotaunt_enabled 0',
-  // GMOD has no sv_*bunnyhopping cvars (CS2-only) — bhop is air control via
-  // sv_airaccelerate (validated live). See gmod.js GMOD_ACTION_CMDS.
-  bhop_on:        'sv_cheats 1; sv_airaccelerate 1000',
-  bhop_off:       'sv_airaccelerate 12',
-  cheats_on:      'sv_cheats 1',
-  cheats_off:     'sv_cheats 0',
+  // bhop/cheats are identical to TTT — spread the shared strings from gmod.js so the
+  // air-control bhop note + values live in exactly one place (see GMOD_ACTION_CMDS).
+  ...GMOD_BHOP_CMDS,
+  ...GMOD_CHEATS_CMDS,
   apply_config:   `exec ${ACTIVE_EXEC}`,
   players:        'status',
 };
@@ -280,7 +281,10 @@ export class PropHuntConnector extends GmodConnector {
       this.client.agentFileRead(this.vmid, `${P.garrysmod}/cfg/gamertown/active.cfg`).then((r) => r.content ?? '').catch(() => ''),
     ]);
     const doc = {
-      propHuntMap: (getVar(inst, 'defaultmap') || DEFAULT_MAP).trim(),
+      // Lowercase like GmodConnector.captureProfileSettings: a mixed-case Workshop
+      // title set as defaultmap out-of-band would otherwise fail validate's
+      // lowercase-only MAP_NAME_RE and make capture throw instead of snapshotting.
+      propHuntMap: (getVar(inst, 'defaultmap') || DEFAULT_MAP).trim().toLowerCase(),
       workshopCollection: (getVar(inst, 'wscollectionid') || COLLECTION).trim(),
       maxPlayers: Number(getVar(inst, 'maxplayers') || 16),
       rawConfig: active,
@@ -312,17 +316,15 @@ export class PropHuntConnector extends GmodConnector {
   // NOT the TTT set) → curated PH action buttons. The TTT sliders (traitor_pct /
   // round_limit) are intentionally unreachable here — PH never advertises them.
   async runLiveAction(key, value) {
-    if (key === 'change_map') {
-      const v = String(value ?? '').trim();
-      if (!MAP_NAME_RE.test(v)) throw badSetting(`invalid map: ${v}`);
-      return this.runRcon(`changelevel ${v}`);
-    }
+    if (key === 'change_map') return this.runRcon(this.changeMapCmd(value));
     // PH-specific sliders (clamped to their bounds) before the shared GMOD ranges.
+    // clampNumber (not Number(value)||default) so a literal 0 clamps to min instead
+    // of collapsing to the default.
     if (key === 'ph_round_time') {
-      return this.runRcon(`ph_round_time ${Math.max(60, Math.min(600, Math.round(Number(value) || 250)))}`);
+      return this.runRcon(`ph_round_time ${Math.round(clampNumber(value, 60, 600, 250))}`);
     }
     if (key === 'ph_blind_time') {
-      return this.runRcon(`ph_hunter_blindlock_time ${Math.max(10, Math.min(60, Math.round(Number(value) || 30)))}`);
+      return this.runRcon(`ph_hunter_blindlock_time ${Math.round(clampNumber(value, 10, 60, 30))}`);
     }
     const range = gmodRangeCmd(key, value, GMOD_SHARED_LIVE_CONTROLS);
     if (range) return this.runRcon(range);

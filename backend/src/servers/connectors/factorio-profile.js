@@ -130,14 +130,20 @@ export function applyMapSettings(json, validated) {
 }
 
 // Read the server-settings.json knobs back into a (pre-validation) settings doc.
+// max_players / autosave_interval are clamped to the validator's accepted range
+// (same rationale as captureMapSettings' techPriceMultiplier): a hand-edited
+// server-settings.json can hold an out-of-range value, and capture re-runs
+// validateProfileSettings — an unclamped value would throw and break the
+// capture↔apply round-trip. (autosave_interval=0 is an integer, so the ternary
+// won't rescue it; the clamp floors it to 1.)
 export function captureServerSettings(json = {}) {
   return {
     serverName: json.name ?? '',
     description: json.description ?? '',
-    maxPlayers: Number.isInteger(json.max_players) ? json.max_players : 0,
+    maxPlayers: Number.isInteger(json.max_players) ? Math.max(0, Math.min(500, json.max_players)) : 0,
     visibility: json.visibility?.public ? 'public' : 'lan',
     password: json.game_password ?? '',
-    autosaveInterval: Number.isInteger(json.autosave_interval) ? json.autosave_interval : 10,
+    autosaveInterval: Number.isInteger(json.autosave_interval) ? Math.max(1, Math.min(240, json.autosave_interval)) : 10,
     autoPause: json.auto_pause === false ? '0' : '1',
   };
 }

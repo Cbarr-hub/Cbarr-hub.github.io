@@ -4,6 +4,7 @@ import net from 'node:net';
 
 import * as fp from '../src/servers/connectors/factorio-profile.js';
 import { DockerFactorioConnector } from '../src/servers/connectors/docker/factorio.js';
+import { getServer } from '../src/servers/registry.js';
 
 // Minimal Source-RCON server that captures the first exec command body (so we can
 // assert the exact /sc string runLiveAction sends over the real wire), then replies
@@ -67,6 +68,16 @@ test('factorio-profile applyServerSettings + captureServerSettings round-trip', 
   assert.equal(c.serverName, 'GT');
   assert.equal(c.visibility, 'public');
   assert.equal(c.maxPlayers, 12);
+});
+
+test('factorio-profile captureServerSettings clamps out-of-range max_players + autosave_interval', () => {
+  // A hand-edited server-settings.json can hold values outside the validator's
+  // range; capture must clamp (not pass through) so the re-validation it feeds
+  // doesn't throw. autosave_interval=0 is an integer, so the clamp (not the
+  // ternary fallback) is what floors it to 1.
+  const c = fp.captureServerSettings({ name: 'Srv', max_players: 600, autosave_interval: 0 });
+  assert.equal(c.maxPlayers, 500);
+  assert.equal(c.autosaveInterval, 1);
 });
 
 test('factorio-profile groups are World + Server Settings + World Rules', () => {
@@ -196,6 +207,21 @@ test('DockerFactorio captureProfileSettings merges map-settings world rules', as
   assert.equal(c.autoPause, '0');
   assert.equal(c.evolutionEnabled, '0');
   assert.equal(c.techPriceMultiplier, 5);
+});
+
+test('DockerFactorio captureProfileSettings clamps out-of-range server-settings (no 400)', async () => {
+  // A Raw-Config edit could set max_players=600 / autosave_interval=0 on disk;
+  // captureProfileSettings re-runs validateProfileSettings, so without a clamp on
+  // read the snapshot would 400. It must clamp instead (mirrors techPriceMultiplier).
+  const client = fakeFctrClient({
+    [SS]: JSON.stringify({ name: 'Srv', max_players: 600, autosave_interval: 0 }),
+    [MS]: '{}',
+  });
+  const conn = new DockerFactorioConnector(FCTR, client);
+  await assert.doesNotReject(() => conn.captureProfileSettings());
+  const c = await conn.captureProfileSettings();
+  assert.equal(c.maxPlayers, 500);
+  assert.equal(c.autosaveInterval, 1);
 });
 
 test('DockerFactorio captureProfileSettings reads server-settings (world = keep current)', async () => {
@@ -372,4 +398,18 @@ test('DockerFactorio runLiveAction rejects unknown keys with BAD_SETTING', async
     fakeFctrClient({ '/factorio/config/rconpw': 'secret\n' }),
   );
   await assert.rejects(() => conn.runLiveAction('nope'), (e) => e.code === 'BAD_SETTING');
+});
+
+// ── registry: Factorio RCON port (factoriotools exposes RCON on 27015) ───────────
+// `port` (34197) is the UDP game port; RCON is a separate TCP port. The registry
+// must carry rconPort so consumers that do `rconPort ?? port` (the host session
+// tracker) resolve to 27015, not the wrong game port.
+test('registry: factorio carries rconPort 27015 (RCON port, not the game port)', () => {
+  const s = getServer('factorio');
+  assert.equal(s.rconPort, 27015);
+  assert.equal(s.port, 34197); // game/UDP port stays distinct
+  // Cross-source invariant: the tracker-effective port (`rconPort ?? port`) and the
+  // connector-effective port (`rconPort ?? 27015`) must agree — both → 27015.
+  assert.equal(s.rconPort ?? s.port, s.rconPort ?? 27015);
+  assert.equal(s.rconPort ?? s.port, 27015);
 });

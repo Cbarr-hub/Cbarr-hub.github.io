@@ -92,16 +92,24 @@ export default async function serversRoutes(app) {
 
   // ── presence + activity (read-only). Static paths before '/:id'. ─────────────
   route('get', '/online', () => svc.listOnline());
-  route('get', '/activity', (req) => svc.recentActivity({ limit: req.query.limit }), {
+  route('get', '/activity', (req) => svc.recentActivity({
+    limit: req.query.limit,
+    includeUnlinked: req.query.includeUnlinked,
+  }), {
     schema: {
       querystring: {
         type: 'object',
-        properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } },
+        properties: {
+          limit: { type: 'integer', minimum: 1, maximum: 500 },
+          includeUnlinked: { type: 'boolean', default: false },
+        },
         additionalProperties: false,
       },
     },
   });
   route('get', '/map/status', () => svc.getBlueMapStatus());
+  route('get', '/map/me', (req) => svc.getCurrentMinecraftPosition(req.currentUser.id));
+  route('get', '/:id/map/me', (req) => svc.getCurrentPlayerPosition(req.params.id, req.currentUser.id), { schema: P({ id: ID_PARAM }) });
 
   route('get', '/:id', (req) => svc.getStatus(req.params.id, { mode: req.query.mode }), {
     schema: {
@@ -292,10 +300,19 @@ export default async function serversRoutes(app) {
   // ── player sessions (read-only; the host collector writes them) ───────────────
   // The frontend derives "online" from `left_at == null` in this list, so there's
   // no separate online endpoint.
-  route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, { limit: req.query.limit }), {
+  route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, {
+    limit: req.query.limit,
+    includeUnlinked: req.query.includeUnlinked,
+  }), {
     schema: {
       ...P({ id: ID_PARAM }),
-      querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 500 } } },
+      querystring: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', minimum: 1, maximum: 500 },
+          includeUnlinked: { type: 'boolean', default: false },
+        },
+      },
     },
   });
 

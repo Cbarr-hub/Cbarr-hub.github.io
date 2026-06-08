@@ -7,6 +7,17 @@ import { buildConnectors } from '../src/servers/connectors/index.js';
 import { listServers } from '../src/servers/registry.js';
 
 const storeDb = () => testDb({ foreignKeys: true });
+function addUser(db, id, name) {
+  db.prepare('INSERT INTO users (id, username, display_name, password_hash, is_admin) VALUES (?, ?, ?, ?, 0)')
+    .run(id, `user${id}`, name, 'hash');
+  return id;
+}
+function linkPlayer(db, identityKind, uid, userId) {
+  const player = db.prepare('SELECT id FROM players WHERE identity_kind = ? AND uid = ?').get(identityKind, uid);
+  assert.ok(player, `missing player ${identityKind}:${uid}`);
+  db.prepare('INSERT INTO player_accounts (player_id, user_id) VALUES (?, ?)').run(player.id, userId);
+  return player.id;
+}
 
 // ── seed ────────────────────────────────────────────────────────────────────────
 test('migration seeds the Assembly workshop map for counterstrike', () => {
@@ -146,7 +157,7 @@ test('recordJoin opens a session + upserts the global player; closeSession ends 
   const sid = store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
   assert.ok(sid > 0);
   assert.equal(openCount(db, 'gmod'), 1);
-  const [open] = store.listSessions('gmod');
+  const [open] = store.listSessions('gmod', { includeUnlinked: true });
   assert.equal(open.left_at, null); // still online
   assert.equal(open.name, 'Alice');
   assert.equal(open.uid, '76561197960290419');
@@ -158,7 +169,7 @@ test('recordJoin opens a session + upserts the global player; closeSession ends 
 
   assert.equal(store.closeSession(sid, 1600), true);
   assert.equal(openCount(db, 'gmod'), 0);
-  const all = store.listSessions('gmod');
+  const all = store.listSessions('gmod', { includeUnlinked: true });
   assert.equal(all.length, 1);
   assert.equal(all[0].left_at, 1600);
 });
@@ -212,7 +223,7 @@ test('closeAllOpenSessions reconciles every open row', () => {
   store.recordJoin('minecraft', { name: 'Notch', uid: 'uuid-1', identityKind: 'minecraft' }, 1000, 'log');
   assert.equal(store.closeAllOpenSessions(2000), 2);
   assert.equal(openCount(db, 'gmod'), 0);
-  assert.equal(store.listSessions('minecraft')[0].source, 'reconciled');
+  assert.equal(store.listSessions('minecraft', { includeUnlinked: true })[0].source, 'reconciled');
 });
 
 test('session methods on an unknown slug return [] / null instead of throwing', () => {
@@ -223,37 +234,54 @@ test('session methods on an unknown slug return [] / null instead of throwing', 
 });
 
 // ── presence + cross-game activity ────────────────────────────────────────────────
-test('onlineCountsBySlug counts only still-open sessions, per slug', () => {
-  const store = createServerStore(storeDb());
+test('onlineCountsBySlug counts only linked still-open sessions, per slug', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');       // open
   const closed = store.recordJoin('gmod', steam('Bob', '222'), 1000, 'rcon');
   store.closeSession(closed, 1100);                                     // closed → not counted
   store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log'); // open
+  addUser(db, 1, 'Alice User');
+  addUser(db, 2, 'Notch User');
+  linkPlayer(db, 'steam', '111', 1);
+  linkPlayer(db, 'minecraft', 'u1', 2);
   assert.deepEqual(store.onlineCountsBySlug(), { gmod: 1, minecraft: 1 });
 });
 
 test('listOnline returns the live roster across hosted servers with game name', () => {
-  const store = createServerStore(storeDb());
+  const db = storeDb();
+  const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
   const closed = store.recordJoin('gmod', steam('Bob', '222'), 900, 'rcon');
   store.closeSession(closed, 950);
+  addUser(db, 1, 'Alice User');
+  linkPlayer(db, 'steam', '111', 1);
   const online = store.listOnline();
   assert.equal(online.length, 1);
   assert.equal(online[0].name, 'Alice');
+  assert.equal(online[0].userName, 'Alice User');
   assert.equal(online[0].slug, 'gmod');
   assert.equal(online[0].gameName, 'TTT');
 });
 
-test('recentSessions merges all servers newest-first and respects limit', () => {
-  const store = createServerStore(storeDb());
+test('recentSessions merges linked servers newest-first and respects limit', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('A', '1'), 1000, 'rcon');
   store.recordJoin('minecraft', { name: 'B', uid: 'u', identityKind: 'minecraft' }, 2000, 'log');
   store.recordJoin('prophunt', steam('C', '3'), 1500, 'rcon');
+  addUser(db, 1, 'A User');
+  addUser(db, 2, 'B User');
+  addUser(db, 3, 'C User');
+  linkPlayer(db, 'steam', '1', 1);
+  linkPlayer(db, 'minecraft', 'u', 2);
+  linkPlayer(db, 'steam', '3', 3);
   const all = store.recentSessions({ limit: 100 });
   assert.deepEqual(all.map((s) => s.name), ['B', 'C', 'A']); // by joined_at DESC
+  assert.deepEqual(all.map((s) => s.userName), ['B User', 'C User', 'A User']);
   assert.equal(all[0].slug, 'minecraft');
   assert.equal(store.recentSessions({ limit: 1 }).length, 1);
 });

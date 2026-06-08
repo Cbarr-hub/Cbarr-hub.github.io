@@ -45,6 +45,21 @@ async function withRconCapture(run) {
   return { command: commands[0] ?? null, commands };
 }
 
+async function captureCsRcon(run) {
+  const prev = process.env.CS2_RCON_PASSWORD;
+  try {
+    process.env.CS2_RCON_PASSWORD = 'x';
+    return await withRconCapture(async ({ port }) => {
+      const conn = new DockerCounterStrikeConnector(
+        { ...CS, container: '127.0.0.1', rconPort: port }, {});
+      await run(conn);
+    });
+  } finally {
+    if (prev === undefined) delete process.env.CS2_RCON_PASSWORD;
+    else process.env.CS2_RCON_PASSWORD = prev;
+  }
+}
+
 // ── shared pure module ──────────────────────────────────────────────────────────
 test('cs-profile validate: map (stock/ws), mode, hostname (no maxPlayers — env-only)', () => {
   const base = cs.defaultProfileSettings();
@@ -104,6 +119,7 @@ test('cs-profile csRangeCmd: clamps to bounds, gravity gates cheats, unknown →
   assert.equal(cs.csRangeCmd('startmoney', 800), 'mp_startmoney 800; mp_maxmoney 16000');
   assert.equal(cs.csRangeCmd('roundtime', 5), 'mp_roundtime_defuse 5; mp_roundtime 5');
   assert.equal(cs.csRangeCmd('bots', 99), 'bot_quota 10');
+  assert.equal(cs.csRangeCmd('bots', 0), 'bot_quota 0; bot_kick');
   assert.equal(cs.csRangeCmd('nope', 1), null);
   assert.throws(() => cs.csRangeCmd('gravity', 'NaN'), /invalid value/);
 });
@@ -138,6 +154,14 @@ test('DockerCS reuses the DB-backed workshop catalog + config library', () => {
   assert.ok(conn.listMaps().some((m) => m.workshopId === '42' && m.name === 'Aim Map'));
   const cfg = conn.createConfig({ name: 'comp', body: 'mp_maxrounds 24' });
   assert.equal(conn.getConfig(cfg.id).body, 'mp_maxrounds 24');
+  const updated = conn.updateConfig(cfg.id, { name: 'scrim', body: 'mp_roundtime 5\nmp_freezetime 3' });
+  assert.equal(updated.name, 'scrim');
+  assert.equal(conn.getConfig(cfg.id).body, 'mp_roundtime 5\nmp_freezetime 3');
+  assert.deepEqual(conn.deleteConfig(cfg.id), { ok: true });
+  assert.throws(() => conn.getConfig(cfg.id), (e) => e.code === 'NOT_FOUND');
+  assert.throws(() => conn.createConfig({ name: 'bad name!', body: '' }), (e) => e.code === 'BAD_SETTING');
+  assert.throws(() => conn.createConfig({ name: 'too_long', body: 'x'.repeat(cs.MAX_RAW_CONFIG_LINE_CHARS + 1) }),
+    (e) => e.code === 'BAD_SETTING');
 });
 
 test('DockerCS addMap auto-fetches the Workshop title when name is omitted', async () => {
@@ -189,7 +213,9 @@ test('DockerCS update runs SteamCMD app_update 730 in-container', async () => {
   const conn = new DockerCounterStrikeConnector(CS, client);
   const res = await conn.update();
   assert.equal(res.ok, true);
-  assert.ok(calls.some((c) => c.includes('app_update 730')), 'steamcmd app_update 730 issued');
+  assert.equal(calls[0],
+    '/bin/bash -lc /home/steam/steamcmd/steamcmd.sh +force_install_dir /home/steam/cs2-dedicated +login anonymous +app_update 730 +quit');
+  assert.equal(res.steps[0].name, 'steamcmd +app_update 730');
 });
 
 test('DockerCS live control is gated on CS2_RCON_PASSWORD', async () => {
@@ -202,10 +228,74 @@ test('DockerCS live control is gated on CS2_RCON_PASSWORD', async () => {
   process.env.CS2_RCON_PASSWORD = 'x';
   const live = await conn.getLive();
   assert.equal(live.available, true);
-  // getLive now advertises range sliders alongside the button actions
-  assert.ok(Array.isArray(live.controls) && live.controls.some((c) => c.key === 'gravity'));
+  // Exact advertised runtime inventory: every key below has a runLiveAction test.
+  assert.deepEqual(live.actions.map((a) => a.key),
+    ['restart_round', 'cheats_on', 'cheats_off', 'bunnyhop_on', 'bunnyhop_off',
+     'warmup_end', 'add_bot', 'kick_bots', 'list_players', 'knife_only', 'zeus_battle', 'infinite_ammo_on', 'infinite_ammo_off']);
+  assert.deepEqual(live.controls.map((c) => c.key), ['gravity', 'roundtime', 'startmoney', 'bots']);
+  assert.equal(live.changeMap, true);
+  assert.match(live.commandHint, /mp_warmup_end/);
   assert.ok(!live.actions.some((a) => a.key === 'apply_config'), 'no dead exec gamertown/active action');
   delete process.env.CS2_RCON_PASSWORD;
+});
+
+test('DockerCS runLiveAction sends every advertised button action', async () => {
+  const expected = {
+    restart_round: 'mp_restartgame 1',
+    cheats_on: 'sv_cheats 1',
+    cheats_off: 'sv_cheats 0',
+    bunnyhop_on: 'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_staminamax 0; sv_airaccelerate 1000',
+    bunnyhop_off: 'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_staminamax 14; sv_airaccelerate 12',
+    warmup_end: 'mp_warmup_end',
+    add_bot: 'bot_add',
+    kick_bots: 'bot_kick',
+    list_players: 'status',
+    knife_only: 'mp_ct_default_primary ""; mp_t_default_primary ""; mp_ct_default_secondary ""; mp_t_default_secondary ""; mp_free_armor 0; mp_buy_allow_guns 0; mp_restartgame 1',
+    zeus_battle: 'game_alias competitive; mp_ct_default_primary ""; mp_t_default_primary ""; mp_ct_default_secondary weapon_taser; mp_t_default_secondary weapon_taser; mp_weapons_allow_zeus 1; mp_free_armor 0; mp_max_armor 0; mp_buy_allow_guns 0; mp_buy_allow_grenades 1; mp_startmoney 800; mp_maxmoney 16000; mp_restartgame 1',
+    infinite_ammo_on: 'sv_cheats 1; sv_infinite_ammo 1',
+    infinite_ammo_off: 'sv_infinite_ammo 0; sv_cheats 0',
+  };
+  assert.deepEqual(cs.CS_LIVE_ACTIONS.map((a) => a.key), Object.keys(expected));
+  assert.deepEqual(Object.keys(cs.CS_ACTION_CMDS), Object.keys(expected));
+  for (const [key, commandText] of Object.entries(expected)) {
+    const { command } = await captureCsRcon((conn) => conn.runLiveAction(key));
+    assert.equal(command, commandText, key);
+  }
+});
+
+test('DockerCS runLiveAction sends every advertised slider control', async () => {
+  const cases = [
+    ['gravity', 250, 'sv_cheats 1; sv_gravity 250'],
+    ['roundtime', 5, 'mp_roundtime_defuse 5; mp_roundtime 5'],
+    ['startmoney', 1200, 'mp_startmoney 1200; mp_maxmoney 16000'],
+    ['bots', 3, 'bot_quota 3'],
+    ['bots', 0, 'bot_quota 0; bot_kick'],
+  ];
+  assert.deepEqual(cs.CS_LIVE_CONTROLS.map((c) => c.key), ['gravity', 'roundtime', 'startmoney', 'bots']);
+  for (const [key, value, commandText] of cases) {
+    const { command } = await captureCsRcon((conn) => conn.runLiveAction(key, value));
+    assert.equal(command, commandText, key);
+  }
+});
+
+test('DockerCS runLiveAction handles stock/workshop map changes and rejects unknown keys', async () => {
+  assert.equal((await captureCsRcon((conn) => conn.runLiveAction('change_map', 'de_mirage'))).command,
+    'changelevel de_mirage');
+  assert.equal((await captureCsRcon((conn) => conn.runLiveAction('change_map', 'ws:3071005299'))).command,
+    'host_workshop_map 3071005299');
+
+  const conn = new DockerCounterStrikeConnector(CS, {});
+  await assert.rejects(() => conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.runLiveAction('bogus_action'), (e) => e.code === 'BAD_SETTING');
+});
+
+test('DockerCS sendCommand validates and sends raw console commands', async () => {
+  const { command } = await captureCsRcon((conn) => conn.sendCommand('mp_warmup_end'));
+  assert.equal(command, 'mp_warmup_end');
+
+  const conn = new DockerCounterStrikeConnector(CS, {});
+  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.sendCommand('status\nquit'), (e) => e.code === 'BAD_SETTING');
 });
 
 test('DockerCS applyProfileSettings pushes Match-Rules cvars in the live RCON batch', async () => {
@@ -239,5 +329,5 @@ test('DockerCS applyProfileSettings chunks rawConfig into bounded RCON batches',
   });
   assert.ok(commands.length > 1, 'large rawConfig should be split across RCON calls');
   assert.ok(commands.every((cmd) => cmd.length <= 1800), 'each RCON batch stays bounded');
-  assert.ok(commands.at(-1).includes('changelevel de_dust2'), 'map change is sent last after cvar/raw batches');
+  assert.ok(commands.at(-1).endsWith('changelevel de_dust2'), 'map change is sent last after cvar/raw batches');
 });

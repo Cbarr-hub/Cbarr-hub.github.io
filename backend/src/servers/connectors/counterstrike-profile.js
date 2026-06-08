@@ -35,6 +35,10 @@ export const GAME_ALIASES = {
   deathmatch: 'Deathmatch',
   wingman: 'Wingman (2v2)',
 };
+export const LOADOUT_MODES = {
+  normal: 'Normal',
+  zeus_battle: 'Zeus Battle',
+};
 
 export const STOCK_FALLBACK = [
   'de_ancient', 'de_anubis', 'de_dust2', 'de_inferno', 'de_mirage',
@@ -48,6 +52,15 @@ export const CS_LIVE_ACTIONS = [
   { key: 'cheats_off',    label: 'Cheats Off' },
   { key: 'bunnyhop_on',   label: 'Bunnyhop On' },
   { key: 'bunnyhop_off',  label: 'Bunnyhop Off' },
+  // Phase 2 presets. All ephemeral (RCON) — they revert on container restart.
+  { key: 'warmup_end',       label: 'End Warmup' },
+  { key: 'add_bot',          label: 'Add Bot' },
+  { key: 'kick_bots',        label: 'Kick Bots', danger: true },
+  { key: 'list_players',     label: 'List Players' },
+  { key: 'knife_only',       label: 'Knife Only' },
+  { key: 'zeus_battle',      label: 'Zeus Battle' },
+  { key: 'infinite_ammo_on', label: 'Infinite Ammo On' },
+  { key: 'infinite_ammo_off',label: 'Infinite Ammo Off' },
 ];
 export const CS_ACTION_CMDS = {
   restart_round: 'mp_restartgame 1',
@@ -55,7 +68,24 @@ export const CS_ACTION_CMDS = {
   cheats_off:    'sv_cheats 0',
   bunnyhop_on:   'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_staminamax 0; sv_airaccelerate 1000',
   bunnyhop_off:  'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_staminamax 14; sv_airaccelerate 12',
+  warmup_end:    'mp_warmup_end',
+  add_bot:       'bot_add',
+  kick_bots:     'bot_kick',
+  list_players:  'status',
+  knife_only:    'mp_ct_default_primary ""; mp_t_default_primary ""; mp_ct_default_secondary ""; mp_t_default_secondary ""; mp_free_armor 0; mp_buy_allow_guns 0; mp_restartgame 1',
+  zeus_battle:   'game_alias competitive; mp_ct_default_primary ""; mp_t_default_primary ""; mp_ct_default_secondary weapon_taser; mp_t_default_secondary weapon_taser; mp_weapons_allow_zeus 1; mp_free_armor 0; mp_max_armor 0; mp_buy_allow_guns 0; mp_buy_allow_grenades 1; mp_startmoney 800; mp_maxmoney 16000; mp_restartgame 1',
+  infinite_ammo_on:  'sv_cheats 1; sv_infinite_ammo 1',
+  infinite_ammo_off: 'sv_infinite_ammo 0; sv_cheats 0',
 };
+
+export function loadoutModeCmd(mode = 'normal') {
+  if (mode === 'zeus_battle') return CS_ACTION_CMDS.zeus_battle;
+  return '';
+}
+
+export function gameAliasForProfile(s = {}) {
+  return s.loadoutMode === 'zeus_battle' ? 'competitive' : s.gameMode;
+}
 
 export const MAX_RAW_CONFIG_CHARS = 16_000;
 export const MAX_RAW_CONFIG_LINE_CHARS = 512;
@@ -84,7 +114,7 @@ export function csRangeCmd(key, value) {
     case 'gravity':    return `sv_cheats 1; sv_gravity ${Math.round(n)}`;
     case 'roundtime':  return `mp_roundtime_defuse ${n}; mp_roundtime ${n}`;
     case 'startmoney': return `mp_startmoney ${Math.round(n)}; mp_maxmoney 16000`;
-    case 'bots':       return `bot_quota ${Math.round(n)}`;
+    case 'bots':       return Math.round(n) === 0 ? 'bot_quota 0; bot_kick' : `bot_quota ${Math.round(n)}`;
     default:           return null;
   }
 }
@@ -106,12 +136,17 @@ export const CS_CVAR_FIELDS = [
   { cvar: 'bot_difficulty',      key: 'botDifficulty', label: 'Bot Difficulty',     def: 2,    min: 0,    max: 3,     int: true },
 ];
 
+// Tinkerer "Tweak" surface: the Match-Rules + Bots knobs flagged basic so the persona
+// panel's Tweak mode shows just these (autoBalance + warmupTime stay in Full → Profiles).
+// The Match Rules group mapper propagates the flag onto the rendered field objects.
+export const CS_BASIC = new Set(['maxRounds', 'roundTime', 'freezeTime', 'buyTime', 'startMoney', 'friendlyFire', 'overtime', 'botQuota', 'botDifficulty']);
+
 // NOTE: maxPlayers is deliberately NOT a profile field. The joedwards32/cs2 image
 // reads max-players from the container env (CS2_MAXPLAYERS), which Apply (live
 // RCON) can't change and the app can't recreate the container to change — so a
 // maxPlayers input would silently do nothing. It lives in servers.compose.yml env.
 export function defaultProfileSettings() {
-  const d = { map: 'de_dust2', gameMode: 'competitive', hostname: '', rawConfig: '' };
+  const d = { map: 'de_dust2', gameMode: 'competitive', loadoutMode: 'normal', hostname: '', password: '', rawConfig: '' };
   for (const f of CS_CVAR_FIELDS) d[f.key] = f.def;
   return d;
 }
@@ -129,6 +164,8 @@ export function validateProfileSettings(s = {}) {
   }
   if (!GAME_ALIASES[s.gameMode]) throw badSetting(`invalid game mode: ${s.gameMode}`);
   out.gameMode = s.gameMode;
+  if (!LOADOUT_MODES[s.loadoutMode ?? 'normal']) throw badSetting(`invalid loadout mode: ${s.loadoutMode}`);
+  out.loadoutMode = s.loadoutMode ?? 'normal';
   const hostname = String(s.hostname ?? '');
   // Reject `;` too: hostname is pushed LIVE over RCON as `hostname "<value>"`, and
   // Source treats `;` as a console command separator even inside a quoted arg, so an
@@ -136,6 +173,10 @@ export function validateProfileSettings(s = {}) {
   if (/["\n\r;]/.test(hostname)) throw badSetting('server name may not contain quotes, semicolons, or newlines');
   if (hostname.length > MAX_HOSTNAME_CHARS) throw badSetting(`server name too long (max ${MAX_HOSTNAME_CHARS} chars)`);
   out.hostname = hostname;
+  const password = String(s.password ?? '');
+  if (/["\n\r;]/.test(password)) throw badSetting('server password may not contain quotes, semicolons, or newlines');
+  if (password.length > 100) throw badSetting('server password too long (max 100 chars)');
+  out.password = password;
   const raw = String(s.rawConfig ?? '');
   if (raw.length > MAX_RAW_CONFIG_CHARS) throw badSetting(`extra cvars too large (max ${MAX_RAW_CONFIG_CHARS} chars)`);
   if (raw.includes('\0')) throw badSetting('extra cvars may not contain null bytes');
@@ -172,19 +213,22 @@ export function profileGroups(mapOpts, note) {
             help: 'Pick a stock map or a saved Workshop map (by name). Use “＋ Workshop Map” to add one by id, or “⤓ Import Collection” to pull every map from a Steam collection (names fetched automatically). A Workshop map overrides the stock map.' },
           { key: 'gameMode', label: 'Game Mode', type: 'select', basic: true,
             options: Object.entries(GAME_ALIASES).map(([value, label]) => ({ value, label })) },
+          { key: 'loadoutMode', label: 'Loadout Mode', type: 'select', basic: true,
+            options: Object.entries(LOADOUT_MODES).map(([value, label]) => ({ value, label })) },
         ],
       },
       {
         key: 'rules', title: 'Match Rules',
         fields: CS_CVAR_FIELDS.map((f) =>
           f.bool
-            ? { key: f.key, label: f.label, type: 'bool' }
-            : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01 }),
+            ? { key: f.key, label: f.label, type: 'bool', ...(CS_BASIC.has(f.key) ? { basic: true } : {}) }
+            : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01, ...(CS_BASIC.has(f.key) ? { basic: true } : {}) }),
       },
       {
         key: 'advanced', title: 'Advanced',
         fields: [
-          { key: 'hostname', label: 'Server Name', type: 'text' },
+          { key: 'hostname', label: 'Server Name', type: 'text', basic: true },
+          { key: 'password', label: 'Server Password (blank = none)', type: 'text', basic: true },
           { key: 'rawConfig', label: 'Extra live RCON commands', type: 'textarea',
             placeholder: 'sv_cheats 1\nsv_autobunnyhopping 1\nsv_enablebunnyhopping 1' },
         ],

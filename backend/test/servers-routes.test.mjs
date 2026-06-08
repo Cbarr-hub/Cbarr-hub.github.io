@@ -39,6 +39,8 @@ function baseService(overrides = {}) {
     readConfig: async () => ({ content: '' }),
     writeConfig: async () => ({ ok: true }),
     getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
+    getCurrentMinecraftPosition: async () => ({ serverId: 'minecraft', linked: false }),
+    getCurrentPlayerPosition: async (id) => ({ serverId: id, linked: false }),
     runUpdate: async () => ({ ok: true }),
     ...overrides,
   };
@@ -117,6 +119,8 @@ test('servers routes expose BlueMap render status on a static path', async () =>
   const app = await routeApp({
     service: baseService({
       getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
+      getCurrentMinecraftPosition: async (userId) => ({ serverId: 'minecraft', userId }),
+      getCurrentPlayerPosition: async (id, userId) => ({ serverId: id, userId }),
       getStatus: async () => { throw new Error('map status route was shadowed'); },
     }),
   });
@@ -125,6 +129,12 @@ test('servers routes expose BlueMap render status on a static path', async () =>
     assert.equal(res.statusCode, 200);
     assert.equal(res.json().map, 'nether');
     assert.equal(res.json().percent, 45.1);
+    const me = await app.inject({ method: 'GET', url: '/api/servers/map/me' });
+    assert.equal(me.statusCode, 200);
+    assert.equal(me.json().serverId, 'minecraft');
+    const factorio = await app.inject({ method: 'GET', url: '/api/servers/factorio/map/me' });
+    assert.equal(factorio.statusCode, 200);
+    assert.equal(factorio.json().serverId, 'factorio');
   } finally { await app.close(); }
 });
 
@@ -147,6 +157,73 @@ test('servers mutating routes require csrf and dispatch after a valid token', as
     });
     assert.equal(ok.statusCode, 200);
     assert.deepEqual(calls, [['minecraft', 'start']]);
+  } finally { await app.close(); }
+});
+
+test('servers routes accept and dispatch every mutating command endpoint shape', async () => {
+  const calls = [];
+  const rec = (name, result = { ok: true }) => async (...args) => {
+    calls.push([name, ...args]);
+    return result;
+  };
+  const app = await routeApp({
+    service: baseService({
+      doAction: rec('doAction'),
+      setSettings: rec('setSettings'),
+      addMap: rec('addMap'),
+      syncMaps: rec('syncMaps'),
+      importCollection: rec('importCollection'),
+      renameMap: rec('renameMap'),
+      deleteMap: rec('deleteMap'),
+      createConfig: rec('createConfig'),
+      updateConfig: rec('updateConfig'),
+      deleteConfig: rec('deleteConfig'),
+      createProfile: rec('createProfile'),
+      captureProfile: rec('captureProfile'),
+      updateProfile: rec('updateProfile'),
+      deleteProfile: rec('deleteProfile'),
+      applyProfile: rec('applyProfile'),
+      sendCommand: rec('sendCommand'),
+      runLiveAction: rec('runLiveAction'),
+      writeConfig: rec('writeConfig'),
+      runUpdate: rec('runUpdate'),
+    }),
+  });
+  try {
+    const rows = [
+      ...['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame'].map((action) => ({
+        method: 'POST', url: `/api/servers/gmod/actions/${action}`, call: ['doAction', 'gmod', action],
+      })),
+      { method: 'PUT', url: '/api/servers/factorio/settings', body: { section: 'saveAs', saveName: 'new_save' }, call: ['setSettings', 'factorio', { section: 'saveAs', saveName: 'new_save' }] },
+      { method: 'POST', url: '/api/servers/counterstrike/maps', body: { workshopId: '123', name: 'Aim' }, call: ['addMap', 'counterstrike', { workshopId: '123', name: 'Aim' }] },
+      { method: 'POST', url: '/api/servers/gmod/maps/sync', call: ['syncMaps', 'gmod'] },
+      { method: 'POST', url: '/api/servers/counterstrike/maps/collection', body: { collectionId: '456' }, call: ['importCollection', 'counterstrike', '456'] },
+      { method: 'PATCH', url: '/api/servers/counterstrike/maps/123', body: { name: 'Renamed' }, call: ['renameMap', 'counterstrike', '123', 'Renamed'] },
+      { method: 'DELETE', url: '/api/servers/counterstrike/maps/123', call: ['deleteMap', 'counterstrike', '123'] },
+      { method: 'POST', url: '/api/servers/counterstrike/configs', body: { name: 'scrim', body: 'mp_maxrounds 24' }, call: ['createConfig', 'counterstrike', { name: 'scrim', body: 'mp_maxrounds 24' }] },
+      { method: 'PUT', url: '/api/servers/counterstrike/configs/7', body: { body: 'mp_roundtime 5' }, call: ['updateConfig', 'counterstrike', 7, { body: 'mp_roundtime 5' }] },
+      { method: 'DELETE', url: '/api/servers/counterstrike/configs/7', call: ['deleteConfig', 'counterstrike', 7] },
+      { method: 'POST', url: '/api/servers/minecraft/profiles', body: { name: 'Survival', settings: { difficulty: 'hard' } }, call: ['createProfile', 'minecraft', { name: 'Survival', settings: { difficulty: 'hard' } }] },
+      { method: 'POST', url: '/api/servers/minecraft/profiles/capture', body: { name: 'Captured' }, call: ['captureProfile', 'minecraft', 'Captured'] },
+      { method: 'PUT', url: '/api/servers/minecraft/profiles/9', body: { settings: { difficulty: 'normal' } }, call: ['updateProfile', 'minecraft', 9, { settings: { difficulty: 'normal' } }] },
+      { method: 'DELETE', url: '/api/servers/minecraft/profiles/9', call: ['deleteProfile', 'minecraft', 9] },
+      { method: 'POST', url: '/api/servers/minecraft/profiles/9/apply', call: ['applyProfile', 'minecraft', 9] },
+      { method: 'POST', url: '/api/servers/gmod/live/command', body: { command: 'status' }, call: ['sendCommand', 'gmod', 'status'] },
+      { method: 'POST', url: '/api/servers/gmod/live/action', body: { action: 'gravity', value: '250' }, call: ['runLiveAction', 'gmod', 'gravity', '250'] },
+      { method: 'PUT', url: '/api/servers/minecraft/config/server.properties', body: { content: 'level-name=world\n' }, call: ['writeConfig', 'minecraft', 'server.properties', 'level-name=world\n'] },
+      { method: 'POST', url: '/api/servers/minecraft/update', call: ['runUpdate', 'minecraft'] },
+    ];
+
+    for (const row of rows) {
+      const res = await app.inject({
+        method: row.method,
+        url: row.url,
+        headers: { 'x-csrf-token': 'ok' },
+        ...(row.body === undefined ? {} : { payload: row.body }),
+      });
+      assert.equal(res.statusCode, 200, `${row.method} ${row.url}: ${res.body}`);
+    }
+    assert.deepEqual(calls, rows.map((r) => r.call));
   } finally { await app.close(); }
 });
 

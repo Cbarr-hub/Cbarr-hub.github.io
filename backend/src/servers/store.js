@@ -135,11 +135,26 @@ export function createServerStore(db) {
     closeAllOpen: db.prepare(
       `UPDATE server_sessions SET left_at = ?, source = ? WHERE left_at IS NULL`,
     ),
-    listSessions: db.prepare(
-      `SELECT id, name, uid, identity_kind AS identityKind, joined_at, left_at, source
-         FROM server_sessions
-        WHERE game_id = ?
-        ORDER BY joined_at DESC
+    listSessionsLinked: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
+              s.joined_at, s.left_at, s.source,
+              pa.user_id AS userId, u.display_name AS userName
+         FROM server_sessions s
+         JOIN player_accounts pa ON pa.player_id = s.player_id
+         JOIN users u            ON u.id = pa.user_id
+        WHERE s.game_id = ?
+        ORDER BY s.joined_at DESC
+        LIMIT ?`,
+    ),
+    listSessionsAll: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
+              s.joined_at, s.left_at, s.source,
+              pa.user_id AS userId, u.display_name AS userName
+         FROM server_sessions s
+         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
+         LEFT JOIN users u            ON u.id = pa.user_id
+        WHERE s.game_id = ?
+        ORDER BY s.joined_at DESC
         LIMIT ?`,
     ),
     // ── presence + cross-game activity ──
@@ -147,25 +162,60 @@ export function createServerStore(db) {
     onlineCounts: db.prepare(
       `SELECT g.slug AS slug, COUNT(*) AS n
          FROM server_sessions s JOIN games g ON g.id = s.game_id
+         JOIN player_accounts pa ON pa.player_id = s.player_id
         WHERE s.left_at IS NULL AND g.hosted = 1
         GROUP BY g.slug`,
     ),
     // Who's online right now, across every hosted server (newest join first).
     listOnline: db.prepare(
-      `SELECT g.slug AS slug, g.name AS gameName, s.name, s.uid,
-              s.identity_kind AS identityKind, s.joined_at, s.source
+      `SELECT g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
+              s.name, s.uid, s.identity_kind AS identityKind, s.joined_at, s.source,
+              pa.user_id AS userId, u.display_name AS userName
          FROM server_sessions s JOIN games g ON g.id = s.game_id
+         JOIN player_accounts pa ON pa.player_id = s.player_id
+         JOIN users u            ON u.id = pa.user_id
         WHERE s.left_at IS NULL AND g.hosted = 1
         ORDER BY s.joined_at DESC`,
     ),
     // Recent join/leave activity merged across all hosted servers (the timeline).
-    recentSessions: db.prepare(
-      `SELECT s.id, g.slug AS slug, g.name AS gameName, s.name, s.uid,
-              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source
+    recentSessionsLinked: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
+              pa.user_id AS userId, u.display_name AS userName
          FROM server_sessions s JOIN games g ON g.id = s.game_id
+         JOIN player_accounts pa ON pa.player_id = s.player_id
+         JOIN users u            ON u.id = pa.user_id
         WHERE g.hosted = 1
         ORDER BY s.joined_at DESC
         LIMIT ?`,
+    ),
+    recentSessionsAll: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
+              pa.user_id AS userId, u.display_name AS userName
+         FROM server_sessions s JOIN games g ON g.id = s.game_id
+         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
+         LEFT JOIN users u            ON u.id = pa.user_id
+        WHERE g.hosted = 1
+        ORDER BY s.joined_at DESC
+        LIMIT ?`,
+    ),
+    linkedPlayerForUser: db.prepare(
+      `SELECT p.id, p.identity_kind AS identityKind, p.uid, p.name,
+              p.first_seen AS firstSeen, p.last_seen AS lastSeen
+         FROM player_accounts pa
+         JOIN players p ON p.id = pa.player_id
+        WHERE pa.user_id = ? AND p.identity_kind = ?
+        ORDER BY p.last_seen DESC
+        LIMIT 1`,
+    ),
+    openSessionForPlayer: db.prepare(
+      `SELECT s.id, s.name, s.uid, s.identity_kind AS identityKind, s.joined_at
+         FROM server_sessions s
+         JOIN games g ON g.id = s.game_id
+        WHERE g.slug = ? AND s.player_id = ? AND s.left_at IS NULL
+        ORDER BY s.joined_at DESC
+        LIMIT 1`,
     ),
   };
 
@@ -311,11 +361,11 @@ export function createServerStore(db) {
     closeAllOpenSessions(leftAt, source = 'reconciled') {
       return stmts.closeAllOpen.run(leftAt, source).changes;
     },
-    listSessions(slug, { limit = 200 } = {}) {
+    listSessions(slug, { limit = 200, includeUnlinked = false } = {}) {
       const gid = gameId(slug);
       if (gid == null) return [];
       const lim = Math.min(500, Math.max(1, Number(limit) || 200));
-      return stmts.listSessions.all(gid, lim);
+      return (includeUnlinked ? stmts.listSessionsAll : stmts.listSessionsLinked).all(gid, lim);
     },
 
     // ── presence + cross-game activity ───────────────────────────────────────
@@ -338,9 +388,15 @@ export function createServerStore(db) {
     // Newest-first join/leave feed across all hosted servers (the Events timeline).
     // Includes closed sessions (left_at set), unlike listOnline. `limit` is clamped
     // to 1..500 (default 100) to bound the read.
-    recentSessions({ limit = 100 } = {}) {
+    recentSessions({ limit = 100, includeUnlinked = false } = {}) {
       const lim = Math.min(500, Math.max(1, Number(limit) || 100));
-      return stmts.recentSessions.all(lim);
+      return (includeUnlinked ? stmts.recentSessionsAll : stmts.recentSessionsLinked).all(lim);
+    },
+    linkedPlayerForUser(userId, identityKind) {
+      return stmts.linkedPlayerForUser.get(userId, identityKind) ?? null;
+    },
+    openSessionForPlayer(slug, playerId) {
+      return stmts.openSessionForPlayer.get(slug, playerId) ?? null;
     },
   };
 }

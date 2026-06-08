@@ -79,11 +79,19 @@ export const SERVERS = [
   { id: 'minecraft',     name: 'Minecraft',          backend: 'docker', container: 'minecraft', connector: 'minecraft',     port: 25565, connect: 'address', identityKind: 'minecraft', collect: 'log' },
 ];
 
+function quoteConsole(value) {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 /** Render the copy-pastable join string for a server given the public host. */
-export function connectString(server, host) {
+export function connectString(server, host, password = '') {
   if (!host || !server.port) return null;
   const addr = `${host}:${server.port}`;
-  return server.connect === 'cs' ? `connect ${addr}` : addr;
+  if (server.connect === 'cs') {
+    return password ? `password ${quoteConsole(password)}; connect ${addr}` : `connect ${addr}`;
+  }
+  if (server.id === 'factorio' && password) return `${addr} (password: ${password})`;
+  return addr;
 }
 
 /**
@@ -91,9 +99,14 @@ export function connectString(server, host) {
  * or null when the game has no registered launch scheme. The args are
  * URL-encoded so spaces survive the `steam://run/<appid>//<args>` form.
  */
-export function launchUrl(server, host) {
+export function launchUrl(server, host, password = '') {
   if (!host || !server.port || !server.steam) return null;
-  const args = `${server.steam.arg} ${host}:${server.port}`;
+  const addr = `${host}:${server.port}`;
+  let args = `${server.steam.arg} ${addr}`;
+  if (password) {
+    if (server.connect === 'cs') args = `+password ${quoteConsole(password)} ${args}`;
+    else if (server.id === 'factorio') args = `${args} --password ${password}`;
+  }
   return `steam://run/${server.steam.appid}//${encodeURIComponent(args)}`;
 }
 

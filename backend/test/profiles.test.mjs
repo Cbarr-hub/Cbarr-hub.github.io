@@ -4,6 +4,7 @@ import test from 'node:test';
 import { testDb } from './test-db.js';
 import { createServerStore } from '../src/servers/store.js';
 import { GmodConnector } from '../src/servers/connectors/gmod.js';
+import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
 import { PropHuntConnector } from '../src/servers/connectors/prophunt.js';
 
 // CS / Factorio / Minecraft profile logic is covered by the docker-*.test.mjs
@@ -35,6 +36,7 @@ function gmod(files) {
 }
 
 const PROPHUNT = { id: 'prophunt', name: 'Prop Hunt', vmid: 105, port: 27067, connect: 'cs' };
+const DOCKER_PROPHUNT = { id: 'prophunt', name: 'Prop Hunt', backend: 'docker', container: 'prophunt', port: 27067 };
 const PH_INST   = '/home/miles/phserver/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
 const PH_GAME   = '/home/miles/phserver/serverfiles/garrysmod/cfg/gmodserver.cfg';
 const PH_ACTIVE = '/home/miles/phserver/serverfiles/garrysmod/cfg/gamertown/active.cfg';
@@ -43,6 +45,16 @@ function prophunt(files) {
   const store = createServerStore(testDb());
   const client = fakeClient(files);
   return { conn: new PropHuntConnector(PROPHUNT, client, store), store, client };
+}
+
+function prophuntNoStore(files) {
+  const client = fakeClient(files);
+  return { conn: new PropHuntConnector(PROPHUNT, client), client };
+}
+
+function dockerProphunt(files) {
+  const client = fakeClient(files);
+  return { conn: new DockerPropHuntConnector(DOCKER_PROPHUNT, client), client };
 }
 
 // ── store: profile CRUD + active pointer ─────────────────────────────────────────
@@ -143,7 +155,7 @@ test('gmod: applyProfileSettings blocks a workshop boot map when no collection i
 
 test('gmod: applyProfileSettings allows stock maps with no collection', async () => {
   const { conn, client } = gmod();
-  await conn.applyProfileSettings(conn.defaultProfileSettings(), 1); // gm_construct, no collection
+  await conn.applyProfileSettings({ ...conn.defaultProfileSettings(), workshopCollection: '', mapcycle: ['gm_construct'] }, 1);
   assert.match(client.files[INSTANCE_CFG], /defaultmap="gm_construct"/);
 });
 
@@ -178,6 +190,7 @@ test('gmod: profileSchema groups Maps/Gameplay with collection-driven fields', a
   const mapGroup = schema.groups[0];
   assert.ok(mapGroup.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text'));
   assert.ok(mapGroup.fields.some((f) => f.key === 'mapcycle' && f.type === 'maplist' && f.custom));
+  assert.ok(mapGroup.fields.find((f) => f.key === 'mapcycle').options.some((o) => o.value === 'ttt_clue_se'));
   assert.ok(!mapGroup.fields.some((f) => f.key === 'map')); // no separate start-map field
   assert.ok(mapGroup.fields.some((f) => f.key === 'useMapcycle' && f.type === 'bool'));
   assert.ok(mapGroup.fields.some((f) => f.type === 'mapsync')); // the Sync-from-collection action
@@ -291,6 +304,114 @@ test('prophunt: getLive + runLiveAction — change_map, next round, movement on 
 
   await assert.rejects(() => on.conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => on.conn.runLiveAction('bogus_action'), /unknown live action/);
+});
+
+test('prophunt: every advertised live action/control maps to the expected RCON command', async () => {
+  const calls = [];
+  const on = prophuntNoStore({ [PH_GAME]: 'rcon_password "ph-secret"\n' });
+  on.client.agentExec = (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); };
+  on.client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'ok', 'err-data': '' });
+
+  const live = await on.conn.getLive();
+  assert.equal(live.available, true);
+  assert.equal(live.changeMap, true);
+
+  const actionCommands = new Map([
+    ['next_round', 'ph_force_end_round'],
+    ['map_vote', 'mv_start'],
+    ['luckyballs_on', 'ph_enable_lucky_balls 1'],
+    ['luckyballs_off', 'ph_enable_lucky_balls 0'],
+    ['autotaunt_on', 'ph_autotaunt_enabled 1'],
+    ['autotaunt_off', 'ph_autotaunt_enabled 0'],
+    ['bhop_on', 'sv_cheats 1; sv_airaccelerate 1000'],
+    ['bhop_off', 'sv_airaccelerate 12'],
+    ['cheats_on', 'sv_cheats 1'],
+    ['cheats_off', 'sv_cheats 0'],
+    ['apply_config', 'exec gamertown/active'],
+    ['players', 'status'],
+  ]);
+  assert.deepEqual(live.actions.map((a) => a.key), [...actionCommands.keys()]);
+
+  const controlCommands = new Map([
+    ['gravity', { value: 600, command: 'sv_gravity 600' }],
+    ['timescale', { value: 1, command: 'sv_cheats 1; host_timescale 1' }],
+    ['ph_round_time', { value: 250, command: 'ph_round_time 250' }],
+    ['ph_blind_time', { value: 30, command: 'ph_hunter_blindlock_time 30' }],
+  ]);
+  assert.deepEqual(live.controls.map((c) => c.key), [...controlCommands.keys()]);
+  assert.ok(!live.controls.some((c) => c.key === 'traitor_pct'));
+  assert.ok(!live.controls.some((c) => c.key === 'round_limit'));
+
+  await on.conn.runLiveAction('change_map', 'ph_restaurant');
+  assert.equal(calls.at(-1).command.at(-2), '27067');
+  assert.equal(calls.at(-1).command.at(-1), 'changelevel ph_restaurant');
+  assert.equal(calls.at(-1).input, 'ph-secret');
+
+  for (const [key, command] of actionCommands) {
+    await on.conn.runLiveAction(key);
+    assert.equal(calls.at(-1).command.at(-2), '27067', key);
+    assert.equal(calls.at(-1).command.at(-1), command, key);
+    assert.equal(calls.at(-1).input, 'ph-secret', key);
+  }
+
+  for (const [key, { value, command }] of controlCommands) {
+    await on.conn.runLiveAction(key, value);
+    assert.equal(calls.at(-1).command.at(-1), command, key);
+  }
+
+  await on.conn.runLiveAction('gravity', 9999);
+  assert.equal(calls.at(-1).command.at(-1), 'sv_gravity 1000');
+  await on.conn.runLiveAction('timescale', 0);
+  assert.equal(calls.at(-1).command.at(-1), 'sv_cheats 1; host_timescale 0.25');
+  await on.conn.runLiveAction('ph_round_time', 999);
+  assert.equal(calls.at(-1).command.at(-1), 'ph_round_time 600');
+  await on.conn.runLiveAction('ph_blind_time', 1);
+  assert.equal(calls.at(-1).command.at(-1), 'ph_hunter_blindlock_time 10');
+});
+
+test('prophunt: sendCommand validates and forwards raw console commands', async () => {
+  const calls = [];
+  const { conn, client } = prophuntNoStore({ [PH_GAME]: 'rcon_password "ph-secret"\n' });
+  client.agentExec = (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); };
+  client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'ok', 'err-data': '' });
+
+  assert.deepEqual(await conn.sendCommand('  status  '), { output: 'ok' });
+  assert.equal(calls.at(-1).command.at(-2), '27067');
+  assert.equal(calls.at(-1).command.at(-1), 'status');
+  assert.equal(calls.at(-1).input, 'ph-secret');
+
+  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.sendCommand('status\nquit'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.sendCommand('x'.repeat(513)), (e) => e.code === 'BAD_SETTING');
+  assert.equal(calls.length, 1);
+});
+
+test('prophunt: writeConfig chowns edited files back to the game user', async () => {
+  const { conn, client } = prophuntNoStore({ [PH_ACTIVE]: '' });
+  const execs = [];
+  const originalExec = client.agentExec;
+  client.agentExec = async (vmid, args) => { execs.push({ vmid, command: args.command }); return originalExec(vmid, args); };
+
+  assert.deepEqual(await conn.writeConfig('active.cfg', 'phx_verbose 1\n'), { name: 'active.cfg', ok: true });
+  assert.equal(client.files[PH_ACTIVE], 'phx_verbose 1\n');
+  assert.deepEqual(execs.at(-1), {
+    vmid: 105,
+    command: ['/bin/bash', '-lc', `chown miles:miles "${PH_ACTIVE}"`],
+  });
+});
+
+test('docker prophunt: update runs the LinuxGSM update command in-container', async () => {
+  const { conn, client } = dockerProphunt();
+  const execs = [];
+  const originalExec = client.agentExec;
+  client.agentExec = async (container, args) => { execs.push({ container, ...args }); return originalExec(container, args); };
+
+  const res = await conn.update();
+  assert.equal(res.ok, true);
+  assert.equal(res.steps[0].name, 'gmodserver update');
+  assert.deepEqual(execs[0].command, ['/bin/bash', '-lc', '/data/gmodserver update']);
+  assert.equal(execs[0].container, 'prophunt');
+  assert.equal(execs[0].timeoutMs, 1_800_000);
 });
 
 test('prophunt: syncMaps runs and returns the installed map list', async () => {

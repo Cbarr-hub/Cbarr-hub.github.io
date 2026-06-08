@@ -182,6 +182,8 @@ header.top{position:sticky; top:0; z-index:40;
 .evbar .spacer{flex:1}
 .evbar .refresh-btn{font-size:var(--t-xs);letter-spacing:1px;padding:9px 14px;border-radius:99px;border:1px solid var(--line);background:var(--bg-1);color:var(--txt-dim);transition:.16s var(--ease)}
 .evbar .refresh-btn:hover{border-color:var(--grn);color:var(--grn)}
+.link-toggle{display:inline-flex;align-items:center;gap:8px;font-size:var(--t-xs);letter-spacing:.7px;text-transform:uppercase;color:var(--txt-dim);border:1px solid var(--line);border-radius:99px;background:var(--bg-1);padding:8px 12px;cursor:pointer}
+.link-toggle input{accent-color:var(--grn)}
 .evlist{display:flex;flex-direction:column;gap:var(--s2)}
 .ev{display:flex;align-items:center;gap:var(--s3);
   padding:var(--s3) var(--s4);border:1px solid var(--line);border-radius:var(--r);background:var(--bg-1);transition:.16s var(--ease);}
@@ -197,6 +199,8 @@ header.top{position:sticky; top:0; z-index:40;
 .ev .live{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-xs);color:var(--grn);letter-spacing:1px}
 .ev .live .d{width:7px;height:7px;border-radius:50%;background:var(--grn-hot);box-shadow:0 0 7px var(--grn-hot)}
 .ev .gone{font-size:var(--t-xs);color:var(--txt-faint);letter-spacing:.5px}
+.ev .acct{font-size:var(--t-xs);color:var(--grn);letter-spacing:.5px}
+.ev .acct.unlinked{color:#ffbd6a}
 .ev-empty,.view-msg{padding:var(--s7) var(--s4);text-align:center;color:var(--txt-faint);font-size:var(--t-sm)}
 
 /* ============ presence badge on fleet tiles ============ */
@@ -208,6 +212,9 @@ header.top{position:sticky; top:0; z-index:40;
 
 /* ============ embedded map view ============ */
 .map-bar{display:flex;align-items:center;gap:var(--s2);margin-bottom:var(--s3);flex-wrap:wrap}
+.map-modes{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:8px;background:var(--bg-1)}
+.map-modes button{padding:7px 10px;border-radius:6px;color:var(--txt-dim);font-size:var(--t-xs);letter-spacing:.5px}
+.map-modes button.on{background:rgba(72,255,155,.14);color:var(--grn);box-shadow:inset 0 0 0 1px rgba(72,255,155,.22)}
 .map-status{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line);border-radius:99px;background:var(--bg-1);color:var(--txt-dim);font-size:var(--t-xs);letter-spacing:.5px}
 .map-status .d{width:7px;height:7px;border-radius:50%;background:var(--grey)}
 .map-status.rendering{border-color:rgba(95,140,255,.45);color:#cfe0ff;background:rgba(20,40,90,.42)}
@@ -216,7 +223,14 @@ header.top{position:sticky; top:0; z-index:40;
 .map-status.complete .d{background:var(--grn-hot);box-shadow:0 0 8px var(--grn-hot)}
 .map-status.err{border-color:rgba(255,100,100,.45);color:#ffb8b8;background:rgba(60,10,10,.45)}
 .map-status.err .d{background:#ff7777;box-shadow:0 0 8px #ff7777}
+.map-user,.factorio-map{border:1px solid var(--line);border-radius:var(--r);background:var(--bg-2);padding:var(--s3);margin-bottom:var(--s3)}
+.map-user .ev{border:0;background:transparent;padding:0}
+.coord-grid,.factorio-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s2)}
+.coord{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:rgba(255,255,255,.025)}
+.coord b{display:block;color:var(--txt);font-size:var(--t-md);font-variant-numeric:tabular-nums}
+.coord span{display:block;color:var(--txt-faint);font-size:var(--t-xs);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
 .map-frame{width:100%;height:78vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r);background:#06140a;display:block}
+@media(max-width:720px){.coord-grid,.factorio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.map-frame{min-height:360px}}
 
 /* ============ activity: online-now strip ============ */
 .online-strip{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s4)}
@@ -247,6 +261,15 @@ header.top{position:sticky; top:0; z-index:40;
 .eco-msg.ok{color:var(--grn)}
 .eco-msg.err{color:#ff6a6a}
 .eco-players-h{font-size:var(--t-xs);letter-spacing:1px;text-transform:uppercase;color:var(--txt-faint);margin-bottom:var(--s3)}
+.user-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:var(--s2);align-items:center}
+.user-form input{min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:10px 12px;font-size:var(--t-sm)}
+.user-form input:focus{outline:none;border-color:var(--grn)}
+.role-sel{min-width:130px}
+.user-list{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s3)}
+.user-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:99px;background:var(--bg);padding:6px 10px;color:var(--txt-dim);font-size:var(--t-xs)}
+.user-chip b{color:var(--txt);font-size:var(--t-sm)}
+.user-chip .role{color:var(--txt-faint);letter-spacing:.7px;text-transform:uppercase}
+@media(max-width:850px){.user-form{grid-template-columns:1fr 1fr}.user-form button{grid-column:span 2}}
 .ev .sel{position:relative}
 .ev select.eco-link{appearance:none;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:7px 30px 7px 12px;font-size:var(--t-sm);min-width:130px;cursor:pointer}
 .ev select.eco-link:focus{outline:none;border-color:var(--grn)}
@@ -644,7 +667,6 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
       <div class="tabs" id="viewTabs">
         <button class="on" data-view="fleet">Fleet</button>
         <button data-view="activity">Activity</button>
-        <button data-view="events">Events</button>
         <button data-view="data">Data</button>
         <button data-view="map">Map</button>
         <button data-view="economy">Economy</button>
@@ -656,17 +678,6 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
     <!-- FLEET VIEW -->
     <div class="view show" id="view-fleet">
       <div class="feed" id="feed"></div>
-    </div>
-
-    <!-- EVENTS VIEW -->
-    <div class="view events" id="view-events">
-      <div class="evbar">
-        <div class="sel"><select id="evFilter" aria-label="Filter events by server"></select></div>
-        <span class="ev-note">Join/leave history collected on the host — independent of this page.</span>
-        <div class="spacer"></div>
-        <button class="refresh-btn" id="evRefresh" type="button">↻ Refresh</button>
-      </div>
-      <div class="evlist" id="evlist"><div class="ev-empty">Loading…</div></div>
     </div>
 
     <!-- DATA VIEW (read-only DB viewer) -->
@@ -717,13 +728,22 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
       </div>
     </div>
 
-    <!-- MAP VIEW (embedded BlueMap Minecraft world map; iframe is lazy-loaded) -->
+    <!-- MAP VIEW (Minecraft BlueMap + linked-user live positions) -->
     <div class="view map" id="view-map">
       <div class="map-bar">
-        <span class="ev-note">Live 3D map of the Minecraft world (BlueMap) — rendered on the host; switch dimensions (Overworld · Nether · End) inside the map.</span>
+        <div class="map-modes" id="mapModes" role="tablist" aria-label="Map mode">
+          <button type="button" class="on" data-map-mode="minecraft">Minecraft</button>
+          <button type="button" data-map-mode="factorio">Factorio</button>
+        </div>
+        <span class="ev-note" id="mapNote">Live 3D map of the Minecraft world (BlueMap). Switch dimensions inside the map.</span>
         <div class="map-status" id="mapStatus"><span class="d"></span><span id="mapStatusText">Checking render status...</span></div>
         <div class="spacer"></div>
-        <a class="refresh-btn" href="/map/" target="_blank" rel="noopener">Open full screen ↗</a>
+        <button class="refresh-btn" id="mapLocate" type="button">Locate me</button>
+        <a class="refresh-btn" id="mapOpen" href="/map/" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <div class="map-user" id="mapMe"><div class="ev-empty">Loading position...</div></div>
+      <div class="factorio-map" id="factorioMap" hidden>
+        <div class="factorio-grid" id="factorioGrid"></div>
       </div>
       <iframe id="mapFrame" class="map-frame" title="Minecraft world map" referrerpolicy="no-referrer"></iframe>
     </div>
@@ -731,7 +751,9 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
     <!-- ACTIVITY VIEW (who's playing now + cross-game timeline) -->
     <div class="view activity" id="view-activity">
       <div class="evbar">
-        <span class="ev-note">Live presence + recent join/leave across every server — collected on the host.</span>
+        <div class="sel"><select id="actFilter" aria-label="Filter activity by server"></select></div>
+        <label class="link-toggle"><input id="actShowUnlinked" type="checkbox"> Link queue</label>
+        <span class="ev-note">Verified presence + recent joins. Link queue shows unlinked server identities.</span>
         <div class="spacer"></div>
         <button class="refresh-btn" id="actRefresh" type="button">↻ Refresh</button>
       </div>
@@ -751,6 +773,18 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
           <button class="eco-btn" id="ecoCredit" type="button">Credit now</button>
           <span class="eco-msg" id="ecoMsg"></span>
         </div>
+      </div>
+      <div class="eco-card">
+        <div class="section-h">Site accounts</div>
+        <div class="eco-note">Create a Gamertown account, then link server identities to it from Activity or the player list below.</div>
+        <form class="user-form" id="userForm">
+          <input id="newUsername" placeholder="username" autocomplete="off" spellcheck="false">
+          <input id="newDisplayName" placeholder="display name" autocomplete="off">
+          <input id="newPassword" type="password" placeholder="temporary password" autocomplete="new-password">
+          <div class="sel role-sel"><select id="newRole" aria-label="Role"><option value="citizen">citizen</option><option value="kleptocrat">kleptocrat</option></select></div>
+          <button class="eco-btn primary" type="submit">Add user</button>
+        </form>
+        <div class="user-list" id="userList"></div>
       </div>
       <div class="eco-players-h">Players → accounts</div>
       <div class="evlist" id="ecoPlayers"><div class="ev-empty">Loading…</div></div>
@@ -808,12 +842,13 @@ import {
   dbListServerConfig, dbReadServerConfig, dbWriteServerConfig,
   dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
   dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbDeleteServerConfig,
-  dbGetServerSessions, dbGetOnline, dbGetActivity, dbGetBlueMapStatus,
+  dbGetServerSessions, dbGetOnline, dbGetActivity, dbGetActivityAll, dbGetBlueMapStatus, dbGetMapMe, dbGetServerMapMe,
   dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile, dbUpdateProfile,
   dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
   dbAdminTables, dbAdminTableRows, dbAdminQuery,
   dbGetEconomySettings, dbSetEconomySettings, dbGetEconomyPlayers, dbGetEconomyUsers,
   dbLinkPlayerAccount, dbCreditPlaytime,
+  dbAdminUsers, dbAdminCreateUser,
 } from './db.js'
 import { loadSession } from './auth.js'
 
@@ -826,19 +861,21 @@ let lastNode = null
 let nodeFetchedAt = 0
 let curView = 'fleet'
 let dashboardInFlight = false
-// events
-let eventsFilter = 'all'
-let eventsTimer = null
-let eventsLoadSeq = 0
 // activity (presence + cross-game timeline)
+let activityFilter = 'all'
+let activityShowUnlinked = false
 let activityTimer = null
 let activityLoadSeq = 0
 // economy (admin)
 let ecoUsers = []
+let adminUsers = []
 // map (embedded BlueMap)
 let mapLoaded = false
+let mapMode = 'minecraft'
 let mapTimer = null
 let mapStatusSeq = 0
+let mapMeSeq = 0
+let mapMeData = null
 // data viewer
 let dataLoaded = false
 let dbTables = []
@@ -1063,7 +1100,7 @@ async function boot(){
     document.getElementById('feed').innerHTML = `<div class="view-msg pane-err">error loading servers: ${esc(errMsg(e))}</div>`
   }
   if (loaded) renderFeed()
-  renderEvFilter()
+  renderActivityFilter()
   renderHost(lastNode)
   refreshDashboard()
   setInterval(refreshDashboard, 10000)
@@ -1071,7 +1108,7 @@ async function boot(){
     if (!document.hidden) refreshDashboard()
   })
   // deep-link to a view
-  if (location.hash === '#events') switchView('events')
+  if (location.hash === '#events' || location.hash === '#activity') switchView('activity')
   else if (location.hash === '#data') switchView('data')
 }
 
@@ -1217,16 +1254,14 @@ function renderFeed(){
 function switchView(v){
   curView = v
   document.querySelectorAll('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === v))
-  for (const name of ['fleet', 'activity', 'events', 'data', 'map', 'economy']) {
+  for (const name of ['fleet', 'activity', 'data', 'map', 'economy']) {
     document.getElementById('view-' + name).classList.toggle('show', v === name)
   }
   // teardown the auto-refresh timers when leaving their views
-  if (v !== 'events' && eventsTimer) { clearInterval(eventsTimer); eventsTimer = null }
   if (v !== 'activity' && activityTimer) { clearInterval(activityTimer); activityTimer = null }
   if (v !== 'map' && mapTimer) { clearInterval(mapTimer); mapTimer = null }
   if (v === 'fleet') { if (lastNode) renderHost(lastNode); document.getElementById('tcount').textContent = `${servers.length} servers` }
   else if (v === 'activity') startActivity()
-  else if (v === 'events') startEvents()
   else if (v === 'data') startData()
   else if (v === 'map') startMap()
   else if (v === 'economy') startEconomy()
@@ -1287,26 +1322,77 @@ async function loadEvents(){
   list.innerHTML = rows.map(evRowHTML).join('')
 }
 // One join/leave row. `serverName` is the display label for the source server.
-function evRowHTML(s){
+function accountLabel(u){
+  return u?.display_name || u?.name || u?.username || ''
+}
+function userOptionHtml(users = ecoUsers, selected){
+  return ['<option value="">— none —</option>']
+    .concat((users || []).map(u => {
+      const label = accountLabel(u)
+      return `<option value="${u.id}"${u.id === selected ? ' selected' : ''}>${esc(label)}</option>`
+    }))
+    .join('')
+}
+function evRowHTML(s, { linkable = false, users = ecoUsers } = {}){
   const online = s.left_at == null
-  const right = online
+  const status = online
     ? `<div class="live"><span class="d"></span>ONLINE</div>`
     : `<div class="gone">left ${evClock(s.left_at)}</div>`
   const uid = s.uid ? `<span class="uid" title="${esc(s.uid)}">${esc(String(s.uid).length > 14 ? String(s.uid).slice(0,6)+'…'+String(s.uid).slice(-4) : s.uid)}</span>` : '<span class="uid" title="CS2 redacts SteamIDs">—</span>'
+  const primary = s.userName || s.name
+  const playerNote = s.userName && s.name && s.name !== s.userName ? `<span class="acct">player ${esc(s.name)}</span>` : ''
+  const linked = s.userName ? `<span class="acct">linked</span>` : '<span class="acct unlinked">unlinked</span>'
+  const linkCtl = linkable && s.playerId
+    ? `<div class="sel"><select class="eco-link act-link" data-player="${s.playerId}" aria-label="link ${esc(s.name)} to an account">${userOptionHtml(users, s.userId)}</select></div>`
+    : ''
   return `
     <div class="ev fadein">
-      <div class="pav" style="${pAvatar(s.name)}">${esc(String(s.name || '?')[0].toUpperCase())}</div>
+      <div class="pav" style="${pAvatar(primary)}">${esc(String(primary || '?')[0].toUpperCase())}</div>
       <div class="pmeta">
-        <b>${esc(s.name)}</b>
-        <div class="sub"><span class="gtag">${esc(s.serverName)}</span>joined ${evClock(s.joined_at)} ${uid}</div>
+        <b>${esc(primary)}</b>
+        <div class="sub"><span class="gtag">${esc(s.serverName)}</span>${linked}${playerNote} joined ${evClock(s.joined_at)} ${uid}</div>
       </div>
-      <div class="right"><div class="dur">${evDur(s)}</div>${right}</div>
+      <div class="right">${linkCtl}<div class="dur">${evDur(s)}</div>${status}</div>
     </div>`
 }
 
 /* ═════════════════════════ ACTIVITY VIEW (presence + timeline) ═════════════════════════ */
+function renderActivityFilter(){
+  const sel = document.getElementById('actFilter')
+  sel.innerHTML = ['<option value="all">All servers</option>']
+    .concat(servers.map(s => `<option value="${esc(s.id)}"${activityFilter === s.id ? ' selected' : ''}>${esc(s.name)}</option>`))
+    .join('')
+  sel.onchange = () => { activityFilter = sel.value; loadActivity() }
+  const show = document.getElementById('actShowUnlinked')
+  show.checked = activityShowUnlinked
+  show.onchange = () => { activityShowUnlinked = show.checked; loadActivity() }
+}
+async function loadUsersForLinks(){
+  if (ecoUsers.length) return ecoUsers
+  ecoUsers = await dbGetEconomyUsers().catch(() => [])
+  return ecoUsers
+}
+function wireActivityLinks(root){
+  root.querySelectorAll('.act-link').forEach(sel => {
+    sel.onchange = async () => {
+      const playerId = Number(sel.dataset.player)
+      const userId = sel.value ? Number(sel.value) : null
+      sel.disabled = true
+      try {
+        await dbLinkPlayerAccount(playerId, userId)
+        toast(userId ? 'Linked account' : 'Unlinked account')
+        loadActivity()
+      } catch (e) {
+        toast(errMsg(e), 'err')
+      } finally {
+        sel.disabled = false
+      }
+    }
+  })
+}
 function startActivity(){
   document.getElementById('tcount').textContent = 'activity'
+  renderActivityFilter()
   document.getElementById('actRefresh').onclick = () => loadActivity()
   if (activityTimer) clearInterval(activityTimer)
   activityTimer = setInterval(() => {
@@ -1323,12 +1409,16 @@ async function loadActivity(){
   const strip = document.getElementById('onlineStrip')
   const list = document.getElementById('actlist')
   const seq = ++activityLoadSeq
-  let online, rows
+  let online, rows, users = []
   try {
     // Destructuring-assignment to the let-bound vars above. The `try {` brace is
     // the preceding token, so the leading `[` is not an ASI hazard — but keep the
     // `let online, rows` line above it (don't merge) so it stays unambiguous.
-    [online, rows] = await Promise.all([dbGetOnline(), dbGetActivity({ limit: 150 })])
+    [online, rows] = await Promise.all([
+      dbGetOnline(),
+      activityShowUnlinked ? dbGetActivityAll({ limit: 150 }) : dbGetActivity({ limit: 150 }),
+    ])
+    if (activityShowUnlinked) users = await loadUsersForLinks()
   } catch (e) {
     if (seq !== activityLoadSeq) return
     strip.innerHTML = ''
@@ -1336,17 +1426,21 @@ async function loadActivity(){
     return
   }
   if (seq !== activityLoadSeq) return     // latest-wins
-  strip.innerHTML = !online.length
+  const visibleOnline = activityFilter === 'all' ? online : online.filter(o => o.slug === activityFilter)
+  const visibleRows = (activityFilter === 'all' ? rows : rows.filter(r => r.slug === activityFilter))
+    .map(s => ({ ...s, serverName: s.gameName }))
+  strip.innerHTML = !visibleOnline.length
     ? `<div class="online-empty"><span class="d off"></span>Nobody's online right now.</div>`
-    : `<div class="online-h"><span class="d"></span>${online.length} online now</div>` + online.map(o => `
+    : `<div class="online-h"><span class="d"></span>${visibleOnline.length} online now</div>` + visibleOnline.map(o => `
         <div class="ochip">
-          <div class="pav" style="${pAvatar(o.name)}">${esc(String(o.name || '?')[0].toUpperCase())}</div>
-          <div class="ometa"><b>${esc(o.name)}</b><span class="gtag">${esc(o.gameName)}</span></div>
+          <div class="pav" style="${pAvatar(o.userName || o.name)}">${esc(String(o.userName || o.name || '?')[0].toUpperCase())}</div>
+          <div class="ometa"><b>${esc(o.userName || o.name)}</b><span class="gtag">${esc(o.gameName)}</span></div>
           <div class="odur">${evDur({ joined_at: o.joined_at, left_at: null })}</div>
         </div>`).join('')
-  list.innerHTML = rows.length
-    ? rows.map(s => evRowHTML({ ...s, serverName: s.gameName })).join('')
+  list.innerHTML = visibleRows.length
+    ? visibleRows.map(s => evRowHTML(s, { linkable: activityShowUnlinked, users })).join('')
     : '<div class="ev-empty">No sessions recorded yet.</div>'
+  if (activityShowUnlinked) wireActivityLinks(list)
 }
 
 /* ═════════════════════════ ECONOMY VIEW (admin: playtime → dollars) ═════════════════════════ */
@@ -1354,28 +1448,67 @@ function startEconomy(){
   document.getElementById('tcount').textContent = 'economy'
   document.getElementById('ecoSave').onclick = saveEconomy
   document.getElementById('ecoCredit').onclick = creditNow
+  const form = document.getElementById('userForm')
+  if (!form.dataset.wired) {
+    form.dataset.wired = '1'
+    form.addEventListener('submit', createSiteUser)
+  }
   loadEconomy()
 }
 async function loadEconomy(){
   const list = document.getElementById('ecoPlayers')
-  let settings, users, players
+  let settings, users, players, siteUsers
   try {
     // Destructuring-assignment to the let-bound vars above; safe after `try {`
     // (see loadActivity). users is the link-dropdown source, cached in ecoUsers.
-    [settings, users, players] = await Promise.all([dbGetEconomySettings(), dbGetEconomyUsers(), dbGetEconomyPlayers()])
+    [settings, users, players, siteUsers] = await Promise.all([dbGetEconomySettings(), dbGetEconomyUsers(), dbGetEconomyPlayers(), dbAdminUsers()])
   } catch (e) {
     list.innerHTML = `<div class="ev-empty pane-err">economy unavailable: ${esc(errMsg(e))}</div>`
     return
   }
   ecoUsers = users
+  adminUsers = siteUsers
   document.getElementById('ecoRate').value = settings.dollarsPerHour
   document.getElementById('ecoCap').value = settings.maxSessionMinutes
+  renderSiteUsers()
   renderEcoPlayers(players)
 }
 function ecoUserOptions(selected){
-  return ['<option value="">— none —</option>']
-    .concat(ecoUsers.map(u => `<option value="${u.id}"${u.id === selected ? ' selected' : ''}>${esc(u.name)}</option>`))
-    .join('')
+  return userOptionHtml(ecoUsers, selected)
+}
+function renderSiteUsers(){
+  const list = document.getElementById('userList')
+  if (!adminUsers.length) { list.innerHTML = '<div class="ev-empty">No site accounts yet.</div>'; return }
+  list.innerHTML = adminUsers.map(u => `
+    <span class="user-chip">
+      <b>${esc(u.display_name || u.username)}</b>
+      <span>@${esc(u.username)}</span>
+      <span class="role">${u.is_admin ? 'kleptocrat' : 'citizen'}</span>
+    </span>`).join('')
+}
+async function createSiteUser(e){
+  e.preventDefault()
+  const btn = e.submitter
+  const username = document.getElementById('newUsername').value.trim()
+  const displayName = document.getElementById('newDisplayName').value.trim()
+  const password = document.getElementById('newPassword').value
+  const role = document.getElementById('newRole').value
+  if (!username || !displayName || !password) { ecoMsg('Username, display name, and password are required.', true); return }
+  if (password.length < 12) { ecoMsg('Password must be at least 12 characters.', true); return }
+  if (btn) btn.disabled = true
+  try {
+    await dbAdminCreateUser({ username, displayName, password, isAdmin: role === 'kleptocrat' })
+    document.getElementById('newUsername').value = ''
+    document.getElementById('newDisplayName').value = ''
+    document.getElementById('newPassword').value = ''
+    ecoMsg('User added.', false)
+    ecoUsers = []
+    await loadEconomy()
+  } catch (err) {
+    ecoMsg(errMsg(err), true)
+  } finally {
+    if (btn) btn.disabled = false
+  }
 }
 function renderEcoPlayers(players){
   const list = document.getElementById('ecoPlayers')
@@ -1430,17 +1563,124 @@ async function creditNow(){
 }
 
 /* ═════════════════════════ MAP VIEW (embedded BlueMap) ═════════════════════════ */
+function wireMapModes(){
+  document.querySelectorAll('[data-map-mode]').forEach(btn => {
+    if (btn.dataset.wired) return
+    btn.dataset.wired = '1'
+    btn.addEventListener('click', () => {
+      mapMode = btn.dataset.mapMode
+      mapMeData = null
+      syncMapMode()
+      if (mapMode === 'minecraft') {
+        if (!mapTimer) startMap()
+        else { loadMapStatus(); loadMapMe() }
+      } else if (mapTimer) {
+        clearInterval(mapTimer); mapTimer = null
+      }
+    })
+  })
+}
 function startMap(){
-  document.getElementById('tcount').textContent = 'world map'
+  wireMapModes()
+  syncMapMode()
   // Lazy-load the BlueMap app only when the Map tab is first opened (it's a heavy
   // 3D canvas). Same-origin iframe → the session cookie passes the /map auth gate.
-  if (!mapLoaded) { document.getElementById('mapFrame').src = '/map/'; mapLoaded = true }
   if (mapTimer) clearInterval(mapTimer)
   mapTimer = setInterval(() => {
-    if (curView === 'map') loadMapStatus()
+    if (curView === 'map' && mapMode === 'minecraft') { loadMapStatus(); loadMapMe() }
     else { clearInterval(mapTimer); mapTimer = null }
   }, 15000)
-  loadMapStatus()
+  if (mapMode === 'minecraft') { loadMapStatus(); loadMapMe() }
+}
+
+function syncMapMode(){
+  const minecraft = mapMode === 'minecraft'
+  document.getElementById('tcount').textContent = minecraft ? 'world map' : 'factory map'
+  document.querySelectorAll('[data-map-mode]').forEach(btn => btn.classList.toggle('on', btn.dataset.mapMode === mapMode))
+  document.getElementById('mapNote').textContent = minecraft
+    ? 'Live 3D map of the Minecraft world (BlueMap). Switch dimensions inside the map.'
+    : 'Linked Factorio account position. Coordinate lookup uses Factorio /sc and disables achievements for this save.'
+  document.getElementById('mapFrame').hidden = !minecraft
+  document.getElementById('factorioMap').hidden = minecraft
+  document.getElementById('mapOpen').style.display = minecraft ? '' : 'none'
+  const locate = document.getElementById('mapLocate')
+  locate.textContent = minecraft ? 'Locate me' : 'Load position'
+  locate.onclick = minecraft ? locateMapMe : loadMapMe
+  if (minecraft) {
+    if (!mapLoaded) { document.getElementById('mapFrame').src = '/map/'; mapLoaded = true }
+  } else {
+    const box = document.getElementById('mapStatus')
+    box.className = 'map-status complete'
+    document.getElementById('mapStatusText').textContent = 'Coordinate mode'
+    document.getElementById('mapMe').innerHTML = '<div class="ev-empty">Factorio lookup uses /sc and disables achievements. Use Load position when that is acceptable.</div>'
+    document.getElementById('factorioGrid').innerHTML = ''
+  }
+}
+
+function fmtCoord(n){
+  return Number.isFinite(Number(n)) ? Number(n).toFixed(1) : '—'
+}
+
+function renderMapMe(data){
+  mapMeData = data
+  const box = document.getElementById('mapMe')
+  const grid = document.getElementById('factorioGrid')
+  const name = data?.player?.name || data?.position?.name || 'linked player'
+  if (!data?.linked) {
+    box.innerHTML = `<div class="ev-empty">${esc(data?.reason || 'No linked account for this server.')}</div>`
+    if (grid) grid.innerHTML = ''
+    return
+  }
+  if (!data?.online) {
+    box.innerHTML = `<div class="ev-empty">${esc(data?.reason || 'Linked player is not online.')}</div>`
+    if (grid) grid.innerHTML = ''
+    return
+  }
+  const p = data.position || {}
+  if (data.serverId === 'factorio') {
+    box.innerHTML = `
+      <div class="ev">
+        <div class="pav" style="${pAvatar(name)}">${esc(String(name || '?')[0].toUpperCase())}</div>
+        <div class="pmeta"><b>${esc(name)}</b><div class="sub"><span class="gtag">Factorio</span>${esc(p.surface || 'nauvis')} · ${esc(p.achievementWarning || '')}</div></div>
+        <div class="right"><div class="live"><span class="d"></span>ONLINE</div></div>
+      </div>`
+    grid.innerHTML = `
+      <div class="coord"><span>Surface</span><b>${esc(p.surface || 'nauvis')}</b></div>
+      <div class="coord"><span>X</span><b>${esc(fmtCoord(p.x))}</b></div>
+      <div class="coord"><span>Y</span><b>${esc(fmtCoord(p.y))}</b></div>
+      <div class="coord"><span>Updated</span><b>${esc(p.updatedAt ? new Date(p.updatedAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : 'now')}</b></div>`
+    return
+  }
+  box.innerHTML = `
+    <div class="ev">
+      <div class="pav" style="${pAvatar(name)}">${esc(String(name || '?')[0].toUpperCase())}</div>
+      <div class="pmeta"><b>${esc(name)}</b><div class="sub"><span class="gtag">Minecraft</span>${esc(p.dimension || 'minecraft:overworld')}</div></div>
+      <div class="right"><div class="live"><span class="d"></span>ONLINE</div></div>
+    </div>
+    <div class="coord-grid">
+      <div class="coord"><span>Map</span><b>${esc(p.mapId || 'overworld')}</b></div>
+      <div class="coord"><span>X</span><b>${esc(fmtCoord(p.x))}</b></div>
+      <div class="coord"><span>Y</span><b>${esc(fmtCoord(p.y))}</b></div>
+      <div class="coord"><span>Z</span><b>${esc(fmtCoord(p.z))}</b></div>
+    </div>`
+}
+
+function locateMapMe(){
+  const anchor = mapMeData?.position?.anchor
+  if (!anchor) { loadMapMe(); return }
+  document.getElementById('mapFrame').src = `/map/#${encodeURIComponent(anchor).replace(/%3A/g, ':')}`
+}
+
+async function loadMapMe(){
+  const seq = ++mapMeSeq
+  try {
+    const data = mapMode === 'minecraft' ? await dbGetMapMe() : await dbGetServerMapMe('factorio')
+    if (seq !== mapMeSeq || curView !== 'map') return
+    renderMapMe(data)
+  } catch (e) {
+    if (seq !== mapMeSeq || curView !== 'map') return
+    document.getElementById('mapMe').innerHTML = `<div class="ev-empty pane-err">position unavailable: ${esc(errMsg(e))}</div>`
+  }
 }
 
 function renderMapStatus(s){
@@ -3046,6 +3286,8 @@ const FK = {
   'comments.author_id':{ t:'users', c:'id' },
   'leaderboard.user_id':{ t:'users', c:'id' },
   'gambling_events.user_id':{ t:'users', c:'id' },
+  'player_accounts.user_id':{ t:'users', c:'id' },
+  'player_accounts.player_id':{ t:'players', c:'id' },
   'server_active_profile.profile_id':{ t:'server_profiles', c:'id' },
   'server_sessions.game_id':{ t:'games', c:'id' },
   'server_sessions.player_id':{ t:'players', c:'id' },
@@ -3078,6 +3320,17 @@ function fmtTs(epoch){
 }
 function tryJson(v){ if (typeof v !== 'string') return null; const s = v.trim(); if (!(s.startsWith('{') || s.startsWith('['))) return null; try { return JSON.parse(s) } catch { return null } }
 function fkFor(tbl, col){ return FK[tbl + '.' + col] }
+function userNameById(id){
+  const u = adminUsers.find(x => Number(x.id) === Number(id))
+  return u ? (u.display_name || u.name || u.username) : ''
+}
+function fkDisplay(ref, val){
+  if (ref.t === 'users') return userNameById(val) || `user ${val}`
+  return String(val)
+}
+function fkLink(ref, val){
+  return `<a data-fk="${esc(ref.t)}" data-fkid="${esc(val)}" title="→ ${esc(ref.t)}.${esc(ref.c)} ${esc(val)}">${esc(fkDisplay(ref, val))}</a>`
+}
 
 async function startData(){
   document.getElementById('tcount').textContent = 'database'
@@ -3085,7 +3338,7 @@ async function startData(){
   if (dataLoaded) return
   dataLoaded = true
   try {
-    dbTables = await dbAdminTables()
+    ;[dbTables, adminUsers] = await Promise.all([dbAdminTables(), dbAdminUsers().catch(() => [])])
   } catch (e) {
     document.getElementById('tList').innerHTML = `<div class="tlempty pane-err">tables unavailable: ${esc(errMsg(e))}</div>`
     toast(errMsg(e), 'err'); return
@@ -3191,7 +3444,9 @@ function renderGrid(isSql){
 }
 function renderCell(tbl, col, val){
   const dt = colDisplayType(col)
+  const ref = fkFor(tbl, col.name)
   if (val === null || val === undefined) return { cls:'null', html:'null', copy:'', title:'' }
+  if (ref) return { cls:'fk', html:fkLink(ref, val), copy:String(val), title:`${fkDisplay(ref, val)} (${ref.t}.${ref.c} ${val})` }
   if (dt === 'mask') return { cls:'mask', html:'argon2id$&bull;&bull;&bull;&bull;&bull;&bull;', copy:'[masked]', title:'password_hash — masked' }
   if (dt === 'int' || dt === 'real') {
     const n = Number(val); const disp = dt === 'real' && Number.isFinite(n) ? n.toFixed(3) : (Number.isFinite(n) ? n.toLocaleString() : String(val))
@@ -3201,9 +3456,6 @@ function renderCell(tbl, col, val){
   if (dt === 'ts') { const f = fmtTs(val); return { cls:'ts', html:esc(f), copy:f, title:String(val) } }
   // JSON detection
   if (tryJson(val)) return { cls:'', html:`<span class="jchip" data-json="1">{…}</span>`, copy:val, title:'JSON · click to expand' }
-  // fk
-  const ref = fkFor(tbl, col.name)
-  if (ref) return { cls:'fk', html:`<a data-fk="${esc(ref.t)}" data-fkid="${esc(val)}" title="→ ${esc(ref.t)}.${esc(ref.c)}">${esc(val)}</a>`, copy:String(val), title:'' }
   // pk text accent
   if (col.pk) return { cls:'txt fk', html:`<a title="${esc(val)}">${esc(val)}</a>`, copy:String(val), title:String(val) }
   return { cls:'txt', html:esc(String(val)), copy:String(val), title:String(val) }
@@ -3267,16 +3519,17 @@ function openRecord(ri, focusJsonCol){
   const kvs = curCols.map(c => {
     const dt = colDisplayType(c)
     const val = row[c.name]
+    const ref = fkFor(curTable, c.name)
     const isNull = val === null || val === undefined
     let vHtml, vCls = '', copy = val, jsonExpand = false
     if (isNull) { vHtml = 'null'; vCls = 'null'; copy = '' }
     else if (dt === 'mask') { vHtml = 'argon2id$&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;'; vCls = 'mask'; copy = '[masked]' }
+    else if (ref) { vHtml = `${fkLink(ref, val)} <span style="color:var(--txt-faint);font-size:10px">→ ${esc(ref.t)}.${esc(ref.c)}</span>`; vCls = 'fk'; copy = String(val) }
     else if (dt === 'int' || dt === 'real') { const n = Number(val); vHtml = esc(dt === 'real' && Number.isFinite(n) ? n.toFixed(3) : (Number.isFinite(n) ? n.toLocaleString() : String(val))); vCls = 'num'; copy = String(val) }
     else if (dt === 'bool') { const on = Number(val) === 1; vHtml = `<span class="bchip ${on ? 'yes' : 'no'}"><span class="bd"></span>${on ? 'true (1)' : 'false (0)'}</span>`; copy = String(val) }
     else if (dt === 'ts') { vHtml = `${esc(fmtTs(val))}<small>epoch ${esc(val)}</small>`; vCls = 'ts'; copy = String(val) }
     else if (tryJson(val)) { vHtml = `<span class="jchip" data-rowjson="${esc(c.name)}">{…} expand</span><div class="json-pre" data-jsonpre="${esc(c.name)}" style="display:${focusJsonCol === c.name ? 'block' : 'none'}">${syntaxJSON(val)}</div>`; copy = val; jsonExpand = true }
-    else { const ref = fkFor(curTable, c.name); if (ref) { vHtml = `<a data-fk="${esc(ref.t)}" data-fkid="${esc(val)}">${esc(val)}</a> <span style="color:var(--txt-faint);font-size:10px">→ ${esc(ref.t)}.${esc(ref.c)}</span>`; vCls = 'fk'; copy = String(val) } else { vHtml = esc(String(val)); vCls = 'txt copyable'; copy = String(val) } }
-    const ref = fkFor(curTable, c.name)
+    else { vHtml = esc(String(val)); vCls = 'txt copyable'; copy = String(val) }
     const ktype = ref ? 'fk → ' + ref.t : (c.pk ? 'pk · ' + (TYPE_HINT[String(c.type||'').toUpperCase()] || dt) : (c.masked ? 'hash' : dt === 'ts' ? 'epoch' : (TYPE_HINT[String(c.type||'').toUpperCase()] || dt)))
     return `<div class="kvrow"><div class="k">${esc(c.name)}<span class="kt">${esc(ktype)}</span></div><div class="v ${vCls}" data-copy="${esc(copy ?? '')}">${vHtml}</div></div>`
   }).join('')

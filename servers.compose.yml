@@ -90,8 +90,8 @@ services:
       PORT: "27066"
       GSLT: ${GMOD_GSLT:-}
       RCON_PASSWORD: ${GMOD_RCON_PASSWORD:?set GMOD_RCON_PASSWORD in project .env}
-      WORKSHOP_COLLECTION: ${GMOD_WORKSHOP_COLLECTION:-}
-      DEFAULT_MAP: ${GMOD_DEFAULT_MAP:-gm_construct}
+      WORKSHOP_COLLECTION: ${GMOD_WORKSHOP_COLLECTION:-3736674438}
+      DEFAULT_MAP: ${GMOD_DEFAULT_MAP:-ttt_clue_se}
       SKIP_CSS: ${SKIP_CSS:-}
     volumes:
       - gmod-data:/data

@@ -89,12 +89,17 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     const s = this.validateProfileSettings(settings);
     const parts = [];
     if (s.hostname) parts.push(`hostname "${s.hostname}"`);
-    parts.push(`game_alias ${s.gameMode}`);
+    parts.push(`sv_password "${s.password}"`);
+    parts.push(`game_alias ${csProfile.gameAliasForProfile(s)}`);
     // Structured Match-Rules cvars (bools as 0/1). Pushed before the map change so
     // mp_roundtime_defuse etc. bite on the reload the changelevel/host_workshop_map triggers.
     for (const f of csProfile.CS_CVAR_FIELDS) {
-      parts.push(`${f.cvar} ${f.bool ? (s[f.key] ? 1 : 0) : s[f.key]}`);
+      const value = f.bool ? (s[f.key] ? 1 : 0) : s[f.key];
+      if (f.cvar === 'bot_quota' && Number(value) === 0) parts.push('bot_quota 0; bot_kick');
+      else parts.push(`${f.cvar} ${value}`);
     }
+    const loadout = csProfile.loadoutModeCmd(s.loadoutMode);
+    if (loadout) parts.push(loadout);
     parts.push(...rawConfigCommands(s.rawConfig));
     parts.push(csProfile.buildChangeMapCmd(s.map)); // changelevel / host_workshop_map
     for (const batch of rconBatches(parts)) await this.#rcon(batch);
@@ -108,6 +113,13 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
   // returns the validated defaults (the profile editor is the source of truth).
   async captureProfileSettings() {
     return this.validateProfileSettings(csProfile.defaultProfileSettings());
+  }
+
+  async connectPassword() {
+    if (!this.store) return '';
+    const activeId = this.store.getActiveProfileId(this.server.id);
+    const active = activeId != null ? this.store.getProfile(this.server.id, activeId) : null;
+    return active?.settings ? this.validateProfileSettings(active.settings).password : '';
   }
 
   // ── workshop map catalog (DB-backed; transport-agnostic) ────────────────────

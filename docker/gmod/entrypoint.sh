@@ -102,6 +102,20 @@ if [ ! -f /data/.gt-seeded ]; then
   touch /data/.gt-seeded
 fi
 
+# Existing volumes may have been first-seeded with the old gm_construct fallback.
+# If the panel has not applied a profile yet, let compose env defaults repair that
+# stale seed without touching profile-managed servers.
+if ! grep -q '^gt_active_profile=' "$INST_CFG" 2>/dev/null; then
+  curmap="$(sed -n 's/^defaultmap="\([^"]*\)".*/\1/p' "$INST_CFG" 2>/dev/null | head -n1)"
+  curws="$(sed -n 's/^wscollectionid="\([^"]*\)".*/\1/p' "$INST_CFG" 2>/dev/null | head -n1)"
+  if [ -n "${WORKSHOP_COLLECTION:-}" ] && [ -z "$curws" ]; then
+    seedvar "$INST_CFG" wscollectionid "$WORKSHOP_COLLECTION"
+  fi
+  if [ -n "${DEFAULT_MAP:-}" ] && { [ -z "$curmap" ] || [ "$curmap" = "gm_construct" ] || [ "$curmap" = "gm_flatgrass" ]; }; then
+    seedvar "$INST_CFG" defaultmap "$DEFAULT_MAP"
+  fi
+fi
+
 # ── 3b. Dev-only: LAN + insecure boot ─────────────────────────────────────────
 # A Source/GMOD client on the SAME host binds its socket to the host's LAN IP and
 # CANNOT send to 127.0.0.1 (loopback is a separate interface), and a VAC-secure

@@ -55,6 +55,11 @@ const PH_CVARS = [
   { cvar: 'ph_hunter_fire_penalty',     key: 'firePenalty',     label: 'Hunter Fire Penalty', def: 10,  min: 0,  max: 25,  int: true },
 ];
 
+// Tinkerer "Tweak" surface: the fun/practical Hunt Rules knobs flagged basic so the
+// persona panel's Tweak mode shows just these (the rest stay in Full → Profiles).
+// cvarField propagates the flag onto the rendered field objects.
+const PH_BASIC = new Set(['waitForPlayers', 'swapTeams', 'luckyBalls', 'roundTime', 'blindTime', 'roundsPerMap', 'propJump']);
+
 // Default controls + how to reach X2Z's in-game menus (shown read-only in the
 // "Controls & In-Game Menus" config section). Commands verified from the gamemode.
 const PH_CONTROLS = [
@@ -185,8 +190,8 @@ export class PropHuntConnector extends GmodConnector {
     const phMaps = [...new Set(discovered.filter((m) => m.startsWith('ph_')))];
     const mapOpts = phMaps.map((m) => ({ value: m, label: m }));
     const cvarField = (f) => f.bool
-      ? { key: f.key, label: f.label, type: 'bool' }
-      : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.1 };
+      ? { key: f.key, label: f.label, type: 'bool', ...(PH_BASIC.has(f.key) ? { basic: true } : {}) }
+      : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.1, ...(PH_BASIC.has(f.key) ? { basic: true } : {}) };
     const infoField = (c) => ({ key: c.key, label: c.label, type: 'info', help: c.help });
     return {
       groups: [
@@ -199,7 +204,7 @@ export class PropHuntConnector extends GmodConnector {
               placeholder: '3737190377',
               readOnly: true,
               help: 'Read-only here: Apply does not rewrite the Prop Hunt collection, because changing it can break the X2Z mount. Use Import Collection or Raw Config when you intentionally need to change it.' },
-            { key: 'syncMaps', label: 'Sync Maps', type: 'mapsync', basic: true,
+            { key: 'syncMaps', label: 'Sync Maps', type: 'mapsync',
               help: 'Refresh the installed ph_ map list from the mounted collection (run after the collection changes + a restart).' },
             { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1, basic: true },
           ],

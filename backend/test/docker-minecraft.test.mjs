@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import net from 'node:net';
 
 import * as mp from '../src/servers/connectors/minecraft-profile.js';
 import { clampNumber } from '../src/servers/connectors/docker-base.js';
@@ -125,16 +126,72 @@ test('mc-profile CVAR_REF catalogs on-disk keys with bounds', () => {
 
 // ── Docker connector wires the shared groups + a world picker ────────────────────
 function fakeMcClient(files = {}) {
+  const execs = [];
   return {
-    files,
+    files, execs,
     async agentFileRead(_c, path) { return { content: files[path] ?? '' }; },
     async agentFileWrite(_c, path, content) { files[path] = content; return null; },
-    async agentExec() { return { pid: 'p' }; },
+    async agentExec(_c, { command }) { execs.push(command); return { pid: 'p' }; },
     async agentExecStatus() { return { exited: 1, exitcode: 0, 'out-data': '', 'err-data': '' }; },
   };
 }
 
 const MC = { id: 'minecraft', name: 'Minecraft', backend: 'docker', container: 'minecraft', port: 25565 };
+
+function fakeMcClientWithExec(files = {}, stdout = '') {
+  const client = fakeMcClient(files);
+  client.agentExecStatus = async () => ({ exited: 1, exitcode: 0, 'out-data': stdout, 'err-data': '' });
+  return client;
+}
+
+function encodeRcon(id, type, body) {
+  const b = Buffer.from(body, 'ascii');
+  const size = 4 + 4 + b.length + 2;
+  const buf = Buffer.allocUnsafe(4 + size);
+  buf.writeInt32LE(size, 0); buf.writeInt32LE(id, 4); buf.writeInt32LE(type, 8);
+  b.copy(buf, 12); buf.writeInt8(0, 12 + b.length); buf.writeInt8(0, 13 + b.length);
+  return buf;
+}
+
+async function withRconCapture(run, responder = () => '') {
+  const commands = [];
+  const server = net.createServer((sock) => {
+    let buf = Buffer.alloc(0);
+    sock.on('data', (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      while (buf.length >= 4) {
+        const size = buf.readInt32LE(0);
+        if (buf.length < 4 + size) break;
+        const id = buf.readInt32LE(4);
+        const type = buf.readInt32LE(8);
+        const body = buf.toString('ascii', 12, 4 + size - 2);
+        buf = buf.subarray(4 + size);
+        if (type === 3) { sock.write(encodeRcon(id, 2, '')); continue; }
+        if (id === 3) { sock.write(encodeRcon(3, 0, '')); continue; }
+        commands.push(body);
+        sock.write(encodeRcon(id, 0, responder(body)));
+      }
+    });
+  });
+  await new Promise((res) => server.listen(0, '127.0.0.1', res));
+  const { port } = server.address();
+  try { await run({ port }); } finally { await new Promise((res) => server.close(res)); }
+  return commands;
+}
+
+async function captureMinecraftRcon(run, responder) {
+  const prev = process.env.MINECRAFT_RCON_PASSWORD;
+  process.env.MINECRAFT_RCON_PASSWORD = 'secret';
+  try {
+    return await withRconCapture(async ({ port }) => {
+      const conn = new DockerMinecraftConnector({ ...MC, container: '127.0.0.1', rconPort: port }, fakeMcClient());
+      await run(conn);
+    }, responder);
+  } finally {
+    if (prev === undefined) delete process.env.MINECRAFT_RCON_PASSWORD;
+    else process.env.MINECRAFT_RCON_PASSWORD = prev;
+  }
+}
 
 test('DockerMinecraft profileSchema groups World/Gameplay/Access with a world picker + cvarRef', async () => {
   const conn = new DockerMinecraftConnector(MC, fakeMcClient({ '/data/server.properties': 'level-name=world\n' }));
@@ -145,7 +202,20 @@ test('DockerMinecraft profileSchema groups World/Gameplay/Access with a world pi
   assert.ok(Array.isArray(cvarRef) && cvarRef.length); // reference catalog is embedded
 });
 
-// ── live runtime: getLive shape (actions + slider controls, NO changeMap) ────────
+// Docker connector world discovery uses the in-container /data layout.
+test('DockerMinecraft profileSchema discovers /data worlds with the level.dat find command', async () => {
+  const client = fakeMcClientWithExec(
+    { '/data/server.properties': 'level-name=active\n' },
+    'active\ncreative_world\n',
+  );
+  const conn = new DockerMinecraftConnector(MC, client);
+  const { groups } = await conn.profileSchema();
+  assert.ok(client.execs.some((cmd) => cmd.join(' ').includes('find "/data" -maxdepth 2 -name level.dat')));
+  const options = groups[0].fields.find((f) => f.key === 'world').options.map((o) => o.value);
+  assert.deepEqual(options, ['', 'active', 'creative_world']);
+});
+
+// Live runtime: getLive shape (actions + slider controls, NO changeMap).
 test('DockerMinecraft getLive advertises actions + controls and no changeMap', async () => {
   const prev = process.env.MINECRAFT_RCON_PASSWORD;
   process.env.MINECRAFT_RCON_PASSWORD = 'x';
@@ -155,9 +225,10 @@ test('DockerMinecraft getLive advertises actions + controls and no changeMap', a
     assert.equal(live.available, true);
     assert.equal(live.changeMap, undefined); // world switch is restart-only
     const actionKeys = live.actions.map((a) => a.key);
-    for (const k of ['day', 'night', 'clear', 'rain', 'keepinv_on', 'keepinv_off', 'mobs_on', 'mobs_off']) {
-      assert.ok(actionKeys.includes(k), `action ${k}`);
-    }
+    assert.deepEqual(actionKeys,
+      ['list', 'save', 'day', 'night', 'clear', 'rain', 'keepinv_on', 'keepinv_off', 'mobs_on', 'mobs_off',
+       'daycycle_on', 'daycycle_off', 'griefing_on', 'griefing_off', 'falldmg_on', 'falldmg_off',
+       'instarespawn_on', 'instarespawn_off', 'phantoms_on', 'phantoms_off', 'firetick_on', 'firetick_off', 'thunder']);
     const ctlKeys = live.controls.map((c) => c.key);
     assert.deepEqual(ctlKeys, ['time', 'randomtick', 'sleeppct']);
     const t = live.controls.find((c) => c.key === 'time');
@@ -188,6 +259,95 @@ test('DockerMinecraft runLiveAction rejects unknown keys with BAD_SETTING', asyn
   await assert.rejects(() => conn.runLiveAction('nope'), (e) => e.code === 'BAD_SETTING');
 });
 
+test('DockerMinecraft runLiveAction maps every advertised action to its RCON command', async () => {
+  const expected = [
+    ['list', 'list'],
+    ['save', 'save-all'],
+    ['day', 'time set day'],
+    ['night', 'time set night'],
+    ['clear', 'weather clear'],
+    ['rain', 'weather rain'],
+    ['keepinv_on', 'gamerule keep_inventory true'],
+    ['keepinv_off', 'gamerule keep_inventory false'],
+    ['mobs_on', 'gamerule spawn_mobs true'],
+    ['mobs_off', 'gamerule spawn_mobs false'],
+    ['daycycle_on', 'gamerule do_daylight_cycle true'],
+    ['daycycle_off', 'gamerule do_daylight_cycle false'],
+    ['griefing_on', 'gamerule mob_griefing true'],
+    ['griefing_off', 'gamerule mob_griefing false'],
+    ['falldmg_on', 'gamerule fall_damage true'],
+    ['falldmg_off', 'gamerule fall_damage false'],
+    ['instarespawn_on', 'gamerule do_immediate_respawn true'],
+    ['instarespawn_off', 'gamerule do_immediate_respawn false'],
+    ['phantoms_on', 'gamerule do_insomnia true'],
+    ['phantoms_off', 'gamerule do_insomnia false'],
+    ['firetick_on', 'gamerule do_fire_tick true'],
+    ['firetick_off', 'gamerule do_fire_tick false'],
+    ['thunder', 'weather thunder'],
+  ];
+  const commands = await captureMinecraftRcon(async (conn) => {
+    for (const [key] of expected) await conn.runLiveAction(key);
+  });
+  assert.deepEqual(commands, expected.map(([, command]) => command));
+});
+
+test('DockerMinecraft runLiveAction maps every slider control to clamped RCON commands', async () => {
+  const cases = [
+    ['time', 12345, 'time set 12345'],
+    ['time', 99999, 'time set 24000'],
+    ['time', -5, 'time set 0'],
+    ['time', '', 'time set 6000'],
+    ['randomtick', 7, 'gamerule random_tick_speed 7'],
+    ['randomtick', 99, 'gamerule random_tick_speed 20'],
+    ['randomtick', 0, 'gamerule random_tick_speed 0'],
+    ['randomtick', 'abc', 'gamerule random_tick_speed 3'],
+    ['sleeppct', 55, 'gamerule players_sleeping_percentage 55'],
+    ['sleeppct', 101, 'gamerule players_sleeping_percentage 100'],
+    ['sleeppct', -1, 'gamerule players_sleeping_percentage 0'],
+    ['sleeppct', null, 'gamerule players_sleeping_percentage 100'],
+  ];
+  assert.deepEqual([...new Set(cases.map(([key]) => key))], ['time', 'randomtick', 'sleeppct']);
+  const commands = await captureMinecraftRcon(async (conn) => {
+    for (const [key, value] of cases) await conn.runLiveAction(key, value);
+  });
+  assert.deepEqual(commands, cases.map(([, , command]) => command));
+});
+
+test('DockerMinecraft sendCommand trims + forwards valid commands and rejects bad input', async () => {
+  const commands = await captureMinecraftRcon((conn) => conn.sendCommand('  say hello  '));
+  assert.deepEqual(commands, ['say hello']);
+
+  const conn = new DockerMinecraftConnector(MC, fakeMcClient());
+  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.sendCommand('a\nb'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.sendCommand('x'.repeat(513)), (e) => e.code === 'BAD_SETTING');
+});
+
+test('DockerMinecraft getPlayerPosition parses position, dimension, and BlueMap anchor', async () => {
+  let position;
+  const commands = await captureMinecraftRcon(async (conn) => {
+    position = await conn.getPlayerPosition('Notch');
+  }, (command) => {
+    if (command.endsWith(' Pos')) return 'Notch has the following entity data: [12.5d, 65.0d, -30.25d]';
+    if (command.endsWith(' Dimension')) return 'Notch has the following entity data: "minecraft:the_nether"';
+    if (command.endsWith(' Rotation')) return 'Notch has the following entity data: [90.0f, 10.0f]';
+    return '';
+  });
+  assert.deepEqual(commands.sort(), [
+    'data get entity Notch Dimension',
+    'data get entity Notch Pos',
+    'data get entity Notch Rotation',
+  ]);
+  assert.equal(position.mapId, 'nether');
+  assert.equal(position.dimension, 'minecraft:the_nether');
+  assert.equal(position.x, 12.5);
+  assert.equal(position.y, 65);
+  assert.equal(position.z, -30.25);
+  assert.equal(position.yaw, 90);
+  assert.equal(position.pitch, 10);
+  assert.equal(position.anchor, 'nether:13:65:-30:390:0.1:0.19:0:0:perspective');
+});
+
 // Range clamping is pure arithmetic on the issued command; verify the clamp helper's
 // contract against MC_LIVE_CONTROLS bounds without touching the network. We mirror the
 // exact clamp the connector uses so a bounds regression in the controls table is caught.
@@ -203,4 +363,15 @@ test('DockerMinecraft live-control bounds clamp slider values', () => {
   assert.equal(clampNumber(50, 0, 20, 3), 20);
   assert.equal(clampNumber(0, 0, 20, 3), 0);
   assert.equal(clampNumber(200, 0, 100, 100), 100);
+});
+
+test('DockerMinecraft update reboots the container to refresh the configured VERSION', async () => {
+  const calls = [];
+  const client = fakeMcClient();
+  client.reboot = async (container) => { calls.push(container); return { ok: true }; };
+  const conn = new DockerMinecraftConnector(MC, client);
+  const res = await conn.update();
+  assert.deepEqual(calls, ['minecraft']);
+  assert.equal(res.ok, true);
+  assert.match(res.note, /VERSION/);
 });

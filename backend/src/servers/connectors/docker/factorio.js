@@ -24,6 +24,7 @@ const SAVES  = '/factorio/saves';
 const SERVER_SETTINGS = `${CONFIG}/server-settings.json`;
 const MAP_SETTINGS    = `${CONFIG}/map-settings.json`;
 const ACTIVE = `${SAVES}/_active.zip`; // the save the container always loads
+const FACTORIO_PLAYER_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 
 const FACTORIO_LIVE_ACTIONS = [
   { key: 'players',       label: 'List Players' },
@@ -34,6 +35,11 @@ const FACTORIO_LIVE_ACTIONS = [
   { key: 'peaceful_off',  label: 'Peaceful Off' },
   { key: 'alwaysday_on',  label: 'Always Day On' },
   { key: 'alwaysday_off', label: 'Always Day Off' },
+  // Sandbox fun (Phase 2). These use /c (console command) which, like /sc, DISABLES
+  // Steam achievements for the save (surfaced in getLive's commandHint). They mutate
+  // the running save, so the effect persists across restarts.
+  { key: 'research_all',  label: 'Research All' },
+  { key: 'cheat_mode_on', label: 'Cheat Mode On' },
 ];
 const FACTORIO_ACTION_CMDS = {
   players: '/players', time: '/time', show_evolution: '/evolution', save: '/server-save',
@@ -41,6 +47,8 @@ const FACTORIO_ACTION_CMDS = {
   peaceful_off: '/sc game.surfaces[1].peaceful_mode=false',
   alwaysday_on: '/sc game.surfaces[1].always_day=true',
   alwaysday_off:'/sc game.surfaces[1].always_day=false',
+  research_all: '/c game.forces.player.research_all_technologies()',
+  cheat_mode_on:'/c for _,p in pairs(game.players) do p.cheat_mode=true end',
 };
 // Sliders — game speed + live evolution factor (pushed via /silent-command).
 // runLiveAction clamps each value to [min,max] with clampNumber (note: a 0 value
@@ -51,6 +59,18 @@ const FACTORIO_LIVE_CONTROLS = [
   { key: 'game_speed', label: 'Game Speed', min: 0.25, max: 4, step: 0.25, default: 1, suffix: '×' },
   { key: 'evolution',  label: 'Evolution',  min: 0,    max: 1, step: 0.05, default: 0 },
 ];
+
+function extractJsonObject(text) {
+  const s = String(text || '');
+  const start = s.indexOf('{');
+  const end = s.lastIndexOf('}');
+  if (start < 0 || end < start) return null;
+  try { return JSON.parse(s.slice(start, end + 1)); } catch { return null; }
+}
+
+function luaString(value) {
+  return JSON.stringify(String(value)).replace(/\u2028|\u2029/g, '');
+}
 
 export class DockerFactorioConnector extends DockerBaseConnector {
   configFiles = {
@@ -125,6 +145,12 @@ export class DockerFactorioConnector extends DockerBaseConnector {
   }
 
   // ── quick settings: copy the live world to a named save ─────────────────────
+  async connectPassword() {
+    const text = await this.client.agentFileRead(this.vmid, SERVER_SETTINGS).then((r) => r.content ?? '').catch(() => '');
+    let json = {}; try { json = JSON.parse(text || '{}'); } catch {}
+    return typeof json.game_password === 'string' ? json.game_password : '';
+  }
+
   async getSettings() {
     return {
       sections: [
@@ -162,8 +188,8 @@ export class DockerFactorioConnector extends DockerBaseConnector {
       actions: FACTORIO_LIVE_ACTIONS,
       controls: FACTORIO_LIVE_CONTROLS,
       commandHint: 'Factorio console, e.g. /players, /time, /server-save, /c game.speed=1. '
-        + 'Note: /sc (silent-command) controls — Game Speed, Evolution, Peaceful, Always Day — '
-        + 'disable Steam achievements for the save.',
+        + 'Note: /sc and /c controls — Game Speed, Evolution, Peaceful, Always Day, Research All, '
+        + 'Cheat Mode — disable Steam achievements for the save.',
     };
   }
 
@@ -195,6 +221,46 @@ export class DockerFactorioConnector extends DockerBaseConnector {
   // (or the VERSION env) on start, so a restart re-validates the binary. A true
   // version BUMP needs a newer image pulled on the host (`docker compose pull`),
   // which the app can't do through the scoped socket-proxy.
+  async getPlayerPosition(target) {
+    const name = String(target ?? '').trim();
+    if (!FACTORIO_PLAYER_RE.test(name)) throw badSetting('invalid Factorio player name');
+    const { password, port } = await this.#rconCreds();
+    if (!password) { const e = new Error('RCON password file (/factorio/config/rconpw) not readable'); e.code = 'NO_RCON'; throw e; }
+    const command = [
+      '/sc',
+      `local p=game.get_player(${luaString(name)})`,
+      'if not p then rcon.print(helpers.table_to_json({ok=false,reason="player not found"})); return end',
+      'if not p.connected then rcon.print(helpers.table_to_json({ok=false,reason="player is not connected",name=p.name,connected=false})); return end',
+      'local pos=p.physical_position or p.position',
+      'local surf=p.physical_surface or p.surface',
+      'rcon.print(helpers.table_to_json({ok=true,name=p.name,connected=true,x=pos.x,y=pos.y,surface=surf and surf.name or nil}))',
+    ].join(' ');
+    const output = await rconExchange({ host: this.server.container, port, password, command });
+    const obj = extractJsonObject(output);
+    if (!obj) throw badSetting('could not parse Factorio player position');
+    if (!obj.ok) {
+      return {
+        connected: false,
+        reason: obj.reason || 'player position unavailable',
+        name: obj.name || name,
+        updatedAt: new Date().toISOString(),
+        achievementWarning: 'Factorio position lookup uses /sc and disables achievements for this save.',
+      };
+    }
+    const x = Number(obj.x);
+    const y = Number(obj.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw badSetting('could not parse Factorio player position');
+    return {
+      connected: true,
+      name: obj.name || name,
+      x,
+      y,
+      surface: obj.surface || 'nauvis',
+      updatedAt: new Date().toISOString(),
+      achievementWarning: 'Factorio position lookup uses /sc and disables achievements for this save.',
+    };
+  }
+
   async update() {
     await this.reboot();
     return {

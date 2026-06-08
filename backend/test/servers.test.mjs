@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { testDb } from './test-db.js';
-import { getServer, listServers } from '../src/servers/registry.js';
+import { connectString, getServer, launchUrl, listServers } from '../src/servers/registry.js';
 import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
 import { getVar, setVar, setVars } from '../src/servers/cfgvars.js';
@@ -317,6 +317,15 @@ test('launch URLs open the game + connect; Minecraft has none', async () => {
   assert.equal(byId.factorio.launch, 'steam://run/427520//--mp-connect%201.2.3.4%3A34197');
   // Minecraft (Java) has no launch-and-connect scheme
   assert.equal(byId.minecraft.launch, null);
+});
+
+test('passworded connect strings include the password in copy and launch forms', () => {
+  const cs = getServer('counterstrike');
+  const factorio = getServer('factorio');
+  assert.equal(connectString(cs, '1.2.3.4', 'secret'), 'password "secret"; connect 1.2.3.4:27015');
+  assert.equal(launchUrl(cs, '1.2.3.4', 'secret'), 'steam://run/730//%2Bpassword%20%22secret%22%20%2Bconnect%201.2.3.4%3A27015');
+  assert.equal(connectString(factorio, '1.2.3.4', 'secret'), '1.2.3.4:34197 (password: secret)');
+  assert.equal(launchUrl(factorio, '1.2.3.4', 'secret'), 'steam://run/427520//--mp-connect%201.2.3.4%3A34197%20--password%20secret');
 });
 
 test('a launch URL needs a public host', async () => {

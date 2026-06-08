@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import net from 'node:net';
 
 import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
 import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
@@ -18,15 +19,64 @@ const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', po
 const PH   = { id: 'prophunt', name: 'Prop Hunt', backend: 'docker', container: 'prophunt', port: 27067 };
 
 function fakeDockerClient(files = {}) {
+  const execs = [];
   return {
-    files,
+    files, execs,
     async statusCurrent() { return { status: 'running', uptime: 9, cpu: 0.05, mem: 100, maxmem: 2000 }; },
     async agentFileRead(_c, path) { return { content: files[path] ?? '' }; },
     async agentFileWrite(_c, path, content) { files[path] = content; return null; },
-    async agentExec() { return { pid: 'p' }; },
+    async agentExec(_c, { command }) { execs.push(command); return { pid: 'p' }; },
     async agentExecStatus() { return { exited: 1, exitcode: 0, 'out-data': '', 'err-data': '' }; },
     start() {}, shutdown() {}, reboot() {},
   };
+}
+
+function encodeRcon(id, type, body) {
+  const b = Buffer.from(body, 'ascii');
+  const size = 4 + 4 + b.length + 2;
+  const buf = Buffer.allocUnsafe(4 + size);
+  buf.writeInt32LE(size, 0); buf.writeInt32LE(id, 4); buf.writeInt32LE(type, 8);
+  b.copy(buf, 12); buf.writeInt8(0, 12 + b.length); buf.writeInt8(0, 13 + b.length);
+  return buf;
+}
+
+async function withRconCapture(run) {
+  const commands = [];
+  const server = net.createServer((sock) => {
+    let buf = Buffer.alloc(0);
+    sock.on('data', (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      while (buf.length >= 4) {
+        const size = buf.readInt32LE(0);
+        if (buf.length < 4 + size) break;
+        const id = buf.readInt32LE(4);
+        const type = buf.readInt32LE(8);
+        const body = buf.toString('ascii', 12, 4 + size - 2);
+        buf = buf.subarray(4 + size);
+        if (type === 3) { sock.write(encodeRcon(id, 2, '')); continue; }
+        if (id === 3) { sock.write(encodeRcon(3, 0, '')); continue; }
+        commands.push(body);
+      }
+    });
+  });
+  await new Promise((res) => server.listen(0, '127.0.0.1', res));
+  const { port } = server.address();
+  try { await run({ port }); } finally { await new Promise((res) => server.close(res)); }
+  return { command: commands[0] ?? null, commands };
+}
+
+async function captureGmodRcon(run) {
+  const prev = process.env.GMOD_RCON_PASSWORD;
+  try {
+    process.env.GMOD_RCON_PASSWORD = 'secret';
+    return await withRconCapture(async ({ port }) => {
+      const conn = new DockerGmodConnector({ ...GMOD, container: '127.0.0.1', port }, fakeDockerClient());
+      await run(conn);
+    });
+  } finally {
+    if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD;
+    else process.env.GMOD_RCON_PASSWORD = prev;
+  }
 }
 
 // ── locator + container-is-game ─────────────────────────────────────────────────
@@ -77,15 +127,20 @@ test('DockerGmod applyProfileSettings -> captureProfileSettings round-trips', as
 
 // ── live RCON gated on the env password (TCP transport, not in-guest python) ─────
 test('DockerGmod live control is gated on GMOD_RCON_PASSWORD', async () => {
-  delete process.env.GMOD_RCON_PASSWORD;
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
-  assert.equal((await conn.getLive()).available, false);
-  // sendCommand without a password fails fast (no socket opened)
-  await assert.rejects(() => conn.sendCommand('status'), (e) => e.code === 'NO_RCON');
+  const prev = process.env.GMOD_RCON_PASSWORD;
+  try {
+    delete process.env.GMOD_RCON_PASSWORD;
+    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+    assert.equal((await conn.getLive()).available, false);
+    // sendCommand without a password fails fast (no socket opened)
+    await assert.rejects(() => conn.sendCommand('status'), (e) => e.code === 'NO_RCON');
 
-  process.env.GMOD_RCON_PASSWORD = 'secret';
-  assert.equal((await conn.getLive()).available, true);
-  delete process.env.GMOD_RCON_PASSWORD;
+    process.env.GMOD_RCON_PASSWORD = 'secret';
+    assert.equal((await conn.getLive()).available, true);
+  } finally {
+    if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD;
+    else process.env.GMOD_RCON_PASSWORD = prev;
+  }
 });
 
 // ── Prop Hunt: capture the PH profile + gate RCON on its own env key ─────────────
@@ -183,6 +238,128 @@ test('Gmod getLive shape exposes new actions + controls when RCON is set', async
 });
 
 // ── unified importCollection writes wscollectionid + returns the unified shape ────
+test('DockerGmod getLive advertises the exact TTT runtime inventory', async () => {
+  const prev = process.env.GMOD_RCON_PASSWORD;
+  try {
+    process.env.GMOD_RCON_PASSWORD = 'secret';
+    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+    const live = await conn.getLive();
+    assert.equal(live.available, true);
+    assert.deepEqual(live.actions.map((a) => a.key),
+      ['restart_round', 'cleanup', 'bhop_on', 'bhop_off', 'alltalk_on', 'alltalk_off',
+       'cheats_on', 'cheats_off', 'players']);
+    assert.deepEqual(live.controls.map((c) => c.key), ['gravity', 'timescale', 'traitor_pct', 'round_limit']);
+    assert.equal(live.changeMap, true);
+    assert.match(live.commandHint, /ttt_round_limit/);
+  } finally {
+    if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD;
+    else process.env.GMOD_RCON_PASSWORD = prev;
+  }
+});
+
+test('DockerGmod runLiveAction sends every advertised TTT button action', async () => {
+  const expected = {
+    restart_round: 'ttt_roundrestart',
+    cleanup: 'gmod_admin_cleanup',
+    bhop_on: 'sv_cheats 1; sv_airaccelerate 1000',
+    bhop_off: 'sv_airaccelerate 12',
+    alltalk_on: 'sv_alltalk 1',
+    alltalk_off: 'sv_alltalk 0',
+    cheats_on: 'sv_cheats 1',
+    cheats_off: 'sv_cheats 0',
+    players: 'status',
+  };
+  assert.deepEqual(GMOD_LIVE_ACTIONS.map((a) => a.key), Object.keys(expected));
+  assert.deepEqual(Object.keys(GMOD_ACTION_CMDS), Object.keys(expected));
+  for (const [key, commandText] of Object.entries(expected)) {
+    const { command } = await captureGmodRcon((conn) => conn.runLiveAction(key));
+    assert.equal(command, commandText, key);
+  }
+});
+
+test('DockerGmod runLiveAction sends every advertised TTT slider control', async () => {
+  const expected = {
+    gravity: ['sv_gravity 600', 600],
+    timescale: ['sv_cheats 1; host_timescale 1', 1],
+    traitor_pct: ['ttt_traitor_pct 0.25', 0.25],
+    round_limit: ['ttt_round_limit 6', 6],
+  };
+  assert.deepEqual(GMOD_LIVE_CONTROLS.map((c) => c.key), Object.keys(expected));
+  for (const control of GMOD_LIVE_CONTROLS) {
+    assert.equal(control.default, expected[control.key][1], control.key);
+    const { command } = await captureGmodRcon((conn) => conn.runLiveAction(control.key, control.default));
+    assert.equal(command, expected[control.key][0], control.key);
+  }
+});
+
+test('DockerGmod runLiveAction clamps TTT slider commands to bounds', async () => {
+  const cases = [
+    ['gravity', 99999, 'sv_gravity 1000'],
+    ['gravity', -1, 'sv_gravity 0'],
+    ['timescale', 99, 'sv_cheats 1; host_timescale 3'],
+    ['timescale', 0, 'sv_cheats 1; host_timescale 0.25'],
+    ['traitor_pct', 99, 'ttt_traitor_pct 0.5'],
+    ['traitor_pct', 0, 'ttt_traitor_pct 0.05'],
+    ['round_limit', 99, 'ttt_round_limit 15'],
+    ['round_limit', 0, 'ttt_round_limit 1'],
+  ];
+  for (const [key, value, commandText] of cases) {
+    const { command } = await captureGmodRcon((conn) => conn.runLiveAction(key, value));
+    assert.equal(command, commandText, key);
+  }
+});
+
+test('DockerGmod runLiveAction changes maps and rejects invalid live keys', async () => {
+  assert.equal((await captureGmodRcon((conn) => conn.runLiveAction('change_map', 'ttt_minecraft_b5'))).command,
+    'changelevel ttt_minecraft_b5');
+  assert.equal((await captureGmodRcon((conn) => conn.runLiveAction('change_map', 'gm_construct'))).command,
+    'changelevel gm_construct');
+
+  const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+  await assert.rejects(() => conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.runLiveAction('bogus_action'), (e) => e.code === 'BAD_SETTING');
+});
+
+test('DockerGmod sendCommand trims, forwards, and rejects bad console input', async () => {
+  const { command } = await captureGmodRcon((conn) => conn.sendCommand('  status  '));
+  assert.equal(command, 'status');
+
+  const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.sendCommand('status\nquit'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(() => conn.sendCommand('x'.repeat(513)), (e) => e.code === 'BAD_SETTING');
+});
+
+test('DockerGmod update runs the LinuxGSM gmodserver update command in-container', async () => {
+  const client = fakeDockerClient();
+  client.agentExecStatus = async () => ({ exited: 1, exitcode: 0, 'out-data': 'updated', 'err-data': '' });
+  const conn = new DockerGmodConnector(GMOD, client);
+  const res = await conn.update();
+  assert.equal(res.ok, true);
+  assert.deepEqual(client.execs.at(-1), ['/bin/bash', '-lc', '/data/gmodserver update']);
+  assert.equal(res.steps[0].name, 'gmodserver update');
+  assert.match(res.note, /LinuxGSM/);
+});
+
+test('DockerGmod syncMaps extracts workshop maps with the in-container GMOD paths', async () => {
+  const client = fakeDockerClient();
+  const conn = new DockerGmodConnector(GMOD, client);
+  const res = await conn.syncMaps();
+  assert.deepEqual(res, { ok: true, maps: [] });
+
+  assert.equal(client.execs[0][0], '/bin/bash');
+  assert.equal(client.execs[0][1], '-lc');
+  const syncScript = client.execs[0][2];
+  assert.match(syncScript, /\/data\/serverfiles\/garrysmod\/cache\/srcds\/\*\.gma/);
+  assert.match(syncScript, /\/data\/serverfiles\/steam_cache\/content\/4000\/\*\/\*\.gma/);
+  assert.match(syncScript, /"\/data\/serverfiles\/bin\/gmad_linux" extract/);
+  assert.match(syncScript, /cp -n \{\} \/data\/serverfiles\/garrysmod\/maps\//);
+
+  assert.equal(client.execs[1][0], '/bin/bash');
+  assert.equal(client.execs[1][1], '-lc');
+  assert.match(client.execs[1][2], /ls -1 \/data\/serverfiles\/garrysmod\/maps\/\*\.bsp/);
+});
+
 test('Gmod importCollection writes wscollectionid and returns requiresRestart:true', async () => {
   const files = { [INST]: 'defaultmap="gm_construct"\n' };
   const conn = new DockerGmodConnector(GMOD, fakeDockerClient(files));

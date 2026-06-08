@@ -276,9 +276,8 @@ export async function dbServerLiveAction(id, action, value) {
 }
 
 // ── player sessions (the standalone "Events" section; written host-side by the collector) ─
-export async function dbGetServerSessions(id, { limit } = {}) {
-  const qs = limit ? `?limit=${encodeURIComponent(limit)}` : '';
-  return (await api(`/servers/${encodeURIComponent(id)}/sessions${qs}`)) ?? [];
+export async function dbGetServerSessions(id, { limit, includeUnlinked } = {}) {
+  return (await api(`/servers/${encodeURIComponent(id)}/sessions`, { query: { limit, includeUnlinked } })) ?? [];
 }
 
 // ── presence + cross-game activity timeline ───────────────────────────────────
@@ -289,6 +288,18 @@ export async function dbGetOnline() {
 // Newest-first join/leave feed merged across all servers (the Activity view).
 export async function dbGetActivity({ limit } = {}) {
   return (await api('/servers/activity', { query: { limit } })) ?? [];
+}
+
+export async function dbGetActivityAll({ limit } = {}) {
+  return (await api('/servers/activity', { query: { limit, includeUnlinked: true } })) ?? [];
+}
+
+export async function dbGetMapMe() {
+  return api('/servers/map/me');
+}
+
+export async function dbGetServerMapMe(id) {
+  return api(`/servers/${encodeURIComponent(id)}/map/me`);
 }
 
 export async function dbGetBlueMapStatus() {
@@ -364,6 +375,14 @@ export async function dbGetEconomyPlayers() {
 
 export async function dbGetEconomyUsers() {
   return (await api('/admin/economy/users')) ?? [];
+}
+
+export async function dbAdminUsers() {
+  return (await api('/admin/users')) ?? [];
+}
+
+export async function dbAdminCreateUser({ username, displayName, password, isAdmin = false }) {
+  return api('/admin/users', { method: 'POST', body: { username, displayName, password, isAdmin } });
 }
 
 // userId: a users.id, or null to unlink.

@@ -79,8 +79,8 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     // One cheap query for all servers' "playing now" counts (host-tracked).
     const online = store ? store.onlineCountsBySlug() : {};
     return Promise.all(listServers().map(async (server) => {
-      const meta = { ...publicMeta(server), online: online[server.id] ?? 0 };
       const connector = connectors.get(server.id);
+      const meta = { ...(await publicMeta(server, connector)), online: online[server.id] ?? 0 };
       if (!connector) return { ...meta, status: 'unknown', reason: 'backend not configured' };
       try {
         const status = await connector.status({ stats: mode !== 'quick' });
@@ -133,15 +133,20 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
 
   // Shape a registry entry for the API — expose only public-facing fields (the
   // container locator stays server-side).
-  function publicMeta(server) {
+  async function publicMeta(server, connector = null) {
+    let password = '';
+    if (connector?.connectPassword) {
+      try { password = await connector.connectPassword(); } catch { password = ''; }
+    }
     return {
       id: server.id,
       name: server.name,
       connect: {
         host: publicHost,
         port: server.port,
-        string: connectString(server, publicHost),
-        launch: launchUrl(server, publicHost),
+        password: password || null,
+        string: connectString(server, publicHost, password),
+        launch: launchUrl(server, publicHost, password),
       },
     };
   }
@@ -186,8 +191,9 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     async getStatus(id, opts = {}) {
       const server = getServer(id);
       if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
-      const status = await connectorFor(id).status({ stats: listMode(opts) !== 'quick' });
-      return { ...publicMeta(server), ...status };
+      const connector = connectorFor(id);
+      const status = await connector.status({ stats: listMode(opts) !== 'quick' });
+      return { ...(await publicMeta(server, connector)), ...status };
     },
 
     // action ∈ start|shutdown|reboot|stop. Returns { ok, action } (the backend
@@ -317,6 +323,38 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     // Newest-first join/leave feed merged across all hosted servers (timeline).
     recentActivity(opts = {}) {
       return store ? store.recentSessions(opts) : [];
+    },
+
+    async getCurrentPlayerPosition(id, userId) {
+      const server = getServer(id);
+      if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
+      if (!server.identityKind) throw new ServerControlError(`${server.name} has no player identity namespace`, 'NOT_SUPPORTED');
+      if (!store) return { serverId: id, serverName: server.name, linked: false, online: false, reason: 'database unavailable' };
+      const player = store.linkedPlayerForUser(userId, server.identityKind);
+      if (!player) return { serverId: id, serverName: server.name, linked: false, online: false, reason: `no linked ${server.name} account` };
+      const session = store.openSessionForPlayer(id, player.id);
+      if (!session) return { serverId: id, serverName: server.name, linked: true, online: false, player, reason: `linked ${server.name} account is not online` };
+      const connector = connectorFor(id);
+      if (!connector.getPlayerPosition) {
+        throw new ServerControlError(`${server.name} position lookup is not supported`, 'NOT_SUPPORTED');
+      }
+      const target = player.uid || player.name;
+      const position = await connector.getPlayerPosition(target, player);
+      const online = position?.connected === false ? false : true;
+      return {
+        serverId: id,
+        serverName: server.name,
+        linked: true,
+        online,
+        player,
+        session,
+        position,
+        ...(online ? {} : { reason: position?.reason || `${server.name} position unavailable` }),
+      };
+    },
+
+    getCurrentMinecraftPosition(userId) {
+      return this.getCurrentPlayerPosition('minecraft', userId);
     },
 
     async getBlueMapStatus() {

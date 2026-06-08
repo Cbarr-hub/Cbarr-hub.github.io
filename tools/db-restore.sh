@@ -22,15 +22,23 @@ if [ -z "$NAME" ]; then
   NAME="$(rclone lsf "${REMOTE}:${BUCKET}/${PREFIX}/" | grep '\.sqlite$' | sort | tail -1)"
   [ -n "$NAME" ] || { echo "no DB backups found under ${REMOTE}:${BUCKET}/${PREFIX}/" >&2; exit 1; }
 fi
+case "$NAME" in -*) echo "invalid DB snapshot name '$NAME'" >&2; exit 1 ;; esac
 SRC="${REMOTE}:${BUCKET}/${PREFIX}/${NAME}"
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 rclone copyto "$SRC" "${tmp}/gt.sqlite"
+[ -s "${tmp}/gt.sqlite" ] || { echo "downloaded DB snapshot is missing or empty" >&2; exit 1; }
+cat > "${tmp}/restore-db.sh" <<'EOF'
+set -eu
+: "${DB_PATH:?}"
+cp /in/gt.sqlite "$DB_PATH"
+rm -f "${DB_PATH}-wal" "${DB_PATH}-shm"
+chown 1000:1000 "$DB_PATH"
+EOF
 
 # Drop any stale WAL/SHM so the restored file is authoritative, and chown to the app
 # uid (1000) so the container can open it (the file would otherwise land root-owned).
-docker run --rm -v "${VOLUME}:/data" -v "${tmp}:/in:ro" alpine \
-  sh -c "cp /in/gt.sqlite '${DB_PATH}' && rm -f '${DB_PATH}-wal' '${DB_PATH}-shm' && chown 1000:1000 '${DB_PATH}'"
+docker run --rm -e DB_PATH="$DB_PATH" -v "${VOLUME}:/data" -v "${tmp}:/in:ro" alpine sh /in/restore-db.sh
 
 echo "restored $SRC → ${VOLUME}:${DB_PATH}"
 echo "now start the stack: docker compose up -d"

@@ -193,15 +193,15 @@ export class PropHuntConnector extends GmodConnector {
         {
           key: 'map', title: 'Map & Workshop',
           fields: [
-            { key: 'propHuntMap', label: 'Starting Map', type: 'select', options: mapOpts,
+            { key: 'propHuntMap', label: 'Starting Map', type: 'select', options: mapOpts, basic: true,
               help: 'The ph_ map the server boots into (default ph_restaurant). Pick any installed map; change maps live in the Runtime panel.' },
             { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
               placeholder: '3737190377',
               readOnly: true,
               help: 'Read-only here: Apply does not rewrite the Prop Hunt collection, because changing it can break the X2Z mount. Use Import Collection or Raw Config when you intentionally need to change it.' },
-            { key: 'syncMaps', label: 'Sync Maps', type: 'mapsync',
+            { key: 'syncMaps', label: 'Sync Maps', type: 'mapsync', basic: true,
               help: 'Refresh the installed ph_ map list from the mounted collection (run after the collection changes + a restart).' },
-            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1 },
+            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1, basic: true },
           ],
         },
         {

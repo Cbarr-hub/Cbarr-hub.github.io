@@ -19,6 +19,10 @@ for health — then open `https://localhost`. To rehearse the real deploy on exi
 `gt … dev --prod-like`. (The underlying `tools/setup.*` + `tools/dev.*` + `tools/db-restore.*`
 still work.) Full walkthrough → [`docs/local-dev.md`](docs/local-dev.md).
 
+To refresh dev with production-like data later, run `.\tools\gt.ps1 seed-dev` /
+`tools/gt.sh seed-dev`; it restores the newest app DB, Factorio save, and Minecraft world
+snapshots into the local dev volumes.
+
 Everything below is the project's (deliberately absurdist) **design philosophy** — kept
 verbatim, not an operational spec.
 

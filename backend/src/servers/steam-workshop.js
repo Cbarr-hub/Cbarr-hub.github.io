@@ -61,11 +61,18 @@ export async function fetchItemTitles(ids) {
   const clean = [...new Set(ids.map(String))].filter((i) => /^\d{1,20}$/.test(i));
   const out = new Map();
   if (!clean.length) return out;
-  const fields = { itemcount: clean.length };
-  clean.forEach((id, i) => { fields[`publishedfileids[${i}]`] = id; });
-  const r = await steamPost('GetPublishedFileDetails', fields);
-  for (const d of r.publishedfiledetails ?? []) {
-    if (d?.result === 1 && d.title) out.set(String(d.publishedfileid), String(d.title));
+  // Batch: GetPublishedFileDetails has a practical per-call item cap (and the urlencoded
+  // body grows with the count), so a large collection sent in one call truncates or
+  // errors. Chunk it; missing titles still fall back to "Workshop <id>" upstream.
+  const BATCH = 100;
+  for (let i = 0; i < clean.length; i += BATCH) {
+    const batch = clean.slice(i, i + BATCH);
+    const fields = { itemcount: batch.length };
+    batch.forEach((id, j) => { fields[`publishedfileids[${j}]`] = id; });
+    const r = await steamPost('GetPublishedFileDetails', fields);
+    for (const d of r.publishedfiledetails ?? []) {
+      if (d?.result === 1 && d.title) out.set(String(d.publishedfileid), String(d.title));
+    }
   }
   return out;
 }

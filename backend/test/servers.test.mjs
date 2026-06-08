@@ -32,6 +32,10 @@ function fakeDocker(overrides = {}) {
       name: 'keeper', engineVersion: '26.0', os: 'Debian', kernel: '6.x',
       ncpu: 4, memTotal: 12e9, containers: 8, containersRunning: 8,
     })),
+    containerLogs: overrides.containerLogs ?? ((c) => {
+      calls.push(['containerLogs', c]);
+      return Promise.resolve("[21:59:08 INFO] updating map 'nether': 45.11% (ETA: 49 minutes)\n");
+    }),
     start: rec('start'),
     stop: rec('stop'),
     shutdown: rec('shutdown'),
@@ -125,6 +129,17 @@ test('getNodeStatus without a client reports not-configured', async () => {
   const svc = createServerService({});
   await assert.rejects(() => svc.getNodeStatus(), (e) =>
     e instanceof ServerControlError && e.code === 'NOT_CONFIGURED');
+});
+
+test('getBlueMapStatus parses the bluemap container render log', async () => {
+  const client = fakeDocker();
+  const svc = createServerService({ dockerClient: client });
+  const status = await svc.getBlueMapStatus();
+  assert.equal(status.container, 'bluemap');
+  assert.equal(status.state, 'rendering');
+  assert.equal(status.map, 'nether');
+  assert.equal(status.percent, 45.1);
+  assert.deepEqual(client.calls.at(-1), ['containerLogs', 'bluemap']);
 });
 
 // ── service: power actions ──────────────────────────────────────────────────────

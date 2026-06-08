@@ -2,7 +2,8 @@
 // config file's text (LinuxGSM instance configs are sourced shell scripts).
 // Pure string functions — easy to unit-test, no I/O.
 
-const lineRe = (name) => new RegExp(`^[ \\t]*${name}=.*$`, 'm');
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const lineRe = (name) => new RegExp(`^[ \\t]*${escapeRe(name)}=.*$`, 'm');
 
 /** Read a var's value (quotes stripped). Returns undefined if absent. */
 export function getVar(text, name) {
@@ -23,7 +24,9 @@ export function getVar(text, name) {
 export function setVar(text, name, value) {
   const line = `${name}="${value}"`;
   if (lineRe(name).test(text)) {
-    return text.replace(lineRe(name), line);
+    // Function replacer so a value containing `$1`/`$&`/`` $` `` isn't interpreted
+    // as a replacement backreference (e.g. a password like `p$1ss`).
+    return text.replace(lineRe(name), () => line);
   }
   return text.replace(/\n*$/, '') + `\n${line}\n`;
 }

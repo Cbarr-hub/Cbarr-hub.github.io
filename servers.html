@@ -208,6 +208,14 @@ header.top{position:sticky; top:0; z-index:40;
 
 /* ============ embedded map view ============ */
 .map-bar{display:flex;align-items:center;gap:var(--s2);margin-bottom:var(--s3);flex-wrap:wrap}
+.map-status{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line);border-radius:99px;background:var(--bg-1);color:var(--txt-dim);font-size:var(--t-xs);letter-spacing:.5px}
+.map-status .d{width:7px;height:7px;border-radius:50%;background:var(--grey)}
+.map-status.rendering{border-color:rgba(95,140,255,.45);color:#cfe0ff;background:rgba(20,40,90,.42)}
+.map-status.rendering .d{background:#7fa7ff;box-shadow:0 0 8px #7fa7ff}
+.map-status.complete{border-color:rgba(72,255,155,.38);color:var(--grn);background:rgba(6,26,14,.62)}
+.map-status.complete .d{background:var(--grn-hot);box-shadow:0 0 8px var(--grn-hot)}
+.map-status.err{border-color:rgba(255,100,100,.45);color:#ffb8b8;background:rgba(60,10,10,.45)}
+.map-status.err .d{background:#ff7777;box-shadow:0 0 8px #ff7777}
 .map-frame{width:100%;height:78vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r);background:#06140a;display:block}
 
 /* ============ activity: online-now strip ============ */
@@ -704,6 +712,7 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
     <div class="view map" id="view-map">
       <div class="map-bar">
         <span class="ev-note">Live 3D map of the Minecraft world (BlueMap) — rendered on the host; switch dimensions (Overworld · Nether · End) inside the map.</span>
+        <div class="map-status" id="mapStatus"><span class="d"></span><span id="mapStatusText">Checking render status...</span></div>
         <div class="spacer"></div>
         <a class="refresh-btn" href="/map/" target="_blank" rel="noopener">Open full screen ↗</a>
       </div>
@@ -790,7 +799,7 @@ import {
   dbListServerConfig, dbReadServerConfig, dbWriteServerConfig,
   dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
   dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbDeleteServerConfig,
-  dbGetServerSessions, dbGetOnline, dbGetActivity,
+  dbGetServerSessions, dbGetOnline, dbGetActivity, dbGetBlueMapStatus,
   dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile, dbUpdateProfile,
   dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
   dbAdminTables, dbAdminTableRows, dbAdminQuery,
@@ -819,6 +828,8 @@ let activityLoadSeq = 0
 let ecoUsers = []
 // map (embedded BlueMap)
 let mapLoaded = false
+let mapTimer = null
+let mapStatusSeq = 0
 // data viewer
 let dataLoaded = false
 let dbTables = []
@@ -1203,6 +1214,7 @@ function switchView(v){
   // teardown the auto-refresh timers when leaving their views
   if (v !== 'events' && eventsTimer) { clearInterval(eventsTimer); eventsTimer = null }
   if (v !== 'activity' && activityTimer) { clearInterval(activityTimer); activityTimer = null }
+  if (v !== 'map' && mapTimer) { clearInterval(mapTimer); mapTimer = null }
   if (v === 'fleet') { if (lastNode) renderHost(lastNode); document.getElementById('tcount').textContent = `${servers.length} servers` }
   else if (v === 'activity') startActivity()
   else if (v === 'events') startEvents()
@@ -1414,6 +1426,37 @@ function startMap(){
   // Lazy-load the BlueMap app only when the Map tab is first opened (it's a heavy
   // 3D canvas). Same-origin iframe → the session cookie passes the /map auth gate.
   if (!mapLoaded) { document.getElementById('mapFrame').src = '/map/'; mapLoaded = true }
+  if (mapTimer) clearInterval(mapTimer)
+  mapTimer = setInterval(() => {
+    if (curView === 'map') loadMapStatus()
+    else { clearInterval(mapTimer); mapTimer = null }
+  }, 15000)
+  loadMapStatus()
+}
+
+function renderMapStatus(s){
+  const box = document.getElementById('mapStatus')
+  const txt = document.getElementById('mapStatusText')
+  const state = s?.state || 'unknown'
+  box.className = `map-status ${state === 'complete' ? 'complete' : state === 'rendering' || state === 'starting' ? 'rendering' : ''}`.trim()
+  if (state === 'complete') txt.textContent = 'Render complete'
+  else if (state === 'rendering') txt.textContent = s?.message || `Rendering ${s?.percent ?? '?'}%`
+  else if (state === 'starting') txt.textContent = 'Render starting'
+  else txt.textContent = s?.message || 'Render status unavailable'
+}
+
+async function loadMapStatus(){
+  const seq = ++mapStatusSeq
+  try {
+    const s = await dbGetBlueMapStatus()
+    if (seq !== mapStatusSeq || curView !== 'map') return
+    renderMapStatus(s)
+  } catch (e) {
+    if (seq !== mapStatusSeq || curView !== 'map') return
+    const box = document.getElementById('mapStatus')
+    box.className = 'map-status err'
+    document.getElementById('mapStatusText').textContent = `Render status unavailable: ${errMsg(e)}`
+  }
 }
 
 /* ═════════════════════════ DETAIL SHEET ═════════════════════════ */
@@ -1900,11 +1943,37 @@ function renderProfiles(){
   const badge = isActive
     ? `<span class="pf-badge live">● live${DS.dirty ? ' · unsaved' : ''}</span>`
     : `<span class="pf-badge dirty">○ not applied${DS.dirty ? ' · unsaved' : ''}</span>`
-  const groups = (DS.schema.groups || []).map((g, gi) => `
+  // One layout for everyone: lead with the everyday fields (basic:true) in an
+  // open "Essentials" section, then keep the rest in their original groups but
+  // collapsed, so the power user can expand them without anyone scrolling past
+  // noise. If a game tags no basic fields, fall back to the legacy layout
+  // (first group open, rest collapsed) so the form is never empty.
+  const schemaGroups = DS.schema.groups || []
+  const basicFields = schemaGroups.flatMap(g => (g.fields || []).filter(f => f.basic))
+  let groups
+  if (basicFields.length) {
+    const essentials = `
+    <details class="fgroup" open>
+      <summary>Essentials</summary>
+      <div class="gbody">${basicFields.map(profFieldHTML).join('')}</div>
+    </details>`
+    const advanced = schemaGroups.map(g => {
+      const rest = (g.fields || []).filter(f => !f.basic)
+      if (!rest.length) return ''
+      return `
+    <details class="fgroup">
+      <summary>${esc(g.title)} (advanced)</summary>
+      <div class="gbody">${g.note ? `<div class="field-help">${esc(g.note)}</div>` : ''}${rest.map(profFieldHTML).join('')}</div>
+    </details>`
+    }).join('')
+    groups = essentials + advanced
+  } else {
+    groups = schemaGroups.map((g, gi) => `
     <details class="fgroup"${(gi === 0 && !g.advanced) ? ' open' : ''}>
       <summary>${esc(g.title)}${g.advanced ? ' (advanced)' : ''}</summary>
       <div class="gbody">${g.note ? `<div class="field-help">${esc(g.note)}</div>` : ''}${(g.fields || []).map(profFieldHTML).join('')}</div>
     </details>`).join('')
+  }
   const apply = DS.schema.apply || {}
   const liveApply = apply.mode === 'live'
   const applyLabel = apply.label || '▶ Apply & Restart'
@@ -2091,9 +2160,13 @@ function readProfileForm(){
     const key = el.dataset.pf, t = el.dataset.pt
     if (t === 'maplist') return
     if (t === 'bool') { DS.values[key] = el.classList.contains('on') ? '1' : '0'; return }
-    if (t === 'segmented') { const on = el.querySelector('.seg-btn.on') || el.querySelector('.seg-btn'); if (on) DS.values[key] = on.dataset.segVal; return }
-    if (t === 'number' && el.classList.contains('pf-range')) { const num = el.querySelector('[data-pf-num]'); if (num) DS.values[key] = num.value === '' ? '' : Number(num.value); return }
-    if (t === 'number') { DS.values[key] = el.value === '' ? '' : Number(el.value); return }
+    // Only write when a button is actually selected — don't coerce an off-list /
+    // unset value to the first option (that would silently rewrite it on every Save).
+    if (t === 'segmented') { const on = el.querySelector('.seg-btn.on'); if (on) DS.values[key] = on.dataset.segVal; return }
+    // A cleared number input is ambiguous — leave DS.values[key] at its loaded value
+    // rather than sending '' (which the backend coerces to 0 or rejects).
+    if (t === 'number' && el.classList.contains('pf-range')) { const num = el.querySelector('[data-pf-num]'); if (num && num.value !== '') DS.values[key] = Number(num.value); return }
+    if (t === 'number') { if (el.value !== '') DS.values[key] = Number(el.value); return }
     DS.values[key] = el.value
   })
   return DS.values

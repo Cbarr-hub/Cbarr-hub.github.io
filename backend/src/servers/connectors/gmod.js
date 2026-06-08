@@ -198,7 +198,8 @@ export class GmodConnector extends LinuxGsmConnector {
       // (ttt_/gm_ for TTT, ph_/gm_ for PH) so an unrelated bsp can't appear in the
       // picker. Names are lowercase a-z0-9_ (matches Source/GMOD bsp naming). Any
       // failure (dir missing, exec error) degrades to an empty list, never throws.
-      const re = new RegExp(`^(${this.mapPrefixes.join('|')})[a-z0-9_]*$`);
+      const escapeRe = (p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`^(${this.mapPrefixes.map(escapeRe).join('|')})[a-z0-9_]+$`);
       const names = (res.stdout || '').split('\n')
         .map((l) => l.trim())
         .filter((n) => re.test(n));
@@ -358,20 +359,20 @@ export class GmodConnector extends LinuxGsmConnector {
         {
           key: 'map', title: 'Maps & Rotation',
           fields: [
-            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text',
+            { key: 'workshopCollection', label: 'Workshop Collection ID', type: 'text', basic: true,
               placeholder: 'Steam Workshop collection id',
               help: 'Steam stores & manages these maps. Set this, build the rotation, then Apply — that restarts the server so Steam downloads the collection.' },
-            { key: 'syncMaps', label: 'Workshop Maps', type: 'mapsync',
+            { key: 'syncMaps', label: 'Workshop Maps', type: 'mapsync', basic: true,
               help: 'Added a map to the collection? Restart Hosting to download it, then Sync to install it into the list below.' },
-            { key: 'mapcycle', label: 'Map Rotation', type: 'maplist', custom: true, options: mapOpts,
+            { key: 'mapcycle', label: 'Map Rotation', type: 'maplist', custom: true, basic: true, options: mapOpts,
               help: 'The server boots into the FIRST map and (with auto-rotate on) advances down the list after each round/time limit. Type collection map names; gm_construct is the always-available fallback.' },
-            { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool' },
+            { key: 'useMapcycle', label: 'Auto-rotate through the rotation', type: 'bool', basic: true },
           ],
         },
         {
           key: 'gameplay', title: 'Gameplay',
           fields: [
-            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1 },
+            { key: 'maxPlayers', label: 'Max Players', type: 'number', min: 1, max: 128, step: 1, basic: true },
             ...TTT_FIELDS.map(numField),
           ],
         },
@@ -396,7 +397,10 @@ export class GmodConnector extends LinuxGsmConnector {
 
     // The server boots into the FIRST map of the rotation (stock fallback if the
     // rotation is somehow empty). One ordered list drives both boot + rotation.
-    const rotation = s.mapcycle.length ? s.mapcycle : ['gm_construct'];
+    // De-dup (order-preserving): a repeated entry would write a no-op map change
+    // into mapcycle.txt. This single deduped list drives the boot-map guard, the
+    // boot map, and the written rotation so they can't diverge.
+    const rotation = [...new Set(s.mapcycle.length ? s.mapcycle : ['gm_construct'])];
     const bootMap = rotation[0];
 
     // Boot-map guard. With NO workshop collection set, only stock maps can load —
@@ -405,7 +409,7 @@ export class GmodConnector extends LinuxGsmConnector {
     // (GMOD downloads + mounts it at boot before loading the map).
     if (!s.workshopCollection) {
       const loadable = new Set([...(await this.installedMaps()), ...STOCK_ALWAYS]);
-      const missing = [...new Set(rotation)].filter((m) => !loadable.has(m));
+      const missing = rotation.filter((m) => !loadable.has(m));
       if (missing.length) {
         throw badSetting(
           `no Workshop Collection is set, so only stock maps can load (${[...loadable].sort().join(', ')}). ` +
@@ -446,7 +450,10 @@ export class GmodConnector extends LinuxGsmConnector {
       return v === undefined || v === '' ? def : Number(v);
     };
     // Preserve the invariant: the boot map (defaultmap) is the first rotation entry.
-    const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim();
+    // Lowercase: bsp names are lowercase, but a defaultmap set out-of-band can leak
+    // a mixed-case Workshop title, which validateProfileSettings (lowercase-only
+    // MAP_NAME_RE) would reject — making capture throw instead of snapshotting.
+    const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim().toLowerCase();
     let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
     if (cycle[0] !== bootMap) cycle = [bootMap, ...cycle.filter((m) => m !== bootMap)];
 

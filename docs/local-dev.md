@@ -21,6 +21,22 @@ servers, BlueMap; localhost self-signed + live reload), and waits for `/api/heal
 non-destructive (it preserves `.env.local` keys like `DEV_PUBLIC_HOST` and skips the DB
 restore if one already exists — pass `--restore` to force a fresh pull).
 
+To make an existing dev stack look like production again, use **seed-dev**. It pulls the
+newest R2 snapshots into the local dev volumes, then dev drifts independently:
+
+```powershell
+.\tools\gt.ps1 seed-dev              # app DB + Factorio save + Minecraft world
+.\tools\gt.ps1 seed-dev --db         # just the app DB
+.\tools\gt.ps1 seed-dev --worlds     # Factorio + Minecraft only
+```
+```bash
+tools/gt.sh seed-dev                 # macOS/Linux equivalent
+```
+
+The Minecraft restore replaces the matching world directory in the dev `mc-data` volume
+and clears the dev BlueMap render cache by default so `/map/` re-renders from the restored
+world. Pass `--keep-bluemap` only if you know the existing dev BlueMap tiles are still valid.
+
 > The app, login, Minecraft and Factorio are usable within minutes; CS2/GMOD/Prop Hunt
 > download their game files on first boot (CS2 is ~30GB) — check `gt … dev ps` /
 > `gt … dev logs -f counterstrike`.
@@ -297,6 +313,45 @@ Need a brand-new account instead of a restore? Create one interactively:
 ```bash
 docker exec -it <project>-app-1 node src/cli.js create-admin
 ```
+
+### Production data seed (DB + worlds)
+
+For better pre-deploy testing, `seed-dev` restores the newest production snapshots from R2
+into the **dev** compose project volumes:
+
+```powershell
+.\tools\gt.ps1 seed-dev
+```
+```bash
+tools/gt.sh seed-dev
+```
+
+This restores:
+- app DB: `r2:gamertown-backups/app/gamertown_<ts>.sqlite` -> `<project>_gt-data`
+- Factorio active save: `r2:gamertown-backups/factorio/_active_<ts>.zip` -> `<project>_factorio-data`
+- Minecraft world: `r2:gamertown-backups/minecraft/<level>_<ts>.tar.gz` -> `<project>_mc-data`
+
+Target only one part when the full restore is more than you need:
+
+```powershell
+.\tools\gt.ps1 seed-dev --db
+.\tools\gt.ps1 seed-dev --factorio
+.\tools\gt.ps1 seed-dev --minecraft
+.\tools\gt.ps1 seed-dev --worlds
+```
+
+Named snapshots are supported:
+
+```powershell
+.\tools\gt.ps1 seed-dev --db-name gamertown_YYYYMMDD_HHMMSS.sqlite
+.\tools\gt.ps1 seed-dev --factorio-name _active_YYYYMMDD_HHMMSS.zip
+.\tools\gt.ps1 seed-dev --minecraft-name world_GTown_YYYYMMDD_HHMMSS.tar.gz
+```
+
+The restore stops and restarts affected local containers if they are running. Minecraft
+restore also stops BlueMap and clears the **dev** `bluemap-data`/`bluemap-web` caches unless
+`--keep-bluemap` is passed, because restored world files make existing dev map tiles stale.
+It does not write to production and it is not a live sync.
 
 ### Player-session collector (Activity section) in dev
 

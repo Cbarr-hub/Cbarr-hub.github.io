@@ -10,10 +10,11 @@
 #   gt.sh prod --dry-run        print every resolved command, do nothing
 #   gt.sh prod --rollback       restore predeploy DB + checkout last SHA + redeploy
 #   gt.sh restore-db [name]     restore the app DB from R2 (DR-grade)
+#   gt.sh seed-dev [flags]      restore prod DB/world snapshots into dev volumes
 #
 # Mode/env/compose mapping lives in tools/gt-modes.conf (shared with gt.ps1).
-# This dispatcher CALLS the existing primitives (setup.sh, db-restore.sh, gt-backup.sh)
-# rather than reimplementing them.
+# This dispatcher CALLS the existing primitives (setup.sh, db-restore.sh,
+# dev-restore-data.sh, gt-backup.sh) rather than reimplementing them.
 set -uo pipefail   # NOTE: not -e; compose/git writes to stderr and we judge by exit code.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,7 +109,7 @@ poll_health() {   # $1=label $2=url, rest = extra curl args. Bounded ~60s.
 preseed_db() {   # create the gt-data volume and seed the app DB BEFORE `up`
   local vol; vol="$(data_volume)"
   docker volume create "$vol" >/dev/null
-  if [ "$RESTORE_FORCE" != "1" ] && docker run --rm -v "${vol}:/d" alpine sh -c '[ -s /d/gamertown.sqlite ]' 2>/dev/null; then
+  if [ "$RESTORE_FORCE" != "1" ] && docker run --rm -v "${vol}:/d" alpine test -s /d/gamertown.sqlite 2>/dev/null; then
     echo "[*] $vol already has a DB — skipping restore (pass --restore to force a fresh pull)"
     return 0
   fi
@@ -254,7 +255,11 @@ prod_deploy() {
 
   # 2. rollback anchor
   sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
-  run sh -c "printf '%s\n' '$sha' > '$REPO_ROOT/.last-deploy'"
+  if [ "$DRYRUN" = "1" ]; then
+    printf '  [dry-run] %s\n' "printf '%s\n' '$sha' > '$REPO_ROOT/.last-deploy'"
+  else
+    printf '%s\n' "$sha" > "$REPO_ROOT/.last-deploy"
+  fi
   echo "[*] rollback anchor recorded: $sha"
 
   # 3-4. non-blocking nudges
@@ -322,6 +327,7 @@ gt — Gamertown dispatcher (Linux/macOS/keeper)
   gt.sh dev --prod-like        existing data, prod-shaped (real cert + gamertown.solutions)
   gt.sh dev --prod-like --app  app only (no game servers)
   gt.sh dev <compose args...>  passthrough: ps | logs -f app | down | up -d minecraft
+  gt.sh seed-dev [flags]       restore prod DB + Factorio + Minecraft snapshots into dev
   gt.sh prod                   KEEPER ONLY: backup-first deploy (abort on backup failure)
        --dry-run               print every resolved command and exit (no side effects)
        --force                 deploy even if the pre-deploy backup fails
@@ -329,6 +335,9 @@ gt — Gamertown dispatcher (Linux/macOS/keeper)
        --pull-images           also `docker compose pull` (game-image version bumps)
        --auto-rollback         roll back automatically if the post-deploy health check fails
   gt.sh restore-db [name]      restore the app DB from R2 (newest, or a named snapshot)
+
+seed-dev flags: --db --factorio --minecraft --worlds --all --keep-bluemap
+                --db-name NAME --factorio-name NAME --minecraft-name NAME
 
 Mode/env/compose mapping: tools/gt-modes.conf (shared with tools/gt.ps1).
 EOF
@@ -340,6 +349,7 @@ case "$sub" in
   dev)         cmd_dev "$@" ;;
   prod)        cmd_prod "$@" ;;
   restore-db)  GT_DATA_VOLUME="$(data_volume)" "$SCRIPT_DIR/db-restore.sh" "$@" ;;
+  seed-dev)    bash "$SCRIPT_DIR/dev-restore-data.sh" "$@" ;;
   ""|help|-h|--help) usage ;;
   *) echo "unknown command: $sub" >&2; usage; exit 1 ;;
 esac

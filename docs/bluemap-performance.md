@@ -44,8 +44,9 @@ render masks, resource packs, or texture/model behavior.
   the next boot into a full rebuild.
 - If recent Minecraft changes are not visible, first flush the Minecraft world to
   disk. The standalone BlueMap container can only see saved world-file changes.
-- Keep `render-thread-count: 1` during normal play. For catch-up renders, raise it
-  to `2` temporarily and watch Minecraft CPU/tick behavior.
+- Keep `render-thread-count: 0` so BlueMap has enough workers for the host. The
+  app and host maintenance runner dynamically cap the container CPU quota: high
+  while nobody is online, low while players are active.
 
 ## Tuned defaults
 
@@ -59,6 +60,9 @@ render masks, resource packs, or texture/model behavior.
 - BlueMap cookies are disabled so stale client-side map/distance settings do not
   override these defaults after deploys.
 - File storage stays on `gzip`, which browsers can consume directly.
+- BlueMap CPU policy defaults: active players -> 2 CPUs; empty server -> host CPU
+  count minus 4 reserved CPUs; wait 5 minutes after the last player leaves before
+  ramping up again.
 
 ## Measurement checklist
 

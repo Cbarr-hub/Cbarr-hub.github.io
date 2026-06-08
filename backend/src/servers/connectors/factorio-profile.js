@@ -149,8 +149,11 @@ export function captureMapSettings(json = {}) {
     evolutionEnabled: json.enemy_evolution?.enabled === false ? '0' : '1',
     pollutionEnabled: json.pollution?.enabled       === false ? '0' : '1',
     expansionEnabled: json.enemy_expansion?.enabled === false ? '0' : '1',
+    // Clamp to the validator's accepted range: a hand-edited save can hold a value
+    // outside 0.25–10, and capture re-runs validateProfileSettings — an unclamped
+    // out-of-range value would throw and break the capture↔apply round-trip.
     techPriceMultiplier: Number.isFinite(json.difficulty_settings?.technology_price_multiplier)
-      ? json.difficulty_settings.technology_price_multiplier : 1,
+      ? Math.max(0.25, Math.min(10, json.difficulty_settings.technology_price_multiplier)) : 1,
   };
 }
 

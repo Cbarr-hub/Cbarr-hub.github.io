@@ -198,7 +198,8 @@ export class GmodConnector extends LinuxGsmConnector {
       // (ttt_/gm_ for TTT, ph_/gm_ for PH) so an unrelated bsp can't appear in the
       // picker. Names are lowercase a-z0-9_ (matches Source/GMOD bsp naming). Any
       // failure (dir missing, exec error) degrades to an empty list, never throws.
-      const re = new RegExp(`^(${this.mapPrefixes.join('|')})[a-z0-9_]*$`);
+      const escapeRe = (p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`^(${this.mapPrefixes.map(escapeRe).join('|')})[a-z0-9_]+$`);
       const names = (res.stdout || '').split('\n')
         .map((l) => l.trim())
         .filter((n) => re.test(n));
@@ -396,7 +397,10 @@ export class GmodConnector extends LinuxGsmConnector {
 
     // The server boots into the FIRST map of the rotation (stock fallback if the
     // rotation is somehow empty). One ordered list drives both boot + rotation.
-    const rotation = s.mapcycle.length ? s.mapcycle : ['gm_construct'];
+    // De-dup (order-preserving): a repeated entry would write a no-op map change
+    // into mapcycle.txt. This single deduped list drives the boot-map guard, the
+    // boot map, and the written rotation so they can't diverge.
+    const rotation = [...new Set(s.mapcycle.length ? s.mapcycle : ['gm_construct'])];
     const bootMap = rotation[0];
 
     // Boot-map guard. With NO workshop collection set, only stock maps can load —
@@ -405,7 +409,7 @@ export class GmodConnector extends LinuxGsmConnector {
     // (GMOD downloads + mounts it at boot before loading the map).
     if (!s.workshopCollection) {
       const loadable = new Set([...(await this.installedMaps()), ...STOCK_ALWAYS]);
-      const missing = [...new Set(rotation)].filter((m) => !loadable.has(m));
+      const missing = rotation.filter((m) => !loadable.has(m));
       if (missing.length) {
         throw badSetting(
           `no Workshop Collection is set, so only stock maps can load (${[...loadable].sort().join(', ')}). ` +
@@ -446,7 +450,10 @@ export class GmodConnector extends LinuxGsmConnector {
       return v === undefined || v === '' ? def : Number(v);
     };
     // Preserve the invariant: the boot map (defaultmap) is the first rotation entry.
-    const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim();
+    // Lowercase: bsp names are lowercase, but a defaultmap set out-of-band can leak
+    // a mixed-case Workshop title, which validateProfileSettings (lowercase-only
+    // MAP_NAME_RE) would reject — making capture throw instead of snapshotting.
+    const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim().toLowerCase();
     let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean);
     if (cycle[0] !== bootMap) cycle = [bootMap, ...cycle.filter((m) => m !== bootMap)];
 

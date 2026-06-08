@@ -45,5 +45,16 @@ export function loadEnv(path = '.env') {
     // "tcp://docker-proxy:2375".
     DOCKER_HOST: process.env.DOCKER_HOST ?? '',
     DOCKER_API_VERSION: process.env.DOCKER_API_VERSION ?? '',
+
+    // BlueMap CPU auto-tuning. With render-thread-count set high in core.conf,
+    // the backend dynamically caps the BlueMap container: low while players are
+    // online, high while the hosted servers are empty.
+    BLUEMAP_RESOURCE_AUTOTUNE: process.env.BLUEMAP_RESOURCE_AUTOTUNE ?? '1',
+    BLUEMAP_CONTAINER: process.env.BLUEMAP_CONTAINER ?? 'bluemap',
+    BLUEMAP_RESOURCE_POLL_SECONDS: process.env.BLUEMAP_RESOURCE_POLL_SECONDS ?? '60',
+    BLUEMAP_IDLE_DELAY_SECONDS: process.env.BLUEMAP_IDLE_DELAY_SECONDS ?? '300',
+    BLUEMAP_ACTIVE_CPUS: process.env.BLUEMAP_ACTIVE_CPUS ?? '2',
+    BLUEMAP_IDLE_CPUS: process.env.BLUEMAP_IDLE_CPUS ?? '0',
+    BLUEMAP_RESERVED_CPUS: process.env.BLUEMAP_RESERVED_CPUS ?? '4',
   };
 }

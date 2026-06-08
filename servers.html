@@ -2160,9 +2160,13 @@ function readProfileForm(){
     const key = el.dataset.pf, t = el.dataset.pt
     if (t === 'maplist') return
     if (t === 'bool') { DS.values[key] = el.classList.contains('on') ? '1' : '0'; return }
-    if (t === 'segmented') { const on = el.querySelector('.seg-btn.on') || el.querySelector('.seg-btn'); if (on) DS.values[key] = on.dataset.segVal; return }
-    if (t === 'number' && el.classList.contains('pf-range')) { const num = el.querySelector('[data-pf-num]'); if (num) DS.values[key] = num.value === '' ? '' : Number(num.value); return }
-    if (t === 'number') { DS.values[key] = el.value === '' ? '' : Number(el.value); return }
+    // Only write when a button is actually selected — don't coerce an off-list /
+    // unset value to the first option (that would silently rewrite it on every Save).
+    if (t === 'segmented') { const on = el.querySelector('.seg-btn.on'); if (on) DS.values[key] = on.dataset.segVal; return }
+    // A cleared number input is ambiguous — leave DS.values[key] at its loaded value
+    // rather than sending '' (which the backend coerces to 0 or rejects).
+    if (t === 'number' && el.classList.contains('pf-range')) { const num = el.querySelector('[data-pf-num]'); if (num && num.value !== '') DS.values[key] = Number(num.value); return }
+    if (t === 'number') { if (el.value !== '') DS.values[key] = Number(el.value); return }
     DS.values[key] = el.value
   })
   return DS.values

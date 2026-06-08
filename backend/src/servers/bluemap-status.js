@@ -54,5 +54,7 @@ export function parseBlueMapStatus(logText) {
     return { state: 'starting', message: 'Render starting', percent: null, map: null, eta: null };
   }
 
-  return { state: 'unknown', message: lines.at(-1), percent: null, map: null, eta: null };
+  // Don't surface a raw, unmatched container log line (could be a stack-trace
+  // fragment / noise) into the user-facing status pill — use a generic message.
+  return { state: 'unknown', message: 'Render status unavailable', percent: null, map: null, eta: null };
 }

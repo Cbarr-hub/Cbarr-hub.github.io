@@ -64,9 +64,9 @@ export function validateProfileSettings(s = {}) {
     if (!Number.isInteger(n) || n < lo || n > hi) throw badSetting(`${label} must be ${lo}–${hi}`);
     return n;
   };
-  out.maxPlayers      = intIn(s.maxPlayers, 1, 200, 'max players');
-  out.viewDistance    = intIn(s.viewDistance, 3, 32, 'view distance');
-  out.spawnProtection = intIn(s.spawnProtection, 0, 1000, 'spawn protection');
+  out.maxPlayers      = intIn(s.maxPlayers ?? 20, 1, 200, 'max players');
+  out.viewDistance    = intIn(s.viewDistance ?? 10, 3, 32, 'view distance');
+  out.spawnProtection = intIn(s.spawnProtection ?? 16, 0, 1000, 'spawn protection');
   out.simulationDistance = intIn(s.simulationDistance ?? 10, 3, 32, 'simulation distance');
   out.playerIdleTimeout  = intIn(s.playerIdleTimeout ?? 0, 0, 1440, 'idle timeout');
   const motd = String(s.motd ?? '');

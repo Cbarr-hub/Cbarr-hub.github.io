@@ -92,6 +92,30 @@ test('DockerClient.statusCurrent reports stopped, and tolerates missing stats', 
   assert.equal(s.cpu, null);
 });
 
+test('DockerClient.containerLogs tails and demuxes container logs', async () => {
+  const { fetchImpl, calls } = fakeFetch([
+    [/^GET \/containers\/bluemap\/logs\?stdout=1&stderr=1&tail=50&timestamps=0$/, () => res({ bytes: new Uint8Array(
+      Buffer.concat([frame(1, 'line one\n'), frame(2, 'line two\n')]),
+    ) })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const logs = await c.containerLogs('bluemap', { tail: 50 });
+  assert.match(logs, /line one/);
+  assert.match(logs, /line two/);
+  assert.deepEqual(calls.map((x) => x.path), ['/containers/bluemap/logs?stdout=1&stderr=1&tail=50&timestamps=0']);
+});
+
+test('DockerClient.setNanoCpus updates live container cpu quota', async () => {
+  const { fetchImpl, calls } = fakeFetch([
+    [/^POST \/containers\/bluemap\/update$/, () => res({ json: { Warnings: null } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  assert.deepEqual(await c.setNanoCpus('bluemap', 4_000_000_000), { Warnings: null });
+  assert.deepEqual(calls.map((x) => [x.path, JSON.parse(x.body)]), [
+    ['/containers/bluemap/update', { NanoCpus: 4_000_000_000 }],
+  ]);
+});
+
 test('DockerClient power actions hit the right endpoints (stop=kill, shutdown=stop)', async () => {
   const { fetchImpl, calls } = fakeFetch([[/^POST /, () => res({ status: 204 })]]);
   const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });

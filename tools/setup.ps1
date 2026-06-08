@@ -194,6 +194,11 @@ acl = private
         Write-Err "Failed to download secrets from R2 - check credentials/bucket access, then re-run with -Fresh."
         exit 1
     }
+    if ((Get-Item $bundle).Length -le 0) {
+        Remove-Item -Force $bundle
+        Write-Err "Downloaded secret bundle is empty - check R2 credentials/bucket access, then re-run with -Fresh."
+        exit 1
+    }
     Write-Success "Downloaded encrypted secrets -> cached at $bundle"
 }
 Write-Host ""

@@ -131,10 +131,13 @@ services:
   # immediately but tiles fill in as the render progresses. The map config does NOT
   # need editing per environment: the volume subpath below mounts the active world
   # (mc-data/${MC_LEVEL}) at the fixed path /app/world, which overworld.conf targets.
+  # The app/host maintenance runner dynamically adjusts the Docker CPU quota from
+  # player presence. `cpus` is only the safe startup cap before that tuner runs.
   bluemap:
     image: ghcr.io/bluemap-minecraft/bluemap:v5.20
     container_name: bluemap
     restart: unless-stopped
+    cpus: ${BLUEMAP_CPUS:-4}
     command: ["-r", "-u", "-w", "-m", "overworld,nether,end"] # render/watch all map dimensions
     volumes:
       # Mount the ACTIVE world folder (mc-data/<MC_LEVEL>) straight to /app/world,

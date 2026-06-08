@@ -24,6 +24,13 @@ function Update-EnvPath {
     $winget  = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"
     $env:Path = (@($machine, $user, $winget) | Where-Object { $_ }) -join ';'
 }
+
+function Write-ContainerScript([string]$Path, [string]$Content) {
+    $lf = ($Content -replace "`r`n", "`n") -replace "`r", "`n"
+    if (-not $lf.EndsWith("`n")) { $lf += "`n" }
+    $enc = New-Object System.Text.ASCIIEncoding
+    [System.IO.File]::WriteAllText($Path, $lf, $enc)
+}
 Update-EnvPath
 
 if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) {
@@ -65,23 +72,51 @@ if (-not $Name) {
     $Name = (rclone lsf "r2:gamertown-backups/app/" 2>$null | Where-Object { $_ -match '\.sqlite$' } | Sort-Object | Select-Object -Last 1)
     if (-not $Name) { Write-Host "[ERROR] No DB backups under r2:gamertown-backups/app/" -ForegroundColor Red; exit 1 }
 }
+if ($Name -like '-*') {
+    Write-Host "[ERROR] Invalid DB snapshot name '$Name'. This looks like a caller passed script parameters positionally." -ForegroundColor Red
+    exit 1
+}
 Write-Host "[*] Snapshot: $Name"
 
 # Download to a temp dir (under .secrets, which is gitignored).
 $repo   = Split-Path -Parent $PSScriptRoot
-$indir  = Join-Path $repo ".secrets\dbrestore"
+$indir  = Join-Path $repo (".secrets\dbrestore-" + [guid]::NewGuid().ToString("N"))
 $null = New-Item -ItemType Directory -Force -Path $indir
-rclone copyto "r2:gamertown-backups/app/$Name" (Join-Path $indir "gt.sqlite")
-if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] download failed" -ForegroundColor Red; exit 1 }
-Write-Host ("[OK] downloaded " + (Get-Item (Join-Path $indir 'gt.sqlite')).Length + " bytes")
+$dst = Join-Path $indir "gt.sqlite"
+Remove-Item -Force -ErrorAction SilentlyContinue $dst
+rclone copyto "r2:gamertown-backups/app/$Name" $dst
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $dst)) { Write-Host "[ERROR] download failed" -ForegroundColor Red; exit 1 }
+$download = Get-Item $dst
+if ($download.Length -le 0) { Write-Host "[ERROR] downloaded DB snapshot is empty" -ForegroundColor Red; exit 1 }
+Write-Host ("[OK] downloaded " + $download.Length + " bytes")
+$restoreScript = Join-Path $indir "restore-db.sh"
+Write-ContainerScript $restoreScript @'
+set -eu
+cp /in/gt.sqlite /data/gamertown.sqlite
+rm -f /data/gamertown.sqlite-wal /data/gamertown.sqlite-shm
+chown 1000:1000 /data/gamertown.sqlite
+'@
 
 # Stop the app (if running) so SQLite isn't mid-write, restore, restart.
 $running = @(docker ps -q -f "name=^$app$")
-if ($running) { Write-Host "[*] stopping $app"; docker stop $app | Out-Null }
+if ($running) {
+    Write-Host "[*] stopping $app"
+    docker stop $app | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] failed to stop $app; DB not restored" -ForegroundColor Red; exit 1 }
+}
 
 docker run --rm -v "${Volume}:/data" -v "${indir}:/in:ro" alpine `
-    sh -c "cp /in/gt.sqlite /data/gamertown.sqlite && rm -f /data/gamertown.sqlite-wal /data/gamertown.sqlite-shm && chown 1000:1000 /data/gamertown.sqlite"
-if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] restore into volume failed" -ForegroundColor Red; exit 1 }
+    sh /in/restore-db.sh
+$restoreCode = $LASTEXITCODE
+if ($restoreCode -ne 0) {
+    Write-Host "[ERROR] restore into volume failed" -ForegroundColor Red
+    if ($running) {
+        Write-Host "[*] restarting $app after failed restore"
+        docker start $app | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] failed to restart $app; start it manually" -ForegroundColor Yellow }
+    }
+    exit $restoreCode
+}
 
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $indir
 if ($running) { Write-Host "[*] starting $app"; docker start $app | Out-Null }

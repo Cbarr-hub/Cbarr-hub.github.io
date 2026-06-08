@@ -158,6 +158,15 @@ export class DockerClient {
   stop(container)     { return this.#power(container, '/kill',    [304, 409]); } // hard (SIGKILL) — force off (409 = already stopped)
   reboot(container)   { return this.#power(container, '/restart', [304]); }       // 409 (engine refused restart) must surface, not no-op
 
+  updateContainer(container, body = {}) {
+    return this.#request('POST', this.#c(container, '/update'), { body });
+  }
+
+  setNanoCpus(container, nanoCpus) {
+    const n = Math.max(0, Math.floor(Number(nanoCpus) || 0));
+    return this.updateContainer(container, { NanoCpus: n });
+  }
+
   async #power(container, suffix, noopStatuses) {
     try {
       const result = await this.#request('POST', this.#c(container, suffix));
@@ -191,8 +200,10 @@ export class DockerClient {
   async containerLogs(container, { tail = 240 } = {}) {
     const n = Math.max(1, Math.min(1000, Number.isFinite(Number(tail)) ? Math.floor(Number(tail)) : 240));
     const stream = await this.#request('GET', this.#c(container, `/logs?stdout=1&stderr=1&tail=${n}&timestamps=0`), { raw: true });
-    const { stdout, stderr } = demux(stream);
-    return [stdout, stderr].filter(Boolean).join('\n');
+    const { stdout, stderr, combined } = demux(stream);
+    // `combined` keeps stdout/stderr frames in arrival (chronological) order, which
+    // is what a log tail wants; fall back to the split blocks if there were no frames.
+    return combined || [stdout, stderr].filter(Boolean).join('\n');
   }
 
   // ── command execution (emulated guest-agent two-step) ───────────────────────
@@ -315,8 +326,13 @@ function secondsSince(iso) {
 // CPU as a 0..1 fraction from a stats sample (delta vs the previous sample),
 // matching the qemu cpu field. Returns null when it can't be computed.
 function cpuFraction(s) {
+  // A one-shot /stats?stream=false can return a zeroed precpu_stats (no prior
+  // sample). Differencing against that yields a cumulative-since-boot ratio, not a
+  // live %, so treat a missing previous system sample as "can't compute".
+  const preSys = s?.precpu_stats?.system_cpu_usage ?? 0;
+  if (!preSys) return null;
   const cpuDelta = (s?.cpu_stats?.cpu_usage?.total_usage ?? 0) - (s?.precpu_stats?.cpu_usage?.total_usage ?? 0);
-  const sysDelta = (s?.cpu_stats?.system_cpu_usage ?? 0) - (s?.precpu_stats?.system_cpu_usage ?? 0);
+  const sysDelta = (s?.cpu_stats?.system_cpu_usage ?? 0) - preSys;
   if (cpuDelta <= 0 || sysDelta <= 0) return null;
   const cpus = s?.cpu_stats?.online_cpus
     || s?.cpu_stats?.cpu_usage?.percpu_usage?.length
@@ -328,7 +344,7 @@ function cpuFraction(s) {
 // header [streamType(1), 0,0,0, size(4 BE)] followed by `size` payload bytes.
 // streamType 1 = stdout, 2 = stderr.
 function demux(buf) {
-  let stdout = '', stderr = '';
+  let stdout = '', stderr = '', combined = '';
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let i = 0;
   while (i + 8 <= buf.length) {
@@ -339,9 +355,10 @@ function demux(buf) {
     if (end > buf.length) break; // partial trailing frame
     const chunk = Buffer.from(buf.subarray(start, end)).toString('utf8');
     if (type === 2) stderr += chunk; else stdout += chunk;
+    combined += chunk; // frames are in chronological order — preserve interleaving
     i = end;
   }
-  return { stdout, stderr };
+  return { stdout, stderr, combined };
 }
 
 function timeoutSignal(timeoutMs) {

@@ -10,6 +10,7 @@ import { attachSession } from './middleware/auth.js';
 import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
 import { createEconomy } from './economy.js';
+import { createBlueMapResourceController } from './servers/bluemap-resources.js';
 
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
@@ -69,9 +70,20 @@ export async function buildApp(env = loadEnv()) {
     : null;
   if (!docker) app.log.warn('DOCKER_HOST not configured — game-server control will be unavailable');
 
-  app.decorate('serverService', createServerService({
+  const serverService = createServerService({
     dockerClient: docker, publicHost: env.PUBLIC_HOST, db,
-  }));
+  });
+  app.decorate('serverService', serverService);
+
+  const blueMapResources = createBlueMapResourceController({
+    dockerClient: docker,
+    serverService,
+    logger: app.log,
+    env,
+  });
+  blueMapResources.start();
+  app.decorate('blueMapResources', blueMapResources);
+  app.addHook('onClose', async () => blueMapResources.stop());
 
   // Playtime economy: credit closed game-server sessions to linked accounts.
   // Runs once at boot, then on a timer (idempotent — each session is paid once).

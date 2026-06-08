@@ -9,7 +9,8 @@
 
 // Matches a cvar line: leading ws, the exact name, then ws+value or end-of-line.
 // The `name + whitespace-or-eol` rule means `map` won't match `mapcyclefile`.
-const lineRe = (name) => new RegExp(`^[ \\t]*${name}([ \\t].*)?$`, 'm');
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const lineRe = (name) => new RegExp(`^[ \\t]*${escapeRe(name)}([ \\t].*)?$`, 'm');
 
 /** Read a cvar's value (surrounding quotes stripped). undefined if the cvar
  *  line is absent; '' if present with no value. */
@@ -25,7 +26,8 @@ export function getCvar(text, name) {
  *  place if present, else appends. */
 export function setCvar(text, name, value) {
   const line = `${name} "${value}"`;
-  if (lineRe(name).test(text)) return text.replace(lineRe(name), line);
+  // Function replacer so a value with `$1`/`$&`/`` $` `` isn't treated as a backreference.
+  if (lineRe(name).test(text)) return text.replace(lineRe(name), () => line);
   return text.replace(/\n*$/, '') + `\n${line}\n`;
 }
 

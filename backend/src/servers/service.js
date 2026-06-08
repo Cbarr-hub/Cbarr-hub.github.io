@@ -153,14 +153,25 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     // pairs that with the per-container cpu/mem it already gets from /api/servers.
     // Throws NOT_CONFIGURED when the backend isn't wired.
     async getNodeStatus() {
-      if (dockerClient) {
-        const now = Date.now();
-        if (nodeCache && now - nodeCache.at < NODE_CACHE_TTL_MS) return nodeCache.value;
-        const value = { kind: 'docker', ...(await dockerClient.nodeStatus()) };
-        nodeCache = { at: now, value };
-        return value;
+      if (!dockerClient) {
+        throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
       }
-      throw new ServerControlError('server control is not configured', 'NOT_CONFIGURED');
+      const now = Date.now();
+      // Cache the in-flight PROMISE (not just the resolved value) so concurrent
+      // cold-cache callers share one dockerClient.nodeStatus() fan-out instead of
+      // each firing their own — same dedup pattern as cachedServerList. A rejected
+      // compute is evicted so the next caller retries.
+      if (nodeCache && (!nodeCache.settled || now - nodeCache.at < NODE_CACHE_TTL_MS)) {
+        return nodeCache.promise;
+      }
+      const entry = { at: now, settled: false, promise: null };
+      const promise = dockerClient.nodeStatus()
+        .then((status) => ({ kind: 'docker', ...status }))
+        .catch((err) => { if (nodeCache?.promise === promise) nodeCache = null; throw err; })
+        .finally(() => { entry.settled = true; });
+      entry.promise = promise;
+      nodeCache = entry;
+      return promise;
     },
 
     // List every server with its current status. Status failures are captured

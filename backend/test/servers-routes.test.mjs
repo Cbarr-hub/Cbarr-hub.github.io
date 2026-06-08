@@ -38,6 +38,7 @@ function baseService(overrides = {}) {
     listConfig: async () => ({ files: [] }),
     readConfig: async () => ({ content: '' }),
     writeConfig: async () => ({ ok: true }),
+    getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
     runUpdate: async () => ({ ok: true }),
     ...overrides,
   };
@@ -109,6 +110,21 @@ test('servers routes validate and forward quick/full status mode', async () => {
 
     const invalid = await app.inject({ method: 'GET', url: '/api/servers?mode=slow' });
     assert.equal(invalid.statusCode, 400);
+  } finally { await app.close(); }
+});
+
+test('servers routes expose BlueMap render status on a static path', async () => {
+  const app = await routeApp({
+    service: baseService({
+      getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
+      getStatus: async () => { throw new Error('map status route was shadowed'); },
+    }),
+  });
+  try {
+    const res = await app.inject({ method: 'GET', url: '/api/servers/map/status' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().map, 'nether');
+    assert.equal(res.json().percent, 45.1);
   } finally { await app.close(); }
 });
 

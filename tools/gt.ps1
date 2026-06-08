@@ -6,11 +6,12 @@
 #   .\tools\gt.ps1 dev --prod-like --app  app only (no game servers)
 #   .\tools\gt.ps1 dev <compose args...>  passthrough (ps / logs -f app / down / up -d minecraft)
 #   .\tools\gt.ps1 restore-db [name]      restore the app DB from R2
+#   .\tools\gt.ps1 seed-dev [flags]       restore prod DB/world snapshots into dev volumes
 #   .\tools\gt.ps1 prod                   refused here - prod runs on the keeper (see message)
 #
 # Mode/env/compose mapping lives in tools/gt-modes.conf (shared with gt.sh). This
-# dispatcher CALLS the existing primitives (setup.ps1, db-restore.ps1) rather than
-# reimplementing the secrets/DB logic.
+# dispatcher CALLS the existing primitives (setup.ps1, db-restore.ps1,
+# dev-restore-data.ps1) rather than reimplementing the secrets/DB/world logic.
 #
 # NOTE: deliberately NOT $ErrorActionPreference='Stop'. docker/git/rclone write
 # progress to stderr; under Stop PowerShell turns the first such line into a
@@ -102,7 +103,7 @@ function Preseed-Db([bool]$force) {
     $vol = "$((Conf-Get 'project.dev')[0])_gt-data"
     & docker volume create $vol | Out-Null
     if (-not $force) {
-        & docker run --rm -v "${vol}:/d" alpine sh -c '[ -s /d/gamertown.sqlite ]' 2>$null | Out-Null
+        & docker run --rm -v "${vol}:/d" alpine test -s /d/gamertown.sqlite 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-St "$vol already has a DB - skipping restore (pass --restore to force a fresh pull)"
             return
@@ -183,9 +184,52 @@ function Cmd-Dev([string[]]$rest) {
 function Cmd-RestoreDb([string[]]$rest) {
     Update-EnvPath
     $vol = "$((Conf-Get 'project.dev')[0])_gt-data"
-    $args2 = @('-Volume', $vol)
-    if ($rest -and $rest.Count -gt 0) { $args2 += @('-Name', $rest[0]) }
-    & (Join-Path $PSScriptRoot 'db-restore.ps1') @args2
+    $params = @{ Volume = $vol }
+    if ($rest -and $rest.Count -gt 0) { $params.Name = $rest[0] }
+    & (Join-Path $PSScriptRoot 'db-restore.ps1') @params
+    exit $LASTEXITCODE
+}
+
+function Cmd-SeedDev([string[]]$rest) {
+    Update-EnvPath
+    if ($rest -contains '--help' -or $rest -contains '-h' -or $rest -contains 'help') {
+        & (Join-Path $PSScriptRoot 'dev-restore-data.ps1') -Help
+        exit $LASTEXITCODE
+    }
+    $targets = @()
+    $params = @{}
+    for ($i = 0; $i -lt $rest.Count; $i++) {
+        $a = $rest[$i]
+        switch ($a) {
+            '--all'       { $targets += 'all' }
+            '--db'        { $targets += 'db' }
+            '--factorio'  { $targets += 'factorio' }
+            '--minecraft' { $targets += 'minecraft' }
+            '--worlds'    { $targets += 'worlds' }
+            '--keep-bluemap' { $params.KeepBlueMap = $true }
+            '--db-name' {
+                if ($i + 1 -ge $rest.Count) { Write-Err2 "missing value for --db-name"; exit 1 }
+                $i++; $params.DbName = $rest[$i]
+            }
+            '--factorio-name' {
+                if ($i + 1 -ge $rest.Count) { Write-Err2 "missing value for --factorio-name"; exit 1 }
+                $i++; $params.FactorioName = $rest[$i]
+            }
+            '--minecraft-name' {
+                if ($i + 1 -ge $rest.Count) { Write-Err2 "missing value for --minecraft-name"; exit 1 }
+                $i++; $params.MinecraftName = $rest[$i]
+            }
+            '-h'     { $params.Help = $true }
+            '--help' { $params.Help = $true }
+            default {
+                Write-Err2 "unknown seed-dev arg: $a"
+                Write-Host "Try: .\tools\gt.ps1 seed-dev --help" -ForegroundColor Yellow
+                exit 1
+            }
+        }
+    }
+    if ($targets.Count -gt 0) { $params.Target = $targets }
+    & (Join-Path $PSScriptRoot 'dev-restore-data.ps1') @params
     exit $LASTEXITCODE
 }
 
@@ -198,7 +242,11 @@ gt - Gamertown dispatcher (Windows)
   .\tools\gt.ps1 dev --prod-like --app  app only (no game servers)
   .\tools\gt.ps1 dev <compose args...>  passthrough: ps | logs -f app | down | up -d minecraft
   .\tools\gt.ps1 restore-db [name]      restore the app DB from R2 (newest, or a named snapshot)
+  .\tools\gt.ps1 seed-dev [flags]       restore prod DB + Factorio + Minecraft snapshots into dev
   .\tools\gt.ps1 prod                   refused on Windows - prod runs on the keeper
+
+seed-dev flags: --db --factorio --minecraft --worlds --all --keep-bluemap
+                --db-name NAME --factorio-name NAME --minecraft-name NAME
 
 Mode/env/compose mapping: tools/gt-modes.conf (shared with tools/gt.sh).
 "@ | Write-Host
@@ -211,6 +259,7 @@ $rest = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
 switch ($sub) {
     'dev'        { Cmd-Dev $rest }
     'restore-db' { Cmd-RestoreDb $rest }
+    'seed-dev'   { Cmd-SeedDev $rest }
     'prod' {
         Write-Err2 "'gt prod' runs ON THE KEEPER, not on Windows."
         Write-Host "  ssh root@192.168.1.241   then:   cd /root/gamertown && tools/gt.sh prod" -ForegroundColor Yellow

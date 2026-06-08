@@ -130,7 +130,10 @@ export function validateProfileSettings(s = {}) {
   if (!GAME_ALIASES[s.gameMode]) throw badSetting(`invalid game mode: ${s.gameMode}`);
   out.gameMode = s.gameMode;
   const hostname = String(s.hostname ?? '');
-  if (/["\n\r]/.test(hostname)) throw badSetting('server name may not contain quotes or newlines');
+  // Reject `;` too: hostname is pushed LIVE over RCON as `hostname "<value>"`, and
+  // Source treats `;` as a console command separator even inside a quoted arg, so an
+  // unescaped `;` would let a crafted name chain arbitrary cvars (RCON injection).
+  if (/["\n\r;]/.test(hostname)) throw badSetting('server name may not contain quotes, semicolons, or newlines');
   if (hostname.length > MAX_HOSTNAME_CHARS) throw badSetting(`server name too long (max ${MAX_HOSTNAME_CHARS} chars)`);
   out.hostname = hostname;
   const raw = String(s.rawConfig ?? '');

@@ -50,6 +50,7 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
     let buf = Buffer.alloc(0);
     let authed = false;
     let out = '';
+    let gotData = false; // any response packet seen after auth
     let idle = null;
     let settled = false;
 
@@ -65,12 +66,25 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
 
     socket.on('connect', () => socket.write(encode(AUTH_ID, 3, password)));
     socket.on('error', (e) => finish(rconErr(`RCON connection failed: ${e.message}`, 'RCON_ERROR')));
-    socket.on('end', () => finish(authed ? null : rconErr('RCON closed before auth', 'RCON_ERROR'), out));
+    // A normal exchange resolves via the END_ID sentinel (or the idle timer for
+    // Factorio), so 'end' only fires unsettled when the peer closed early. Resolve
+    // only if we authed AND actually received response data; otherwise the peer
+    // dropped mid-exchange (crash/restart/kick) — reject instead of returning a
+    // phantom empty success that masks the failure.
+    socket.on('end', () => finish(
+      authed && gotData ? null : rconErr(authed ? 'RCON connection closed before a response' : 'RCON closed before auth', 'RCON_ERROR'),
+      out,
+    ));
 
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
       while (buf.length >= 4) {
         const size = buf.readInt32LE(0);
+        // A valid packet is at least 10 bytes (id+type+two NULs) and Source caps
+        // responses near 4KB; anything wildly out of range means we're misframed
+        // (garbage, or a non-Source service on this port) — fail fast instead of
+        // desyncing the stream and hanging until the overall timeout.
+        if (size < 10 || size > 4 * 1024 * 1024) { finish(rconErr('RCON framing error (bad packet size)', 'RCON_ERROR')); return; }
         if (buf.length < 4 + size) break;
         const id = buf.readInt32LE(4);
         const type = buf.readInt32LE(8);
@@ -91,6 +105,7 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
         }
         if (id === END_ID) { finish(null, out); return; }
         out += body;
+        gotData = true;
         clearTimeout(idle);
         idle = setTimeout(() => finish(null, out), 700);
       }

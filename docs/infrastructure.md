@@ -36,7 +36,9 @@ published). Caddy reverse-proxies it at `/map/*` behind the same `forward_auth` 
 as the rest of the panel, and `servers.html` embeds it in a **Map** tab. Config is
 bind-mounted from `docker/bluemap/config`; `bluemap-data` and `bluemap-web` must be
 preserved so restarts use BlueMap's changed-region update path instead of rebuilding the
-whole map. See `servers.compose.yml`, `Caddyfile`, and [`bluemap-performance.md`](bluemap-performance.md).
+whole map. The app and host `gt-maintenance` daemon tune BlueMap's Docker CPU quota from
+player presence: cap low while players are online, ramp high while the game servers are
+empty. See `servers.compose.yml`, `Caddyfile`, and [`bluemap-performance.md`](bluemap-performance.md).
 
 **App-side economy + presence (no new infra).** The app reads the host session-tracker's
 `players`/`server_sessions` rows to drive the panel's **Activity** view (live presence +

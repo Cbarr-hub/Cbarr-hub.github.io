@@ -120,6 +120,9 @@ else
   rclone copyto "r2:gamertown-backups/secrets/secrets.tar.age" "$bundle" || {
     rm -f "$bundle"
     echo -e "${RED}✗ Failed to download from R2 — check credentials/bucket access, then re-run with --fresh.${NC}"; exit 1; }
+  [ -s "$bundle" ] || {
+    rm -f "$bundle"
+    echo -e "${RED}ERROR: downloaded secret bundle is empty - check credentials/bucket access, then re-run with --fresh.${NC}"; exit 1; }
   echo -e "${GREEN}✓ Downloaded encrypted secrets → cached at $bundle${NC}"
 fi
 echo

@@ -79,6 +79,20 @@ async function captureGmodRcon(run) {
   }
 }
 
+async function capturePhRcon(run) {
+  const prev = process.env.PROPHUNT_RCON_PASSWORD;
+  try {
+    process.env.PROPHUNT_RCON_PASSWORD = 'secret';
+    return await withRconCapture(async ({ port }) => {
+      const conn = new DockerPropHuntConnector({ ...PH, container: '127.0.0.1', port }, fakeDockerClient());
+      await run(conn);
+    });
+  } finally {
+    if (prev === undefined) delete process.env.PROPHUNT_RCON_PASSWORD;
+    else process.env.PROPHUNT_RCON_PASSWORD = prev;
+  }
+}
+
 // ── locator + container-is-game ─────────────────────────────────────────────────
 test('DockerGmod uses the container as locator and treats running == hosting', async () => {
   const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
@@ -123,6 +137,22 @@ test('DockerGmod applyProfileSettings -> captureProfileSettings round-trips', as
   assert.equal(cap.allTalk, 0);
   assert.equal(cap.karmaAutokick, 1);
   assert.equal(cap.creditsStart, 3);
+});
+
+// ── capture tolerates a mixed-case mapcycle.txt (lowercases boot map AND rotation) ─
+test('DockerGmod captureProfileSettings lowercases a mixed-case mapcycle.txt', async () => {
+  // A defaultmap/mapcycle set out-of-band can carry a mixed-case Workshop title; the
+  // rotation lines (not just the boot map) must be lowercased or validate's
+  // lowercase-only MAP_NAME_RE makes capture throw (HTTP 400).
+  const files = {
+    [INST]: 'defaultmap="ttt_clue_se"\nmaxplayers="16"\n',
+    [GAME]: '',
+    [CYCLE]: 'Ttt_Clue_SE\nttt_dolls\n',
+  };
+  const conn = new DockerGmodConnector(GMOD, fakeDockerClient(files));
+  let cap;
+  await assert.doesNotReject(async () => { cap = await conn.captureProfileSettings(); });
+  assert.deepEqual(cap.mapcycle, ['ttt_clue_se', 'ttt_dolls']);
 });
 
 // ── live RCON gated on the env password (TCP transport, not in-guest python) ─────
@@ -431,4 +461,33 @@ test('Gmod + PropHunt profileSchema embeds a cvarRef built from their field tabl
   assert.ok(Array.isArray(ps.cvarRef) && ps.cvarRef.length);
   assert.ok(ps.cvarRef.some((c) => c.name === 'ph_round_time' && c.type === 'number'));
   assert.ok(ps.cvarRef.some((c) => c.name === 'ph_enable_lucky_balls' && c.type === 'bool'));
+});
+
+// ── PH sliders clamp via clampNumber: a literal 0 hits the MIN, not the default ────
+test('DockerPropHunt ph_round_time/ph_blind_time sliders clamp (0 → min, not default)', async () => {
+  // ph_round_time: bounds 60–600, default 250.
+  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_round_time', '0'))).command, 'ph_round_time 60');
+  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_round_time', ''))).command, 'ph_round_time 250');
+  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_round_time', '9999'))).command, 'ph_round_time 600');
+  // ph_blind_time: bounds 10–60, default 30.
+  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_blind_time', '0'))).command, 'ph_hunter_blindlock_time 10');
+  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_blind_time', ''))).command, 'ph_hunter_blindlock_time 30');
+});
+
+// ── container model: gameRunning is true via the mixin, never an `ss` port-grep ────
+test('DockerGmod gameRunning resolves via the container model, not the ss port-grep', async () => {
+  const client = fakeDockerClient();
+  const conn = new DockerGmodConnector(GMOD, client);
+  assert.equal(await conn.gameRunning(), true);
+  // no `ss -tuln` (or any ss invocation) is ever execed — the container IS the game.
+  assert.ok(!client.execs.some((argv) => argv.some((a) => /\bss\s+-tuln\b/.test(String(a)))),
+    'gameRunning must not shell out to ss -tuln');
+});
+
+test('DockerPropHunt gameRunning resolves via the container model, not the ss port-grep', async () => {
+  const client = fakeDockerClient();
+  const conn = new DockerPropHuntConnector(PH, client);
+  assert.equal(await conn.gameRunning(), true);
+  assert.ok(!client.execs.some((argv) => argv.some((a) => /\bss\s+-tuln\b/.test(String(a)))),
+    'gameRunning must not shell out to ss -tuln');
 });

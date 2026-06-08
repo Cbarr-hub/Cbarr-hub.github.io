@@ -3,9 +3,9 @@ import test from 'node:test';
 
 import { testDb } from './test-db.js';
 import { createServerStore } from '../src/servers/store.js';
-import { GmodConnector } from '../src/servers/connectors/gmod.js';
+import { GmodConnector, GMOD_ACTION_CMDS } from '../src/servers/connectors/gmod.js';
 import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
-import { PropHuntConnector } from '../src/servers/connectors/prophunt.js';
+import { PropHuntConnector, PH_ACTION_CMDS } from '../src/servers/connectors/prophunt.js';
 
 // CS / Factorio / Minecraft profile logic is covered by the docker-*.test.mjs
 // files (the live Docker connectors + their shared *-profile.js modules). This
@@ -260,6 +260,15 @@ test('prophunt: capture round-trips map/collection/players/cvars/rawConfig', asy
   assert.equal(c.rawConfig, 'sv_gravity 300\n');
 });
 
+test('prophunt: capture lowercases a mixed-case defaultmap (matches GMOD)', async () => {
+  // A defaultmap set out-of-band can carry a mixed-case Workshop title; without the
+  // toLowerCase() capture would fail validate's lowercase-only MAP_NAME_RE (BAD_SETTING).
+  const { conn } = prophunt({ [PH_INST]: 'defaultmap="ph_Office"\n' });
+  let result;
+  await assert.doesNotReject(async () => { result = await conn.captureProfileSettings(); });
+  assert.equal(result.propHuntMap, 'ph_office');
+});
+
 test('prophunt: profileSchema groups Map/X2Z/Controls/Advanced', async () => {
   const { conn } = prophunt();
   const schema = await conn.profileSchema();
@@ -426,4 +435,37 @@ test('prophunt: listProfiles seeds a Default the first time', () => {
   const { profiles } = conn.listProfiles();
   assert.equal(profiles.length, 1);
   assert.equal(profiles[0].name, 'Default');
+});
+
+// ── shared change_map + bhop/cheats consolidation (GmodConnector.changeMapCmd) ────
+// Wire an RCON-capturing client onto a VM-style connector (records the command the
+// inherited runRcon passes through). Returns the last command string.
+function liveCapture(conn, client) {
+  const calls = [];
+  client.agentExec = (_v, { command }) => { calls.push(command); return Promise.resolve({ pid: 1 }); };
+  client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'ok', 'err-data': '' });
+  return { calls, last: () => calls.at(-1)?.at(-1) };
+}
+
+test('gmod + prophunt: change_map is the shared changeMapCmd (validates the map name)', async () => {
+  const g = gmod({ [SERVER_CFG]: 'rcon_password "x"\n' });
+  const gcap = liveCapture(g.conn, g.client);
+  await g.conn.runLiveAction('change_map', 'gm_construct');
+  assert.equal(gcap.last(), 'changelevel gm_construct');
+  await assert.rejects(() => g.conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
+
+  const p = prophunt({ [PH_GAME]: 'rcon_password "x"\n' });
+  const pcap = liveCapture(p.conn, p.client);
+  await p.conn.runLiveAction('change_map', 'gm_construct');
+  assert.equal(pcap.last(), 'changelevel gm_construct');
+  await assert.rejects(() => p.conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
+});
+
+test('gmod + prophunt: bhop/cheats action strings are shared (one source of truth)', () => {
+  for (const key of ['bhop_on', 'bhop_off', 'cheats_on', 'cheats_off']) {
+    assert.equal(GMOD_ACTION_CMDS[key], PH_ACTION_CMDS[key], key);
+  }
+  // sanity: the values are the air-control bhop + sv_cheats toggles (not CS2 cvars).
+  assert.equal(GMOD_ACTION_CMDS.bhop_on, 'sv_cheats 1; sv_airaccelerate 1000');
+  assert.equal(GMOD_ACTION_CMDS.cheats_off, 'sv_cheats 0');
 });

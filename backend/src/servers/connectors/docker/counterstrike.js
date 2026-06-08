@@ -95,8 +95,7 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     // mp_roundtime_defuse etc. bite on the reload the changelevel/host_workshop_map triggers.
     for (const f of csProfile.CS_CVAR_FIELDS) {
       const value = f.bool ? (s[f.key] ? 1 : 0) : s[f.key];
-      if (f.cvar === 'bot_quota' && Number(value) === 0) parts.push('bot_quota 0; bot_kick');
-      else parts.push(`${f.cvar} ${value}`);
+      parts.push(f.cvar === 'bot_quota' ? csProfile.botQuotaCmd(value) : `${f.cvar} ${value}`);
     }
     const loadout = csProfile.loadoutModeCmd(s.loadoutMode);
     if (loadout) parts.push(loadout);
@@ -115,11 +114,14 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     return this.validateProfileSettings(csProfile.defaultProfileSettings());
   }
 
+  // The public join string must reflect the password a freshly-booted container
+  // actually enforces — which is none. A profile's sv_password is only ever pushed
+  // LIVE over RCON (applyProfileSettings) and reverts on ANY restart; the compose
+  // env (CS2_PW/unset) isn't readable through the scoped socket-proxy. Advertising
+  // the saved profile password would tell joiners to enter one the server has
+  // dropped, so always report "no password".
   async connectPassword() {
-    if (!this.store) return '';
-    const activeId = this.store.getActiveProfileId(this.server.id);
-    const active = activeId != null ? this.store.getProfile(this.server.id, activeId) : null;
-    return active?.settings ? this.validateProfileSettings(active.settings).password : '';
+    return '';
   }
 
   // ── workshop map catalog (DB-backed; transport-agnostic) ────────────────────

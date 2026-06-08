@@ -102,6 +102,13 @@ export const CS_LIVE_CONTROLS = [
   { key: 'bots',       label: 'Bot Count',   min: 0,   max: 10,    step: 1,   default: 0 },
 ];
 
+// Setting bot_quota 0 leaves any already-spawned bots in the server, so pair it with
+// bot_kick to actually clear the round. Shared by the live `bots` slider and the
+// Match-Rules profile apply so both paths emit the same combined command.
+export function botQuotaCmd(n) {
+  return Math.round(Number(n)) === 0 ? 'bot_quota 0; bot_kick' : `bot_quota ${Math.round(Number(n))}`;
+}
+
 // Build the RCON command for a live slider (value clamped to the control's bounds).
 // Returns null for an unknown key so runLiveAction can fall through to actions.
 export function csRangeCmd(key, value) {
@@ -114,7 +121,7 @@ export function csRangeCmd(key, value) {
     case 'gravity':    return `sv_cheats 1; sv_gravity ${Math.round(n)}`;
     case 'roundtime':  return `mp_roundtime_defuse ${n}; mp_roundtime ${n}`;
     case 'startmoney': return `mp_startmoney ${Math.round(n)}; mp_maxmoney 16000`;
-    case 'bots':       return Math.round(n) === 0 ? 'bot_quota 0; bot_kick' : `bot_quota ${Math.round(n)}`;
+    case 'bots':       return botQuotaCmd(n);
     default:           return null;
   }
 }

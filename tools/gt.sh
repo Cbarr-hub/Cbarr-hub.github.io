@@ -93,9 +93,8 @@ require_tty() {
 
 poll_health() {   # $1=label $2=url, rest = extra curl args. Bounded ~60s.
   local label="$1" url="$2"; shift 2
-  local i
   echo "[*] waiting for $label health: $url"
-  for i in $(seq 1 30); do
+  for _ in $(seq 1 30); do
     if curl -sk --max-time 4 "$@" "$url" 2>/dev/null | grep -q '"ok":true'; then
       echo "[OK] $label healthy"; return 0
     fi

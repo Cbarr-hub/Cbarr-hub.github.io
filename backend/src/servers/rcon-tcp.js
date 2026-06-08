@@ -7,12 +7,12 @@
 // protocol straight from Node.
 //
 // Source RCON packet (little-endian): int32 size | int32 id | int32 type |
-// ASCII body + NUL | NUL.  type 3 = auth, 2 = exec / auth-response, 0 = response.
+// UTF-8 body + NUL | NUL.  type 3 = auth, 2 = exec / auth-response, 0 = response.
 
 import net from 'node:net';
 
 function encode(id, type, body) {
-  const bodyBuf = Buffer.from(body, 'ascii');
+  const bodyBuf = Buffer.from(body, 'utf8');
   const size = 4 + 4 + bodyBuf.length + 2; // id + type + body + two NULs
   const buf = Buffer.allocUnsafe(4 + size);
   buf.writeInt32LE(size, 0);
@@ -31,8 +31,10 @@ function encode(id, type, body) {
  * real command (id=CMD_ID) immediately followed by an empty command (id=END_ID),
  * and once the server's response to that empty command comes back (a packet with
  * id===END_ID) we know every fragment of the real response has arrived. For servers
- * that DON'T echo the empty sentinel (Factorio), an idle timer (700ms of quiet)
- * finishes the exchange instead, so we never hang waiting for an echo that won't come.
+ * that DON'T echo the empty sentinel (Factorio), an idle timer finishes the exchange
+ * instead, so we never hang waiting for an echo that won't come: it grants the first
+ * response packet min(timeoutMs, 3000)ms of grace, then tightens to 700ms of
+ * inter-packet quiet once data is flowing.
  *
  * Error codes (on the rejected Error's `.code`):
  *   NO_RCON    — no password configured (rejects before connecting)
@@ -88,7 +90,7 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
         if (buf.length < 4 + size) break;
         const id = buf.readInt32LE(4);
         const type = buf.readInt32LE(8);
-        const body = buf.toString('ascii', 12, 4 + size - 2); // strip the two NULs
+        const body = buf.toString('utf8', 12, 4 + size - 2); // strip the two NULs
         buf = buf.subarray(4 + size);
 
         if (!authed) {
@@ -97,9 +99,13 @@ export function rconExchange({ host, port = 25575, password, command, timeoutMs 
             authed = true;
             socket.write(encode(CMD_ID, 2, command));
             socket.write(encode(END_ID, 2, '')); // sentinel: its echo ends the response
-            // Fallback for servers that DON'T echo the empty sentinel (e.g. Factorio):
-            // finish once the response stream has gone quiet.
-            idle = setTimeout(() => finish(null, out), 700);
+            // FIRST-BYTE GRACE: before any response packet arrives, wait up to
+            // min(timeoutMs, 3000)ms — a slow first byte (busy container, multi-step
+            // apply batch, scheduler jitter) must NOT resolve to an empty body. Once
+            // data flows, the post-auth branch below shrinks this to the 700ms
+            // inter-packet quiet window (which also finishes no-echo servers like
+            // Factorio). A truly silent command falls back to the overall timeout.
+            idle = setTimeout(() => finish(null, out), Math.min(timeoutMs, 3000));
           }
           continue;
         }

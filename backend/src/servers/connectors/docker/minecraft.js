@@ -208,11 +208,33 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
     // so short-circuit instead of opening a socket that rconExchange would just reject.
     if (!process.env.MINECRAFT_RCON_PASSWORD) return [];
     const output = await this.#rcon('list');
-    return parseMinecraftPlayerList(output).map((name) => ({
+    const names = parseMinecraftPlayerList(output);
+    if (!names.length) return [];
+    // RCON `list` is names-only, but live presence + the BlueMap skin markers need
+    // the Mojang UUID. itzg/minecraft-server keeps a name→uuid cache on disk, so
+    // resolve from there (best-effort — a brand-new player not yet cached comes
+    // back uid:null and just falls back to a default head).
+    const uuidByName = await this.#usercache();
+    return names.map((name) => ({
       name,
-      uid: null,
+      uid: uuidByName.get(name.toLowerCase()) || null,
       identityKind: 'minecraft',
     }));
+  }
+
+  // Parse /data/usercache.json (itzg/minecraft-server) into a lowercased
+  // name→uuid map. Best-effort: any read/parse failure yields an empty map.
+  async #usercache() {
+    try {
+      const { content = '' } = await this.client.agentFileRead(this.vmid, `${DATA}/usercache.json`);
+      const map = new Map();
+      for (const entry of JSON.parse(content || '[]')) {
+        if (entry?.name && entry?.uuid) map.set(String(entry.name).toLowerCase(), String(entry.uuid));
+      }
+      return map;
+    } catch {
+      return new Map();
+    }
   }
 
   async runLiveAction(key, value) {

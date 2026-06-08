@@ -80,7 +80,6 @@ export function createBlueMapPlayersController({
   let inFlight = false;
   let emptyWritten = false;       // wrote the "nobody online" file already
   let failStreak = 0;             // consecutive tick() failures (throttles error logs)
-  let authWarned = false;         // emitted the RCON-auth warning already
   const skinSeen = new Set();     // uuids whose head PNG we've written this process
 
   async function ensureDirs() {
@@ -118,37 +117,24 @@ export function createBlueMapPlayersController({
   }
 
   async function collectPlayers() {
-    // Host-tracked rows only (carry the per-session id + Mojang UUID, no RCON):
-    // avoids the cross-server live-presence fan-out on this tight loop.
-    const online = (await serverService.listTrackedOnline())
-      .filter((r) => r.slug === opts.serverId && r.id != null);
+    // Live presence straight from the game server over RCON (one `list` + one
+    // position per player). This works WITHOUT the host session-tracker (so it
+    // renders in dev too) and reflects who's actually in-game right now; each row
+    // already carries the Mojang UUID (resolved from the server's usercache).
+    const online = await serverService.liveOnlineWithPositions(opts.serverId);
     const players = [];
     for (const row of online) {
-      try {
-        const res = await serverService.getOnlinePlayerPosition(opts.serverId, row.id);
-        authWarned = false; // a successful lookup means the RCON creds are fine
-        const pos = res?.position;
-        if (!res?.online || !pos || pos.connected === false) continue;
-        const uuid = normalizeUuid(row.uid || res.player?.uid);
-        if (!uuid) continue; // markers + skins are keyed on the Mojang UUID
-        players.push({
-          uuid,
-          name: row.userName || row.name || res.player?.name || 'player',
-          x: pos.x, y: pos.y, z: pos.z,
-          yaw: pos.yaw, pitch: pos.pitch,
-          mapId: pos.mapId || 'overworld',
-        });
-      } catch (err) {
-        // A wrong password / RCON misconfig fails every row identically — surface
-        // it ONCE at warn so the feature doesn't silently die; everything else
-        // (player just left → no entity) stays at debug.
-        if (err?.code === 'RCON_AUTH' && !authWarned) {
-          authWarned = true;
-          logger.warn?.({ err }, 'BlueMap live players: RCON auth failed — check MINECRAFT_RCON_PASSWORD');
-        } else {
-          logger.debug?.({ err, player: row.name }, 'BlueMap player position lookup failed');
-        }
-      }
+      const uuid = normalizeUuid(row.uid);
+      if (!uuid) continue; // markers + skins are keyed on the Mojang UUID
+      const pos = row.position;
+      if (!pos || pos.connected === false) continue;
+      players.push({
+        uuid,
+        name: row.name || 'player',
+        x: pos.x, y: pos.y, z: pos.z,
+        yaw: pos.yaw, pitch: pos.pitch,
+        mapId: pos.mapId || 'overworld',
+      });
     }
     return players;
   }

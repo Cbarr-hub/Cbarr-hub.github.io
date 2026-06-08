@@ -434,11 +434,42 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return mergeLiveOnlineRows(rows, await readLivePresence());
     },
     // Host-tracked open sessions only (no cross-server RCON live-presence fan-out).
-    // Cheap enough to call on a tight loop — used by the BlueMap player-marker
-    // writer, which needs the per-session id + Mojang UUID without polling the
-    // Source games every cycle.
+    // Cheap enough to call on a tight loop.
     listTrackedOnline() {
       return store ? store.listOnline() : [];
+    },
+    // Live online players for ONE server, each with a current position — the source
+    // for the BlueMap live-marker writer. Unlike listTrackedOnline() (host-tracker
+    // rows, which are empty without the keeper-side collector), this asks the game
+    // server directly over RCON, so markers work in dev too and reflect real-time
+    // presence. One server only (no fan-out): one `list` + one position per player.
+    async liveOnlineWithPositions(id) {
+      const server = getServer(id);
+      if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
+      const connector = connectorFor(id);
+      if (!connector?.listOnlinePlayers || !connector?.getPlayerPosition) return [];
+      const online = (await connector.listOnlinePlayers()) || [];
+      const out = [];
+      for (const p of online) {
+        const name = String(p?.name || '').trim();
+        if (!name) continue;
+        let position;
+        try {
+          // Position by NAME (Minecraft `data get entity <name>` is reliable); the
+          // uid is only carried through for the marker/skin key.
+          position = await connector.getPlayerPosition(name, p);
+        } catch {
+          continue; // skip a player we can't currently position
+        }
+        if (!position || position.connected === false) continue;
+        out.push({
+          name,
+          uid: p.uid || null,
+          identityKind: p.identityKind || server.identityKind || null,
+          position,
+        });
+      }
+      return out;
     },
     // Newest-first join/leave feed merged across all hosted servers (timeline).
     recentActivity(opts = {}) {

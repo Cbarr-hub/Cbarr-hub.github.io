@@ -12,7 +12,7 @@
     "cli": "node src/cli.js",
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
-    "test": "node --test test"
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@fastify/csrf-protection": "^6.4.1",

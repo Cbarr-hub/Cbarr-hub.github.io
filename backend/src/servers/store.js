@@ -18,6 +18,14 @@
 //      session rows for the panel's "Events"/fleet badges.
 
 export function createServerStore(db) {
+  // The session-projection reads all surface the linked site account (if any) via
+  // the same player_accounts→users hop. `kind` is INNER `JOIN` (linked-only) or
+  // `LEFT JOIN` (include unlinked); ACCOUNT_COLS are the two columns it contributes.
+  const accountJoin = (kind) => `
+         ${kind} player_accounts pa ON pa.player_id = s.player_id
+         ${kind} users u            ON u.id = pa.user_id`;
+  const ACCOUNT_COLS = 'pa.user_id AS userId, u.display_name AS userName';
+
   const stmts = {
     // ── workshop map catalog ──
     listMaps: db.prepare(
@@ -138,10 +146,8 @@ export function createServerStore(db) {
     listSessionsLinked: db.prepare(
       `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
               s.joined_at, s.left_at, s.source,
-              pa.user_id AS userId, u.display_name AS userName
-         FROM server_sessions s
-         JOIN player_accounts pa ON pa.player_id = s.player_id
-         JOIN users u            ON u.id = pa.user_id
+              ${ACCOUNT_COLS}
+         FROM server_sessions s${accountJoin('JOIN')}
         WHERE s.game_id = ?
         ORDER BY s.joined_at DESC
         LIMIT ?`,
@@ -149,10 +155,8 @@ export function createServerStore(db) {
     listSessionsAll: db.prepare(
       `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
               s.joined_at, s.left_at, s.source,
-              pa.user_id AS userId, u.display_name AS userName
-         FROM server_sessions s
-         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
-         LEFT JOIN users u            ON u.id = pa.user_id
+              ${ACCOUNT_COLS}
+         FROM server_sessions s${accountJoin('LEFT JOIN')}
         WHERE s.game_id = ?
         ORDER BY s.joined_at DESC
         LIMIT ?`,
@@ -171,10 +175,8 @@ export function createServerStore(db) {
     listOnline: db.prepare(
       `SELECT s.id, g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
               s.name, s.uid, s.identity_kind AS identityKind, s.joined_at, s.source,
-              pa.user_id AS userId, u.display_name AS userName
-         FROM server_sessions s JOIN games g ON g.id = s.game_id
-         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
-         LEFT JOIN users u            ON u.id = pa.user_id
+              ${ACCOUNT_COLS}
+         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
         WHERE s.left_at IS NULL AND g.hosted = 1
         ORDER BY s.joined_at DESC`,
     ),
@@ -182,10 +184,8 @@ export function createServerStore(db) {
     recentSessionsLinked: db.prepare(
       `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
               s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
-              pa.user_id AS userId, u.display_name AS userName
-         FROM server_sessions s JOIN games g ON g.id = s.game_id
-         JOIN player_accounts pa ON pa.player_id = s.player_id
-         JOIN users u            ON u.id = pa.user_id
+              ${ACCOUNT_COLS}
+         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('JOIN')}
         WHERE g.hosted = 1
         ORDER BY s.joined_at DESC
         LIMIT ?`,
@@ -193,10 +193,8 @@ export function createServerStore(db) {
     recentSessionsAll: db.prepare(
       `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
               s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
-              pa.user_id AS userId, u.display_name AS userName
-         FROM server_sessions s JOIN games g ON g.id = s.game_id
-         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
-         LEFT JOIN users u            ON u.id = pa.user_id
+              ${ACCOUNT_COLS}
+         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
         WHERE g.hosted = 1
         ORDER BY s.joined_at DESC
         LIMIT ?`,
@@ -214,24 +212,26 @@ export function createServerStore(db) {
       `SELECT s.id, s.name, s.uid, s.identity_kind AS identityKind, s.joined_at
          FROM server_sessions s
          JOIN games g ON g.id = s.game_id
-        WHERE g.slug = ? AND s.player_id = ? AND s.left_at IS NULL
+        WHERE g.slug = ? AND g.hosted = 1 AND s.player_id = ? AND s.left_at IS NULL
         ORDER BY s.joined_at DESC
         LIMIT 1`,
     ),
     openSessionById: db.prepare(
       `SELECT s.id, s.player_id AS playerId, s.name, s.uid,
               s.identity_kind AS identityKind, s.joined_at, s.source,
-              pa.user_id AS userId, u.display_name AS userName
+              ${ACCOUNT_COLS}
          FROM server_sessions s
-         JOIN games g ON g.id = s.game_id
-         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
-         LEFT JOIN users u            ON u.id = pa.user_id
+         JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
         WHERE g.slug = ? AND g.hosted = 1 AND s.id = ? AND s.left_at IS NULL
         LIMIT 1`,
     ),
   };
 
   const parseSettings = (json) => { try { return JSON.parse(json); } catch { return {}; } };
+  // Profile settings are a plain-object contract (see getProfile). Coerce anything
+  // else (null/array/scalar) to {} on the way in so getProfile never yields a
+  // non-object back to callers.
+  const asSettings = (s) => (s && typeof s === 'object' && !Array.isArray(s) ? s : {});
 
   // Lazy slug→games.id cache for the hosted servers (rebuilt by seedHostedGames).
   let gameIdBySlug = null;
@@ -304,7 +304,7 @@ export function createServerStore(db) {
       return stmts.countProfiles.get(serverId).n;
     },
     createProfile(serverId, { name, settings = {} }) {
-      const { lastInsertRowid } = stmts.insertProfile.run(serverId, name, JSON.stringify(settings));
+      const { lastInsertRowid } = stmts.insertProfile.run(serverId, name, JSON.stringify(asSettings(settings)));
       return this.getProfile(serverId, lastInsertRowid);
     },
     // Partial update: only provided fields change. Returns the updated row or null.
@@ -312,7 +312,8 @@ export function createServerStore(db) {
       const existing = this.getProfile(serverId, id);
       if (!existing) return null;
       const nextName = name ?? existing.name;
-      const nextSettings = settings === undefined ? existing.settings : settings;
+      // existing.settings is already a parsed object; only sanitize a fresh value.
+      const nextSettings = settings === undefined ? existing.settings : asSettings(settings);
       stmts.updateProfile.run(nextName, JSON.stringify(nextSettings), serverId, id);
       return this.getProfile(serverId, id);
     },

@@ -109,6 +109,34 @@ test('config names are unique per server', () => {
   assert.ok(store.createConfig('factorio', { name: 'dup', body: 'b' }).id > 0);
 });
 
+// ── startup-config profiles ────────────────────────────────────────────────────────
+// getProfile documents a plain-object `settings` contract, so create/update must
+// coerce a non-object (null/array/scalar) to {} rather than persist it verbatim.
+test('profile settings are coerced to a plain object on create/update', () => {
+  const store = createServerStore(storeDb());
+
+  // create with settings:null → stored/read back as {}
+  const created = store.createProfile('counterstrike', { name: 'P1', settings: null });
+  assert.deepEqual(store.getProfile('counterstrike', created.id).settings, {});
+
+  // update with settings:null → {} (NOT null)
+  store.updateProfile('counterstrike', created.id, { settings: null });
+  assert.deepEqual(store.getProfile('counterstrike', created.id).settings, {});
+
+  // update with a real object then omit settings → prior object is preserved
+  store.updateProfile('counterstrike', created.id, { settings: { maxRounds: 30 } });
+  store.updateProfile('counterstrike', created.id, { name: 'P1-renamed' });
+  const kept = store.getProfile('counterstrike', created.id);
+  assert.equal(kept.name, 'P1-renamed');
+  assert.deepEqual(kept.settings, { maxRounds: 30 });
+
+  // other non-objects (scalar, array) also coerce to {}
+  const scalar = store.createProfile('counterstrike', { name: 'P2', settings: 'foo' });
+  assert.deepEqual(store.getProfile('counterstrike', scalar.id).settings, {});
+  const arr = store.createProfile('counterstrike', { name: 'P3', settings: [] });
+  assert.deepEqual(store.getProfile('counterstrike', arr.id).settings, {});
+});
+
 // ── wiring ───────────────────────────────────────────────────────────────────────
 test('buildConnectors injects the store into every connector', () => {
   const store = createServerStore(storeDb());
@@ -271,6 +299,30 @@ test('listOnline returns linked and unlinked live roster rows with game name', (
   assert.equal(online[1].gameName, 'TTT');
 });
 
+// Lock each projection's column shape so the shared accountJoin/ACCOUNT_COLS
+// refactor stays output-preserving (the JOINs differ, the shapes must not drift).
+test('listOnline and openSessionById each project their documented column set', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  const sid = store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log');
+
+  const [row] = store.listOnline();
+  assert.deepEqual(Object.keys(row).sort(), [
+    'gameName', 'id', 'identityKind', 'joined_at', 'name',
+    'playerId', 'slug', 'source', 'uid', 'userId', 'userName',
+  ].sort());
+
+  const byId = store.openSessionById('minecraft', sid);
+  assert.deepEqual(Object.keys(byId).sort(), [
+    'id', 'identityKind', 'joined_at', 'name', 'playerId',
+    'source', 'uid', 'userId', 'userName',
+  ].sort());
+  // openSessionById is a single-row lookup: no left_at (always open) and no slug/gameName.
+  assert.equal('left_at' in byId, false);
+  assert.equal('slug' in byId, false);
+});
+
 test('openSessionById returns only a matching still-open session for that hosted server', () => {
   const db = storeDb();
   const store = createServerStore(db);
@@ -281,6 +333,37 @@ test('openSessionById returns only a matching still-open session for that hosted
   assert.equal(store.openSessionById('minecraft', open).name, 'Notch');
   assert.equal(store.openSessionById('gmod', open), null);
   assert.equal(store.openSessionById('minecraft', closed), null);
+});
+
+// idx_games_slug is partial (WHERE hosted=1), so a hosted=0 game may legitimately
+// share a slug with a hosted server. openSessionForPlayer must scope to hosted=1
+// like its siblings, or it could resolve a non-hosted session sharing the slug.
+test('openSessionForPlayer ignores a non-hosted session sharing a hosted slug', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+
+  // Open a real session on the hosted minecraft server for a known player.
+  const sid = store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log');
+  assert.ok(sid > 0);
+  const playerId = db.prepare('SELECT id FROM players WHERE uid = ?').get('u1').id;
+
+  // Forge a hosted=0 games row that re-uses the 'minecraft' slug (the partial index
+  // permits it) and an open session on it for the SAME player — recordJoin can't
+  // produce this, so build it with raw INSERTs.
+  const { lastInsertRowid: ghostGameId } = db
+    .prepare('INSERT INTO games (name, slug, identity_kind, hosted) VALUES (?, ?, ?, 0)')
+    .run('Ghost Minecraft', 'minecraft', 'minecraft');
+  db.prepare(
+    `INSERT INTO server_sessions (game_id, player_id, identity_kind, uid, name, joined_at, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(ghostGameId, playerId, 'minecraft', 'u1', 'Ghost', 2000, 'log');
+
+  // The lookup must return the hosted session (joined_at 1000), never the ghost.
+  const found = store.openSessionForPlayer('minecraft', playerId);
+  assert.equal(found.id, sid);
+  assert.equal(found.name, 'Notch');
+  assert.equal(found.joined_at, 1000);
 });
 
 test('recentSessions merges linked servers newest-first and respects limit', () => {

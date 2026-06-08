@@ -13,6 +13,20 @@ const PLAYER_PARAM = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
 const CONFIG_BODY_MAX = 16_000;
 
+// Shared querystring for the session-list (/:id/sessions) + activity-timeline
+// (/activity) reads — same `limit` bound + linked/unlinked toggle. Factored into one
+// constant so the two near-identical schemas can't drift. `additionalProperties: false`
+// documents the allowed keys; Fastify's default ajv strips unknowns (removeAdditional),
+// so an unknown query param is ignored rather than rejected — behavior is unchanged.
+const SESSION_LIST_QS = {
+  type: 'object',
+  properties: {
+    limit: { type: 'integer', minimum: 1, maximum: 500 },
+    includeUnlinked: { type: 'boolean', default: false },
+  },
+  additionalProperties: false,
+};
+
 // Map a typed error code → HTTP status. Covers the ServerControlError codes plus
 // the plain code-bearing errors the connectors' catalog/config/live ops throw.
 const CODE_STATUS = {
@@ -98,16 +112,7 @@ export default async function serversRoutes(app) {
     limit: req.query.limit,
     includeUnlinked: req.query.includeUnlinked,
   }), {
-    schema: {
-      querystring: {
-        type: 'object',
-        properties: {
-          limit: { type: 'integer', minimum: 1, maximum: 500 },
-          includeUnlinked: { type: 'boolean', default: false },
-        },
-        additionalProperties: false,
-      },
-    },
+    schema: { querystring: SESSION_LIST_QS },
   });
   route('get', '/map/status', () => svc.getBlueMapStatus());
   route('get', '/map/me', (req) => svc.getCurrentMinecraftPosition(req.currentUser.id));
@@ -314,13 +319,7 @@ export default async function serversRoutes(app) {
   }), {
     schema: {
       ...P({ id: ID_PARAM }),
-      querystring: {
-        type: 'object',
-        properties: {
-          limit: { type: 'integer', minimum: 1, maximum: 500 },
-          includeUnlinked: { type: 'boolean', default: false },
-        },
-      },
+      querystring: SESSION_LIST_QS,
     },
   });
 

@@ -299,8 +299,14 @@ export class DockerClient {
   }
 
   async agentFileWrite(container, file, content) {
-    // Write via a base64 round-trip so arbitrary bytes/newlines survive the argv.
-    const b64 = Buffer.from(String(content), 'utf8').toString('base64');
+    return this.agentFileWriteBytes(container, file, Buffer.from(String(content), 'utf8'));
+  }
+
+  // Binary-safe sibling of agentFileWrite: base64-encodes the Buffer directly so
+  // arbitrary bytes (e.g. PNG skin heads for BlueMap) survive the round-trip,
+  // instead of being mangled by a utf8 String() coercion.
+  async agentFileWriteBytes(container, file, buffer) {
+    const b64 = Buffer.from(buffer).toString('base64');
     const { pid } = await this.agentExec(container, {
       command: ['/bin/sh', '-c', `printf %s "${b64}" | base64 -d > "${shq(file)}"`],
     });

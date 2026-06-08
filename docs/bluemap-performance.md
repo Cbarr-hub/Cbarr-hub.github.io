@@ -64,6 +64,39 @@ render masks, resource packs, or texture/model behavior.
   count minus 4 reserved CPUs; wait 5 minutes after the last player leaves before
   ramping up again.
 
+## Live player markers (standalone, app-fed)
+
+The standalone CLI has no server connection, so BlueMap's native live-player
+markers are normally empty. The app fills them in:
+
+- `backend/src/servers/bluemap-players.js` (`createBlueMapPlayersController`,
+  wired in `server.js`) polls online Minecraft players every ~2s, looks up each
+  position over RCON (the same `getPlayerPosition` the map "locate" used), and
+  writes BlueMap's expected `web/maps/<id>/live/players.json` into the `bluemap`
+  container through the scoped docker-proxy (`EXEC`). `foreign` is set per map so
+  a player only draws as a marker on the dimension they're actually in.
+- Real skins: it fetches each player's head PNG (by Mojang UUID, from
+  `BLUEMAP_SKIN_BASE`, default `mc-heads.net`) once per process and writes it to
+  `web/assets/playerheads/<uuid>.png`, which BlueMap's webapp renders as the
+  marker face. Missing/failed heads fall back to BlueMap's default head.
+- The marker is BlueMap's native head-on-a-billboard, not a posed 3D body.
+- Needs `MINECRAFT_RCON_PASSWORD`; otherwise the controller stays idle. Knobs:
+  `BLUEMAP_PLAYERS_AUTOWRITE`, `BLUEMAP_PLAYERS_POLL_MS`, `BLUEMAP_SKIN_BASE`.
+
+The servers panel's Map tab adds a clickable live-player list (fly the camera)
+over the same data, and a **Detail radius** slider that drives BlueMap's hires
+view distance (its ceiling/default live in `webapp.conf`).
+
+## Why there is no Factorio map
+
+The Map tab is Minecraft-only. Every Factorio web-map tool (Mapshot,
+FactorioMaps, Maptorio) renders the factory from in-game **screenshots**, which
+the headless `factoriotools/factorio` image cannot produce (no display). The
+only path is running a second, non-headless Factorio under Xvfb that loads the
+save and exports Leaflet tiles on a schedule — heavyweight, non-live, and a
+separate project. Deferred; the placeholder "Factorio mode" (a bare coordinate
+readout) was removed from the panel.
+
 ## Measurement checklist
 
 Before and after future changes, capture:

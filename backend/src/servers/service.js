@@ -433,6 +433,13 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       const rows = store ? store.listOnline() : [];
       return mergeLiveOnlineRows(rows, await readLivePresence());
     },
+    // Host-tracked open sessions only (no cross-server RCON live-presence fan-out).
+    // Cheap enough to call on a tight loop — used by the BlueMap player-marker
+    // writer, which needs the per-session id + Mojang UUID without polling the
+    // Source games every cycle.
+    listTrackedOnline() {
+      return store ? store.listOnline() : [];
+    },
     // Newest-first join/leave feed merged across all hosted servers (timeline).
     recentActivity(opts = {}) {
       return store ? store.recentSessions(opts) : [];

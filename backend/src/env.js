@@ -56,5 +56,13 @@ export function loadEnv(path = '.env') {
     BLUEMAP_ACTIVE_CPUS: process.env.BLUEMAP_ACTIVE_CPUS ?? '2',
     BLUEMAP_IDLE_CPUS: process.env.BLUEMAP_IDLE_CPUS ?? '0',
     BLUEMAP_RESERVED_CPUS: process.env.BLUEMAP_RESERVED_CPUS ?? '4',
+
+    // BlueMap live player markers. The backend writes players.json + per-UUID head
+    // PNGs into the bluemap container so the standalone renderer shows online
+    // Minecraft players (with real skins) as map markers. Skin heads are fetched
+    // from a public head service keyed on the Mojang UUID.
+    BLUEMAP_PLAYERS_AUTOWRITE: process.env.BLUEMAP_PLAYERS_AUTOWRITE ?? '1',
+    BLUEMAP_PLAYERS_POLL_MS: process.env.BLUEMAP_PLAYERS_POLL_MS ?? '2000',
+    BLUEMAP_SKIN_BASE: process.env.BLUEMAP_SKIN_BASE ?? 'https://mc-heads.net/avatar',
   };
 }

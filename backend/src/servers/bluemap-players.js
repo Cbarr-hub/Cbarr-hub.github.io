@@ -1,9 +1,12 @@
 // Feeds BlueMap's native live-player markers in standalone (CLI) mode.
 //
 // BlueMap's webapp polls `<webroot>/maps/<id>/live/players.json` and renders each
-// entry as a head-billboard marker, plus loads the head texture from
-// `<webroot>/assets/playerheads/<uuid>.png`. With the plugin/mod those files are
-// written by the server; we run the standalone renderer, so nothing writes them.
+// entry as a head-billboard marker, plus loads the head texture from the SAME
+// map's asset root — `<webroot>/maps/<id>/assets/playerheads/<uuid>.png` — NOT a
+// global dir (BlueMapApp builds it as map.data.mapDataRoot + '/assets/playerheads/').
+// A player shows in every map's list (foreign), so the head must exist under all
+// rendered maps. With the plugin/mod the server writes these; we run the standalone
+// renderer, so nothing writes them.
 // This controller reuses the app's existing RCON position lookup
 // (serverService.getOnlinePlayerPosition*) to write the same files into the
 // `bluemap` container through the scoped docker-proxy (EXEC), giving live markers
@@ -31,11 +34,13 @@ function numValue(value, def) {
 }
 
 // Normalize a Mojang UUID to dashed lowercase so the players.json `uuid` and the
-// `assets/playerheads/<uuid>.png` filename always agree (BlueMap builds the head
-// URL straight from the players.json uuid, so they only need to match each other).
+// `assets/playerheads/<uuid>.png` filename always agree. FAIL CLOSED: anything that
+// isn't exactly 32 hex chars returns null (callers skip it). The value flows into a
+// container file path and an outbound skin URL, so we never hand back raw input —
+// a stray `/` or `..` would otherwise become a path-traversal / URL sink.
 export function normalizeUuid(raw) {
   const hex = String(raw || '').trim().toLowerCase().replace(/[^0-9a-f]/g, '');
-  if (hex.length !== 32) return String(raw || '').trim().toLowerCase() || null;
+  if (hex.length !== 32) return null;
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
@@ -58,6 +63,7 @@ export function blueMapPlayersOptions(env = {}) {
     container: String(env.BLUEMAP_CONTAINER || 'bluemap'),
     pollMs: Math.max(1000, numValue(env.BLUEMAP_PLAYERS_POLL_MS, 2000)),
     skinBase: String(env.BLUEMAP_SKIN_BASE || 'https://mc-heads.net/avatar').replace(/\/+$/, ''),
+    skinTimeoutMs: Math.max(1000, numValue(env.BLUEMAP_SKIN_TIMEOUT_MS, 5000)),
     serverId: String(env.BLUEMAP_PLAYERS_SERVER || 'minecraft'),
   };
 }
@@ -73,27 +79,38 @@ export function createBlueMapPlayersController({
   let timer = null;
   let inFlight = false;
   let emptyWritten = false;       // wrote the "nobody online" file already
-  const skinSeen = new Set();     // uuids whose head PNG we've fetched this process
+  let failStreak = 0;             // consecutive tick() failures (throttles error logs)
+  let authWarned = false;         // emitted the RCON-auth warning already
+  const skinSeen = new Set();     // uuids whose head PNG we've written this process
 
   async function ensureDirs() {
-    const dirs = MAP_DIMENSIONS.map((m) => `${WEB}/maps/${m.mapId}/live`)
-      .concat(`${WEB}/assets/playerheads`)
+    // Per-map live + asset dirs (BlueMap serves heads from each map's own root).
+    const dirs = MAP_DIMENSIONS
+      .flatMap((m) => [`${WEB}/maps/${m.mapId}/live`, `${WEB}/maps/${m.mapId}/assets/playerheads`])
       .map((d) => `"${d.replace(/"/g, '\\"')}"`)
       .join(' ');
     const { pid } = await dockerClient.agentExec(opts.container, {
       command: ['/bin/sh', '-c', `mkdir -p ${dirs}`],
     });
-    await dockerClient.agentExecStatus(opts.container, pid);
+    const r = await dockerClient.agentExecStatus(opts.container, pid);
+    if (r?.exitcode != null && r.exitcode !== 0) {
+      throw new Error(`bluemap mkdir failed: ${r['err-data'] || `exit ${r.exitcode}`}`);
+    }
   }
 
   async function ensureSkin(uuid) {
     if (!uuid || skinSeen.has(uuid) || !fetchImpl) return;
-    skinSeen.add(uuid); // mark before fetch so we don't hammer on repeated ticks
+    skinSeen.add(uuid); // mark before fetch so concurrent ticks don't double-fetch
     try {
-      const res = await fetchImpl(`${opts.skinBase}/${uuid}/64.png`);
+      // Bound the outbound fetch so a hung head service can't stall the loop.
+      const res = await fetchImpl(`${opts.skinBase}/${uuid}/64.png`, { signal: AbortSignal.timeout(opts.skinTimeoutMs) });
       if (!res?.ok) throw new Error(`skin fetch ${res?.status}`);
       const buf = Buffer.from(await res.arrayBuffer());
-      await dockerClient.agentFileWriteBytes(opts.container, `${WEB}/assets/playerheads/${uuid}.png`, buf);
+      // Write the head under EACH rendered map's asset root — that's where BlueMap
+      // loads it from, and a foreign player still shows in other maps' lists.
+      for (const { mapId } of MAP_DIMENSIONS) {
+        await dockerClient.agentFileWriteBytes(opts.container, `${WEB}/maps/${mapId}/assets/playerheads/${uuid}.png`, buf);
+      }
     } catch (err) {
       skinSeen.delete(uuid); // let a later tick retry; BlueMap shows a default head meanwhile
       logger.debug?.({ err, uuid }, 'BlueMap skin head fetch failed');
@@ -109,6 +126,7 @@ export function createBlueMapPlayersController({
     for (const row of online) {
       try {
         const res = await serverService.getOnlinePlayerPosition(opts.serverId, row.id);
+        authWarned = false; // a successful lookup means the RCON creds are fine
         const pos = res?.position;
         if (!res?.online || !pos || pos.connected === false) continue;
         const uuid = normalizeUuid(row.uid || res.player?.uid);
@@ -121,7 +139,15 @@ export function createBlueMapPlayersController({
           mapId: pos.mapId || 'overworld',
         });
       } catch (err) {
-        logger.debug?.({ err, player: row.name }, 'BlueMap player position lookup failed');
+        // A wrong password / RCON misconfig fails every row identically — surface
+        // it ONCE at warn so the feature doesn't silently die; everything else
+        // (player just left → no entity) stays at debug.
+        if (err?.code === 'RCON_AUTH' && !authWarned) {
+          authWarned = true;
+          logger.warn?.({ err }, 'BlueMap live players: RCON auth failed — check MINECRAFT_RCON_PASSWORD');
+        } else {
+          logger.debug?.({ err, player: row.name }, 'BlueMap player position lookup failed');
+        }
       }
     }
     return players;
@@ -134,10 +160,10 @@ export function createBlueMapPlayersController({
     try {
       const players = await collectPlayers();
       // Nobody online: clear the markers once, then idle until someone joins.
-      if (players.length === 0 && emptyWritten) return { players: 0 };
+      if (players.length === 0 && emptyWritten) { failStreak = 0; return { players: 0 }; }
 
       await ensureDirs();
-      for (const p of players) await ensureSkin(p.uuid);
+      await Promise.allSettled(players.map((p) => ensureSkin(p.uuid)));
       for (const { mapId } of MAP_DIMENSIONS) {
         await dockerClient.agentFileWrite(
           opts.container,
@@ -146,9 +172,14 @@ export function createBlueMapPlayersController({
         );
       }
       emptyWritten = players.length === 0;
+      failStreak = 0;
       return { players: players.length };
     } catch (err) {
-      logger.error?.({ err }, 'BlueMap players write failed');
+      // Degrade quietly: a stopped bluemap container / docker-proxy blip would
+      // otherwise log at error every pollMs (2s). Error on the first failure,
+      // then drop to debug until a tick succeeds again.
+      failStreak += 1;
+      logger[failStreak === 1 ? 'error' : 'debug']?.({ err, failStreak }, 'BlueMap players write failed');
       return { error: err };
     } finally {
       inFlight = false;

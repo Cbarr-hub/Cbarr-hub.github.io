@@ -243,7 +243,8 @@ header.top{position:sticky; top:0; z-index:40;
 .map-players-list{overflow-y:auto;padding:6px}
 .mp-row{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border:0;border-radius:8px;background:transparent;color:var(--txt);cursor:pointer;text-align:left;transition:.14s var(--ease)}
 .mp-row:hover{background:rgba(72,255,155,.1)}
-.mp-row .pav{width:28px;height:28px;border-radius:8px;flex:0 0 auto;display:grid;place-items:center;font-weight:700;font-size:var(--t-sm);color:#06140a;background-size:cover;background-position:center;image-rendering:pixelated}
+.mp-row .pav{position:relative;overflow:hidden;width:28px;height:28px;border-radius:8px;flex:0 0 auto;display:grid;place-items:center;font-weight:700;font-size:var(--t-sm);color:#06140a;background-size:cover;background-position:center;image-rendering:pixelated}
+.mp-row .pav .pav-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;image-rendering:pixelated}
 .mp-row .mp-meta{min-width:0;line-height:1.25}
 .mp-row .mp-meta b{display:block;font-size:var(--t-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mp-row .mp-meta span{font-size:10px;color:var(--txt-faint)}
@@ -1546,9 +1547,7 @@ async function creditNow(){
 /* ═════════════════════════ MAP VIEW (embedded BlueMap) ═════════════════════════ */
 /* The Map tab is Minecraft-only: BlueMap renders the world, the backend writes
    players.json + skin heads so online players show as markers, and this panel
-   adds a clickable player list (fly the camera) + a Detail-radius (LOD) slider.
-   Factorio has no embeddable renderer (headless server can't screenshot), so it
-   is not a map mode here. */
+   adds a clickable player list (fly the camera) + a Detail-radius (LOD) slider. */
 const MAP_SERVER = 'minecraft'
 const mapSkinUrl = (uid, size) => uid ? `https://mc-heads.net/avatar/${encodeURIComponent(uid)}/${size}.png` : ''
 
@@ -1581,14 +1580,18 @@ function renderMapPlayers(){
   if (!n) { list.innerHTML = '<div class="map-players-empty">No Minecraft players online.</div>'; return }
   list.innerHTML = mapOnlinePlayers.map((o, i) => {
     const name = mapPlayerLabel(o)
+    const letter = esc(String(name || '?')[0].toUpperCase())
     const skin = mapSkinUrl(o.uid, 32)
-    const av = skin ? `style="background-image:url('${esc(skin)}')"` : `style="${pAvatar(name)}"`
-    const mono = skin ? '' : esc(String(name || '?')[0].toUpperCase())
+    // Keep the colored initial tile underneath; layer the head on top so a missing
+    // skin (head service blocked/down) degrades to the letter instead of a blank box.
+    const img = skin ? `<img class="pav-img" src="${esc(skin)}" alt="">` : ''
     return `<button type="button" class="mp-row" data-idx="${i}" title="Fly the camera to ${esc(name)}">
-      <div class="pav" ${av}>${mono}</div>
+      <div class="pav" style="${pAvatar(name)}">${letter}${img}</div>
       <div class="mp-meta"><b>${esc(name)}</b><span>${esc(o.gameName || 'Minecraft')}</span></div>
     </button>`
   }).join('')
+  list.querySelectorAll('.pav-img').forEach(img =>
+    img.addEventListener('error', () => img.remove()))
   list.querySelectorAll('.mp-row').forEach(b =>
     b.addEventListener('click', () => flyToPlayer(mapOnlinePlayers[Number(b.dataset.idx)])))
 }
@@ -1642,11 +1645,15 @@ function applyMapLod(v){
   mapLodValue = v
   document.getElementById('mapLodVal').textContent = String(v)
   try {
-    const data = blueMapGlobal()?.mapViewer?.data
+    const bm = blueMapGlobal()
+    const data = bm?.mapViewer?.data
     if (data) {
       data.loadedHiresViewDistance = v
       // keep low-res well beyond hires so the world stays populated as you zoom out
       data.loadedLowresViewDistance = Math.max(data.loadedLowresViewDistance || 0, v * 8)
+      // Setting the reactive fields alone doesn't reload tiles in BlueMap v5 —
+      // updateLoadedMapArea() is what loads/unloads to the new radius.
+      bm.mapViewer.updateLoadedMapArea?.()
     }
   } catch { /* internal shape changed across a BlueMap upgrade — ignore */ }
 }

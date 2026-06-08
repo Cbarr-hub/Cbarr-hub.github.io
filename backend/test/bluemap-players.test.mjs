@@ -17,6 +17,13 @@ test('normalizeUuid dashes bare hex and lowercases', () => {
   assert.equal(normalizeUuid(''), null);
 });
 
+test('normalizeUuid fails closed on anything that is not 32 hex (no raw passthrough)', () => {
+  assert.equal(normalizeUuid('../../etc/passwd'), null);
+  assert.equal(normalizeUuid('not-a-uuid'), null);
+  assert.equal(normalizeUuid('@evil.host/x'), null);
+  assert.equal(normalizeUuid('1111111122223333444455555555555'), null); // 31 hex
+});
+
 test('buildPlayersJson sets the foreign flag per map and the rotation shape', () => {
   const players = [{ uuid: UUID, name: 'Steve', x: 10, y: 64, z: -5, yaw: 90, pitch: 4, mapId: 'overworld' }];
   const ow = JSON.parse(buildPlayersJson(players, 'overworld'));
@@ -73,8 +80,14 @@ test('controller writes players.json for all three maps + one skin, reusing cach
   const r = await ctl.tick();
   assert.equal(r.players, 1);
   assert.equal(dockerClient.writes.length, 3);
-  assert.equal(dockerClient.bytes.length, 1);
-  assert.equal(dockerClient.bytes[0][0], `/app/web/assets/playerheads/${UUID}.png`);
+  // Head PNG written under EACH map's own asset root (that's where BlueMap v5
+  // loads it from), fetched only once and reused across maps.
+  assert.equal(fetches, 1);
+  assert.deepEqual(dockerClient.bytes.map((b) => b[0]).sort(), [
+    `/app/web/maps/end/assets/playerheads/${UUID}.png`,
+    `/app/web/maps/nether/assets/playerheads/${UUID}.png`,
+    `/app/web/maps/overworld/assets/playerheads/${UUID}.png`,
+  ]);
   const nether = JSON.parse(dockerClient.writes.find((w) => w[0].includes('/nether/'))[1]);
   assert.equal(nether.players[0].foreign, true);
 
@@ -128,6 +141,28 @@ test('controller filters to the map server and skips rows it cannot position', a
   assert.equal(r.players, 1);               // session 8 threw → skipped
   const ow = JSON.parse(dockerClient.writes.find((w) => w[0].includes('/overworld/'))[1]);
   assert.equal(ow.players.length, 1);
+});
+
+test('tick degrades quietly: a persistent docker failure logs error once, then debug', async () => {
+  const errs = [], dbgs = [];
+  const dockerClient = {
+    agentExec: async () => { throw new Error('bluemap container down'); }, // ensureDirs fails
+    agentExecStatus: async () => ({ exitcode: 0 }),
+    agentFileWrite: async () => {},
+    agentFileWriteBytes: async () => {},
+  };
+  const serverService = {
+    listTrackedOnline: () => [{ slug: 'minecraft', id: 7, name: 'Steve', uid: UUID }],
+    getOnlinePlayerPosition: async () => overworldPos,
+  };
+  const ctl = createBlueMapPlayersController({
+    dockerClient, serverService, env: {}, fetchImpl: async () => ({ ok: false }),
+    logger: { error: (...a) => errs.push(a), debug: (...a) => dbgs.push(a), warn() {} },
+  });
+  assert.ok((await ctl.tick()).error);
+  assert.ok((await ctl.tick()).error);
+  assert.equal(errs.length, 1);   // first failure at error level
+  assert.ok(dbgs.length >= 1);    // subsequent failures dropped to debug (no 2s spam)
 });
 
 test('disabled controller does nothing', async () => {

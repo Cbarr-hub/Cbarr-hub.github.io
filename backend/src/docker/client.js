@@ -307,8 +307,13 @@ export class DockerClient {
   // instead of being mangled by a utf8 String() coercion.
   async agentFileWriteBytes(container, file, buffer) {
     const b64 = Buffer.from(buffer).toString('base64');
+    // Decode into a temp file in the same dir, then atomically rename over the
+    // target. A concurrent reader (e.g. BlueMap polling players.json on its own
+    // interval) then always sees a complete old-or-new file, never a half-written
+    // one from the `>` truncate window.
+    const q = shq(file);
     const { pid } = await this.agentExec(container, {
-      command: ['/bin/sh', '-c', `printf %s "${b64}" | base64 -d > "${shq(file)}"`],
+      command: ['/bin/sh', '-c', `printf %s "${b64}" | base64 -d > "${q}.tmp.$$" && mv -f "${q}.tmp.$$" "${q}"`],
     });
     const r = await this.agentExecStatus(container, pid);
     if (r.exitcode !== 0) {

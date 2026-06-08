@@ -77,11 +77,16 @@ markers are normally empty. The app fills them in:
   a player only draws as a marker on the dimension they're actually in.
 - Real skins: it fetches each player's head PNG (by Mojang UUID, from
   `BLUEMAP_SKIN_BASE`, default `mc-heads.net`) once per process and writes it to
-  `web/assets/playerheads/<uuid>.png`, which BlueMap's webapp renders as the
-  marker face. Missing/failed heads fall back to BlueMap's default head.
+  **each rendered map's own asset root** `web/maps/<id>/assets/playerheads/<uuid>.png`
+  — the path BlueMap v5 actually loads heads from (a global `web/assets/` is NOT
+  served), and a foreign player still shows in other maps' lists so the head must
+  exist under all of them. BlueMap's webapp renders it as the marker face;
+  missing/failed heads fall back to BlueMap's default head. The skin fetch is
+  time-bounded so a slow head service can't stall the loop.
 - The marker is BlueMap's native head-on-a-billboard, not a posed 3D body.
 - Needs `MINECRAFT_RCON_PASSWORD`; otherwise the controller stays idle. Knobs:
-  `BLUEMAP_PLAYERS_AUTOWRITE`, `BLUEMAP_PLAYERS_POLL_MS`, `BLUEMAP_SKIN_BASE`.
+  `BLUEMAP_PLAYERS_AUTOWRITE`, `BLUEMAP_PLAYERS_POLL_MS`, `BLUEMAP_SKIN_BASE`,
+  `BLUEMAP_SKIN_TIMEOUT_MS`.
 
 The servers panel's Map tab adds a clickable live-player list (fly the camera)
 over the same data, and a **Detail radius** slider that drives BlueMap's hires

@@ -7,9 +7,12 @@ export const USERNAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 export const STARTING_DOLLARS = 5000;
 
 // True when a DB error is the UNIQUE-constraint violation from inserting a
-// duplicate username — callers map this to a 409 / "already exists".
+// duplicate USERNAME — callers map this to a 409 / "already exists". Matches the
+// `users.username` constraint specifically (better-sqlite3 reports "UNIQUE
+// constraint failed: users.username"), NOT any UNIQUE error: a stale
+// balances.user_id collision must surface as a real error, not "username taken".
 export function isDuplicateUserError(err) {
-  return String(err?.message ?? '').includes('UNIQUE');
+  return String(err?.message ?? '').includes('users.username');
 }
 
 // Throw a VALIDATION_ERROR (Error with code:'VALIDATION_ERROR') if the input
@@ -59,8 +62,14 @@ export async function createUser(db, {
     const result = db.prepare(
       'INSERT INTO users (username, display_name, password_hash, is_admin) VALUES (?, ?, ?, ?)'
     ).run(user.username, user.displayName, hash, user.isAdmin ? 1 : 0);
-    db.prepare('INSERT INTO balances (user_id, dollars) VALUES (?, ?)')
-      .run(result.lastInsertRowid, STARTING_DOLLARS);
+    // A new user always gets a fresh id, so balances(user_id) should be free — but
+    // a leftover ORPHAN balances row (e.g. a user deleted while FK cascade was off)
+    // can occupy the reused id and would otherwise abort the insert (and, pre-fix,
+    // get mis-reported as "username taken"). Adopt/reset it to the starting balance.
+    db.prepare(
+      `INSERT INTO balances (user_id, dollars) VALUES (?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET dollars = excluded.dollars`
+    ).run(result.lastInsertRowid, STARTING_DOLLARS);
     return result.lastInsertRowid;
   })();
 }

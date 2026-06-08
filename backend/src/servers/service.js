@@ -45,11 +45,17 @@ function livePresenceKey(slug, player) {
  *        Docker transport, or null when DOCKER_HOST isn't configured.
  * @param {import('better-sqlite3').Database|null} [deps.db]
  *        shared DB; backs the connectors' persisted catalog/config store.
+ * @param {Map<string, object>|null} [deps.connectorsOverride]
+ *        TEST SEAM ONLY — a pre-built id→connector map that REPLACES the registry's
+ *        Docker connectors. Lets a test inject stub connectors with deterministic
+ *        listOnlinePlayers()/getPlayerPosition()/status() so the live-presence
+ *        overlay can be exercised without a real RCON socket. Production never
+ *        passes it (connectors are built from dockerClient).
  *
  * The service is "configured" when the Docker backend is wired; each server in
  * the registry binds to its backend and is skipped when that backend is absent.
  */
-export function createServerService({ dockerClient = null, publicHost = '', db = null }) {
+export function createServerService({ dockerClient = null, publicHost = '', db = null, connectorsOverride = null }) {
   const store = db ? createServerStore(db) : null;
   // Register the hosted game servers in the `games` catalog (hosted=1) so the
   // session collector + the Events section can resolve a slug → game row. Cheap +
@@ -60,9 +66,8 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   // accordingly — e.g. /api/games returns only hosted=0. The slug uniqueness is
   // a PARTIAL index scoped to hosted=1 (migration 006).
   if (store) store.seedHostedGames(listServers());
-  const connectors = dockerClient
-    ? buildConnectors({ docker: dockerClient }, store)
-    : null;
+  const connectors = connectorsOverride
+    ?? (dockerClient ? buildConnectors({ docker: dockerClient }, store) : null);
   // Status caches. The servers panel polls `listServers`/`getNodeStatus` on a
   // short interval and several browser tabs can poll at once, so each compute is
   // an expensive fan-out of Docker stats calls. Two caches absorb that:
@@ -83,6 +88,11 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     // power action must invalidate it too — otherwise the host dashboard's
     // running count lags the per-server list by up to NODE_CACHE_TTL_MS.
     nodeCache = null;
+    // The live-presence overlay caches the last poll for LIVE_PRESENCE_TTL_MS too,
+    // so a just-stopped server could otherwise still report online>0 on the next
+    // list. Drop it (and the first-seen map) so the post-mutation read re-polls.
+    livePresenceCache = null;
+    liveSeenAt.clear();
   }
 
   function listMode(opts = {}) {
@@ -90,13 +100,20 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   }
 
   async function computeServerList(mode) {
-    // One cheap query for all servers' "playing now" counts (host-tracked).
-    const online = store ? store.onlineCountsBySlug() : {};
+    // The tile's "playing now" badge must equal the deduplicated /online roster:
+    // mergeLiveOnlineRows is the UNION of host-tracked sessions + live-overlay
+    // players, so Math.max(|host|,|live|) under-reports when the two sets overlap by
+    // DIFFERENT members. Count per slug off the SAME merged roster so the badge ==
+    // listOnline().filter(r => r.slug === server.id).length by construction.
+    const hostRows = store ? store.listOnline() : [];
     const live = await readLivePresence();
+    const onlineBySlug = {};
+    for (const row of mergeLiveOnlineRows(hostRows, live)) {
+      onlineBySlug[row.slug] = (onlineBySlug[row.slug] ?? 0) + 1;
+    }
     return Promise.all(listServers().map(async (server) => {
       const connector = connectors.get(server.id);
-      const liveCount = live.get(server.id)?.length ?? 0;
-      const meta = { ...(await publicMeta(server, connector)), online: Math.max(online[server.id] ?? 0, liveCount) };
+      const meta = { ...(await publicMeta(server, connector)), online: onlineBySlug[server.id] ?? 0 };
       if (!connector) return { ...meta, status: 'unknown', reason: 'backend not configured' };
       try {
         const status = await connector.status({ stats: mode !== 'quick' });
@@ -154,12 +171,22 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
           identityKind: p?.identityKind || server.identityKind || null,
         })).filter((p) => p.name)];
       } catch {
-        return [server.id, []];
+        // Read FAILED — distinguish from "nobody online" with a null sentinel so
+        // the eviction pass below leaves this slug's first-seen timestamps intact.
+        // Returning [] here would evict them and the next good poll would re-stamp
+        // joinedAt=now, rewinding live-only players' displayed join time.
+        return [server.id, null];
       }
     })).then((entries) => {
+      // Only slugs that actually returned a roster (incl. a genuine []) participate
+      // in eviction; a failed slug (null) preserves its liveSeenAt keys + emits no
+      // rows this cycle. Build the surviving-key set from succeeding slugs only.
+      const succeeded = new Set();
       const active = new Set();
       const bySlug = new Map();
       for (const [slug, players] of entries) {
+        if (players === null) { bySlug.set(slug, []); continue; }
+        succeeded.add(slug);
         const rows = [];
         for (const player of players) {
           const key = livePresenceKey(slug, player);
@@ -170,7 +197,11 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
         bySlug.set(slug, rows);
       }
       for (const key of liveSeenAt.keys()) {
-        if (!active.has(key)) liveSeenAt.delete(key);
+        // Key shape is `${slug}:${uid||name}` — only evict a key whose slug polled
+        // successfully this cycle and didn't report that player; a failed slug's
+        // keys are kept so their first-seen time survives the transient error.
+        const slug = key.slice(0, key.indexOf(':'));
+        if (succeeded.has(slug) && !active.has(key)) liveSeenAt.delete(key);
       }
       return bySlug;
     });

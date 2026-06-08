@@ -5,6 +5,7 @@ import { testDb } from './test-db.js';
 import { connectString, getServer, launchUrl, listServers } from '../src/servers/registry.js';
 import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
+import { createServerStore } from '../src/servers/store.js';
 import { getVar, setVar, setVars } from '../src/servers/cfgvars.js';
 import { getCvar, setCvars } from '../src/servers/cvars.js';
 
@@ -332,4 +333,215 @@ test('a launch URL needs a public host', async () => {
   const svc = createServerService({ dockerClient: fakeDocker(), publicHost: '' });
   const cs = (await svc.listServers()).find((s) => s.id === 'counterstrike');
   assert.equal(cs.connect.launch, null);
+});
+
+// ── live-presence overlay ────────────────────────────────────────────────────────
+// The overlay (service.js: samePresencePlayer / readLivePresence / mergeLiveOnlineRows /
+// computeServerList online count) surfaces players a connector reports via RCON
+// `listOnlinePlayers()` even before the host session-tracker has recorded them, and
+// dedups them against open host sessions. These tests inject STUB connectors through
+// the service's `connectorsOverride` test seam so the overlay runs without a real
+// RCON socket (the live Docker connectors hit rcon-tcp, covered in docker-*.test.mjs).
+
+// A deterministic stub connector. `players` is what listOnlinePlayers() reports while
+// "running"; power actions flip `running` (a stopped server reports nobody online).
+// `getPlayerPosition` is taken from the override (omit it entirely to exercise the
+// NOT_SUPPORTED path). Tracks call counts so a test can assert re-poll behaviour.
+function stubConnector({ players = [], running = true, getPlayerPosition, listOnlinePlayers } = {}) {
+  const state = { running };
+  const calls = { listOnlinePlayers: 0, getPlayerPosition: 0 };
+  const conn = {
+    state,
+    calls,
+    async status() {
+      return state.running
+        ? { status: 'running', gameStatus: 'hosting' }
+        : { status: 'stopped', gameStatus: 'offline' };
+    },
+    async listOnlinePlayers() {
+      calls.listOnlinePlayers += 1;
+      if (listOnlinePlayers) return listOnlinePlayers(calls.listOnlinePlayers, state);
+      return state.running ? players.map((p) => ({ ...p })) : [];
+    },
+    async start()    { state.running = true; },
+    async stop()     { state.running = false; },
+    async shutdown() { state.running = false; },
+    async reboot()   { state.running = true; },
+  };
+  if (getPlayerPosition) {
+    conn.getPlayerPosition = async (...args) => { calls.getPlayerPosition += 1; return getPlayerPosition(...args); };
+  }
+  return conn;
+}
+
+// Build a service whose `minecraft` server is backed by `conn` (other servers have no
+// connector, which is fine — the overlay skips them). Optional db backs host sessions.
+function svcWithMinecraft(conn, { db } = {}) {
+  return createServerService({ db, connectorsOverride: new Map([['minecraft', conn]]) });
+}
+
+// Open a host session for `slug` directly via the store (the same canonical write the
+// host collector mirrors), so the overlay has a real session row to dedup against.
+function seedOpenSession(db, slug, { identityKind, uid = null, name }, joinedAt = 1_000) {
+  return createServerStore(db).recordJoin(slug, { identityKind, uid, name }, joinedAt, 'log');
+}
+
+test('overlay: tile online count equals the deduplicated /online roster (Finding A)', async () => {
+  // Host session for Alice + a DIFFERENT live player Bob → the union is 2. The old
+  // Math.max(|host|=1, |live|=1) under-reported as 1. (Build the service first so it
+  // seeds the hosted `games` rows the session insert FKs to.)
+  const db = testDb();
+  const svc = svcWithMinecraft(stubConnector({ players: [{ name: 'Bob' }] }), { db });
+  seedOpenSession(db, 'minecraft', { identityKind: 'minecraft', uid: 'uuid-alice', name: 'Alice' });
+
+  const roster = await svc.listOnline();
+  const tiles = await svc.listServers({ mode: 'quick' });
+  const mcOnline = roster.filter((r) => r.slug === 'minecraft').length;
+  assert.equal(mcOnline, 2);
+  assert.equal(tiles.find((t) => t.id === 'minecraft').online, mcOnline);
+});
+
+test('overlay: a live player matching a host session by name is not double-counted (Finding A)', async () => {
+  // Host session for Bob AND a live player Bob (same name) → the badge stays 1.
+  const db = testDb();
+  const svc = svcWithMinecraft(stubConnector({ players: [{ name: 'Bob' }] }), { db });
+  seedOpenSession(db, 'minecraft', { identityKind: 'minecraft', uid: 'uuid-bob', name: 'Bob' });
+
+  const roster = await svc.listOnline();
+  const tiles = await svc.listServers({ mode: 'quick' });
+  assert.equal(roster.filter((r) => r.slug === 'minecraft').length, 1);
+  assert.equal(tiles.find((t) => t.id === 'minecraft').online, 1);
+});
+
+test('overlay: a transient listOnlinePlayers() failure preserves live joined_at (Finding B)', async () => {
+  // dheagman is live-only (no host session). The poll succeeds on calls 1 & 3 but
+  // throws on call 2. With Date.now stubbed we advance past LIVE_PRESENCE_TTL_MS
+  // between ticks so each listOnline() re-polls. The failed tick must NOT rewind the
+  // first-seen time: tick 3 must still show the tick-1 join time.
+  const realNow = Date.now;
+  let clock = 5_000_000; // ms; Math.floor(clock/1000) is the unix-seconds joined_at
+  Date.now = () => clock;
+  try {
+    const conn = stubConnector({
+      listOnlinePlayers: (n) => {
+        if (n === 2) throw new Error('rcon timeout');
+        return [{ name: 'dheagman', uid: null }];
+      },
+    });
+    const svc = svcWithMinecraft(conn); // no db → live-only
+
+    const t1 = Math.floor(clock / 1000);
+    const tick1 = await svc.listOnline();
+    const row1 = tick1.find((r) => r.slug === 'minecraft' && r.name === 'dheagman');
+    assert.ok(row1, 'tick 1 surfaces dheagman');
+    assert.equal(row1.joined_at, t1);
+
+    clock += 2_000;            // expire the 1s live-presence cache → re-poll (throws)
+    const tick2 = await svc.listOnline();
+    assert.equal(tick2.find((r) => r.slug === 'minecraft' && r.name === 'dheagman'), undefined,
+      'failed poll emits no live row that cycle');
+
+    clock += 2_000;            // expire again → re-poll (succeeds)
+    const tick3 = await svc.listOnline();
+    const row3 = tick3.find((r) => r.slug === 'minecraft' && r.name === 'dheagman');
+    assert.ok(row3, 'tick 3 surfaces dheagman again');
+    assert.equal(row3.joined_at, t1, 'join time is preserved, not rewound to t3');
+    assert.equal(conn.calls.listOnlinePlayers, 3);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('overlay: clearStatusCache drops the live-presence cache (Finding C)', async () => {
+  const conn = stubConnector({ players: [{ name: 'Steve' }] });
+  const svc = svcWithMinecraft(conn);
+
+  const warm = await svc.listServers({ mode: 'quick' });
+  assert.equal(warm.find((t) => t.id === 'minecraft').online, 1);
+  assert.equal(conn.calls.listOnlinePlayers, 1);
+
+  // Stopping the server mutates state → clearStatusCache() must drop the cached live
+  // presence so the very next list re-polls (now reporting nobody) instead of serving
+  // the stale online>0 for up to LIVE_PRESENCE_TTL_MS.
+  await svc.doAction('minecraft', 'stop');
+  const after = await svc.listServers({ mode: 'quick' });
+  assert.equal(conn.calls.listOnlinePlayers, 2, 'live presence was re-polled, not served stale');
+  const mc = after.find((t) => t.id === 'minecraft');
+  assert.equal(mc.online, 0);
+  assert.equal(mc.status, 'stopped');
+});
+
+test('overlay: a live-only player surfaces as a synthetic live roster row (Finding D)', async () => {
+  const svc = svcWithMinecraft(stubConnector({ players: [{ name: 'Notch' }] }));
+  const roster = await svc.listOnline();
+  const row = roster.find((r) => r.name === 'Notch');
+  assert.ok(row, 'Notch appears in the roster');
+  assert.equal(row.id, 'live:minecraft:Notch');
+  assert.equal(row.source, 'live');
+  assert.equal(row.live, true);
+  assert.equal(row.slug, 'minecraft');
+});
+
+test('overlay: a live player matching an open host session (name or uid) is deduped (Finding D)', async () => {
+  // Open host session for steve / uuid-steve. A live row that matches by uid is NOT
+  // duplicated; nor is one that matches by case-insensitive name.
+  // Build the service FIRST so it seeds the hosted `games` rows recordJoin FKs to
+  // (seeding before the service makes recordJoin a no-op → no host row to dedup against).
+  const dbByUid = testDb();
+  const byUid = svcWithMinecraft(
+    stubConnector({ players: [{ name: 'someone-else', uid: 'uuid-steve' }] }), { db: dbByUid });
+  seedOpenSession(dbByUid, 'minecraft', { identityKind: 'minecraft', uid: 'uuid-steve', name: 'Steve' });
+  const rosterUid = await byUid.listOnline();
+  assert.equal(rosterUid.filter((r) => r.slug === 'minecraft').length, 1, 'uid match → no duplicate');
+  assert.equal(rosterUid.some((r) => r.source === 'live'), false);
+
+  const dbByName = testDb();
+  const byName = svcWithMinecraft(
+    stubConnector({ players: [{ name: 'sTeVe', uid: null }] }), { db: dbByName });
+  seedOpenSession(dbByName, 'minecraft', { identityKind: 'minecraft', uid: 'uuid-steve', name: 'Steve' });
+  const rosterName = await byName.listOnline();
+  assert.equal(rosterName.filter((r) => r.slug === 'minecraft').length, 1, 'case-insensitive name match → no duplicate');
+  assert.equal(rosterName.some((r) => r.source === 'live'), false);
+});
+
+test('getOnlinePlayerPositionByName: NOT_FOUND when absent, online when present (Finding D)', async () => {
+  const svc = svcWithMinecraft(stubConnector({
+    players: [{ name: 'Steve' }],
+    getPlayerPosition: (target) => ({ name: target, x: 1, y: 64, z: 2, connected: true }),
+  }));
+
+  await assert.rejects(
+    () => svc.getOnlinePlayerPositionByName('minecraft', 'Ghost'),
+    (e) => e instanceof ServerControlError && e.code === 'NOT_FOUND');
+
+  const present = await svc.getOnlinePlayerPositionByName('minecraft', 'Steve');
+  assert.equal(present.online, true);
+  assert.equal(present.position.x, 1);
+});
+
+test('getOnlinePlayerPositionByName: online=false + reason when position is disconnected (Finding D/E)', async () => {
+  const svc = svcWithMinecraft(stubConnector({
+    players: [{ name: 'Steve' }],
+    getPlayerPosition: () => ({ connected: false, reason: 'player left mid-lookup' }),
+  }));
+  const res = await svc.getOnlinePlayerPositionByName('minecraft', 'Steve');
+  assert.equal(res.online, false);
+  assert.equal(res.reason, 'player left mid-lookup');
+});
+
+test('getOnlinePlayerPosition: NOT_FOUND for a missing session, NOT_SUPPORTED without getPlayerPosition (Finding D)', async () => {
+  // No matching open session → openSessionById returns null → NOT_FOUND.
+  const dbMissing = testDb();
+  const missing = svcWithMinecraft(stubConnector({ players: [] }), { db: dbMissing });
+  await assert.rejects(
+    () => missing.getOnlinePlayerPosition('minecraft', 12345),
+    (e) => e instanceof ServerControlError && e.code === 'NOT_FOUND');
+
+  // An open session exists, but the connector exposes no getPlayerPosition → NOT_SUPPORTED.
+  const dbHasSession = testDb();
+  const unsupported = svcWithMinecraft(stubConnector({ players: [] }), { db: dbHasSession }); // build first → seeds hosted games
+  const sessionId = seedOpenSession(dbHasSession, 'minecraft', { identityKind: 'minecraft', uid: 'uuid-x', name: 'Xavier' });
+  await assert.rejects(
+    () => unsupported.getOnlinePlayerPosition('minecraft', sessionId),
+    (e) => e instanceof ServerControlError && e.code === 'NOT_SUPPORTED');
 });

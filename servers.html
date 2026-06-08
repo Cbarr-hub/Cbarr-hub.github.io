@@ -859,7 +859,7 @@ import {
   dbListServerConfig, dbReadServerConfig, dbWriteServerConfig,
   dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
   dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbDeleteServerConfig,
-  dbGetServerSessions, dbGetOnline, dbGetActivity, dbGetActivityAll, dbGetBlueMapStatus, dbGetServerMapSession, dbGetServerMapPlayer,
+  dbGetOnline, dbGetActivity, dbGetActivityAll, dbGetBlueMapStatus, dbGetServerMapSession, dbGetServerMapPlayer,
   dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile, dbUpdateProfile,
   dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
   dbAdminTables, dbAdminTableRows, dbAdminQuery,
@@ -1211,7 +1211,7 @@ function cardHTML(s){
   const cls = statusCls(s)
   const down = s.status !== 'running'
   const up = !down
-  const cpuPct = up && s.cpu != null ? s.cpu * 100 : 0
+  const cpuPct = up && s.cpu != null ? (s.cpu / (lastNode?.ncpu || 1)) * 100 : 0
   const ramPct = up && s.maxmem ? (s.mem / s.maxmem) * 100 : 0
   const cpuTxt = up ? cpuPct.toFixed(0) + '%' : '—'
   const ramTxt = up ? fmtBytes(s.mem) : '—'
@@ -1288,21 +1288,6 @@ function switchView(v){
 }
 document.querySelectorAll('#viewTabs button').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)))
 
-/* ═════════════════════════ EVENTS VIEW ═════════════════════════ */
-function renderEvFilter(){
-  const sel = document.getElementById('evFilter')
-  sel.innerHTML = ['<option value="all">All servers</option>']
-    .concat(servers.map(s => `<option value="${esc(s.id)}"${eventsFilter === s.id ? ' selected' : ''}>${esc(s.name)}</option>`)).join('')
-  sel.onchange = () => { eventsFilter = sel.value; loadEvents() }
-  document.getElementById('evRefresh').onclick = () => loadEvents()
-}
-function startEvents(){
-  renderEvFilter()
-  document.getElementById('tcount').textContent = 'player sessions'
-  if (eventsTimer) clearInterval(eventsTimer)
-  eventsTimer = setInterval(() => { if (curView === 'events') loadEvents(); else { clearInterval(eventsTimer); eventsTimer = null } }, 30000)
-  loadEvents()
-}
 const evClock = (sec) => sec ? new Date(sec*1000).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
 function evDur(s){
   const open = s.left_at == null
@@ -1314,32 +1299,6 @@ function evDur(s){
 function pAvatar(name){
   const h = String(name || '?').split('').reduce((a,c)=>a+c.charCodeAt(0),0)*47 % 360
   return `background:linear-gradient(135deg,hsl(${h} 60% 55%),hsl(${(h+40)%360} 55% 40%))`
-}
-async function loadEvents(){
-  const list = document.getElementById('evlist')
-  const seq = ++eventsLoadSeq
-  const filter = eventsFilter
-  const showServer = filter === 'all'
-  let rows
-  try {
-    if (showServer) {
-      const per = await Promise.all(servers.map(async s => {
-        const r = await dbGetServerSessions(s.id, { limit: 100 }).catch(() => [])
-        return r.map(x => ({ ...x, serverName: s.name }))
-      }))
-      rows = per.flat().sort((a, b) => b.joined_at - a.joined_at)
-    } else {
-      const s = srvById(filter)
-      const r = await dbGetServerSessions(filter, { limit: 200 }).catch(() => [])
-      rows = r.map(x => ({ ...x, serverName: s?.name || filter }))
-    }
-  } catch (e) {
-    if (seq !== eventsLoadSeq) return
-    list.innerHTML = `<div class="ev-empty pane-err">events unavailable: ${esc(errMsg(e))}</div>`; return
-  }
-  if (seq !== eventsLoadSeq) return     // latest-wins
-  if (!rows.length) { list.innerHTML = '<div class="ev-empty">No sessions recorded yet.</div>'; return }
-  list.innerHTML = rows.map(evRowHTML).join('')
 }
 // One join/leave row. `serverName` is the display label for the source server.
 function accountLabel(u){
@@ -1595,13 +1554,9 @@ function wireMapModes(){
       mapOnlinePlayers = []
       mapSelectedSessionId = ''
       syncMapMode()
-      if (mapMode === 'minecraft') {
-        if (!mapTimer) startMap()
-        else { loadMapStatus(); loadMapPlayers() }
-      } else {
-        if (mapTimer) { clearInterval(mapTimer); mapTimer = null }
-        loadMapPlayers()
-      }
+      if (!mapTimer) { startMap(); return }
+      if (mapMode === 'minecraft') loadMapStatus()
+      loadMapPlayers()
     })
   })
 }
@@ -1612,8 +1567,9 @@ function startMap(){
   // 3D canvas). Same-origin iframe → the session cookie passes the /map auth gate.
   if (mapTimer) clearInterval(mapTimer)
   mapTimer = setInterval(() => {
-    if (curView === 'map' && mapMode === 'minecraft') { loadMapStatus(); loadMapPlayers({ preservePanel: true }) }
-    else { clearInterval(mapTimer); mapTimer = null }
+    if (curView !== 'map') { clearInterval(mapTimer); mapTimer = null; return }
+    if (mapMode === 'minecraft') loadMapStatus()
+    loadMapPlayers({ preservePanel: true })
   }, 15000)
   if (mapMode === 'minecraft') { loadMapStatus(); loadMapPlayers() }
   else loadMapPlayers()
@@ -2039,7 +1995,7 @@ function renderOverview(){
   const s = DS.server
   const body = detail.querySelector('#dBody')
   if (s.status !== 'running') { body.innerHTML = downPaneHTML(s); wireOverview(); return }
-  const cpuPct = s.cpu != null ? s.cpu * 100 : 0
+  const cpuPct = s.cpu != null ? (s.cpu / (lastNode?.ncpu || 1)) * 100 : 0
   const ramPct = s.maxmem ? (s.mem / s.maxmem) * 100 : 0
   const conn = s.connect?.string
   body.innerHTML = `
@@ -2119,7 +2075,7 @@ function renderConnect(){
   if (s.status !== 'running') { body.innerHTML = downPaneHTML(s); wireOverview(); return }
   const conn = s.connect?.string
   const launch = s.connect?.launch
-  const cpuPct = s.cpu != null ? s.cpu * 100 : 0
+  const cpuPct = s.cpu != null ? (s.cpu / (lastNode?.ncpu || 1)) * 100 : 0
   const ramPct = s.maxmem ? (s.mem / s.maxmem) * 100 : 0
   body.innerHTML = `
   <div class="pane on">
@@ -2432,6 +2388,7 @@ async function powerAction(act, btn){
 
 /* Re-fetch the active server's status + the fleet, then re-render the open pane + feed. */
 async function refreshActive(){
+  if (!DS) return
   snapshotFormIfDirty()
   const fresh = await dbGetServerStatus(DS.id, { mode: 'quick' })
   const i = servers.findIndex(x => x.id === DS.id)
@@ -2929,14 +2886,10 @@ function wireProfiles(){
             try {
               logLine('Restarting to load profile…')
               await dbServerAction(DS.id, 'reboot')
-              await new Promise(res => setTimeout(res, 2500))
-              try {
-                await refreshActive()
-                logLine(`Restarted ✓ — now running "${r?.name}"`)
-              } catch (e) {
-                logLine(`Status refresh — error: ${errMsg(e)}`)
-                toast(errMsg(e), 'err')
-              }
+              const up = await waitForRunning(DS.id, 30000)
+              try { await refreshActive() }
+              catch (e) { logLine(`Status refresh — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+              logLine(up ? `Restarted ✓ — now running "${r?.name}"` : 'Restarting… still starting — hit Refresh shortly')
             } catch (e) {
               logLine(`Restart — error: ${errMsg(e)}`)
               toast(errMsg(e), 'err')
@@ -3182,9 +3135,10 @@ function wireMaps(mf, editable){
             if (reb) {
               logLine('Restarting to mount collection…')
               await dbServerAction(DS.id, 'reboot')
-              await new Promise(res => setTimeout(res, 2500))
+              const up = await waitForRunning(DS.id, 30000)
               try { await refreshActive() }
               catch (e) { logLine(`Status refresh — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+              logLine(up ? 'Restarted ✓ — collection mounted' : 'Restarting… still starting — hit Refresh shortly')
             }
           }
           try { DS.schema = await dbGetProfileSchema(DS.id); DS.cvarRef = DS.schema.cvarRef || DS.cvarRef } catch {}

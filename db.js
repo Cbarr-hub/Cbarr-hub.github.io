@@ -34,7 +34,7 @@ async function getCsrfToken() {
 //     for an empty body). Non-2xx throws an Error whose `.message` is the
 //     server's `error` field (falling back to `request failed (<status>)`),
 //     with `.status` and `.data` attached for callers that need them.
-async function api(path, { method = 'GET', body, query } = {}) {
+async function api(path, { method = 'GET', body, query, _retried = false } = {}) {
   const headers = { 'Accept': 'application/json' };
   const init = { method, credentials: 'same-origin', headers };
 
@@ -61,6 +61,22 @@ async function api(path, { method = 'GET', body, query } = {}) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
+    // Self-heal a stale CSRF token exactly once. The cached token (and the
+    // server's _csrf secret) can be dropped when the secure-session cookie is
+    // lost — an expired/invalid session, or the 30-day maxAge elapsing on a
+    // long-lived polling page — which makes csrfProtection 403 every mutating
+    // request. The stale cached token would then fail forever. So on a
+    // CSRF-shaped 403 from a mutating request, clear the cache and retry once
+    // (which re-fetches a fresh token via getCsrfToken). A genuinely logged-out
+    // user still fails the retry and sees the error as before; non-CSRF 403s
+    // (e.g. "admin required") are never retried.
+    const isMutating = method !== 'GET' && method !== 'HEAD';
+    const csrfShaped =
+      /csrf/i.test(data?.error ?? '') || String(data?.code ?? '').startsWith('FST_CSRF');
+    if (isMutating && res.status === 403 && csrfShaped && !_retried) {
+      csrfToken = null;
+      return api(path, { method, body, query, _retried: true });
+    }
     const err = new Error(data?.error ?? `request failed (${res.status})`);
     err.status = res.status;
     err.data = data;

@@ -312,7 +312,7 @@ header.top{position:sticky; top:0; z-index:40;
 .dclose{position:absolute;top:14px;right:14px;z-index:3;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:rgba(10,10,10,.6);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px);color:#fff;transition:.16s var(--ease)}
 .dclose:hover{background:rgba(10,10,10,.85);transform:rotate(90deg)}
 .dhero .dmono{position:absolute;left:20px;bottom:18px;width:56px;height:56px;border-radius:14px;display:grid;place-items:center;font-size:26px;font-weight:700;background:rgba(10,10,10,.55);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px);color:#fff}
-.dhero .dtitle{position:absolute;left:90px;bottom:20px;right:20px}
+.dhero .dtitle{position:absolute;left:20px;bottom:20px;right:20px}
 .dhero .dtitle b{display:block;font-size:var(--t-xl);color:#fff;letter-spacing:.3px}
 .dhero .dtitle span{font-size:var(--t-xs);color:rgba(255,255,255,.6);letter-spacing:.5px}
 .dhero .dstat{position:absolute;left:20px;top:18px;display:inline-flex;align-items:center;gap:8px;font-size:var(--t-xs);letter-spacing:1.5px;text-transform:uppercase;padding:7px 13px;border-radius:99px;background:rgba(10,10,10,.55);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px)}
@@ -1749,7 +1749,7 @@ async function openDetail(id){
   // Hydrate fresh status + schema in parallel; the overview stays usable while
   // Docker/profile metadata arrives.
   const [fresh, schema] = await Promise.all([
-    dbGetServerStatus(id, { mode: 'quick' }).catch(() => null),
+    dbGetServerStatus(id, { mode: 'full' }).catch(() => null),
     dbGetProfileSchema(id).catch(() => null),
   ])
   if (activeId !== id || !DS || DS.id !== id) return   // closed or switched while loading
@@ -1789,7 +1789,6 @@ const MODES = [
 ]
 function detailShell(s){
   const cls = statusCls(s)
-  const a = artFor(s)
   const bg = TILE_BG[s.id]
   const port = s.connect?.port
   const mode = DS?.mode || 'connect'
@@ -1802,7 +1801,6 @@ function detailShell(s){
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
     <div class="dstat" style="color:${STATUS_COLOR[cls]}"><span class="d ${cls}"></span>${STATUS_LABEL[cls]}</div>
-    <div class="dmono" style="background:${monoBg(s)}">${esc(a.mono)}</div>
     <div class="dtitle"><b>${esc(s.name)}</b><span>${s.id}${port ? ' · :' + esc(port) : ''}</span></div>
   </div>
   <div class="dmode" id="dMode">${modes}</div>
@@ -2023,7 +2021,7 @@ function wireConnect(){
 async function waitForRunning(id, timeoutMs){
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    let st; try { st = await dbGetServerStatus(id, { mode: 'quick' }) } catch {}
+    let st; try { st = await dbGetServerStatus(id, { mode: 'full' }) } catch {}
     if (st && st.status === 'running') return true
     if (Date.now() > deadline) return false
     await new Promise(r => setTimeout(r, 2000))
@@ -2298,7 +2296,7 @@ async function powerAction(act, btn){
 async function refreshActive(){
   if (!DS) return
   snapshotFormIfDirty()
-  const fresh = await dbGetServerStatus(DS.id, { mode: 'quick' })
+  const fresh = await dbGetServerStatus(DS.id, { mode: 'full' })
   const i = servers.findIndex(x => x.id === DS.id)
   if (i >= 0) servers[i] = { ...servers[i], ...fresh }
   DS.server = servers[i] || fresh

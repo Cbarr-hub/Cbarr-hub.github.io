@@ -302,6 +302,14 @@ export async function dbGetServerMapMe(id) {
   return api(`/servers/${encodeURIComponent(id)}/map/me`);
 }
 
+export async function dbGetServerMapSession(id, sessionId) {
+  return api(`/servers/${encodeURIComponent(id)}/map/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export async function dbGetServerMapPlayer(id, playerName) {
+  return api(`/servers/${encodeURIComponent(id)}/map/players/${encodeURIComponent(playerName)}`);
+}
+
 export async function dbGetBlueMapStatus() {
   return api('/servers/map/status');
 }

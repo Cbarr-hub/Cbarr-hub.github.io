@@ -8,6 +8,8 @@ import { ServerControlError } from '../servers/service.js';
 const ID_PARAM = { type: 'string', pattern: '^[a-z0-9-]{1,32}$' };
 const WS_PARAM = { type: 'string', pattern: '^[0-9]{1,20}$' };
 const CONFIG_ID_PARAM = { type: 'integer', minimum: 1 };
+const SESSION_ID_PARAM = { type: 'integer', minimum: 1 };
+const PLAYER_PARAM = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
 const CONFIG_BODY_MAX = 16_000;
 
@@ -110,6 +112,12 @@ export default async function serversRoutes(app) {
   route('get', '/map/status', () => svc.getBlueMapStatus());
   route('get', '/map/me', (req) => svc.getCurrentMinecraftPosition(req.currentUser.id));
   route('get', '/:id/map/me', (req) => svc.getCurrentPlayerPosition(req.params.id, req.currentUser.id), { schema: P({ id: ID_PARAM }) });
+  route('get', '/:id/map/sessions/:sessionId', (req) => svc.getOnlinePlayerPosition(req.params.id, req.params.sessionId), {
+    schema: P({ id: ID_PARAM, sessionId: SESSION_ID_PARAM }),
+  });
+  route('get', '/:id/map/players/:player', (req) => svc.getOnlinePlayerPositionByName(req.params.id, req.params.player), {
+    schema: P({ id: ID_PARAM, player: PLAYER_PARAM }),
+  });
 
   route('get', '/:id', (req) => svc.getStatus(req.params.id, { mode: req.query.mode }), {
     schema: {

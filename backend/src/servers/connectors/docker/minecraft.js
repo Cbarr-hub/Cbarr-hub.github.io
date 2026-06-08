@@ -109,6 +109,15 @@ function blueMapAnchor({ x, y, z, mapId }) {
   return `${mapId}:${Math.round(x)}:${Math.round(y)}:${Math.round(z)}:390:0.1:0.19:0:0:perspective`;
 }
 
+export function parseMinecraftPlayerList(text) {
+  const body = String(text || '').split(':').slice(1).join(':').trim();
+  if (!body) return [];
+  return body
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => MC_TARGET_RE.test(p));
+}
+
 export class DockerMinecraftConnector extends DockerBaseConnector {
   configFiles = {
     'server.properties':   PROPS,
@@ -185,6 +194,15 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
 
   async sendCommand(command) {
     return { output: await this.#rcon(validateLiveCommand(command)) };
+  }
+
+  async listOnlinePlayers() {
+    const output = await this.#rcon('list');
+    return parseMinecraftPlayerList(output).map((name) => ({
+      name,
+      uid: null,
+      identityKind: 'minecraft',
+    }));
   }
 
   async runLiveAction(key, value) {

@@ -4,7 +4,7 @@ import net from 'node:net';
 
 import * as mp from '../src/servers/connectors/minecraft-profile.js';
 import { clampNumber } from '../src/servers/connectors/docker-base.js';
-import { DockerMinecraftConnector } from '../src/servers/connectors/docker/minecraft.js';
+import { DockerMinecraftConnector, parseMinecraftPlayerList } from '../src/servers/connectors/docker/minecraft.js';
 
 // ── pure profile module (shared server.properties logic) ─────────────────────────
 test('mc-profile validate normalizes enums + rejects bad values', () => {
@@ -321,6 +321,22 @@ test('DockerMinecraft sendCommand trims + forwards valid commands and rejects ba
   await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => conn.sendCommand('a\nb'), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => conn.sendCommand('x'.repeat(513)), (e) => e.code === 'BAD_SETTING');
+});
+
+test('DockerMinecraft listOnlinePlayers parses the RCON list output', async () => {
+  assert.deepEqual(parseMinecraftPlayerList('There are 0 of a max of 20 players online:'), []);
+  assert.deepEqual(
+    parseMinecraftPlayerList('There are 2 of a max of 20 players online: dheagman, Alex_2'),
+    ['dheagman', 'Alex_2'],
+  );
+  assert.deepEqual(parseMinecraftPlayerList('There are 1 of a max of 20 players online: bad name'), []);
+
+  let players;
+  const commands = await captureMinecraftRcon(async (conn) => {
+    players = await conn.listOnlinePlayers();
+  }, () => 'There are 1 of a max of 20 players online: dheagman');
+  assert.deepEqual(commands, ['list']);
+  assert.deepEqual(players, [{ name: 'dheagman', uid: null, identityKind: 'minecraft' }]);
 });
 
 test('DockerMinecraft getPlayerPosition parses position, dimension, and BlueMap anchor', async () => {

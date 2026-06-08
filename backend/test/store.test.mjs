@@ -234,36 +234,53 @@ test('session methods on an unknown slug return [] / null instead of throwing', 
 });
 
 // ── presence + cross-game activity ────────────────────────────────────────────────
-test('onlineCountsBySlug counts only linked still-open sessions, per slug', () => {
-  const db = storeDb();
-  const store = createServerStore(db);
-  store.seedHostedGames(listServers());
-  store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');       // open
-  const closed = store.recordJoin('gmod', steam('Bob', '222'), 1000, 'rcon');
-  store.closeSession(closed, 1100);                                     // closed → not counted
-  store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log'); // open
-  addUser(db, 1, 'Alice User');
-  addUser(db, 2, 'Notch User');
-  linkPlayer(db, 'steam', '111', 1);
-  linkPlayer(db, 'minecraft', 'u1', 2);
-  assert.deepEqual(store.onlineCountsBySlug(), { gmod: 1, minecraft: 1 });
-});
-
-test('listOnline returns the live roster across hosted servers with game name', () => {
+test('onlineCountsBySlug counts all still-open sessions, per slug', () => {
   const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
   store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
+  store.recordJoin('gmod', steam('Unlinked', '333'), 1050, 'rcon');
+  const closed = store.recordJoin('gmod', steam('Bob', '222'), 1000, 'rcon');
+  store.closeSession(closed, 1100);                                     // closed → not counted
+  store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log');
+  store.recordJoin('counterstrike', steam('NameOnly', null), 1200, 'rcon');
+  addUser(db, 1, 'Alice User');
+  addUser(db, 2, 'Notch User');
+  linkPlayer(db, 'steam', '111', 1);
+  linkPlayer(db, 'minecraft', 'u1', 2);
+  assert.deepEqual(store.onlineCountsBySlug(), { counterstrike: 1, gmod: 2, minecraft: 1 });
+});
+
+test('listOnline returns linked and unlinked live roster rows with game name', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
+  store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1100, 'log');
   const closed = store.recordJoin('gmod', steam('Bob', '222'), 900, 'rcon');
   store.closeSession(closed, 950);
   addUser(db, 1, 'Alice User');
   linkPlayer(db, 'steam', '111', 1);
   const online = store.listOnline();
-  assert.equal(online.length, 1);
-  assert.equal(online[0].name, 'Alice');
-  assert.equal(online[0].userName, 'Alice User');
-  assert.equal(online[0].slug, 'gmod');
-  assert.equal(online[0].gameName, 'TTT');
+  assert.deepEqual(online.map((r) => r.name), ['Notch', 'Alice']);
+  assert.equal(online[0].userName, null);
+  assert.equal(online[0].slug, 'minecraft');
+  assert.equal(online[0].gameName, 'Minecraft');
+  assert.equal(online[1].userName, 'Alice User');
+  assert.equal(online[1].slug, 'gmod');
+  assert.equal(online[1].gameName, 'TTT');
+});
+
+test('openSessionById returns only a matching still-open session for that hosted server', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  const open = store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log');
+  const closed = store.recordJoin('minecraft', { name: 'Alex', uid: 'u2', identityKind: 'minecraft' }, 1000, 'log');
+  store.closeSession(closed, 1200);
+  assert.equal(store.openSessionById('minecraft', open).name, 'Notch');
+  assert.equal(store.openSessionById('gmod', open), null);
+  assert.equal(store.openSessionById('minecraft', closed), null);
 });
 
 test('recentSessions merges linked servers newest-first and respects limit', () => {

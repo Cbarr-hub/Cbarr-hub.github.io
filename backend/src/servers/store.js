@@ -158,22 +158,23 @@ export function createServerStore(db) {
         LIMIT ?`,
     ),
     // ── presence + cross-game activity ──
-    // Open-session counts per hosted slug (uses idx_sessions_game_open).
+    // Open-session counts per hosted slug (uses idx_sessions_game_open). Counts
+    // every open session, linked or not, so live presence does not disappear
+    // before a player has been mapped to a site account.
     onlineCounts: db.prepare(
       `SELECT g.slug AS slug, COUNT(*) AS n
          FROM server_sessions s JOIN games g ON g.id = s.game_id
-         JOIN player_accounts pa ON pa.player_id = s.player_id
         WHERE s.left_at IS NULL AND g.hosted = 1
         GROUP BY g.slug`,
     ),
     // Who's online right now, across every hosted server (newest join first).
     listOnline: db.prepare(
-      `SELECT g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
+      `SELECT s.id, g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
               s.name, s.uid, s.identity_kind AS identityKind, s.joined_at, s.source,
               pa.user_id AS userId, u.display_name AS userName
          FROM server_sessions s JOIN games g ON g.id = s.game_id
-         JOIN player_accounts pa ON pa.player_id = s.player_id
-         JOIN users u            ON u.id = pa.user_id
+         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
+         LEFT JOIN users u            ON u.id = pa.user_id
         WHERE s.left_at IS NULL AND g.hosted = 1
         ORDER BY s.joined_at DESC`,
     ),
@@ -215,6 +216,17 @@ export function createServerStore(db) {
          JOIN games g ON g.id = s.game_id
         WHERE g.slug = ? AND s.player_id = ? AND s.left_at IS NULL
         ORDER BY s.joined_at DESC
+        LIMIT 1`,
+    ),
+    openSessionById: db.prepare(
+      `SELECT s.id, s.player_id AS playerId, s.name, s.uid,
+              s.identity_kind AS identityKind, s.joined_at, s.source,
+              pa.user_id AS userId, u.display_name AS userName
+         FROM server_sessions s
+         JOIN games g ON g.id = s.game_id
+         LEFT JOIN player_accounts pa ON pa.player_id = s.player_id
+         LEFT JOIN users u            ON u.id = pa.user_id
+        WHERE g.slug = ? AND g.hosted = 1 AND s.id = ? AND s.left_at IS NULL
         LIMIT 1`,
     ),
   };
@@ -397,6 +409,9 @@ export function createServerStore(db) {
     },
     openSessionForPlayer(slug, playerId) {
       return stmts.openSessionForPlayer.get(slug, playerId) ?? null;
+    },
+    openSessionById(slug, sessionId) {
+      return stmts.openSessionById.get(slug, Number(sessionId)) ?? null;
     },
   };
 }

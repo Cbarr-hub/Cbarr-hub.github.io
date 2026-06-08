@@ -215,17 +215,30 @@ header.top{position:sticky; top:0; z-index:40;
 .map-modes{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:8px;background:var(--bg-1)}
 .map-modes button{padding:7px 10px;border-radius:6px;color:var(--txt-dim);font-size:var(--t-xs);letter-spacing:.5px}
 .map-modes button.on{background:rgba(72,255,155,.14);color:var(--grn);box-shadow:inset 0 0 0 1px rgba(72,255,155,.22)}
-.map-status{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line);border-radius:99px;background:var(--bg-1);color:var(--txt-dim);font-size:var(--t-xs);letter-spacing:.5px}
-.map-status .d{width:7px;height:7px;border-radius:50%;background:var(--grey)}
-.map-status.rendering{border-color:rgba(95,140,255,.45);color:#cfe0ff;background:rgba(20,40,90,.42)}
-.map-status.rendering .d{background:#7fa7ff;box-shadow:0 0 8px #7fa7ff}
-.map-status.complete{border-color:rgba(72,255,155,.38);color:var(--grn);background:rgba(6,26,14,.62)}
-.map-status.complete .d{background:var(--grn-hot);box-shadow:0 0 8px var(--grn-hot)}
-.map-status.err{border-color:rgba(255,100,100,.45);color:#ffb8b8;background:rgba(60,10,10,.45)}
-.map-status.err .d{background:#ff7777;box-shadow:0 0 8px #ff7777}
-.map-user,.factorio-map{border:1px solid var(--line);border-radius:var(--r);background:var(--bg-2);padding:var(--s3);margin-bottom:var(--s3)}
+.map-picker{position:relative}
+.map-picker select{appearance:none;max-width:min(280px,72vw);background:var(--bg-1);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:9px 34px 9px 12px;font-size:var(--t-xs);letter-spacing:.5px}
+.map-picker::after{content:"▾";position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--txt-faint);pointer-events:none}
+.map-progress{display:grid;gap:8px;width:fit-content;min-width:min(360px,100%);max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg-1);color:var(--txt-dim);margin-bottom:var(--s3)}
+.map-progress-meta{display:flex;align-items:center;gap:9px;min-width:0}
+.map-progress .d{width:7px;height:7px;border-radius:50%;background:var(--grey);flex:0 0 auto}
+.map-progress-label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-faint);white-space:nowrap}
+.map-progress b{font-size:var(--t-xs);font-weight:600;color:var(--txt-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.map-progress-track{height:5px;border-radius:5px;background:var(--bg-3);overflow:hidden}
+.map-progress-track i{display:block;height:100%;width:0;border-radius:5px;background:var(--grey);transition:width .35s var(--ease)}
+.map-progress.rendering{border-color:rgba(95,140,255,.45);background:rgba(20,40,90,.38)}
+.map-progress.rendering .d{background:#7fa7ff;box-shadow:0 0 8px #7fa7ff}
+.map-progress.rendering .map-progress-track i{background:#7fa7ff}
+.map-progress.complete{border-color:rgba(72,255,155,.38);background:rgba(6,26,14,.58)}
+.map-progress.complete .d{background:var(--grn-hot);box-shadow:0 0 8px var(--grn-hot)}
+.map-progress.complete b{color:var(--grn)}
+.map-progress.complete .map-progress-track i{background:linear-gradient(90deg,var(--grn-deep),var(--grn))}
+.map-progress.err{border-color:rgba(255,100,100,.45);color:#ffb8b8;background:rgba(60,10,10,.45)}
+.map-progress.err .d{background:#ff7777;box-shadow:0 0 8px #ff7777}
+.map-progress.err b{color:#ffb8b8}
+.map-progress.err .map-progress-track i{background:#ff7777}
+.map-user,.factorio-map{display:inline-block;width:fit-content;max-width:100%;border:1px solid var(--line);border-radius:var(--r);background:var(--bg-2);padding:var(--s3);margin-bottom:var(--s3);overflow-x:auto}
 .map-user .ev{border:0;background:transparent;padding:0}
-.coord-grid,.factorio-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s2)}
+.coord-grid,.factorio-grid{display:grid;grid-template-columns:repeat(4,minmax(88px,max-content));gap:var(--s2)}
 .coord{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:rgba(255,255,255,.025)}
 .coord b{display:block;color:var(--txt);font-size:var(--t-md);font-variant-numeric:tabular-nums}
 .coord span{display:block;color:var(--txt-faint);font-size:var(--t-xs);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
@@ -736,10 +749,14 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
           <button type="button" data-map-mode="factorio">Factorio</button>
         </div>
         <span class="ev-note" id="mapNote">Live 3D map of the Minecraft world (BlueMap). Switch dimensions inside the map.</span>
-        <div class="map-status" id="mapStatus"><span class="d"></span><span id="mapStatusText">Checking render status...</span></div>
         <div class="spacer"></div>
-        <button class="refresh-btn" id="mapLocate" type="button">Locate me</button>
+        <div class="map-picker"><select id="mapPlayerSelect" aria-label="Online player"><option>Loading players...</option></select></div>
+        <button class="refresh-btn" id="mapLocate" type="button">Locate player</button>
         <a class="refresh-btn" id="mapOpen" href="/map/" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <div class="map-progress" id="mapStatus">
+        <div class="map-progress-meta"><span class="d"></span><span class="map-progress-label" id="mapStatusLabel">Render progress</span><b id="mapStatusText">Checking render status...</b></div>
+        <div class="map-progress-track" aria-hidden="true"><i id="mapStatusFill"></i></div>
       </div>
       <div class="map-user" id="mapMe"><div class="ev-empty">Loading position...</div></div>
       <div class="factorio-map" id="factorioMap" hidden>
@@ -842,7 +859,7 @@ import {
   dbListServerConfig, dbReadServerConfig, dbWriteServerConfig,
   dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
   dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbDeleteServerConfig,
-  dbGetServerSessions, dbGetOnline, dbGetActivity, dbGetActivityAll, dbGetBlueMapStatus, dbGetMapMe, dbGetServerMapMe,
+  dbGetServerSessions, dbGetOnline, dbGetActivity, dbGetActivityAll, dbGetBlueMapStatus, dbGetServerMapSession, dbGetServerMapPlayer,
   dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile, dbUpdateProfile,
   dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
   dbAdminTables, dbAdminTableRows, dbAdminQuery,
@@ -876,6 +893,9 @@ let mapTimer = null
 let mapStatusSeq = 0
 let mapMeSeq = 0
 let mapMeData = null
+let mapPlayersSeq = 0
+let mapOnlinePlayers = []
+let mapSelectedSessionId = ''
 // data viewer
 let dataLoaded = false
 let dbTables = []
@@ -1568,14 +1588,19 @@ function wireMapModes(){
     if (btn.dataset.wired) return
     btn.dataset.wired = '1'
     btn.addEventListener('click', () => {
-      mapMode = btn.dataset.mapMode
+      const next = btn.dataset.mapMode
+      if (mapMode === next) return
+      mapMode = next
       mapMeData = null
+      mapOnlinePlayers = []
+      mapSelectedSessionId = ''
       syncMapMode()
       if (mapMode === 'minecraft') {
         if (!mapTimer) startMap()
-        else { loadMapStatus(); loadMapMe() }
-      } else if (mapTimer) {
-        clearInterval(mapTimer); mapTimer = null
+        else { loadMapStatus(); loadMapPlayers() }
+      } else {
+        if (mapTimer) { clearInterval(mapTimer); mapTimer = null }
+        loadMapPlayers()
       }
     })
   })
@@ -1587,10 +1612,15 @@ function startMap(){
   // 3D canvas). Same-origin iframe → the session cookie passes the /map auth gate.
   if (mapTimer) clearInterval(mapTimer)
   mapTimer = setInterval(() => {
-    if (curView === 'map' && mapMode === 'minecraft') { loadMapStatus(); loadMapMe() }
+    if (curView === 'map' && mapMode === 'minecraft') { loadMapStatus(); loadMapPlayers({ preservePanel: true }) }
     else { clearInterval(mapTimer); mapTimer = null }
   }, 15000)
-  if (mapMode === 'minecraft') { loadMapStatus(); loadMapMe() }
+  if (mapMode === 'minecraft') { loadMapStatus(); loadMapPlayers() }
+  else loadMapPlayers()
+}
+
+function mapServerId(){
+  return mapMode === 'factorio' ? 'factorio' : 'minecraft'
 }
 
 function syncMapMode(){
@@ -1599,26 +1629,112 @@ function syncMapMode(){
   document.querySelectorAll('[data-map-mode]').forEach(btn => btn.classList.toggle('on', btn.dataset.mapMode === mapMode))
   document.getElementById('mapNote').textContent = minecraft
     ? 'Live 3D map of the Minecraft world (BlueMap). Switch dimensions inside the map.'
-    : 'Linked Factorio account position. Coordinate lookup uses Factorio /sc and disables achievements for this save.'
+    : 'Online Factorio player position. Coordinate lookup uses Factorio /sc and disables achievements for this save.'
   document.getElementById('mapFrame').hidden = !minecraft
   document.getElementById('factorioMap').hidden = minecraft
   document.getElementById('mapOpen').style.display = minecraft ? '' : 'none'
   const locate = document.getElementById('mapLocate')
-  locate.textContent = minecraft ? 'Locate me' : 'Load position'
-  locate.onclick = minecraft ? locateMapMe : loadMapMe
+  locate.textContent = minecraft ? 'Locate player' : 'Load position'
+  locate.onclick = locateSelectedPlayer
+  const select = document.getElementById('mapPlayerSelect')
+  select.onchange = () => {
+    mapSelectedSessionId = select.value
+    mapMeData = null
+    renderMapSelection()
+  }
+  renderMapPlayerSelect()
+  renderMapSelection()
   if (minecraft) {
+    const box = document.getElementById('mapStatus')
+    box.className = 'map-progress'
+    document.getElementById('mapStatusLabel').textContent = 'Render progress'
+    document.getElementById('mapStatusText').textContent = 'Checking render status...'
+    document.getElementById('mapStatusFill').style.width = '0%'
     if (!mapLoaded) { document.getElementById('mapFrame').src = '/map/'; mapLoaded = true }
   } else {
     const box = document.getElementById('mapStatus')
-    box.className = 'map-status complete'
+    box.className = 'map-progress complete'
+    document.getElementById('mapStatusLabel').textContent = 'Position lookup'
     document.getElementById('mapStatusText').textContent = 'Coordinate mode'
-    document.getElementById('mapMe').innerHTML = '<div class="ev-empty">Factorio lookup uses /sc and disables achievements. Use Load position when that is acceptable.</div>'
+    document.getElementById('mapStatusFill').style.width = '100%'
     document.getElementById('factorioGrid').innerHTML = ''
   }
 }
 
 function fmtCoord(n){
   return Number.isFinite(Number(n)) ? Number(n).toFixed(1) : '—'
+}
+
+function mapPlayerLabel(o){
+  const name = o?.name || 'unknown player'
+  return o?.userName && o.userName !== name ? `${o.userName} (${name})` : (o?.userName || name)
+}
+
+function selectedMapPlayer(){
+  return mapOnlinePlayers.find(o => String(o.id) === String(mapSelectedSessionId)) || null
+}
+
+function isLiveMapPlayer(p){
+  return !!p?.live || String(p?.id || '').startsWith('live:')
+}
+
+function renderMapPlayerSelect(){
+  const select = document.getElementById('mapPlayerSelect')
+  const locate = document.getElementById('mapLocate')
+  if (!mapOnlinePlayers.length) {
+    const label = mapMode === 'factorio' ? 'No Factorio players online' : 'No Minecraft players online'
+    select.innerHTML = `<option value="">${esc(label)}</option>`
+    select.disabled = true
+    locate.disabled = true
+    return
+  }
+  select.disabled = false
+  locate.disabled = false
+  select.innerHTML = mapOnlinePlayers.map(o =>
+    `<option value="${esc(String(o.id))}">${esc(mapPlayerLabel(o))}</option>`).join('')
+  select.value = mapSelectedSessionId
+}
+
+function renderMapSelection(){
+  const box = document.getElementById('mapMe')
+  const grid = document.getElementById('factorioGrid')
+  if (grid) grid.innerHTML = ''
+  const p = selectedMapPlayer()
+  if (!p) {
+    const label = mapMode === 'factorio' ? 'No online Factorio players.' : 'No online Minecraft players.'
+    box.innerHTML = `<div class="ev-empty">${esc(label)}</div>`
+    return
+  }
+  const name = mapPlayerLabel(p)
+  box.innerHTML = `
+    <div class="ev">
+      <div class="pav" style="${pAvatar(name)}">${esc(String(name || '?')[0].toUpperCase())}</div>
+      <div class="pmeta"><b>${esc(name)}</b><div class="sub"><span class="gtag">${esc(p.gameName || (mapMode === 'factorio' ? 'Factorio' : 'Minecraft'))}</span>online</div></div>
+      <div class="right"><div class="live"><span class="d"></span>ONLINE</div></div>
+    </div>`
+}
+
+async function loadMapPlayers({ preservePanel = false } = {}){
+  const seq = ++mapPlayersSeq
+  try {
+    const rows = await dbGetOnline()
+    if (seq !== mapPlayersSeq || curView !== 'map') return
+    const slug = mapServerId()
+    mapOnlinePlayers = (rows || []).filter(o => o.slug === slug && o.id != null)
+    if (!mapOnlinePlayers.some(o => String(o.id) === String(mapSelectedSessionId))) {
+      mapSelectedSessionId = mapOnlinePlayers.length ? String(mapOnlinePlayers[0].id) : ''
+      mapMeData = null
+    }
+    renderMapPlayerSelect()
+    if (!preservePanel || !mapMeData) renderMapSelection()
+  } catch (e) {
+    if (seq !== mapPlayersSeq || curView !== 'map') return
+    const select = document.getElementById('mapPlayerSelect')
+    select.innerHTML = '<option value="">Players unavailable</option>'
+    select.disabled = true
+    document.getElementById('mapLocate').disabled = true
+    if (!preservePanel) document.getElementById('mapMe').innerHTML = `<div class="ev-empty pane-err">players unavailable: ${esc(errMsg(e))}</div>`
+  }
 }
 
 function renderMapMe(data){
@@ -1665,33 +1781,44 @@ function renderMapMe(data){
     </div>`
 }
 
-function locateMapMe(){
-  const anchor = mapMeData?.position?.anchor
-  if (!anchor) { loadMapMe(); return }
-  document.getElementById('mapFrame').src = `/map/#${encodeURIComponent(anchor).replace(/%3A/g, ':')}`
-}
-
-async function loadMapMe(){
+async function locateSelectedPlayer(){
+  if (!mapSelectedSessionId) { await loadMapPlayers(); return }
+  const p = selectedMapPlayer()
+  if (!p) { renderMapSelection(); return }
   const seq = ++mapMeSeq
+  const btn = document.getElementById('mapLocate')
+  btn.disabled = true
   try {
-    const data = mapMode === 'minecraft' ? await dbGetMapMe() : await dbGetServerMapMe('factorio')
+    const data = isLiveMapPlayer(p)
+      ? await dbGetServerMapPlayer(mapServerId(), p.name)
+      : await dbGetServerMapSession(mapServerId(), mapSelectedSessionId)
     if (seq !== mapMeSeq || curView !== 'map') return
     renderMapMe(data)
+    const anchor = data?.position?.anchor
+    if (data?.serverId === 'minecraft' && anchor) {
+      document.getElementById('mapFrame').src = `/map/#${encodeURIComponent(anchor).replace(/%3A/g, ':')}`
+    }
   } catch (e) {
     if (seq !== mapMeSeq || curView !== 'map') return
     document.getElementById('mapMe').innerHTML = `<div class="ev-empty pane-err">position unavailable: ${esc(errMsg(e))}</div>`
+  } finally {
+    if (seq === mapMeSeq) btn.disabled = !mapOnlinePlayers.length
   }
 }
 
 function renderMapStatus(s){
   const box = document.getElementById('mapStatus')
   const txt = document.getElementById('mapStatusText')
+  const fill = document.getElementById('mapStatusFill')
   const state = s?.state || 'unknown'
-  box.className = `map-status ${state === 'complete' ? 'complete' : state === 'rendering' || state === 'starting' ? 'rendering' : ''}`.trim()
+  document.getElementById('mapStatusLabel').textContent = 'Render progress'
+  box.className = `map-progress ${state === 'complete' ? 'complete' : state === 'rendering' || state === 'starting' ? 'rendering' : ''}`.trim()
   if (state === 'complete') txt.textContent = 'Render complete'
   else if (state === 'rendering') txt.textContent = s?.message || `Rendering ${s?.percent ?? '?'}%`
   else if (state === 'starting') txt.textContent = 'Render starting'
   else txt.textContent = s?.message || 'Render status unavailable'
+  const pct = state === 'complete' ? 100 : Number(s?.percent)
+  fill.style.width = Number.isFinite(pct) ? `${Math.max(0, Math.min(100, pct))}%` : '0%'
 }
 
 async function loadMapStatus(){
@@ -1703,8 +1830,10 @@ async function loadMapStatus(){
   } catch (e) {
     if (seq !== mapStatusSeq || curView !== 'map') return
     const box = document.getElementById('mapStatus')
-    box.className = 'map-status err'
+    box.className = 'map-progress err'
+    document.getElementById('mapStatusLabel').textContent = 'Render progress'
     document.getElementById('mapStatusText').textContent = `Render status unavailable: ${errMsg(e)}`
+    document.getElementById('mapStatusFill').style.width = '0%'
   }
 }
 

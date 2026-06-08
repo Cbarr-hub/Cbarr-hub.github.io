@@ -26,6 +26,18 @@ const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame
 // it caches for a minute. clearStatusCache() drops all of these on a mutation.
 const LIST_CACHE_TTL_MS = { quick: 1_000, full: 3_000 };
 const NODE_CACHE_TTL_MS = 60_000;
+const LIVE_PRESENCE_TTL_MS = 1_000;
+
+function samePresencePlayer(row, slug, player) {
+  if (row.slug !== slug) return false;
+  const uid = String(player.uid || '').trim();
+  if (uid && String(row.uid || '').trim() === uid) return true;
+  return String(row.name || '').trim().toLowerCase() === String(player.name || '').trim().toLowerCase();
+}
+
+function livePresenceKey(slug, player) {
+  return `${slug}:${String(player.uid || player.name || '').trim().toLowerCase()}`;
+}
 
 /**
  * @param {object} deps
@@ -62,6 +74,8 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   // drop everything so the next read reflects the change immediately.
   const listCache = new Map();
   let nodeCache = null;
+  let livePresenceCache = null;
+  const liveSeenAt = new Map();
 
   function clearStatusCache() {
     listCache.clear();
@@ -78,9 +92,11 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   async function computeServerList(mode) {
     // One cheap query for all servers' "playing now" counts (host-tracked).
     const online = store ? store.onlineCountsBySlug() : {};
+    const live = await readLivePresence();
     return Promise.all(listServers().map(async (server) => {
       const connector = connectors.get(server.id);
-      const meta = { ...(await publicMeta(server, connector)), online: online[server.id] ?? 0 };
+      const liveCount = live.get(server.id)?.length ?? 0;
+      const meta = { ...(await publicMeta(server, connector)), online: Math.max(online[server.id] ?? 0, liveCount) };
       if (!connector) return { ...meta, status: 'unknown', reason: 'backend not configured' };
       try {
         const status = await connector.status({ stats: mode !== 'quick' });
@@ -120,6 +136,71 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     entry.promise = promise;
     listCache.set(mode, entry);
     return promise;
+  }
+
+  async function readLivePresence() {
+    if (!connectors) return new Map();
+    const now = Date.now();
+    if (livePresenceCache && now - livePresenceCache.at < LIVE_PRESENCE_TTL_MS) return livePresenceCache.promise;
+    const seenAt = Math.floor(now / 1000);
+    const promise = Promise.all(listServers().map(async (server) => {
+      const connector = connectors.get(server.id);
+      if (!connector?.listOnlinePlayers) return [server.id, []];
+      try {
+        const players = await connector.listOnlinePlayers();
+        return [server.id, (players || []).map((p) => ({
+          ...p,
+          name: String(p?.name || '').trim(),
+          identityKind: p?.identityKind || server.identityKind || null,
+        })).filter((p) => p.name)];
+      } catch {
+        return [server.id, []];
+      }
+    })).then((entries) => {
+      const active = new Set();
+      const bySlug = new Map();
+      for (const [slug, players] of entries) {
+        const rows = [];
+        for (const player of players) {
+          const key = livePresenceKey(slug, player);
+          if (!liveSeenAt.has(key)) liveSeenAt.set(key, seenAt);
+          active.add(key);
+          rows.push({ ...player, joinedAt: liveSeenAt.get(key), live: true });
+        }
+        bySlug.set(slug, rows);
+      }
+      for (const key of liveSeenAt.keys()) {
+        if (!active.has(key)) liveSeenAt.delete(key);
+      }
+      return bySlug;
+    });
+    livePresenceCache = { at: now, promise };
+    return promise;
+  }
+
+  function mergeLiveOnlineRows(rows, liveBySlug) {
+    const out = [...rows];
+    for (const server of listServers()) {
+      for (const player of liveBySlug.get(server.id) || []) {
+        if (out.some((row) => samePresencePlayer(row, server.id, player))) continue;
+        out.push({
+          id: `live:${server.id}:${player.name}`,
+          slug: server.id,
+          gameName: server.name,
+          playerId: null,
+          name: player.name,
+          uid: player.uid || null,
+          identityKind: player.identityKind || server.identityKind || null,
+          joined_at: player.joinedAt,
+          source: 'live',
+          userId: null,
+          userName: null,
+          live: true,
+        });
+      }
+    }
+    out.sort((a, b) => (b.joined_at ?? 0) - (a.joined_at ?? 0));
+    return out;
   }
 
   function connectorFor(id) {
@@ -317,8 +398,9 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
 
     // ── presence + activity (read-only; written host-side) ───────────────────
     // Who's online across every hosted server, right now.
-    listOnline() {
-      return store ? store.listOnline() : [];
+    async listOnline() {
+      const rows = store ? store.listOnline() : [];
+      return mergeLiveOnlineRows(rows, await readLivePresence());
     },
     // Newest-first join/leave feed merged across all hosted servers (timeline).
     recentActivity(opts = {}) {
@@ -355,6 +437,79 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
 
     getCurrentMinecraftPosition(userId) {
       return this.getCurrentPlayerPosition('minecraft', userId);
+    },
+
+    async getOnlinePlayerPosition(id, sessionId) {
+      const server = getServer(id);
+      if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
+      if (!server.identityKind) throw new ServerControlError(`${server.name} has no player identity namespace`, 'NOT_SUPPORTED');
+      if (!store) return { serverId: id, serverName: server.name, linked: false, online: false, reason: 'database unavailable' };
+      const session = store.openSessionById(id, sessionId);
+      if (!session) throw new ServerControlError('online player session not found', 'NOT_FOUND');
+      const connector = connectorFor(id);
+      if (!connector.getPlayerPosition) {
+        throw new ServerControlError(`${server.name} position lookup is not supported`, 'NOT_SUPPORTED');
+      }
+      const target = session.name || session.uid;
+      const position = await connector.getPlayerPosition(target, session);
+      const online = position?.connected === false ? false : true;
+      return {
+        serverId: id,
+        serverName: server.name,
+        linked: true,
+        online,
+        player: {
+          id: session.playerId,
+          identityKind: session.identityKind,
+          uid: session.uid,
+          name: session.userName || session.name,
+        },
+        session,
+        position,
+        ...(online ? {} : { reason: position?.reason || `${server.name} position unavailable` }),
+      };
+    },
+
+    async getOnlinePlayerPositionByName(id, playerName) {
+      const server = getServer(id);
+      if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
+      if (!server.identityKind) throw new ServerControlError(`${server.name} has no player identity namespace`, 'NOT_SUPPORTED');
+      const connector = connectorFor(id);
+      if (!connector.getPlayerPosition) {
+        throw new ServerControlError(`${server.name} position lookup is not supported`, 'NOT_SUPPORTED');
+      }
+      const target = String(playerName || '').trim();
+      if (connector.listOnlinePlayers) {
+        const players = await connector.listOnlinePlayers();
+        if (!(players || []).some((p) => String(p?.name || '').trim().toLowerCase() === target.toLowerCase())) {
+          throw new ServerControlError('online player not found', 'NOT_FOUND');
+        }
+      }
+      const position = await connector.getPlayerPosition(target, { name: target, identityKind: server.identityKind });
+      const online = position?.connected === false ? false : true;
+      return {
+        serverId: id,
+        serverName: server.name,
+        linked: true,
+        online,
+        player: {
+          id: null,
+          identityKind: server.identityKind,
+          uid: null,
+          name: position?.name || target,
+        },
+        session: {
+          id: null,
+          playerId: null,
+          name: position?.name || target,
+          uid: null,
+          identityKind: server.identityKind,
+          joined_at: null,
+          source: 'live',
+        },
+        position,
+        ...(online ? {} : { reason: position?.reason || `${server.name} position unavailable` }),
+      };
     },
 
     async getBlueMapStatus() {

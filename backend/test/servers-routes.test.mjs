@@ -41,6 +41,8 @@ function baseService(overrides = {}) {
     getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
     getCurrentMinecraftPosition: async () => ({ serverId: 'minecraft', linked: false }),
     getCurrentPlayerPosition: async (id) => ({ serverId: id, linked: false }),
+    getOnlinePlayerPosition: async (id, sessionId) => ({ serverId: id, sessionId }),
+    getOnlinePlayerPositionByName: async (id, player) => ({ serverId: id, player }),
     runUpdate: async () => ({ ok: true }),
     ...overrides,
   };
@@ -121,6 +123,8 @@ test('servers routes expose BlueMap render status on a static path', async () =>
       getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
       getCurrentMinecraftPosition: async (userId) => ({ serverId: 'minecraft', userId }),
       getCurrentPlayerPosition: async (id, userId) => ({ serverId: id, userId }),
+      getOnlinePlayerPosition: async (id, sessionId) => ({ serverId: id, sessionId }),
+      getOnlinePlayerPositionByName: async (id, player) => ({ serverId: id, player }),
       getStatus: async () => { throw new Error('map status route was shadowed'); },
     }),
   });
@@ -135,6 +139,12 @@ test('servers routes expose BlueMap render status on a static path', async () =>
     const factorio = await app.inject({ method: 'GET', url: '/api/servers/factorio/map/me' });
     assert.equal(factorio.statusCode, 200);
     assert.equal(factorio.json().serverId, 'factorio');
+    const session = await app.inject({ method: 'GET', url: '/api/servers/minecraft/map/sessions/12' });
+    assert.equal(session.statusCode, 200);
+    assert.deepEqual(session.json(), { serverId: 'minecraft', sessionId: 12 });
+    const player = await app.inject({ method: 'GET', url: '/api/servers/minecraft/map/players/dheagman' });
+    assert.equal(player.statusCode, 200);
+    assert.deepEqual(player.json(), { serverId: 'minecraft', player: 'dheagman' });
   } finally { await app.close(); }
 });
 

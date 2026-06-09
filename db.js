@@ -310,6 +310,12 @@ export async function dbGetActivityAll({ limit } = {}) {
   return (await api('/servers/activity', { query: { limit, includeUnlinked: true } })) ?? [];
 }
 
+// Aggregate session analytics for the "Pulse" view. days: 7|30|90|0(all); tz is the
+// viewer's UTC offset in minutes (-new Date().getTimezoneOffset()) for local buckets.
+export async function dbGetServerStats({ days, tz } = {}) {
+  return (await api('/servers/stats', { query: { days, tz } })) ?? null;
+}
+
 export async function dbGetMapMe() {
   return api('/servers/map/me');
 }
@@ -414,6 +420,14 @@ export async function dbLinkPlayerAccount(playerId, userId) {
   return api(`/admin/economy/players/${encodeURIComponent(playerId)}/account`, {
     method: 'PUT',
     body: { userId },
+  });
+}
+
+// Dismiss (ignored=true) or restore (false) a tracked identity in the link queue.
+export async function dbSetPlayerIgnored(playerId, ignored) {
+  return api(`/admin/economy/players/${encodeURIComponent(playerId)}/ignore`, {
+    method: 'PUT',
+    body: { ignored },
   });
 }
 

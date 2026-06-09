@@ -114,6 +114,19 @@ export default async function serversRoutes(app) {
   }), {
     schema: { querystring: SESSION_LIST_QS },
   });
+  // Aggregate session analytics (the "Pulse" view). Static path before '/:id'.
+  route('get', '/stats', (req) => svc.sessionStats({ days: req.query.days, tz: req.query.tz }), {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          days: { type: 'integer', minimum: 0, maximum: 365 },
+          tz: { type: 'integer', minimum: -840, maximum: 840 },
+        },
+        additionalProperties: false,
+      },
+    },
+  });
   route('get', '/map/status', () => svc.getBlueMapStatus());
   route('get', '/map/me', (req) => svc.getCurrentMinecraftPosition(req.currentUser.id));
   route('get', '/:id/map/me', (req) => svc.getCurrentPlayerPosition(req.params.id, req.currentUser.id), { schema: P({ id: ID_PARAM }) });

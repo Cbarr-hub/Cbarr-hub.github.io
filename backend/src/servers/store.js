@@ -26,6 +26,12 @@ export function createServerStore(db) {
          ${kind} users u            ON u.id = pa.user_id`;
   const ACCOUNT_COLS = 'pa.user_id AS userId, u.display_name AS userName';
 
+  // Pulse analytics: one session's billable seconds, clamped to ≥0 and capped at
+  // 24h so a never-closed / 'reconciled' row can't dominate an aggregate (86400
+  // mirrors the spirit of the economy's per-session cap). Static SQL text — safe
+  // to interpolate (no user input). Open sessions count up to "now".
+  const DUR = 'MAX(0, MIN(COALESCE(s.left_at, unixepoch()) - s.joined_at, 86400))';
+
   const stmts = {
     // ── workshop map catalog ──
     listMaps: db.prepare(
@@ -181,11 +187,16 @@ export function createServerStore(db) {
         ORDER BY s.joined_at DESC`,
     ),
     // Recent join/leave activity merged across all hosted servers (the timeline).
+    // `ignored` is surfaced via an additive LEFT JOIN players (no row filtering, so
+    // dismissed identities still appear in the timeline) so the panel can drop the
+    // link affordance for dismissed identities without hiding their playtime.
     recentSessionsLinked: db.prepare(
       `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
               s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
+              COALESCE(p.ignored, 0) AS ignored,
               ${ACCOUNT_COLS}
          FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('JOIN')}
+         LEFT JOIN players p ON p.id = s.player_id
         WHERE g.hosted = 1
         ORDER BY s.joined_at DESC
         LIMIT ?`,
@@ -193,8 +204,10 @@ export function createServerStore(db) {
     recentSessionsAll: db.prepare(
       `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
               s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
+              COALESCE(p.ignored, 0) AS ignored,
               ${ACCOUNT_COLS}
          FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
+         LEFT JOIN players p ON p.id = s.player_id
         WHERE g.hosted = 1
         ORDER BY s.joined_at DESC
         LIMIT ?`,
@@ -224,6 +237,52 @@ export function createServerStore(db) {
          JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
         WHERE g.slug = ? AND g.hosted = 1 AND s.id = ? AND s.left_at IS NULL
         LIMIT 1`,
+    ),
+
+    // ── pulse activity stats ──
+    // Four read-only aggregates over the session rows for the "Pulse" view. All
+    // scope to hosted games within a `since` window (?). Earnings/credits aren't
+    // touched here — this is pure playtime shape.
+    statsTotals: db.prepare(
+      `SELECT COUNT(*) AS sessions,
+              COUNT(DISTINCT s.player_id) AS players,
+              COALESCE(SUM(${DUR}), 0) AS secs
+         FROM server_sessions s JOIN games g ON g.id = s.game_id
+        WHERE g.hosted = 1 AND s.joined_at >= ?`,
+    ),
+    statsPerGame: db.prepare(
+      `SELECT g.slug AS slug, g.name AS name,
+              COUNT(*) AS sessions,
+              COUNT(DISTINCT s.player_id) AS players,
+              COALESCE(SUM(${DUR}), 0) AS secs
+         FROM server_sessions s JOIN games g ON g.id = s.game_id
+        WHERE g.hosted = 1 AND s.joined_at >= ?
+        GROUP BY g.id
+        ORDER BY secs DESC`,
+    ),
+    statsTopPlayers: db.prepare(
+      `SELECT s.player_id AS playerId, p.name AS name, ${ACCOUNT_COLS},
+              COUNT(*) AS sessions,
+              COUNT(DISTINCT s.game_id) AS games,
+              COALESCE(SUM(${DUR}), 0) AS secs
+         FROM server_sessions s
+         JOIN games g ON g.id = s.game_id
+         JOIN players p ON p.id = s.player_id${accountJoin('LEFT JOIN')}
+        WHERE g.hosted = 1 AND s.joined_at >= ? AND s.player_id IS NOT NULL
+        GROUP BY s.player_id
+        ORDER BY secs DESC
+        LIMIT 15`,
+    ),
+    // Heatmap = where/when sessions START, in the viewer's local time. The tz
+    // offset is passed as a SQLite datetime modifier bound param ('±N minutes'),
+    // applied to both strftime() calls — so bind order is (tzMod, tzMod, since).
+    statsHeatmap: db.prepare(
+      `SELECT CAST(strftime('%w', s.joined_at, 'unixepoch', ?) AS INTEGER) AS wd,
+              CAST(strftime('%H', s.joined_at, 'unixepoch', ?) AS INTEGER) AS hr,
+              COUNT(*) AS n
+         FROM server_sessions s JOIN games g ON g.id = s.game_id
+        WHERE g.hosted = 1 AND s.joined_at >= ?
+        GROUP BY wd, hr`,
     ),
   };
 
@@ -404,6 +463,17 @@ export function createServerStore(db) {
     recentSessions({ limit = 100, includeUnlinked = false } = {}) {
       const lim = Math.min(500, Math.max(1, Number(limit) || 100));
       return (includeUnlinked ? stmts.recentSessionsAll : stmts.recentSessionsLinked).all(lim);
+    },
+    // Raw Pulse aggregates over sessions since `since` (unix seconds), bucketed in
+    // the viewer's local time via `tzMod` (a SQLite '±N minutes' modifier). Returns
+    // raw rows; service.js shapes secs→hours and computes the busiest cell.
+    sessionStats({ since = 0, tzMod = '0 minutes' } = {}) {
+      return {
+        totals: stmts.statsTotals.get(since),
+        perGame: stmts.statsPerGame.all(since),
+        topPlayers: stmts.statsTopPlayers.all(since),
+        heatmap: stmts.statsHeatmap.all(tzMod, tzMod, since),
+      };
     },
     linkedPlayerForUser(userId, identityKind) {
       return stmts.linkedPlayerForUser.get(userId, identityKind) ?? null;

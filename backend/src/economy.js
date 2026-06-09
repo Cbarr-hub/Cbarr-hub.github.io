@@ -33,9 +33,11 @@ export function createEconomy(db) {
     listPlayers: db.prepare(
       `SELECT p.id, p.identity_kind AS identityKind, p.uid, p.name,
               p.first_seen AS firstSeen, p.last_seen AS lastSeen,
+              p.ignored AS ignored,
               pa.user_id AS userId, u.display_name AS userName,
               COUNT(s.id)                                   AS sessions,
-              COALESCE(SUM(MAX(0, COALESCE(s.left_at, unixepoch()) - s.joined_at)), 0) AS totalSeconds
+              COALESCE(SUM(MAX(0, COALESCE(s.left_at, unixepoch()) - s.joined_at)), 0) AS totalSeconds,
+              COALESCE(SUM(s.credited_dollars), 0)          AS earned
          FROM players p
          LEFT JOIN player_accounts pa ON pa.player_id = p.id
          LEFT JOIN users u            ON u.id = pa.user_id
@@ -51,11 +53,14 @@ export function createEconomy(db) {
     deleteLink: db.prepare('DELETE FROM player_accounts WHERE player_id = ?'),
     playerExists: db.prepare('SELECT 1 FROM players WHERE id = ?'),
     userExists: db.prepare('SELECT 1 FROM users WHERE id = ?'),
+    // Dismiss / restore a tracked identity in the Activity link queue. Does NOT
+    // touch sessions, so playtime keeps counting in Activity + Pulse.
+    setIgnored: db.prepare('UPDATE players SET ignored = ? WHERE id = ?'),
     // Settle (mark paid without paying) a player's existing closed sessions at
     // link time, so linking doesn't retroactively dump a pile of currency for
     // playtime that happened before the account existed.
     settlePastSessions: db.prepare(
-      `UPDATE server_sessions SET credited_at = unixepoch()
+      `UPDATE server_sessions SET credited_at = unixepoch(), credited_dollars = 0
         WHERE player_id = ? AND left_at IS NOT NULL AND credited_at IS NULL`,
     ),
     // A session still OPEN at first link straddles the link boundary: its whole
@@ -64,7 +69,7 @@ export function createEconomy(db) {
     // already-closed rows) and re-open a fresh uncredited session from now, so
     // only the post-link remainder earns when it eventually closes.
     closeOpenSessions: db.prepare(
-      `UPDATE server_sessions SET left_at = unixepoch(), credited_at = unixepoch()
+      `UPDATE server_sessions SET left_at = unixepoch(), credited_at = unixepoch(), credited_dollars = 0
         WHERE player_id = ? AND left_at IS NULL`,
     ),
     openSessionsToSplit: db.prepare(
@@ -85,7 +90,11 @@ export function createEconomy(db) {
          JOIN player_accounts pa ON pa.player_id = s.player_id
         WHERE s.left_at IS NOT NULL AND s.credited_at IS NULL`,
     ),
-    markCredited: db.prepare('UPDATE server_sessions SET credited_at = unixepoch() WHERE id = ?'),
+    // Stamp a session paid AND record the dollars credited (0 is recorded too, so
+    // the per-player earnings aggregate is truthful). credited_at marks it processed.
+    markCredited: db.prepare(
+      'UPDATE server_sessions SET credited_at = unixepoch(), credited_dollars = ? WHERE id = ?',
+    ),
     addDollars: db.prepare(
       `INSERT INTO balances (user_id, dollars) VALUES (?, ?)
        ON CONFLICT(user_id) DO UPDATE SET dollars = dollars + excluded.dollars`,
@@ -163,6 +172,17 @@ export function createEconomy(db) {
       return { ok: true, linked: true };
     },
 
+    // Dismiss (ignored=true) or restore (false) a tracked identity in the link
+    // queue. Purely a to-do-list flag: it never touches sessions, so the identity's
+    // playtime still shows in Activity and counts in Pulse. Throws if unknown.
+    setPlayerIgnored(playerId, ignored) {
+      if (!stmts.playerExists.get(playerId)) {
+        throw Object.assign(new Error('unknown player'), { code: 'UNKNOWN_PLAYER' });
+      }
+      stmts.setIgnored.run(ignored ? 1 : 0, playerId);
+      return { ok: true, ignored: !!ignored };
+    },
+
     // Credit every closed, uncredited, linked session. Idempotent: each session
     // is stamped credited_at so a re-run never double-pays. Returns a summary.
     creditPlaytime(now = Math.floor(Date.now() / 1000)) {
@@ -182,7 +202,7 @@ export function createEconomy(db) {
             byUser[r.userId] = (byUser[r.userId] || 0) + dollars;
             totalDollars += dollars;
           }
-          stmts.markCredited.run(r.id); // mark processed even when award rounds to 0
+          stmts.markCredited.run(dollars, r.id); // record award (0 too) + mark processed
         }
       });
       tx();

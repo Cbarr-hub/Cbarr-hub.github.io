@@ -385,3 +385,71 @@ test('recentSessions merges linked servers newest-first and respects limit', () 
   assert.equal(all[0].slug, 'minecraft');
   assert.equal(store.recentSessions({ limit: 1 }).length, 1);
 });
+
+// ── pulse activity stats ──────────────────────────────────────────────────────────
+test('sessionStats aggregates totals, per-game, and top players (24h clamp + linked name)', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  addUser(db, 1, 'Linked One');
+
+  let sid = store.recordJoin('gmod', steam('Alice', 'a1'), 1000, 'rcon');
+  store.closeSession(sid, 1000 + 3600);                  // Alice: gmod 1h
+  sid = store.recordJoin('gmod', steam('Bob', 'b1'), 2000, 'rcon');
+  store.closeSession(sid, 2000 + 2 * 3600);              // Bob: gmod 2h
+  sid = store.recordJoin('prophunt', steam('Bob', 'b1'), 4000, 'rcon');
+  store.closeSession(sid, 4000 + 3600);                  // Bob: prophunt 1h (spans 2 games)
+  sid = store.recordJoin('minecraft', { name: 'Alex', uid: 'amc', identityKind: 'minecraft' }, 3000, 'log');
+  store.closeSession(sid, 3000 + 1800);                  // Alex: minecraft 0.5h
+  store.recordJoin('gmod', steam('Carol', 'c1'), 100, 'rcon'); // open + ancient → clamps to 24h
+  linkPlayer(db, 'steam', 'b1', 1);
+
+  const s = store.sessionStats({ since: 0, tzMod: '0 minutes' });
+  assert.equal(s.totals.sessions, 5);
+  assert.equal(s.totals.players, 4);                     // a1, b1, amc, c1
+  assert.equal(s.totals.secs, 3600 + 7200 + 3600 + 1800 + 86400); // Carol clamped to 86400
+
+  assert.deepEqual(s.perGame.map((g) => g.slug), ['gmod', 'prophunt', 'minecraft']);
+  assert.equal(s.perGame[0].secs, 3600 + 7200 + 86400);  // gmod
+  assert.equal(s.perGame[0].players, 3);
+
+  assert.equal(s.topPlayers[0].name, 'Carol');           // clamped 24h is the most
+  assert.equal(s.topPlayers[0].secs, 86400);
+  assert.equal(s.topPlayers[1].name, 'Bob');
+  assert.equal(s.topPlayers[1].secs, 10800);
+  assert.equal(s.topPlayers[1].sessions, 2);
+  assert.equal(s.topPlayers[1].games, 2);                // distinct game_id count
+  assert.equal(s.topPlayers[1].userName, 'Linked One');  // linked account surfaces
+
+  // `since` excludes older joins (only Alex@3000 + Bob-prophunt@4000 remain)
+  assert.equal(store.sessionStats({ since: 2500, tzMod: '0 minutes' }).totals.sessions, 2);
+});
+
+test('sessionStats heatmap buckets session starts by weekday×hour in the viewer tz', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  const T = 1704067200; // 2024-01-01 00:00:00 UTC = Monday (%w=1), hour 0
+  const sid = store.recordJoin('gmod', steam('A', 'a1'), T, 'rcon');
+  store.closeSession(sid, T + 600);
+
+  assert.deepEqual(store.sessionStats({ since: 0, tzMod: '0 minutes' }).heatmap, [{ wd: 1, hr: 0, n: 1 }]);
+  // shift one hour earlier → 2023-12-31 23:00 = Sunday (%w=0), hour 23
+  assert.deepEqual(store.sessionStats({ since: 0, tzMod: '-60 minutes' }).heatmap, [{ wd: 0, hr: 23, n: 1 }]);
+});
+
+test('sessionStats top players cap at 15 and exclude null-player (CS2) rows', () => {
+  const db = storeDb();
+  const store = createServerStore(db);
+  store.seedHostedGames(listServers());
+  for (let i = 0; i < 16; i++) {
+    const sid = store.recordJoin('gmod', steam(`P${i}`, `u${i}`), 1000 + i, 'rcon');
+    store.closeSession(sid, 1000 + i + (i + 1) * 60);   // increasing durations
+  }
+  const cs = store.recordJoin('counterstrike', steam('NameOnly', null), 5000, 'rcon'); // null uid → null player_id
+  store.closeSession(cs, 5000 + 3600);
+
+  const s = store.sessionStats({ since: 0, tzMod: '0 minutes' });
+  assert.equal(s.topPlayers.length, 15);
+  assert.ok(s.topPlayers.every((p) => p.playerId != null && p.name !== 'NameOnly'));
+});

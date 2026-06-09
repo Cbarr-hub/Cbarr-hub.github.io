@@ -275,3 +275,23 @@ test('servers /:id/sessions + /activity share one querystring schema (valid hono
     assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?limit=0' })).statusCode, 400);
   } finally { await app.close(); }
 });
+
+test('servers /stats forwards days/tz, enforces bounds, and sits before /:id', async () => {
+  const calls = [];
+  const app = await routeApp({
+    service: baseService({
+      sessionStats: async (opts) => { calls.push(opts); return { range: { days: 30 }, totals: {}, perGame: [], topPlayers: [], heatmap: [], busiest: null }; },
+      getStatus: async () => { throw new Error('/stats was shadowed by /:id'); },
+    }),
+  });
+  try {
+    const ok = await app.inject({ method: 'GET', url: '/api/servers/stats?days=30&tz=-300' });
+    assert.equal(ok.statusCode, 200);
+    assert.deepEqual(calls, [{ days: 30, tz: -300 }]);
+    // out-of-range rejected by the schema
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/stats?days=999' })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/stats?tz=99999' })).statusCode, 400);
+    // unknown query param is harmlessly stripped (removeAdditional), not rejected
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/stats?bogus=1' })).statusCode, 200);
+  } finally { await app.close(); }
+});

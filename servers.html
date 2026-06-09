@@ -291,10 +291,72 @@ header.top{position:sticky; top:0; z-index:40;
 .user-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:99px;background:var(--bg);padding:6px 10px;color:var(--txt-dim);font-size:var(--t-xs)}
 .user-chip b{color:var(--txt);font-size:var(--t-sm)}
 .user-chip .role{color:var(--txt-faint);letter-spacing:.7px;text-transform:uppercase}
+/* kleptocrats get a larger gold "crown card"; citizens keep the compact pill */
+.user-chip.klepto{padding:11px 16px;border-color:var(--amber);background:linear-gradient(180deg,rgba(194,161,58,.10),rgba(194,161,58,.03));box-shadow:0 0 14px -2px rgba(194,161,58,.45);gap:9px}
+.user-chip.klepto b{color:#f0e6c0;font-size:var(--t-md)}
+.user-chip.klepto .role{color:var(--amber)}
+.user-chip .crown{color:var(--amber);font-size:var(--t-md);filter:drop-shadow(0 0 5px rgba(194,161,58,.5))}
+.ev .eco-earned{color:var(--grn);font-size:var(--t-md);font-variant-numeric:tabular-nums;letter-spacing:.3px}
 @media(max-width:850px){.user-form{grid-template-columns:1fr 1fr}.user-form button{grid-column:span 2}}
 .ev .sel{position:relative}
 .ev select.eco-link{appearance:none;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--txt);padding:7px 30px 7px 12px;font-size:var(--t-sm);min-width:130px;cursor:pointer}
 .ev select.eco-link:focus{outline:none;border-color:var(--grn)}
+/* dismiss (remove from link queue) button on Activity rows */
+.ev .link-row{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-bottom:7px}
+.act-dismiss{flex:0 0 auto;width:30px;height:30px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--bg-1);color:var(--txt-faint);display:grid;place-items:center;transition:.16s var(--ease)}
+.act-dismiss:hover{border-color:var(--red);color:var(--red-hot);background:rgba(184,95,95,.08)}
+.act-dismiss:disabled{opacity:.5;cursor:default}
+.act-restore{flex:0 0 auto;width:30px;height:30px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--bg-1);color:var(--txt-faint);display:grid;place-items:center;transition:.16s var(--ease)}
+.act-restore:hover{border-color:var(--grn);color:var(--grn);background:rgba(123,184,95,.08)}
+.act-restore:disabled{opacity:.5;cursor:default}
+
+/* ============ PULSE (session analytics) ============ */
+.view.stats{display:none}
+.view.stats.show{display:block}
+.pulse-head{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s4)}
+.pulse-title{display:flex;align-items:baseline;gap:var(--s3);min-width:0}
+.pulse-title b{font-size:var(--t-lg);letter-spacing:2px;color:var(--txt)}
+.pulse-sub{font-size:var(--t-xs);color:var(--txt-faint);letter-spacing:.5px}
+.pulse-range{flex:0 0 auto}
+.pulse-range button{padding:7px 14px}
+.pulse-auto{flex:0 0 auto}
+.pulse-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--s3);margin-bottom:var(--s4)}
+.pulse-strip .metric{border:1px solid var(--line);border-radius:var(--r);background:var(--bg-1);padding:var(--s4)}
+.pulse-strip .ml{font-size:var(--t-xs);letter-spacing:2px;text-transform:uppercase;color:var(--txt-faint);margin-bottom:7px}
+.pulse-strip .mv{font-size:var(--t-2xl);line-height:1.05;color:var(--txt);letter-spacing:-.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pulse-strip .mv small{font-size:var(--t-sm);color:var(--txt-faint);letter-spacing:0}
+.pulse-strip .ms{font-size:var(--t-xs);color:var(--txt-dim);margin-top:7px;letter-spacing:.3px}
+.pulse-card{border:1px solid var(--line);border-radius:var(--r);background:var(--bg-1);padding:var(--s4);margin-bottom:var(--s4)}
+.pulse-card-h{font-size:var(--t-xs);letter-spacing:1.5px;text-transform:uppercase;color:var(--txt-faint);margin-bottom:var(--s4);display:flex;align-items:center;gap:8px}
+.pulse-peak{margin-left:auto;color:var(--grn);letter-spacing:.5px;text-transform:none}
+.heat{display:grid;grid-template-columns:auto repeat(24,1fr);gap:3px;align-items:center}
+.heat .hh{font-size:9px;color:var(--txt-faint);text-align:center;line-height:1}
+.heat .hd{font-size:10px;color:var(--txt-faint);letter-spacing:1px;padding-right:8px;text-align:right}
+.hcell{aspect-ratio:1;min-height:13px;border-radius:3px;background:var(--bg-3);transition:.12s var(--ease)}
+.hcell:hover{outline:1px solid var(--grn)}
+.hcell.peak{box-shadow:0 0 8px var(--grn-hot)}
+.heat-legend{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:var(--s3);font-size:10px;color:var(--txt-faint);letter-spacing:.5px}
+.heat-legend i{width:13px;height:13px;border-radius:3px;display:inline-block}
+.pulse-deck{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4)}
+.pulse-deck .pulse-card{margin-bottom:0}
+.pg-row{padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.pg-row:last-child{border-bottom:none}
+.pg-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.pg-name{color:var(--txt);font-size:var(--t-sm);letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-hrs{color:var(--txt);font-size:var(--t-sm);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.pg-hrs small{color:var(--txt-faint);font-size:var(--t-xs);margin-left:6px}
+.pg-sub{font-size:var(--t-xs);color:var(--txt-faint);margin-top:7px;letter-spacing:.3px}
+.lb-row{display:flex;align-items:center;gap:var(--s3);padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.lb-row:last-child{border-bottom:none}
+.lb-rank{width:20px;text-align:right;color:var(--txt-faint);font-size:var(--t-sm);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.lb-row .pav{width:30px;height:30px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;font-weight:700;font-size:var(--t-sm);color:#06140a}
+.lb-who{flex:1;min-width:0}
+.lb-name{color:var(--txt);font-size:var(--t-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-name .linkchip{font-size:9px;letter-spacing:.7px;text-transform:uppercase;color:var(--grn);border:1px solid var(--grn-deep);border-radius:99px;padding:1px 7px;margin-left:7px;background:rgba(123,184,95,.07)}
+.lb-sub{font-size:var(--t-xs);color:var(--txt-faint);margin-top:3px;letter-spacing:.3px}
+.lb-hrs{color:var(--txt);font-size:var(--t-sm);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.pulse-empty{padding:var(--s5);text-align:center;color:var(--txt-faint);font-size:var(--t-sm)}
+@media(max-width:850px){.pulse-strip{grid-template-columns:repeat(2,1fr)}.pulse-deck{grid-template-columns:1fr}}
 
 /* ============ DETAIL (immersive sheet) ============ */
 .scrim{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .28s var(--ease)}
@@ -691,6 +753,7 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
         <button data-view="activity">Activity</button>
         <button data-view="data">Data</button>
         <button data-view="map">Map</button>
+        <button data-view="stats">Pulse</button>
         <button data-view="economy">Economy</button>
       </div>
       <div class="spacer"></div>
@@ -783,11 +846,46 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
       <div class="evlist" id="actlist"><div class="ev-empty">Loading…</div></div>
     </div>
 
+    <!-- PULSE VIEW (session analytics: heatmap + leaderboards, read-only) -->
+    <div class="view stats" id="view-stats">
+      <div class="pulse-head">
+        <div class="pulse-title">
+          <b>PULSE</b>
+          <span class="pulse-sub" id="statsSub">session activity · last 30 days · your local time</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="tabs pulse-range" id="statsRangeTabs">
+          <button data-days="7">7d</button>
+          <button class="on" data-days="30">30d</button>
+          <button data-days="90">90d</button>
+          <button data-days="0">All</button>
+        </div>
+        <button class="refresh-btn" id="statsRefresh" type="button">↻ Refresh</button>
+        <span class="ev-note pulse-auto">auto 60s</span>
+      </div>
+      <div class="pulse-strip" id="statsStrip"></div>
+      <div class="pulse-card pulse-heat">
+        <div class="pulse-card-h">Session starts · weekday × hour<span class="pulse-peak" id="statsHeatPeak"></span></div>
+        <div class="heat" id="statsHeatGrid"></div>
+        <div class="heat-legend" id="statsLegend"></div>
+      </div>
+      <div class="pulse-deck">
+        <div class="pulse-card">
+          <div class="pulse-card-h">Per game · share of hours</div>
+          <div class="pg-list" id="statsGameList"></div>
+        </div>
+        <div class="pulse-card">
+          <div class="pulse-card-h">Top players</div>
+          <div class="lb" id="statsLb"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ECONOMY VIEW (admin: playtime → gambling dollars) -->
     <div class="view economy" id="view-economy">
       <div class="eco-card">
         <div class="section-h">Playtime earnings</div>
-        <div class="eco-note">Linked players earn gambling dollars when a game-server session ends. Set the rate, then map each player to a site account below.</div>
+        <div class="eco-note">Linked players earn gambling dollars when a game-server session ends. Set the rate below — earnings shown reflect sessions credited from now on.</div>
         <div class="eco-fields">
           <label>Dollars per hour<input id="ecoRate" type="number" min="0" step="1" inputmode="numeric"></label>
           <label>Max paid minutes / session<input id="ecoCap" type="number" min="1" step="1" inputmode="numeric"></label>
@@ -798,7 +896,7 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
       </div>
       <div class="eco-card">
         <div class="section-h">Site accounts</div>
-        <div class="eco-note">Create a Gamertown account, then link server identities to it from Activity or the player list below.</div>
+        <div class="eco-note">Create a Gamertown account, then link server identities to it from the Activity link queue.</div>
         <form class="user-form" id="userForm">
           <input id="newUsername" placeholder="username" autocomplete="off" spellcheck="false">
           <input id="newDisplayName" placeholder="display name" autocomplete="off">
@@ -808,7 +906,7 @@ td.mask{color:var(--txt-faint);letter-spacing:1px}
         </form>
         <div class="user-list" id="userList"></div>
       </div>
-      <div class="eco-players-h">Players → accounts</div>
+      <div class="eco-players-h">Player earnings</div>
       <div class="evlist" id="ecoPlayers"><div class="ev-empty">Loading…</div></div>
     </div>
 
@@ -864,12 +962,12 @@ import {
   dbListServerConfig, dbReadServerConfig, dbWriteServerConfig,
   dbListServerMaps, dbAddServerMap, dbRenameServerMap, dbDeleteServerMap, dbSyncServerMaps, dbImportServerCollection,
   dbListServerConfigs, dbGetServerConfigBody, dbCreateServerConfig, dbDeleteServerConfig,
-  dbGetOnline, dbGetActivity, dbGetActivityAll, dbGetBlueMapStatus, dbGetServerMapSession, dbGetServerMapPlayer,
+  dbGetOnline, dbGetActivity, dbGetActivityAll, dbGetServerStats, dbGetBlueMapStatus, dbGetServerMapSession, dbGetServerMapPlayer,
   dbListProfiles, dbGetProfileSchema, dbGetProfile, dbCreateProfile, dbUpdateProfile,
   dbDeleteProfile, dbApplyProfile, dbCaptureProfile,
   dbAdminTables, dbAdminTableRows, dbAdminQuery,
   dbGetEconomySettings, dbSetEconomySettings, dbGetEconomyPlayers, dbGetEconomyUsers,
-  dbLinkPlayerAccount, dbCreditPlaytime,
+  dbLinkPlayerAccount, dbSetPlayerIgnored, dbCreditPlaytime,
   dbAdminUsers, dbAdminCreateUser,
 } from './db.js'
 import { loadSession } from './auth.js'
@@ -888,6 +986,10 @@ let activityFilter = 'all'
 let activityShowUnlinked = false
 let activityTimer = null
 let activityLoadSeq = 0
+// pulse (session analytics)
+let statsTimer = null
+let statsRange = 30
+let statsLoadSeq = 0
 // economy (admin)
 let ecoUsers = []
 let adminUsers = []
@@ -1278,16 +1380,18 @@ function renderFeed(){
 function switchView(v){
   curView = v
   document.querySelectorAll('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === v))
-  for (const name of ['fleet', 'activity', 'data', 'map', 'economy']) {
+  for (const name of ['fleet', 'activity', 'data', 'map', 'stats', 'economy']) {
     document.getElementById('view-' + name).classList.toggle('show', v === name)
   }
   // teardown the auto-refresh timers when leaving their views
   if (v !== 'activity' && activityTimer) { clearInterval(activityTimer); activityTimer = null }
   if (v !== 'map' && mapTimer) { clearInterval(mapTimer); mapTimer = null }
+  if (v !== 'stats' && statsTimer) { clearInterval(statsTimer); statsTimer = null }
   if (v === 'fleet') { if (lastNode) renderHost(lastNode); document.getElementById('tcount').textContent = `${servers.length} servers` }
   else if (v === 'activity') startActivity()
   else if (v === 'data') startData()
   else if (v === 'map') startMap()
+  else if (v === 'stats') startStats()
   else if (v === 'economy') startEconomy()
 }
 document.querySelectorAll('#viewTabs button').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)))
@@ -1325,9 +1429,17 @@ function evRowHTML(s, { linkable = false, users = ecoUsers } = {}){
   const primary = s.userName || s.name
   const playerNote = s.userName && s.name && s.name !== s.userName ? `<span class="acct">player ${esc(s.name)}</span>` : ''
   const linked = s.userName ? `<span class="acct">linked</span>` : '<span class="acct unlinked">unlinked</span>'
-  const linkCtl = linkable && s.playerId
-    ? `<div class="sel"><select class="eco-link act-link" data-player="${s.playerId}" aria-label="link ${esc(s.name)} to an account">${userOptionHtml(users, s.userId)}</select></div>`
-    : ''
+  // Link-queue controls (only while browsing the queue). A dismissed identity shows
+  // a restore (↩) action in place of the link select + dismiss (✕), so dismissal is
+  // reversible from the same place it happened.
+  let linkCtl = ''
+  if (linkable && s.playerId) {
+    linkCtl = s.ignored
+      ? `<div class="link-row"><span class="acct unlinked">dismissed</span>`
+        + `<button type="button" class="act-restore" data-player="${s.playerId}" title="Restore to link queue" aria-label="restore ${esc(s.name)} to the link queue">↩</button></div>`
+      : `<div class="link-row"><div class="sel"><select class="eco-link act-link" data-player="${s.playerId}" aria-label="link ${esc(s.name)} to an account">${userOptionHtml(users, s.userId)}</select></div>`
+        + `<button type="button" class="act-dismiss" data-player="${s.playerId}" title="Remove from link queue" aria-label="remove ${esc(s.name)} from the link queue">✕</button></div>`
+  }
   return `
     <div class="ev fadein">
       <div class="pav" style="${pAvatar(primary)}">${esc(String(primary || '?')[0].toUpperCase())}</div>
@@ -1369,6 +1481,35 @@ function wireActivityLinks(root){
         toast(errMsg(e), 'err')
       } finally {
         sel.disabled = false
+      }
+    }
+  })
+  // Dismiss (remove) a tracked identity from the link queue. Reversible flag —
+  // playtime keeps counting in Activity + Pulse; it just leaves the to-do list.
+  root.querySelectorAll('.act-dismiss').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true
+      try {
+        await dbSetPlayerIgnored(Number(btn.dataset.player), true)
+        toast('Removed from link queue')
+        loadActivity()
+      } catch (e) {
+        toast(errMsg(e), 'err')
+        btn.disabled = false
+      }
+    }
+  })
+  // Restore a previously-dismissed identity back into the link queue.
+  root.querySelectorAll('.act-restore').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true
+      try {
+        await dbSetPlayerIgnored(Number(btn.dataset.player), false)
+        toast('Restored to link queue')
+        loadActivity()
+      } catch (e) {
+        toast(errMsg(e), 'err')
+        btn.disabled = false
       }
     }
   })
@@ -1456,18 +1597,19 @@ async function loadEconomy(){
   renderSiteUsers()
   renderEcoPlayers(players)
 }
-function ecoUserOptions(selected){
-  return userOptionHtml(ecoUsers, selected)
-}
 function renderSiteUsers(){
   const list = document.getElementById('userList')
   if (!adminUsers.length) { list.innerHTML = '<div class="ev-empty">No site accounts yet.</div>'; return }
-  list.innerHTML = adminUsers.map(u => `
-    <span class="user-chip">
+  list.innerHTML = adminUsers.map(u => {
+    const klepto = !!u.is_admin
+    return `
+    <span class="user-chip${klepto ? ' klepto' : ''}">
+      ${klepto ? '<span class="crown">♛</span>' : ''}
       <b>${esc(u.display_name || u.username)}</b>
       <span>@${esc(u.username)}</span>
-      <span class="role">${u.is_admin ? 'kleptocrat' : 'citizen'}</span>
-    </span>`).join('')
+      <span class="role">${klepto ? 'kleptocrat' : 'citizen'}</span>
+    </span>`
+  }).join('')
 }
 async function createSiteUser(e){
   e.preventDefault()
@@ -1493,6 +1635,9 @@ async function createSiteUser(e){
     if (btn) btn.disabled = false
   }
 }
+// Read-only earnings roster: each player's lifetime playtime + ACTUAL dollars
+// credited to their linked account (unlinked players earn $0). Linking now lives
+// solely in the Activity link queue, so there's no per-row link control here.
 function renderEcoPlayers(players){
   const list = document.getElementById('ecoPlayers')
   if (!players.length) { list.innerHTML = '<div class="ev-empty">No players seen yet — they appear here once they join a server.</div>'; return }
@@ -1500,26 +1645,17 @@ function renderEcoPlayers(players){
     const uid = p.uid ? `<span class="uid" title="${esc(p.uid)}">${esc(String(p.uid).length > 16 ? String(p.uid).slice(0,8)+'…'+String(p.uid).slice(-4) : p.uid)}</span>` : ''
     const hrs = (p.totalMinutes || 0) / 60
     const playtime = hrs >= 1 ? `${hrs.toFixed(1)}h` : `${p.totalMinutes || 0}m`
+    const acct = p.userName ? `<span class="acct">${esc(p.userName)}</span>` : '<span class="acct unlinked">unlinked</span>'
     return `
     <div class="ev">
       <div class="pav" style="${pAvatar(p.name)}">${esc(String(p.name || '?')[0].toUpperCase())}</div>
       <div class="pmeta">
         <b>${esc(p.name)}</b>
-        <div class="sub"><span class="gtag">${esc(p.identityKind)}</span>${uid} · ${p.sessions} sessions · ${esc(playtime)}</div>
+        <div class="sub"><span class="gtag">${esc(p.identityKind)}</span>${acct}${uid} · ${p.sessions} sessions · ${esc(playtime)}</div>
       </div>
-      <div class="right"><div class="sel"><select class="eco-link" data-player="${p.id}" aria-label="link ${esc(p.name)} to an account">${ecoUserOptions(p.userId)}</select></div></div>
+      <div class="right"><div class="eco-earned" title="gambling dollars earned from playtime">$${(p.earned || 0).toLocaleString()}</div></div>
     </div>`
   }).join('')
-  list.querySelectorAll('.eco-link').forEach(sel => {
-    sel.onchange = async () => {
-      const playerId = Number(sel.dataset.player)
-      const userId = sel.value ? Number(sel.value) : null
-      sel.disabled = true
-      try { await dbLinkPlayerAccount(playerId, userId); ecoMsg(userId ? 'Linked.' : 'Unlinked.', false) }
-      catch (e) { ecoMsg(errMsg(e), true) }
-      finally { sel.disabled = false }
-    }
-  })
 }
 function ecoMsg(text, isErr){
   const m = document.getElementById('ecoMsg')
@@ -1543,6 +1679,125 @@ async function creditNow(){
   try { const r = await dbCreditPlaytime(); ecoMsg(`Credited ${r.sessions} session(s) · $${r.dollars}.`, false); loadEconomy() }
   catch (e) { ecoMsg(errMsg(e), true) }
   finally { btn.disabled = false }
+}
+
+/* ═════════════════════════ PULSE VIEW (session analytics) ═════════════════════════ */
+const PULSE_WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const pHour = (h) => String(h).padStart(2,'0') + ':00'
+const rangeLabel = (days) => days === 0 ? 'all time' : `last ${days} days`
+// heatmap cell green for a 0..1 intensity (empty cells stay --bg-3)
+const heatFill = (ratio) => `rgba(66,245,39,${(0.12 + 0.85 * ratio).toFixed(3)})`
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
+
+function startStats(){
+  document.getElementById('tcount').textContent = 'pulse'
+  document.getElementById('statsRefresh').onclick = () => loadStats()
+  const tabs = document.querySelectorAll('#statsRangeTabs button')
+  tabs.forEach(b => {
+    b.onclick = () => {
+      statsRange = Number(b.dataset.days)
+      tabs.forEach(x => x.classList.toggle('on', x === b))
+      loadStats()
+    }
+  })
+  if (statsTimer) clearInterval(statsTimer)
+  statsTimer = setInterval(() => {
+    if (curView === 'stats') loadStats()
+    else { clearInterval(statsTimer); statsTimer = null }
+  }, 60000)
+  loadStats()
+}
+// Fetch the aggregate stats for the selected range in the viewer's local tz, then
+// paint the strip/heatmap/per-game/leaderboard. statsLoadSeq makes the latest win.
+async function loadStats(){
+  const strip = document.getElementById('statsStrip')
+  const seq = ++statsLoadSeq
+  const tz = -new Date().getTimezoneOffset()   // minutes east of UTC → SQLite '±N minutes'
+  let data
+  try {
+    data = await dbGetServerStats({ days: statsRange, tz })
+  } catch (e) {
+    if (seq !== statsLoadSeq) return
+    strip.innerHTML = `<div class="pulse-empty pane-err">pulse unavailable: ${esc(errMsg(e))}</div>`
+    return
+  }
+  if (seq !== statsLoadSeq) return            // latest-wins
+  if (!data) { strip.innerHTML = '<div class="pulse-empty">No data.</div>'; return }
+  document.getElementById('statsSub').textContent = `session activity · ${rangeLabel(data.range.days)} · your local time`
+  renderStatsStrip(data)
+  renderHeatmap(data)
+  renderPerGame(data)
+  renderTopPlayers(data)
+}
+function renderStatsStrip(d){
+  const t = d.totals
+  const b = d.busiest
+  const busyVal = b ? `${PULSE_WEEKDAYS[b.weekday] || '—'} ${pHour(b.hour)}` : '—'
+  const top = d.perGame[0]
+  const tile = (label, value, sub) =>
+    `<div class="metric"><div class="ml">${label}</div><div class="mv">${value}</div>${sub ? `<div class="ms">${sub}</div>` : ''}</div>`
+  document.getElementById('statsStrip').innerHTML =
+    tile('Total hours', `${t.hours}<small>h</small>`, '') +
+    tile('Sessions', t.sessions, '') +
+    tile('Unique players', t.players, '') +
+    tile('Busiest window', busyVal, b ? `${plural(b.count, 'start')} in that hour` : '') +
+    tile('Top game', top ? esc(top.name) : '—', top ? `${top.hours}h` : '')
+}
+function renderHeatmap(d){
+  const grid = document.getElementById('statsHeatGrid')
+  const map = {}
+  let max = 0
+  for (const c of d.heatmap) { map[c.wd * 24 + c.hr] = c.n; if (c.n > max) max = c.n }
+  const peak = d.busiest
+  let html = '<div class="hh"></div>'
+  for (let h = 0; h < 24; h++) html += `<div class="hh">${h % 3 === 0 ? String(h).padStart(2,'0') : ''}</div>`
+  for (let wd = 0; wd < 7; wd++){
+    html += `<div class="hd">${PULSE_WEEKDAYS[wd]}</div>`
+    for (let h = 0; h < 24; h++){
+      const n = map[wd * 24 + h] || 0
+      const isPeak = peak && n > 0 && peak.weekday === wd && peak.hour === h
+      const style = n > 0 ? `background:${heatFill(max ? n / max : 0)}` : ''
+      html += `<div class="hcell${isPeak ? ' peak' : ''}" style="${style}" title="${PULSE_WEEKDAYS[wd]} ${pHour(h)} · ${plural(n, 'session')}"></div>`
+    }
+  }
+  grid.innerHTML = html
+  document.getElementById('statsHeatPeak').textContent =
+    peak && peak.count ? `peak ${PULSE_WEEKDAYS[peak.weekday]} ${pHour(peak.hour)} · ${peak.count}` : ''
+  document.getElementById('statsLegend').innerHTML = 'less '
+    + [0, .25, .5, .75, 1].map(s => `<i style="background:${s === 0 ? 'var(--bg-3)' : heatFill(s)}"></i>`).join('')
+    + ' more'
+}
+function renderPerGame(d){
+  const el = document.getElementById('statsGameList')
+  if (!d.perGame.length) { el.innerHTML = '<div class="pulse-empty">No sessions in this range.</div>'; return }
+  const total = d.perGame.reduce((a, g) => a + g.hours, 0)
+  el.innerHTML = d.perGame.map(g => {
+    const share = total ? Math.round(g.hours / total * 100) : 0
+    return `
+    <div class="pg-row">
+      <div class="pg-top"><span class="pg-name">${esc(g.name)}</span><span class="pg-hrs">${g.hours}h <small>${share}%</small></span></div>
+      <div class="bar"><i style="width:${share}%"></i></div>
+      <div class="pg-sub">${plural(g.sessions, 'session')} · ${plural(g.players, 'player')}</div>
+    </div>`
+  }).join('')
+}
+function renderTopPlayers(d){
+  const el = document.getElementById('statsLb')
+  if (!d.topPlayers.length) { el.innerHTML = '<div class="pulse-empty">No tracked players in this range.</div>'; return }
+  el.innerHTML = d.topPlayers.map((p, i) => {
+    const name = p.userName || p.name
+    const chip = p.userName ? '<span class="linkchip">linked</span>' : ''
+    return `
+    <div class="lb-row">
+      <div class="lb-rank">${i + 1}</div>
+      <div class="pav" style="${pAvatar(name)}">${esc(String(name || '?')[0].toUpperCase())}</div>
+      <div class="lb-who">
+        <div class="lb-name">${esc(name)}${chip}</div>
+        <div class="lb-sub">${plural(p.sessions, 'session')} · ${plural(p.games, 'game')}</div>
+      </div>
+      <div class="lb-hrs">${p.hours}h</div>
+    </div>`
+  }).join('')
 }
 
 /* ═════════════════════════ MAP VIEW (embedded BlueMap) ═════════════════════════ */

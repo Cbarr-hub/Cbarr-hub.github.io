@@ -35,3 +35,28 @@ test('live Activity view is preserved', () => {
   assert.ok(html.includes("getElementById('actlist')"), 'Activity list lookup should remain');
   assert.ok(html.includes('function startActivity'), 'startActivity should remain');
 });
+
+test('Pulse analytics view is wired in', () => {
+  assert.ok(html.includes('data-view="stats"'), 'Pulse nav button');
+  assert.ok(html.includes('id="view-stats"'), 'Pulse view container');
+  assert.ok(html.includes('function startStats'), 'startStats');
+  assert.ok(html.includes('function loadStats'), 'loadStats');
+  assert.ok(html.includes('dbGetServerStats'), 'stats fetch helper used');
+});
+
+test('Pulse per-game list has no monogram code chips', () => {
+  assert.ok(!html.includes('g-code'), 'per-game rows should not render monogram code chips');
+});
+
+test('link queue has reversible dismiss/restore; economy shows earnings instead of inline linking', () => {
+  assert.ok(html.includes('act-dismiss'), 'dismiss button class');
+  assert.ok(html.includes('act-restore'), 'restore button class (dismiss is reversible)');
+  assert.ok(html.includes('dbSetPlayerIgnored'), 'calls dbSetPlayerIgnored');
+  assert.ok(html.includes('Player earnings'), 'economy roster relabeled to earnings');
+  assert.ok(html.includes('eco-earned'), 'economy roster shows a $ earned cell');
+});
+
+test('kleptocrat accounts render as gold crown tiles', () => {
+  assert.ok(html.includes('klepto'), 'klepto modifier class');
+  assert.ok(html.includes('♛'), 'crown glyph');
+});

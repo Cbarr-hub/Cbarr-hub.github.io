@@ -168,3 +168,56 @@ test('linkAccount validates player and user existence', () => {
   store.recordJoin('gmod', steam('A', '111'), 1, 'rcon');
   assert.throws(() => eco.linkAccount(playerId('111'), 9999), (e) => e.code === 'UNKNOWN_USER');
 });
+
+test('creditPlaytime records credited_dollars per paid session', () => {
+  const { store, eco, userId, seenPlayer, db } = setup();
+  eco.linkAccount(seenPlayer('111', 'A'), userId);
+  const sid = store.recordJoin('gmod', steam('A', '111'), 10_000, 'rcon');
+  store.closeSession(sid, 10_000 + 2 * 3600); // 2h → $200
+  eco.creditPlaytime();
+  assert.equal(db.prepare('SELECT credited_dollars FROM server_sessions WHERE id = ?').get(sid).credited_dollars, 200);
+});
+
+test('settle-at-link and the split pre-link span record credited_dollars = 0 (reopened stays NULL)', () => {
+  const { store, eco, userId, playerId, db } = setup();
+  const closed = store.recordJoin('gmod', steam('A', '111'), 1000, 'rcon');
+  store.closeSession(closed, 1000 + 3600);    // closed BEFORE the link → settled
+  const open = store.recordJoin('gmod', steam('A', '111'), 5000, 'rcon'); // still open at link → split
+  eco.linkAccount(playerId('111'), userId);
+
+  assert.equal(db.prepare('SELECT credited_dollars FROM server_sessions WHERE id = ?').get(closed).credited_dollars, 0);
+  assert.equal(db.prepare('SELECT credited_dollars FROM server_sessions WHERE id = ?').get(open).credited_dollars, 0);
+  const reopened = db.prepare(
+    "SELECT credited_dollars FROM server_sessions WHERE player_id = ? AND source = 'reconciled'",
+  ).get(playerId('111'));
+  assert.equal(reopened.credited_dollars, null); // earns when it later closes
+});
+
+test('listPlayers.earned sums actual credited dollars (linked earns, unlinked 0)', () => {
+  const { store, eco, userId, seenPlayer } = setup();
+  eco.linkAccount(seenPlayer('111', 'Alice'), userId);
+  const sid = store.recordJoin('gmod', steam('Alice', '111'), 10_000, 'rcon');
+  store.closeSession(sid, 10_000 + 2 * 3600);
+  eco.creditPlaytime();
+  const unlinked = store.recordJoin('gmod', steam('Bob', '222'), 1000, 'rcon');
+  store.closeSession(unlinked, 1000 + 3600);
+
+  const players = eco.listPlayers();
+  assert.equal(players.find((p) => p.uid === '111').earned, 200);
+  assert.equal(players.find((p) => p.uid === '222').earned, 0);
+});
+
+test('setPlayerIgnored toggles the flag; listPlayers still includes ignored players', () => {
+  const { eco, seenPlayer } = setup();
+  const pid = seenPlayer('111', 'A');
+  assert.equal(eco.listPlayers().find((p) => p.id === pid).ignored, 0);
+
+  assert.deepEqual(eco.setPlayerIgnored(pid, true), { ok: true, ignored: true });
+  const p = eco.listPlayers().find((x) => x.id === pid);
+  assert.ok(p, 'ignored players still appear in the earnings roster');
+  assert.equal(p.ignored, 1);
+
+  eco.setPlayerIgnored(pid, false);
+  assert.equal(eco.listPlayers().find((x) => x.id === pid).ignored, 0);
+  assert.throws(() => eco.setPlayerIgnored(9999, true), (e) => e.code === 'UNKNOWN_PLAYER');
+});

@@ -56,6 +56,30 @@ export default async function adminEconomyRoutes(app) {
     }
   });
 
+  // Dismiss / restore a tracked identity in the Activity link queue. `ignored:true`
+  // removes it from the "needs linking" list (reversibly); `false` restores it.
+  // Playtime is untouched either way.
+  app.put('/players/:playerId/ignore', {
+    preHandler: requireAdmin,
+    onRequest: app.csrfProtection,
+    schema: {
+      params: { type: 'object', properties: { playerId: { type: 'integer', minimum: 1 } }, required: ['playerId'] },
+      body: {
+        type: 'object',
+        required: ['ignored'],
+        properties: { ignored: { type: 'boolean' } },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    try {
+      return eco.setPlayerIgnored(req.params.playerId, req.body.ignored);
+    } catch (err) {
+      if (err.code === 'UNKNOWN_PLAYER') return reply.code(404).send({ error: 'unknown player' });
+      throw err;
+    }
+  });
+
   // Manually run the reconciler (it also runs on a timer + at boot).
   app.post('/credit', {
     preHandler: requireAdmin,

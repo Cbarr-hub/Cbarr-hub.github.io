@@ -476,6 +476,48 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return store ? store.recentSessions(opts) : [];
     },
 
+    // Aggregate session analytics for the "Pulse" view. `days` (0..365; default 30,
+    // 0 = all time) sets the window; `tz` is the viewer's UTC offset in MINUTES
+    // (what `-new Date().getTimezoneOffset()` gives) for local-time heatmap buckets.
+    sessionStats({ days, tz } = {}) {
+      const empty = {
+        range: { days: 0, since: 0, tz: 0 },
+        totals: { sessions: 0, players: 0, hours: 0 },
+        perGame: [], topPlayers: [], heatmap: [], busiest: null,
+      };
+      if (!store) return empty;
+      // Explicit default so `days === 0` means "all time" rather than falling
+      // through `|| 30`. Then clamp to [0, 365].
+      const dRaw = days === undefined ? 30 : Math.trunc(Number(days) || 0);
+      const d = Math.max(0, Math.min(365, dRaw));
+      const t = Math.max(-840, Math.min(840, Math.trunc(Number(tz) || 0)));
+      const now = Math.floor(Date.now() / 1000);
+      const since = d === 0 ? 0 : now - d * 86400;
+      const raw = store.sessionStats({ since, tzMod: `${t} minutes` });
+      const toHours = (secs) => Math.round(((secs || 0) / 3600) * 10) / 10;
+      let busiest = null;
+      for (const c of raw.heatmap) {
+        if (!busiest || c.n > busiest.count) busiest = { weekday: c.wd, hour: c.hr, count: c.n };
+      }
+      return {
+        range: { days: d, since, tz: t },
+        totals: {
+          sessions: raw.totals.sessions || 0,
+          players: raw.totals.players || 0,
+          hours: toHours(raw.totals.secs),
+        },
+        perGame: raw.perGame.map((g) => ({
+          slug: g.slug, name: g.name, sessions: g.sessions, players: g.players, hours: toHours(g.secs),
+        })),
+        topPlayers: raw.topPlayers.map((p) => ({
+          playerId: p.playerId, name: p.name, userId: p.userId, userName: p.userName,
+          sessions: p.sessions, games: p.games, hours: toHours(p.secs),
+        })),
+        heatmap: raw.heatmap,
+        busiest,
+      };
+    },
+
     async getCurrentPlayerPosition(id, userId) {
       const server = getServer(id);
       if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');

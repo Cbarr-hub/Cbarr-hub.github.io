@@ -88,12 +88,9 @@ export function createBlueMapPlayersController({
       .flatMap((m) => [`${WEB}/maps/${m.mapId}/live`, `${WEB}/maps/${m.mapId}/assets/playerheads`])
       .map((d) => `"${d.replace(/"/g, '\\"')}"`)
       .join(' ');
-    const { pid } = await dockerClient.agentExec(opts.container, {
-      command: ['/bin/sh', '-c', `mkdir -p ${dirs}`],
-    });
-    const r = await dockerClient.agentExecStatus(opts.container, pid);
-    if (r?.exitcode != null && r.exitcode !== 0) {
-      throw new Error(`bluemap mkdir failed: ${r['err-data'] || `exit ${r.exitcode}`}`);
+    const r = await dockerClient.exec(opts.container, ['/bin/sh', '-c', `mkdir -p ${dirs}`]);
+    if (r?.exitCode != null && r.exitCode !== 0) {
+      throw new Error(`bluemap mkdir failed: ${r.stderr || `exit ${r.exitCode}`}`);
     }
   }
 
@@ -108,7 +105,7 @@ export function createBlueMapPlayersController({
       // Write the head under EACH rendered map's asset root — that's where BlueMap
       // loads it from, and a foreign player still shows in other maps' lists.
       for (const { mapId } of MAP_DIMENSIONS) {
-        await dockerClient.agentFileWriteBytes(opts.container, `${WEB}/maps/${mapId}/assets/playerheads/${uuid}.png`, buf);
+        await dockerClient.fileWriteBytes(opts.container, `${WEB}/maps/${mapId}/assets/playerheads/${uuid}.png`, buf);
       }
     } catch (err) {
       skinSeen.delete(uuid); // let a later tick retry; BlueMap shows a default head meanwhile
@@ -151,7 +148,7 @@ export function createBlueMapPlayersController({
       await ensureDirs();
       await Promise.allSettled(players.map((p) => ensureSkin(p.uuid)));
       for (const { mapId } of MAP_DIMENSIONS) {
-        await dockerClient.agentFileWrite(
+        await dockerClient.fileWrite(
           opts.container,
           `${WEB}/maps/${mapId}/live/players.json`,
           buildPlayersJson(players, mapId),

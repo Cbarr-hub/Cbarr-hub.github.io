@@ -1,6 +1,6 @@
 // Dockerized GMOD-family connector — LinuxGSM `gmodserver` running in a container.
 //
-// The GMOD/Prop Hunt connectors already drive everything through agentFileRead/Write
+// The GMOD/Prop Hunt connectors already drive everything through fileRead/Write
 // + runShell + this.paths + this.vmid, all duck-typed by DockerClient — so the hard,
 // validated logic (gmad map-sync, TTT/PH profiles, mapcycle, the workshop-at-boot
 // boot-map guard, getSettings) is INHERITED unchanged. `dockerizeGmod(Base)` layers

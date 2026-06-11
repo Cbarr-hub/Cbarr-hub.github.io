@@ -6,13 +6,12 @@ import { connectString, getServer, launchUrl, listServers } from '../src/servers
 import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
 import { createServerStore } from '../src/servers/store.js';
-import { getVar, setVar, setVars } from '../src/servers/cfgvars.js';
-import { getCvar, setCvars } from '../src/servers/cvars.js';
+import { getVar, setVar, setVars, getCvar, setCvars } from '../src/servers/line-config.js';
 
 // A fake DockerClient. It duck-types the transport surface the connectors consume
-// (statusCurrent / start / stop / shutdown / reboot / agentExec / agentExecStatus /
-// agentFileRead / agentFileWrite / nodeStatus), records calls, and returns canned
-// data — no containers, no RCON sockets. `files` backs agentFileRead/Write by path.
+// (statusCurrent / start / stop / shutdown / reboot / exec / fileRead / fileWrite /
+// nodeStatus), records calls, and returns canned data — no containers, no RCON
+// sockets. `files` backs fileRead/fileWrite by path.
 //
 // This file exercises the backend-agnostic SERVICE layer (orchestration, registry,
 // whitelist, DB-backed catalog/config, connect strings). The Docker connectors'
@@ -41,11 +40,10 @@ function fakeDocker(overrides = {}) {
     stop: rec('stop'),
     shutdown: rec('shutdown'),
     reboot: rec('reboot'),
-    agentExec: overrides.agentExec ?? (() => Promise.resolve({ pid: 'p' })),
-    agentExecStatus: overrides.agentExecStatus
-      ?? (() => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': '', 'err-data': '' })),
-    agentFileRead: overrides.agentFileRead ?? ((_c, path) => Promise.resolve({ content: files[path] ?? '' })),
-    agentFileWrite: overrides.agentFileWrite ?? ((_c, path, content) => { files[path] = content; return Promise.resolve(null); }),
+    exec: overrides.exec
+      ?? (() => Promise.resolve({ exitCode: 0, signal: null, stdout: '', stderr: '', truncated: false })),
+    fileRead: overrides.fileRead ?? ((_c, path) => Promise.resolve({ content: files[path] ?? '', truncated: false })),
+    fileWrite: overrides.fileWrite ?? ((_c, path, content) => { files[path] = content; return Promise.resolve(null); }),
   };
 }
 

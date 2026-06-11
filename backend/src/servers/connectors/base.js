@@ -76,59 +76,11 @@ export class BaseConnector {
     return this.runCommand(['/bin/bash', '-lc', shellCommand], opts);
   }
 
-  // Runs a command via the guest agent and polls until it exits (or times out).
-  // `command` is an argv array, e.g. ['/bin/systemctl', 'restart', 'factorio'].
-  //
-  // `awaitAgentMs` (default 0): the QEMU guest agent only comes up ~20-40s after
-  // a VM powers on, so an exec issued right after a Start VM fails with "QEMU
-  // guest agent is not running". When set, we retry ONLY that specific error for
-  // up to this long before giving up — letting actions like Start Hosting wait
-  // out a freshly-booted VM instead of erroring. Passive reads leave it at 0.
-  //
-  // The "deadline" is a wall-clock check (Date.now() > deadline), NOT a held
-  // timer, so an early exit can't leak a pending timeout: the only timer is the
-  // self-resolving `sleep(pollMs)` between polls, and the loop returns before
-  // sleeping when the command has already exited. (Over the Docker transport
-  // agentExec runs to completion synchronously, so agentExecStatus reports
-  // `exited` on the first poll and `sleep` is never even reached.)
-  async runCommand(command, { input, timeoutMs = 120_000, pollMs = 1000, awaitAgentMs = 0 } = {}) {
-    const { pid } = await this.#execAwaitingAgent(command, input, awaitAgentMs, pollMs, timeoutMs);
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const st = await this.client.agentExecStatus(this.vmid, pid);
-      if (st.exited) {
-        return {
-          exitCode: st.exitcode ?? null,
-          signal: st.signal ?? null,
-          stdout: st['out-data'] ?? '',
-          stderr: st['err-data'] ?? '',
-          truncated: Boolean(st['out-truncated'] || st['err-truncated']),
-        };
-      }
-      if (Date.now() > deadline) {
-        throw new Error(`command timed out after ${timeoutMs}ms (pid ${pid})`);
-      }
-      await sleep(pollMs);
-    }
-  }
-
-  // Kick off agentExec, retrying ONLY the "guest agent is not running" upstream
-  // error for up to `awaitAgentMs` (the post-boot window). Any other error, or
-  // exhausting the window, rethrows so callers still see real failures.
-  async #execAwaitingAgent(command, input, awaitAgentMs, pollMs, timeoutMs) {
-    const deadline = Date.now() + awaitAgentMs;
-    for (;;) {
-      try {
-        return await this.client.agentExec(this.vmid, { command, input, timeoutMs });
-      } catch (err) {
-        const agentDown = /guest agent is not running/i.test(err?.message ?? '');
-        if (agentDown && Date.now() < deadline) {
-          await sleep(pollMs);
-          continue;
-        }
-        throw err;
-      }
-    }
+  // Run an argv to completion inside the container. Docker exec is synchronous
+  // (create → start → inspect), so this is a single client call.
+  // `command` is an argv array, e.g. ['/bin/bash', '-lc', 'ls'].
+  runCommand(command, { input, timeoutMs = 120_000 } = {}) {
+    return this.client.exec(this.vmid, command, { input, timeoutMs });
   }
 
   // ── config files (Phase 3) ──────────────────────────────────────────────────
@@ -148,13 +100,13 @@ export class BaseConnector {
 
   async readConfig(name) {
     const path = this.#resolveConfig(name);
-    const res = await this.client.agentFileRead(this.vmid, path);
+    const res = await this.client.fileRead(this.vmid, path);
     return { name, content: res.content ?? '', truncated: Boolean(res.truncated) };
   }
 
   async writeConfig(name, content) {
     const path = this.#resolveConfig(name);
-    await this.client.agentFileWrite(this.vmid, path, content);
+    await this.client.fileWrite(this.vmid, path, content);
     return { name, ok: true };
   }
 
@@ -303,7 +255,7 @@ function validProfileName(name) {
   return nm;
 }
 
-// Map the qemu/container status payload to our normalized shape.
+// Map the container status payload to our normalized shape.
 export function normalizeStatus(data) {
   const qmpStatus = data?.status ?? 'unknown'; // 'running' | 'stopped'
   return {
@@ -314,8 +266,4 @@ export function normalizeStatus(data) {
     mem: data?.mem ?? null,                // bytes
     raw: qmpStatus,
   };
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

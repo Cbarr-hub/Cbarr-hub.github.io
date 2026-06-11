@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { fakeDockerClient, withEnv } from './harness.mjs';
 import { DockerClient } from '../src/docker/client.js';
 import { DockerBaseConnector } from '../src/servers/connectors/docker-base.js';
 import { DockerMinecraftConnector } from '../src/servers/connectors/docker/minecraft.js';
@@ -215,7 +216,86 @@ test('DockerClient power actions treat expected already-state responses as no-op
   await assert.rejects(() => c.reboot('mc'), (e) => e.name === 'DockerError' && e.status === 409);
 });
 
-test('DockerClient.agentExec aborts the Docker exec start stream at timeoutMs', async () => {
+test('DockerClient.nodeStatus maps /info to the host/engine facts', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^GET \/info$/, () => res({ json: {
+      Name: 'keeper', ServerVersion: '26.0', OperatingSystem: 'Debian', KernelVersion: '6.x',
+      NCPU: 4, MemTotal: 12e9, Containers: 8, ContainersRunning: 7,
+    } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  assert.deepEqual(await c.nodeStatus(), {
+    name: 'keeper', engineVersion: '26.0', os: 'Debian', kernel: '6.x',
+    ncpu: 4, memTotal: 12e9, containers: 8, containersRunning: 7,
+  });
+});
+
+// ── DockerClient.exec: one-shot create → start → inspect ────────────────────────
+test('DockerClient.exec runs create → start → inspect and demuxes stdout/stderr', async () => {
+  const { fetchImpl, calls } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'exec123' } })],
+    [/^POST \/exec\/exec123\/start$/, () => res({ bytes: new Uint8Array(
+      Buffer.concat([frame(1, 'hello\n'), frame(2, 'oops\n')]),
+    ) })],
+    [/^GET \/exec\/exec123\/json$/, () => res({ json: { ExitCode: 0, Running: false } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const r = await c.exec('mc', ['/bin/sh', '-lc', 'echo hello']);
+  assert.equal(r.exitCode, 0);
+  assert.equal(r.signal, null);
+  assert.equal(r.stdout, 'hello\n');   // stdout (type 1)
+  assert.equal(r.stderr, 'oops\n');    // stderr (type 2)
+  assert.equal(r.truncated, false);
+  // the create body advertised the argv (attach stdout+stderr, never stdin)
+  const create = calls.find((x) => x.path === '/containers/mc/exec');
+  const body = JSON.parse(create.body);
+  assert.deepEqual(body.Cmd, ['/bin/sh', '-lc', 'echo hello']);
+  assert.equal(body.AttachStdout, true);
+  assert.equal(body.AttachStderr, true);
+  assert.equal(body.AttachStdin, false);
+  assert.deepEqual(calls.map((x) => x.path),
+    ['/containers/mc/exec', '/exec/exec123/start', '/exec/exec123/json']);
+});
+
+test('DockerClient.exec wraps a string command as /bin/sh -lc', async () => {
+  const { fetchImpl, calls } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'e' } })],
+    [/^POST \/exec\/e\/start$/, () => res({ bytes: new Uint8Array() })],
+    [/^GET \/exec\/e\/json$/, () => res({ json: { ExitCode: 0 } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  await c.exec('mc', 'echo hi');
+  const create = calls.find((x) => x.path === '/containers/mc/exec');
+  assert.deepEqual(JSON.parse(create.body).Cmd, ['/bin/sh', '-lc', 'echo hi']);
+});
+
+test('DockerClient.exec surfaces a non-zero exit code without throwing', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'e' } })],
+    [/^POST \/exec\/e\/start$/, () => res({ bytes: new Uint8Array(frame(2, 'boom\n')) })],
+    [/^GET \/exec\/e\/json$/, () => res({ json: { ExitCode: 7 } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const r = await c.exec('mc', ['false']);
+  assert.equal(r.exitCode, 7);
+  assert.equal(r.stderr, 'boom\n');
+});
+
+test('DockerClient.exec caps each stream at 1MB and sets the truncated flag', async () => {
+  const big = 'x'.repeat(1_000_001); // one byte over MAX_OUTPUT
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'e' } })],
+    [/^POST \/exec\/e\/start$/, () => res({ bytes: new Uint8Array(frame(1, big)) })],
+    [/^GET \/exec\/e\/json$/, () => res({ json: { ExitCode: 0 } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const r = await c.exec('mc', ['big']);
+  assert.equal(r.truncated, true);
+  assert.equal(r.stdout.length, 1_000_000);
+  assert.equal(r.stderr, '');
+});
+
+test('DockerClient.exec aborts the exec start stream at timeoutMs', async () => {
   const { fetchImpl } = fakeFetch([
     [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'slow' } })],
     [/^POST \/exec\/slow\/start$/, (_l, init) => new Promise((resolve, reject) => {
@@ -228,12 +308,12 @@ test('DockerClient.agentExec aborts the Docker exec start stream at timeoutMs', 
   ]);
   const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
   await assert.rejects(
-    () => c.agentExec('mc', { command: ['/bin/sh', '-lc', 'sleep 999'], timeoutMs: 10 }),
+    () => c.exec('mc', ['/bin/sh', '-lc', 'sleep 999'], { timeoutMs: 10 }),
     (e) => e.name === 'DockerError' && e.code === 'DOCKER_TIMEOUT',
   );
 });
 
-test('DockerClient.agentExec aborts Docker exec create response reads at timeoutMs', async () => {
+test('DockerClient.exec aborts exec create response reads at timeoutMs', async () => {
   const { fetchImpl } = fakeFetch([
     [/^POST \/containers\/mc\/exec$/, (_l, init) => ({
       ok: true,
@@ -251,55 +331,20 @@ test('DockerClient.agentExec aborts Docker exec create response reads at timeout
   ]);
   const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
   await assert.rejects(
-    () => c.agentExec('mc', { command: ['/bin/sh', '-lc', 'sleep 999'], timeoutMs: 10 }),
+    () => c.exec('mc', ['/bin/sh', '-lc', 'sleep 999'], { timeoutMs: 10 }),
     (e) => e.name === 'DockerError' && e.code === 'DOCKER_TIMEOUT',
   );
 });
 
-test('DockerClient.agentExec runs to completion and agentExecStatus returns the exited shape', async () => {
-  const { fetchImpl, calls } = fakeFetch([
-    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'exec123' } })],
-    [/^POST \/exec\/exec123\/start$/, () => res({ bytes: new Uint8Array(
-      Buffer.concat([frame(1, 'hello\n'), frame(2, 'oops\n')]),
-    ) })],
-    [/^GET \/exec\/exec123\/json$/, () => res({ json: { ExitCode: 0, Running: false } })],
-  ]);
-  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
-  const { pid } = await c.agentExec('mc', { command: ['/bin/sh', '-lc', 'echo hello'] });
-  assert.equal(pid, 'exec123');
-  const st = await c.agentExecStatus('mc', pid);
-  assert.equal(st.exited, 1);
-  assert.equal(st.exitcode, 0);
-  assert.equal(st['out-data'], 'hello\n');   // stdout (type 1)
-  assert.equal(st['err-data'], 'oops\n');    // stderr (type 2)
-  // the create body advertised the argv
-  const create = calls.find((x) => x.path === '/containers/mc/exec');
-  assert.match(create.body, /"Cmd":\["\/bin\/sh","-lc","echo hello"\]/);
-});
-
-test('DockerClient.agentExecStatus is idempotent: a repeat poll returns the same result', async () => {
-  const { fetchImpl } = fakeFetch([
-    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'exec123' } })],
-    [/^POST \/exec\/exec123\/start$/, () => res({ bytes: new Uint8Array(frame(1, 'hello\n')) })],
-    [/^GET \/exec\/exec123\/json$/, () => res({ json: { ExitCode: 0, Running: false } })],
-  ]);
-  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
-  const { pid } = await c.agentExec('mc', { command: ['/bin/sh', '-lc', 'echo hello'] });
-  const a = await c.agentExecStatus('mc', pid);
-  const b = await c.agentExecStatus('mc', pid);
-  // The second poll must NOT masquerade as an unknown-pid failure (null exitcode).
-  assert.deepEqual(a, b);
-  assert.equal(b.exitcode, 0);
-  assert.equal(b['out-data'], 'hello\n');
-});
-
-test('DockerClient.agentExec rejects stdin input (use TCP for interactive I/O)', async () => {
+test('DockerClient.exec rejects stdin input (use TCP for interactive I/O)', async () => {
   const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl: async () => res({}) });
-  await assert.rejects(() => c.agentExec('mc', { command: ['x'], input: 'hi' }), (e) => e.code === 'NO_STDIN');
+  await assert.rejects(() => c.exec('mc', ['x'], { input: 'hi' }), (e) => e.code === 'NO_STDIN');
 });
 
-test('DockerClient.agentFileRead/Write round-trip via exec', async () => {
+// ── DockerClient file ops (exec-backed: cat / atomic tmp+rename write) ──────────
+test('DockerClient.fileRead/fileWrite round-trip via exec', async () => {
   let written = null;
+  let lastCmd = '';
   const { fetchImpl } = fakeFetch([
     [/^POST \/containers\/mc\/exec$/, (_l, init) => {
       const cmd = JSON.parse(init.body).Cmd.join(' ');
@@ -308,7 +353,7 @@ test('DockerClient.agentFileRead/Write round-trip via exec', async () => {
       return res({ json: { Id: cmd.includes('base64 -d') ? 'w' : 'r' } });
     }],
     [/^POST \/exec\/r\/start$/, () => res({ bytes: new Uint8Array(frame(1, 'level-name=world\n')) })],
-    [/^POST \/exec\/w\/start$/, (_l) => {
+    [/^POST \/exec\/w\/start$/, () => {
       // capture the base64 payload that file-write pipes in
       const m = lastCmd.match(/printf %s "([^"]+)"/);
       written = Buffer.from(m[1], 'base64').toString('utf8');
@@ -316,26 +361,52 @@ test('DockerClient.agentFileRead/Write round-trip via exec', async () => {
     }],
     [/^GET \/exec\/[rw]\/json$/, () => res({ json: { ExitCode: 0 } })],
   ]);
-  let lastCmd = '';
   const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
-  const read = await c.agentFileRead('mc', '/data/server.properties');
+  const read = await c.fileRead('mc', '/data/server.properties');
   assert.equal(read.content, 'level-name=world\n');
-  await c.agentFileWrite('mc', '/data/server.properties', 'level-name=new\n');
+  assert.equal(read.truncated, false);
+  await c.fileWrite('mc', '/data/server.properties', 'level-name=new\n');
   assert.equal(written, 'level-name=new\n');
+  // atomic write: decode into a same-dir temp file, then rename over the target
+  assert.match(lastCmd, /base64 -d > "\/data\/server\.properties\.tmp\.\$\$"/);
+  assert.match(lastCmd, /mv -f "\/data\/server\.properties\.tmp\.\$\$" "\/data\/server\.properties"/);
+});
+
+test('DockerClient.fileWriteBytes round-trips arbitrary bytes via base64', async () => {
+  let written = null;
+  let lastCmd = '';
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, (_l, init) => {
+      lastCmd = JSON.parse(init.body).Cmd.join(' ');
+      return res({ json: { Id: 'w' } });
+    }],
+    [/^POST \/exec\/w\/start$/, () => {
+      const m = lastCmd.match(/printf %s "([^"]+)"/);
+      written = Buffer.from(m[1], 'base64');
+      return res({ bytes: new Uint8Array() });
+    }],
+    [/^GET \/exec\/w\/json$/, () => res({ json: { ExitCode: 0 } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+  assert.equal(await c.fileWriteBytes('mc', '/app/web/head.png', png), null);
+  assert.deepEqual(written, png);
+});
+
+test('DockerClient file ops throw a DockerError with the stderr detail on non-zero exit', async () => {
+  const { fetchImpl } = fakeFetch([
+    [/^POST \/containers\/mc\/exec$/, () => res({ json: { Id: 'e' } })],
+    [/^POST \/exec\/e\/start$/, () => res({ bytes: new Uint8Array(frame(2, 'cat: /nope: No such file or directory')) })],
+    [/^GET \/exec\/e\/json$/, () => res({ json: { ExitCode: 1 } })],
+  ]);
+  const c = new DockerClient({ host: 'tcp://docker-proxy:2375', fetchImpl });
+  await assert.rejects(
+    () => c.fileRead('mc', '/nope'),
+    (e) => e.name === 'DockerError' && /file-read \/nope/.test(e.message) && /No such file/.test(e.message),
+  );
 });
 
 // ── Docker connectors: locator + container-is-game + shared profile logic ───────
-function fakeDockerClient(files = {}) {
-  return {
-    files,
-    async statusCurrent() { return { status: 'running', uptime: 10, cpu: 0.1, mem: 1, maxmem: 2 }; },
-    async agentFileRead(_c, path) { return { content: files[path] ?? '' }; },
-    async agentFileWrite(_c, path, content) { files[path] = content; return null; },
-    async agentExec() { return { pid: 'p' }; },
-    async agentExecStatus() { return { exited: 1, exitcode: 0, 'out-data': '', 'err-data': '' }; },
-  };
-}
-
 const MC_DOCKER = { id: 'minecraft', name: 'Minecraft', backend: 'docker', container: 'minecraft', port: 25565 };
 
 test('DockerBaseConnector uses the container as its locator and treats running == hosting', async () => {
@@ -365,10 +436,11 @@ test('DockerMinecraftConnector apply/capture round-trips /data/server.properties
 });
 
 test('DockerMinecraftConnector.getLive is unavailable without an RCON password', async () => {
-  delete process.env.MINECRAFT_RCON_PASSWORD;
-  const conn = new DockerMinecraftConnector(MC_DOCKER, fakeDockerClient());
-  const live = await conn.getLive();
-  assert.equal(live.available, false);
+  await withEnv('MINECRAFT_RCON_PASSWORD', undefined, async () => {
+    const conn = new DockerMinecraftConnector(MC_DOCKER, fakeDockerClient());
+    const live = await conn.getLive();
+    assert.equal(live.available, false);
+  });
 });
 
 // ── factory wiring: backend selection ───────────────────────────────────────────
@@ -445,9 +517,7 @@ test('DockerCounterStrike.getSettings feeds the live change-map dropdown (stock 
 // old on/off button pairs.
 test('DockerGmod (TTT) getLive: binary toggles as buttons, ranges as slider controls', async () => {
   const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
-  const prev = process.env.GMOD_RCON_PASSWORD;
-  process.env.GMOD_RCON_PASSWORD = 'secret';
-  try {
+  await withEnv('GMOD_RCON_PASSWORD', 'secret', async () => {
     const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
     const live = await conn.getLive();
     assert.equal(live.available, true);
@@ -468,18 +538,14 @@ test('DockerGmod (TTT) getLive: binary toggles as buttons, ranges as slider cont
     assert.ok(!ctlKeys.includes('speed'), 'player-speed slider removed (no GMOD cvar for it)');
     const gravity = live.controls.find((c) => c.key === 'gravity');
     assert.ok(gravity.min != null && gravity.max != null && gravity.step != null && gravity.default != null);
-  } finally {
-    if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD; else process.env.GMOD_RCON_PASSWORD = prev;
-  }
+  });
 });
 
 // The range sliders push a single value → an RCON command via runLiveAction(key, value).
 test('DockerGmod runLiveAction maps range keys to clamped cvar commands', async () => {
   const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
-  const prev = process.env.GMOD_RCON_PASSWORD;
-  process.env.GMOD_RCON_PASSWORD = 'secret';
-  const sent = [];
-  try {
+  await withEnv('GMOD_RCON_PASSWORD', 'secret', async () => {
+    const sent = [];
     const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
     conn.runRcon = async (command) => { sent.push(command); return { output: '' }; };
     await conn.runLiveAction('gravity', '250');
@@ -488,7 +554,5 @@ test('DockerGmod runLiveAction maps range keys to clamped cvar commands', async 
     assert.equal(sent[0], 'sv_gravity 250');
     assert.equal(sent[1], 'sv_cheats 1; host_timescale 0.5');
     assert.equal(sent[2], 'sv_gravity 1000');
-  } finally {
-    if (prev === undefined) delete process.env.GMOD_RCON_PASSWORD; else process.env.GMOD_RCON_PASSWORD = prev;
-  }
+  });
 });

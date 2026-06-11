@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { testDb } from './test-db.js';
+import { fakeDockerClient } from './harness.mjs';
 import { createServerStore } from '../src/servers/store.js';
 import { GmodConnector, GMOD_ACTION_CMDS } from '../src/servers/connectors/gmod.js';
 import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
@@ -10,18 +11,21 @@ import { PropHuntConnector, PH_ACTION_CMDS } from '../src/servers/connectors/pro
 // CS / Factorio / Minecraft profile logic is covered by the docker-*.test.mjs
 // files (the live Docker connectors + their shared *-profile.js modules). This
 // file covers the store + the GMOD-family connectors (GMOD/Prop Hunt) directly.
+//
+// The transport fake is the shared harness client: an in-memory file map behind
+// fileRead/fileWrite plus a benign-success exec (it ACCEPTS `input` — the VM-class
+// connectors push the in-guest python RCON argv through runCommand with the
+// password on stdin). Map-listing helpers that grep see empty stdout → [].
 
-// Fake transport client: an in-memory file map for agentFileRead/Write, plus a
-// benign-success agentExec so runShell calls (e.g. CS's `mkdir`) work. Map-listing
-// helpers that grep see empty stdout → [] (no live box in tests).
-function fakeClient(files = {}) {
-  return {
-    files,
-    async agentFileRead(_vmid, path) { return { content: files[path] ?? '' }; },
-    async agentFileWrite(_vmid, path, content) { files[path] = content; return { ok: true }; },
-    async agentExec() { return { pid: 1 }; },
-    async agentExecStatus() { return { exited: true, exitcode: 0, 'out-data': '', 'err-data': '' }; },
+// Wire an exec spy that captures the python-RCON argv (+ stdin password) the
+// VM-class runRcon path sends through client.exec, replying with `stdout`.
+function execSpy(client, stdout = 'ok') {
+  const calls = [];
+  client.exec = async (_v, command, { input } = {}) => {
+    calls.push({ command, input });
+    return { exitCode: 0, signal: null, stdout, stderr: '', truncated: false };
   };
+  return calls;
 }
 
 const GMOD = { id: 'gmod', name: "Garry's Mod (TTT)", vmid: 104, port: 27066, connect: 'cs' };
@@ -31,7 +35,7 @@ const MAPCYCLE     = '/home/miles/gmodserver/serverfiles/garrysmod/mapcycle.txt'
 
 function gmod(files) {
   const store = createServerStore(testDb());
-  const client = fakeClient(files);
+  const client = fakeDockerClient(files);
   return { conn: new GmodConnector(GMOD, client, store), store, client };
 }
 
@@ -43,17 +47,17 @@ const PH_ACTIVE = '/home/miles/phserver/serverfiles/garrysmod/cfg/gamertown/acti
 
 function prophunt(files) {
   const store = createServerStore(testDb());
-  const client = fakeClient(files);
+  const client = fakeDockerClient(files);
   return { conn: new PropHuntConnector(PROPHUNT, client, store), store, client };
 }
 
 function prophuntNoStore(files) {
-  const client = fakeClient(files);
+  const client = fakeDockerClient(files);
   return { conn: new PropHuntConnector(PROPHUNT, client), client };
 }
 
 function dockerProphunt(files) {
-  const client = fakeClient(files);
+  const client = fakeDockerClient(files);
   return { conn: new DockerPropHuntConnector(DOCKER_PROPHUNT, client), client };
 }
 
@@ -288,10 +292,8 @@ test('prophunt: getLive + runLiveAction — change_map, next round, movement on 
   const off = prophunt({ [PH_GAME]: '' });
   assert.equal((await off.conn.getLive()).available, false);
 
-  const calls = [];
   const on = prophunt({ [PH_GAME]: 'rcon_password "ph-secret"\n' });
-  on.client.agentExec = (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); };
-  on.client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'players: 2' });
+  const calls = execSpy(on.client, 'players: 2');
   const live = await on.conn.getLive();
   assert.equal(live.available, true);
   assert.ok(live.actions.some((a) => a.key === 'next_round'));
@@ -316,10 +318,8 @@ test('prophunt: getLive + runLiveAction — change_map, next round, movement on 
 });
 
 test('prophunt: every advertised live action/control maps to the expected RCON command', async () => {
-  const calls = [];
   const on = prophuntNoStore({ [PH_GAME]: 'rcon_password "ph-secret"\n' });
-  on.client.agentExec = (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); };
-  on.client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'ok', 'err-data': '' });
+  const calls = execSpy(on.client);
 
   const live = await on.conn.getLive();
   assert.equal(live.available, true);
@@ -379,10 +379,8 @@ test('prophunt: every advertised live action/control maps to the expected RCON c
 });
 
 test('prophunt: sendCommand validates and forwards raw console commands', async () => {
-  const calls = [];
   const { conn, client } = prophuntNoStore({ [PH_GAME]: 'rcon_password "ph-secret"\n' });
-  client.agentExec = (_v, { command, input }) => { calls.push({ command, input }); return Promise.resolve({ pid: 1 }); };
-  client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'ok', 'err-data': '' });
+  const calls = execSpy(client);
 
   assert.deepEqual(await conn.sendCommand('  status  '), { output: 'ok' });
   assert.equal(calls.at(-1).command.at(-2), '27067');
@@ -397,27 +395,19 @@ test('prophunt: sendCommand validates and forwards raw console commands', async 
 
 test('prophunt: writeConfig writes the file and returns ok (no chown-back exec)', async () => {
   const { conn, client } = prophuntNoStore({ [PH_ACTIVE]: '' });
-  const execs = [];
-  const originalExec = client.agentExec;
-  client.agentExec = async (vmid, args) => { execs.push(args?.command ?? []); return originalExec(vmid, args); };
-
   assert.deepEqual(await conn.writeConfig('active.cfg', 'phx_verbose 1\n'), { name: 'active.cfg', ok: true });
   assert.equal(client.files[PH_ACTIVE], 'phx_verbose 1\n');
-  assert.ok(!execs.some((cmd) => cmd.some((a) => String(a).includes('chown'))), 'no chown exec should run');
+  assert.ok(!client.execCalls.some((c) => c.command.some((a) => String(a).includes('chown'))), 'no chown exec should run');
 });
 
 test('docker prophunt: update runs the LinuxGSM update command in-container', async () => {
   const { conn, client } = dockerProphunt();
-  const execs = [];
-  const originalExec = client.agentExec;
-  client.agentExec = async (container, args) => { execs.push({ container, ...args }); return originalExec(container, args); };
-
   const res = await conn.update();
   assert.equal(res.ok, true);
   assert.equal(res.steps[0].name, 'gmodserver update');
-  assert.deepEqual(execs[0].command, ['/bin/bash', '-lc', '/data/gmodserver update']);
-  assert.equal(execs[0].container, 'prophunt');
-  assert.equal(execs[0].timeoutMs, 1_800_000);
+  assert.deepEqual(client.execCalls[0].command, ['/bin/bash', '-lc', '/data/gmodserver update']);
+  assert.equal(client.execCalls[0].container, 'prophunt');
+  assert.equal(client.execCalls[0].timeoutMs, 1_800_000);
 });
 
 test('prophunt: syncMaps runs and returns the installed map list', async () => {
@@ -435,24 +425,22 @@ test('prophunt: listProfiles seeds a Default the first time', () => {
 });
 
 // ── shared change_map + bhop/cheats consolidation (GmodConnector.changeMapCmd) ────
-// Wire an RCON-capturing client onto a VM-style connector (records the command the
+// Wire an exec spy onto a VM-style connector (records the python-RCON argv the
 // inherited runRcon passes through). Returns the last command string.
-function liveCapture(conn, client) {
-  const calls = [];
-  client.agentExec = (_v, { command }) => { calls.push(command); return Promise.resolve({ pid: 1 }); };
-  client.agentExecStatus = () => Promise.resolve({ exited: true, exitcode: 0, 'out-data': 'ok', 'err-data': '' });
-  return { calls, last: () => calls.at(-1)?.at(-1) };
+function liveCapture(client) {
+  const calls = execSpy(client);
+  return { calls, last: () => calls.at(-1)?.command.at(-1) };
 }
 
 test('gmod + prophunt: change_map is the shared changeMapCmd (validates the map name)', async () => {
   const g = gmod({ [SERVER_CFG]: 'rcon_password "x"\n' });
-  const gcap = liveCapture(g.conn, g.client);
+  const gcap = liveCapture(g.client);
   await g.conn.runLiveAction('change_map', 'gm_construct');
   assert.equal(gcap.last(), 'changelevel gm_construct');
   await assert.rejects(() => g.conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
 
   const p = prophunt({ [PH_GAME]: 'rcon_password "x"\n' });
-  const pcap = liveCapture(p.conn, p.client);
+  const pcap = liveCapture(p.client);
   await p.conn.runLiveAction('change_map', 'gm_construct');
   assert.equal(pcap.last(), 'changelevel gm_construct');
   await assert.rejects(() => p.conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { fakeDockerClient } from './harness.mjs';
 import {
   blueMapPlayersOptions,
   buildPlayersJson,
@@ -46,23 +47,10 @@ test('blueMapPlayersOptions reads env toggles and defaults', () => {
   assert.equal(blueMapPlayersOptions({ BLUEMAP_PLAYERS_POLL_MS: '10' }).pollMs, 1000); // clamped
 });
 
-function fakeDocker() {
-  const writes = [];
-  const bytes = [];
-  return {
-    writes,
-    bytes,
-    agentExec: async () => ({ pid: 1 }),
-    agentExecStatus: async () => ({ exitcode: 0 }),
-    agentFileWrite: async (_c, file, content) => { writes.push([file, content]); },
-    agentFileWriteBytes: async (_c, file, buf) => { bytes.push([file, buf.length]); },
-  };
-}
-
 const POS = { x: 10, y: 64, z: -5, dimension: 'minecraft:overworld', mapId: 'overworld', yaw: 90, pitch: 0 };
 
 test('controller writes players.json for all three maps + one skin, reusing cached skins', async () => {
-  const dockerClient = fakeDocker();
+  const dockerClient = fakeDockerClient();
   const online = [{ name: 'Steve', uid: UUID, identityKind: 'minecraft', position: POS }];
   const serverService = {
     liveOnlineWithPositions: async () => online,
@@ -97,7 +85,7 @@ test('controller writes players.json for all three maps + one skin, reusing cach
 });
 
 test('controller clears markers once when empty, then idles', async () => {
-  const dockerClient = fakeDocker();
+  const dockerClient = fakeDockerClient();
   const serverService = { liveOnlineWithPositions: async () => [] };
   const ctl = createBlueMapPlayersController({ dockerClient, serverService, logger: { error() {} }, env: {} });
 
@@ -111,7 +99,7 @@ test('controller clears markers once when empty, then idles', async () => {
 });
 
 test('controller skips live rows without a resolvable Mojang UUID', async () => {
-  const dockerClient = fakeDocker();
+  const dockerClient = fakeDockerClient();
   const serverService = {
     liveOnlineWithPositions: async () => [
       { name: 'NoUuid', uid: null, identityKind: 'minecraft', position: POS },        // unresolved uid → skipped
@@ -131,12 +119,9 @@ test('controller skips live rows without a resolvable Mojang UUID', async () => 
 
 test('tick degrades quietly: a persistent docker failure logs error once, then debug', async () => {
   const errs = [], dbgs = [];
-  const dockerClient = {
-    agentExec: async () => { throw new Error('bluemap container down'); }, // ensureDirs fails
-    agentExecStatus: async () => ({ exitcode: 0 }),
-    agentFileWrite: async () => {},
-    agentFileWriteBytes: async () => {},
-  };
+  const dockerClient = fakeDockerClient({}, {
+    exec: async () => { throw new Error('bluemap container down'); }, // ensureDirs fails
+  });
   const serverService = {
     liveOnlineWithPositions: async () => [{ name: 'Steve', uid: UUID, identityKind: 'minecraft', position: POS }],
   };
@@ -150,8 +135,27 @@ test('tick degrades quietly: a persistent docker failure logs error once, then d
   assert.ok(dbgs.length >= 1);    // subsequent failures dropped to debug (no 2s spam)
 });
 
+test('tick surfaces a non-zero mkdir exit (ensureDirs reads exitCode/stderr)', async () => {
+  const errs = [];
+  const dockerClient = fakeDockerClient({}, {
+    exec: async () => ({ exitCode: 1, signal: null, stdout: '', stderr: 'mkdir: read-only file system', truncated: false }),
+  });
+  const serverService = {
+    liveOnlineWithPositions: async () => [{ name: 'Steve', uid: UUID, identityKind: 'minecraft', position: POS }],
+  };
+  const ctl = createBlueMapPlayersController({
+    dockerClient, serverService, env: {}, fetchImpl: async () => ({ ok: false }),
+    logger: { error: (...a) => errs.push(a), debug() {}, warn() {} },
+  });
+  const r = await ctl.tick();
+  assert.ok(r.error);
+  assert.match(r.error.message, /bluemap mkdir failed/);
+  assert.match(r.error.message, /read-only file system/);
+  assert.equal(dockerClient.writes.length, 0); // no players.json written after a failed mkdir
+});
+
 test('disabled controller does nothing', async () => {
-  const dockerClient = fakeDocker();
+  const dockerClient = fakeDockerClient();
   const ctl = createBlueMapPlayersController({
     dockerClient,
     serverService: { liveOnlineWithPositions: async () => [] },

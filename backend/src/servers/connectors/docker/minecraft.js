@@ -137,7 +137,7 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
   // ── world discovery (for the profile world picker) ──────────────────────────
   async #currentWorld() {
     try {
-      const { content = '' } = await this.client.agentFileRead(this.vmid, PROPS);
+      const { content = '' } = await this.client.fileRead(this.vmid, PROPS);
       return content.match(/^level-name\s*=\s*(.+)$/m)?.[1]?.trim() || 'world';
     } catch {
       return 'world';
@@ -168,13 +168,13 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
   }
 
   async applyProfileSettings(settings) {
-    const text = (await this.client.agentFileRead(this.vmid, PROPS)).content ?? '';
-    await this.client.agentFileWrite(this.vmid, PROPS, mcProfile.applyProps(text, settings));
+    const text = (await this.client.fileRead(this.vmid, PROPS)).content ?? '';
+    await this.client.fileWrite(this.vmid, PROPS, mcProfile.applyProps(text, settings));
     return { ok: true };
   }
 
   async captureProfileSettings() {
-    const text = await this.client.agentFileRead(this.vmid, PROPS).then((r) => r.content ?? '').catch(() => '');
+    const text = await this.client.fileRead(this.vmid, PROPS).then((r) => r.content ?? '').catch(() => '');
     return mcProfile.captureProps(text);
   }
 
@@ -226,7 +226,7 @@ export class DockerMinecraftConnector extends DockerBaseConnector {
   // name→uuid map. Best-effort: any read/parse failure yields an empty map.
   async #usercache() {
     try {
-      const { content = '' } = await this.client.agentFileRead(this.vmid, `${DATA}/usercache.json`);
+      const { content = '' } = await this.client.fileRead(this.vmid, `${DATA}/usercache.json`);
       const map = new Map();
       for (const entry of JSON.parse(content || '[]')) {
         if (entry?.name && entry?.uuid) map.set(String(entry.name).toLowerCase(), String(entry.uuid));

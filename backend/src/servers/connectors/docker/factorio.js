@@ -94,18 +94,18 @@ export class DockerFactorioConnector extends DockerBaseConnector {
   async applyProfileSettings(settings) {
     const s = this.validateProfileSettings(settings);
 
-    const text = (await this.client.agentFileRead(this.vmid, SERVER_SETTINGS)).content ?? '';
+    const text = (await this.client.fileRead(this.vmid, SERVER_SETTINGS)).content ?? '';
     let json; try { json = JSON.parse(text || '{}'); } catch { json = {}; }
     fctrProfile.applyServerSettings(json, s);
-    await this.client.agentFileWrite(this.vmid, SERVER_SETTINGS, JSON.stringify(json, null, 2) + '\n');
+    await this.client.fileWrite(this.vmid, SERVER_SETTINGS, JSON.stringify(json, null, 2) + '\n');
 
     // World rules → map-settings.json (boot truth). This file is baked into a save
     // at GENERATION, so it only affects a NEWLY generated world — a running world
     // is changed via the live Game Speed / Evolution controls.
-    const mtext = (await this.client.agentFileRead(this.vmid, MAP_SETTINGS)).content ?? '';
+    const mtext = (await this.client.fileRead(this.vmid, MAP_SETTINGS)).content ?? '';
     let mjson; try { mjson = JSON.parse(mtext || '{}'); } catch { mjson = {}; }
     fctrProfile.applyMapSettings(mjson, s);
-    await this.client.agentFileWrite(this.vmid, MAP_SETTINGS, JSON.stringify(mjson, null, 2) + '\n');
+    await this.client.fileWrite(this.vmid, MAP_SETTINGS, JSON.stringify(mjson, null, 2) + '\n');
 
     // Active world: stage the chosen save as the one the container loads. Takes
     // effect on the next restart (the panel's Apply restarts the container).
@@ -117,9 +117,9 @@ export class DockerFactorioConnector extends DockerBaseConnector {
   }
 
   async captureProfileSettings() {
-    const text = await this.client.agentFileRead(this.vmid, SERVER_SETTINGS).then((r) => r.content ?? '').catch(() => '');
+    const text = await this.client.fileRead(this.vmid, SERVER_SETTINGS).then((r) => r.content ?? '').catch(() => '');
     let json = {}; try { json = JSON.parse(text || '{}'); } catch {}
-    const mtext = await this.client.agentFileRead(this.vmid, MAP_SETTINGS).then((r) => r.content ?? '').catch(() => '');
+    const mtext = await this.client.fileRead(this.vmid, MAP_SETTINGS).then((r) => r.content ?? '').catch(() => '');
     let mjson = {}; try { mjson = JSON.parse(mtext || '{}'); } catch {}
     // The container loads _active.zip, so the original world name isn't recoverable
     // here — capture the server-settings + map-settings knobs and leave the world
@@ -133,7 +133,7 @@ export class DockerFactorioConnector extends DockerBaseConnector {
 
   // ── quick settings: copy the live world to a named save ─────────────────────
   async connectPassword() {
-    const text = await this.client.agentFileRead(this.vmid, SERVER_SETTINGS).then((r) => r.content ?? '').catch(() => '');
+    const text = await this.client.fileRead(this.vmid, SERVER_SETTINGS).then((r) => r.content ?? '').catch(() => '');
     let json = {}; try { json = JSON.parse(text || '{}'); } catch {}
     return typeof json.game_password === 'string' ? json.game_password : '';
   }
@@ -162,7 +162,7 @@ export class DockerFactorioConnector extends DockerBaseConnector {
 
   // ── live commands (Source-RCON over TCP) ────────────────────────────────────
   async #rconCreds() {
-    const password = (await this.client.agentFileRead(this.vmid, `${CONFIG}/rconpw`)
+    const password = (await this.client.fileRead(this.vmid, `${CONFIG}/rconpw`)
       .then((r) => r.content ?? '').catch(() => '')).trim();
     return { password, port: this.server.rconPort ?? 27015 };
   }

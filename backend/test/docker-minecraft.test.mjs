@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import net from 'node:net';
 
+import { fakeDockerClient, withRconCapture, withEnv } from './harness.mjs';
 import * as mp from '../src/servers/connectors/minecraft-profile.js';
 import { clampNumber } from '../src/servers/connectors/docker-base.js';
 import { DockerMinecraftConnector, parseMinecraftPlayerList } from '../src/servers/connectors/docker/minecraft.js';
@@ -125,76 +125,18 @@ test('mc-profile CVAR_REF catalogs on-disk keys with bounds', () => {
 });
 
 // ── Docker connector wires the shared groups + a world picker ────────────────────
-function fakeMcClient(files = {}) {
-  const execs = [];
-  return {
-    files, execs,
-    async agentFileRead(_c, path) { return { content: files[path] ?? '' }; },
-    async agentFileWrite(_c, path, content) { files[path] = content; return null; },
-    async agentExec(_c, { command }) { execs.push(command); return { pid: 'p' }; },
-    async agentExecStatus() { return { exited: 1, exitcode: 0, 'out-data': '', 'err-data': '' }; },
-  };
-}
-
 const MC = { id: 'minecraft', name: 'Minecraft', backend: 'docker', container: 'minecraft', port: 25565 };
 
-function fakeMcClientWithExec(files = {}, stdout = '') {
-  const client = fakeMcClient(files);
-  client.agentExecStatus = async () => ({ exited: 1, exitcode: 0, 'out-data': stdout, 'err-data': '' });
-  return client;
-}
-
-function encodeRcon(id, type, body) {
-  const b = Buffer.from(body, 'ascii');
-  const size = 4 + 4 + b.length + 2;
-  const buf = Buffer.allocUnsafe(4 + size);
-  buf.writeInt32LE(size, 0); buf.writeInt32LE(id, 4); buf.writeInt32LE(type, 8);
-  b.copy(buf, 12); buf.writeInt8(0, 12 + b.length); buf.writeInt8(0, 13 + b.length);
-  return buf;
-}
-
-async function withRconCapture(run, responder = () => '') {
-  const commands = [];
-  const server = net.createServer((sock) => {
-    let buf = Buffer.alloc(0);
-    sock.on('data', (chunk) => {
-      buf = Buffer.concat([buf, chunk]);
-      while (buf.length >= 4) {
-        const size = buf.readInt32LE(0);
-        if (buf.length < 4 + size) break;
-        const id = buf.readInt32LE(4);
-        const type = buf.readInt32LE(8);
-        const body = buf.toString('ascii', 12, 4 + size - 2);
-        buf = buf.subarray(4 + size);
-        if (type === 3) { sock.write(encodeRcon(id, 2, '')); continue; }
-        if (id === 3) { sock.write(encodeRcon(3, 0, '')); continue; }
-        commands.push(body);
-        sock.write(encodeRcon(id, 0, responder(body)));
-      }
-    });
-  });
-  await new Promise((res) => server.listen(0, '127.0.0.1', res));
-  const { port } = server.address();
-  try { await run({ port }); } finally { await new Promise((res) => server.close(res)); }
-  return commands;
-}
-
-async function captureMinecraftRcon(run, responder) {
-  const prev = process.env.MINECRAFT_RCON_PASSWORD;
-  process.env.MINECRAFT_RCON_PASSWORD = 'secret';
-  try {
-    return await withRconCapture(async ({ port }) => {
-      const conn = new DockerMinecraftConnector({ ...MC, container: '127.0.0.1', rconPort: port }, fakeMcClient());
+function captureMinecraftRcon(run, responder) {
+  return withEnv('MINECRAFT_RCON_PASSWORD', 'secret', () =>
+    withRconCapture({ responder: responder ?? (() => '') }, async ({ port }) => {
+      const conn = new DockerMinecraftConnector({ ...MC, container: '127.0.0.1', rconPort: port }, fakeDockerClient());
       await run(conn);
-    }, responder);
-  } finally {
-    if (prev === undefined) delete process.env.MINECRAFT_RCON_PASSWORD;
-    else process.env.MINECRAFT_RCON_PASSWORD = prev;
-  }
+    })).then((r) => r.commands);
 }
 
 test('DockerMinecraft profileSchema groups World/Gameplay/Access with a world picker + cvarRef', async () => {
-  const conn = new DockerMinecraftConnector(MC, fakeMcClient({ '/data/server.properties': 'level-name=world\n' }));
+  const conn = new DockerMinecraftConnector(MC, fakeDockerClient({ '/data/server.properties': 'level-name=world\n' }));
   const { groups, cvarRef } = await conn.profileSchema();
   assert.deepEqual(groups.map((g) => g.key), ['world', 'gameplay', 'access']);
   const worldField = groups[0].fields.find((f) => f.key === 'world');
@@ -204,23 +146,19 @@ test('DockerMinecraft profileSchema groups World/Gameplay/Access with a world pi
 
 // Docker connector world discovery uses the in-container /data layout.
 test('DockerMinecraft profileSchema discovers /data worlds with the level.dat find command', async () => {
-  const client = fakeMcClientWithExec(
-    { '/data/server.properties': 'level-name=active\n' },
-    'active\ncreative_world\n',
-  );
+  const client = fakeDockerClient({ '/data/server.properties': 'level-name=active\n' });
+  client.execStdout = 'active\ncreative_world\n';
   const conn = new DockerMinecraftConnector(MC, client);
   const { groups } = await conn.profileSchema();
-  assert.ok(client.execs.some((cmd) => cmd.join(' ').includes('find "/data" -maxdepth 2 -name level.dat')));
+  assert.ok(client.execCalls.some((c) => c.command.join(' ').includes('find "/data" -maxdepth 2 -name level.dat')));
   const options = groups[0].fields.find((f) => f.key === 'world').options.map((o) => o.value);
   assert.deepEqual(options, ['', 'active', 'creative_world']);
 });
 
 // Live runtime: getLive shape (actions + slider controls, NO changeMap).
 test('DockerMinecraft getLive advertises actions + controls and no changeMap', async () => {
-  const prev = process.env.MINECRAFT_RCON_PASSWORD;
-  process.env.MINECRAFT_RCON_PASSWORD = 'x';
-  try {
-    const conn = new DockerMinecraftConnector(MC, fakeMcClient());
+  await withEnv('MINECRAFT_RCON_PASSWORD', 'x', async () => {
+    const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
     const live = await conn.getLive();
     assert.equal(live.available, true);
     assert.equal(live.changeMap, undefined); // world switch is restart-only
@@ -233,29 +171,22 @@ test('DockerMinecraft getLive advertises actions + controls and no changeMap', a
     assert.deepEqual(ctlKeys, ['time', 'randomtick', 'sleeppct']);
     const t = live.controls.find((c) => c.key === 'time');
     assert.equal(t.min, 0); assert.equal(t.max, 24000);
-  } finally {
-    if (prev === undefined) delete process.env.MINECRAFT_RCON_PASSWORD;
-    else process.env.MINECRAFT_RCON_PASSWORD = prev;
-  }
+  });
 });
 
 test('DockerMinecraft getLive is unavailable without an RCON password', async () => {
-  const prev = process.env.MINECRAFT_RCON_PASSWORD;
-  delete process.env.MINECRAFT_RCON_PASSWORD;
-  try {
-    const conn = new DockerMinecraftConnector(MC, fakeMcClient());
+  await withEnv('MINECRAFT_RCON_PASSWORD', undefined, async () => {
+    const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
     const live = await conn.getLive();
     assert.equal(live.available, false);
-  } finally {
-    if (prev !== undefined) process.env.MINECRAFT_RCON_PASSWORD = prev;
-  }
+  });
 });
 
 // ── runLiveAction: unknown keys reject before any RCON I/O ───────────────────────
 // (The range/action cases issue real Source-RCON over a socket, so they're left to
 // the host smoke-test; the unknown-key guard short-circuits before #rcon is called.)
 test('DockerMinecraft runLiveAction rejects unknown keys with BAD_SETTING', async () => {
-  const conn = new DockerMinecraftConnector(MC, fakeMcClient());
+  const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
   await assert.rejects(() => conn.runLiveAction('nope'), (e) => e.code === 'BAD_SETTING');
 });
 
@@ -317,7 +248,7 @@ test('DockerMinecraft sendCommand trims + forwards valid commands and rejects ba
   const commands = await captureMinecraftRcon((conn) => conn.sendCommand('  say hello  '));
   assert.deepEqual(commands, ['say hello']);
 
-  const conn = new DockerMinecraftConnector(MC, fakeMcClient());
+  const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
   await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => conn.sendCommand('a\nb'), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => conn.sendCommand('x'.repeat(513)), (e) => e.code === 'BAD_SETTING');
@@ -340,20 +271,17 @@ test('DockerMinecraft listOnlinePlayers parses the RCON list output', async () =
 });
 
 test('listOnlinePlayers short-circuits without MINECRAFT_RCON_PASSWORD', async () => {
-  const prev = process.env.MINECRAFT_RCON_PASSWORD;
-  delete process.env.MINECRAFT_RCON_PASSWORD;
-  try {
-    // Spy RCON client: every issued command lands in `commands`. With no password set,
+  await withEnv('MINECRAFT_RCON_PASSWORD', undefined, async () => {
+    // Spy RCON server: every issued command lands in `commands`. With no password set,
     // listOnlinePlayers must return [] AND never touch the socket (zero commands).
-    const commands = await withRconCapture(async ({ port }) => {
-      const conn = new DockerMinecraftConnector({ ...MC, container: '127.0.0.1', rconPort: port }, fakeMcClient());
-      assert.deepEqual(await conn.listOnlinePlayers(), []);
-    }, () => 'There are 1 of a max of 20 players online: dheagman');
+    const { commands } = await withRconCapture(
+      { responder: () => 'There are 1 of a max of 20 players online: dheagman' },
+      async ({ port }) => {
+        const conn = new DockerMinecraftConnector({ ...MC, container: '127.0.0.1', rconPort: port }, fakeDockerClient());
+        assert.deepEqual(await conn.listOnlinePlayers(), []);
+      });
     assert.deepEqual(commands, []);
-  } finally {
-    if (prev === undefined) delete process.env.MINECRAFT_RCON_PASSWORD;
-    else process.env.MINECRAFT_RCON_PASSWORD = prev;
-  }
+  });
 });
 
 test('DockerMinecraft getPlayerPosition parses position, dimension, and BlueMap anchor', async () => {
@@ -431,12 +359,10 @@ test('DockerMinecraft live-control bounds clamp slider values', () => {
 });
 
 test('DockerMinecraft update reboots the container to refresh the configured VERSION', async () => {
-  const calls = [];
-  const client = fakeMcClient();
-  client.reboot = async (container) => { calls.push(container); return { ok: true }; };
+  const client = fakeDockerClient();
   const conn = new DockerMinecraftConnector(MC, client);
   const res = await conn.update();
-  assert.deepEqual(calls, ['minecraft']);
+  assert.deepEqual(client.powerCalls, [['reboot', 'minecraft']]);
   assert.equal(res.ok, true);
   assert.match(res.note, /VERSION/);
 });

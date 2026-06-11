@@ -23,8 +23,7 @@ import {
   GmodConnector, GMOD_SHARED_LIVE_CONTROLS, GMOD_BHOP_CMDS, GMOD_CHEATS_CMDS, gmodRangeCmd,
 } from './gmod.js';
 import { clampNumber } from './docker-base.js';
-import { getVar, setVars } from '../cfgvars.js';
-import { getCvar, setCvars } from '../cvars.js';
+import { getVar, setVars, getCvar, setCvars } from '../line-config.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
 
 const GAMEMODE   = 'prop_hunt';
@@ -241,33 +240,33 @@ export class PropHuntConnector extends GmodConnector {
     // break the X2Z mount (an empty/changed collection bricks the gamemode boot) — the
     // collection id is managed only via importCollection / the Raw Config editor. (Fixes
     // a latent bug where Apply wrote s.workshopCollection.) Host-validate X2Z still boots.
-    let inst = (await this.client.agentFileRead(this.vmid, P.instanceCfg)).content ?? '';
+    let inst = (await this.client.fileRead(this.vmid, P.instanceCfg)).content ?? '';
     inst = setVars(inst, {
       gamemode: GAMEMODE,
       defaultmap: s.propHuntMap,
       maxplayers: String(s.maxPlayers),
       ...(profileId != null ? { gt_active_profile: String(profileId) } : {}),
     });
-    await this.client.agentFileWrite(this.vmid, P.instanceCfg, inst);
+    await this.client.fileWrite(this.vmid, P.instanceCfg, inst);
 
-    let game = (await this.client.agentFileRead(this.vmid, P.serverCfg)).content ?? '';
+    let game = (await this.client.fileRead(this.vmid, P.serverCfg)).content ?? '';
     const cvars = {};
     for (const f of PH_CVARS) cvars[f.cvar] = s[f.key];
     game = setCvars(game, cvars);
     if (!EXEC_LINE_RE.test(game)) game = game.replace(/\n*$/, '') + `\nexec ${ACTIVE_EXEC}\n`;
-    await this.client.agentFileWrite(this.vmid, P.serverCfg, game);
+    await this.client.fileWrite(this.vmid, P.serverCfg, game);
 
     await this.runShell(`mkdir -p "${P.garrysmod}/cfg/gamertown"`, { asUser: this.gsmUser, timeoutMs: 10_000 });
-    await this.client.agentFileWrite(this.vmid, `${P.garrysmod}/cfg/gamertown/active.cfg`, s.rawConfig);
+    await this.client.fileWrite(this.vmid, `${P.garrysmod}/cfg/gamertown/active.cfg`, s.rawConfig);
     return { ok: true };
   }
 
   async captureProfileSettings() {
     const P = this.paths;
     const [game, inst, active] = await Promise.all([
-      this.client.agentFileRead(this.vmid, P.serverCfg).then((r) => r.content ?? '').catch(() => ''),
-      this.client.agentFileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
-      this.client.agentFileRead(this.vmid, `${P.garrysmod}/cfg/gamertown/active.cfg`).then((r) => r.content ?? '').catch(() => ''),
+      this.client.fileRead(this.vmid, P.serverCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.client.fileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.client.fileRead(this.vmid, `${P.garrysmod}/cfg/gamertown/active.cfg`).then((r) => r.content ?? '').catch(() => ''),
     ]);
     const doc = {
       // Lowercase like GmodConnector.captureProfileSettings: a mixed-case Workshop

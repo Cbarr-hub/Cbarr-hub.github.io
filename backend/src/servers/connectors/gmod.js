@@ -35,8 +35,7 @@
 // All of the above apply on the next server restart.
 
 import { LinuxGsmConnector } from './linuxgsm.js';
-import { getVar, setVars } from '../cfgvars.js';
-import { getCvar, setCvars } from '../cvars.js';
+import { getVar, setVars, getCvar, setCvars } from '../line-config.js';
 import { rconCommand, validateLiveCommand } from '../rcon.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
 import { fetchCollectionMaps } from '../steam-workshop.js';
@@ -269,9 +268,9 @@ export class GmodConnector extends LinuxGsmConnector {
 
     // 1) Persist the collection id into the instance cfg so the NEXT boot mounts it.
     const P = this.paths;
-    let inst = (await this.client.agentFileRead(this.vmid, P.instanceCfg)).content ?? '';
+    let inst = (await this.client.fileRead(this.vmid, P.instanceCfg)).content ?? '';
     inst = setVars(inst, { wscollectionid: id });
-    await this.client.agentFileWrite(this.vmid, P.instanceCfg, inst);
+    await this.client.fileWrite(this.vmid, P.instanceCfg, inst);
 
     // 2) Best-effort: extract any already-downloaded .gma into maps/ (no-op pre-restart).
     await this.syncMaps().catch(() => {});
@@ -297,7 +296,7 @@ export class GmodConnector extends LinuxGsmConnector {
   async getSettings() {
     const P = this.paths;
     const [inst, maps] = await Promise.all([
-      this.client.agentFileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.client.fileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
       this.installedMaps(),
     ]);
     const defaultMap = (getVar(inst, 'defaultmap') || '').trim();
@@ -443,31 +442,31 @@ export class GmodConnector extends LinuxGsmConnector {
       }
     }
 
-    let inst = (await this.client.agentFileRead(this.vmid, P.instanceCfg)).content ?? '';
+    let inst = (await this.client.fileRead(this.vmid, P.instanceCfg)).content ?? '';
     inst = setVars(inst, {
       defaultmap: bootMap,
       maxplayers: String(s.maxPlayers),
       wscollectionid: s.workshopCollection,
       ...(profileId != null ? { gt_active_profile: String(profileId) } : {}),
     });
-    await this.client.agentFileWrite(this.vmid, P.instanceCfg, inst);
+    await this.client.fileWrite(this.vmid, P.instanceCfg, inst);
 
-    let game = (await this.client.agentFileRead(this.vmid, P.serverCfg)).content ?? '';
+    let game = (await this.client.fileRead(this.vmid, P.serverCfg)).content ?? '';
     const cvars = { ttt_always_use_mapcycle: s.useMapcycle };
     for (const f of TTT_FIELDS) cvars[f.cvar] = String(s[f.key]);
     game = setCvars(game, cvars);
-    await this.client.agentFileWrite(this.vmid, P.serverCfg, game);
+    await this.client.fileWrite(this.vmid, P.serverCfg, game);
 
-    await this.client.agentFileWrite(this.vmid, P.mapcycle, rotation.join('\n') + '\n');
+    await this.client.fileWrite(this.vmid, P.mapcycle, rotation.join('\n') + '\n');
     return { ok: true };
   }
 
   async captureProfileSettings() {
     const P = this.paths;
     const [game, inst, mapcycle] = await Promise.all([
-      this.client.agentFileRead(this.vmid, P.serverCfg).then((r) => r.content ?? '').catch(() => ''),
-      this.client.agentFileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
-      this.client.agentFileRead(this.vmid, P.mapcycle).then((r) => r.content ?? '').catch(() => ''),
+      this.client.fileRead(this.vmid, P.serverCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.client.fileRead(this.vmid, P.instanceCfg).then((r) => r.content ?? '').catch(() => ''),
+      this.client.fileRead(this.vmid, P.mapcycle).then((r) => r.content ?? '').catch(() => ''),
     ]);
     const num = (cvar, def) => {
       const v = getCvar(game, cvar);
@@ -500,12 +499,12 @@ export class GmodConnector extends LinuxGsmConnector {
   // RCON is disabled and getLive() reports unavailable. Cached nowhere — re-read per
   // call so an Apply that sets the password takes effect without a connector reload.
   async rconPassword() {
-    const game = await this.client.agentFileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
+    const game = await this.client.fileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
     return (getCvar(game, 'rcon_password') || '').trim();
   }
 
   async connectPassword() {
-    const game = await this.client.agentFileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
+    const game = await this.client.fileRead(this.vmid, this.paths.serverCfg).then((r) => r.content ?? '').catch(() => '');
     return (getCvar(game, 'sv_password') || '').trim();
   }
 

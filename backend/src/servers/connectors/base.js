@@ -12,9 +12,8 @@
 // at the base default cleanly reports "not supported" rather than crashing.
 //
 //   status / power     status() + start/shutdown/reboot/stop are inherited and
-//                      transport-driven; a subclass overrides gameRunning() (and,
-//                      for the container model, the game-process aliases — see
-//                      docker-base.js `containerGameLifecycle`).
+//                      transport-driven (the container IS the game: running ==
+//                      hosting).
 //   config files       override the `configFiles` getter to whitelist the only
 //                      guest paths read/writeConfig may touch (logical name → path).
 //   quick settings     getSettings/setSettings expose a small validated field set
@@ -55,45 +54,26 @@ export class BaseConnector {
   get configFiles() { return {}; }
 
   // ── status ─────────────────────────────────────────────────────────────────
+  // The container IS the game: running == hosting, anything else == down.
   async status(options = {}) {
     const data = await this.client.statusCurrent(this.vmid, options);
     const base = normalizeStatus(data);
-    if (base.status === 'running') {
-      try {
-        base.gameStatus = (await this.gameRunning()) ? 'hosting' : 'idle';
-      } catch {
-        base.gameStatus = 'unknown';
-      }
-    } else {
-      base.gameStatus = 'down';
-    }
+    base.gameStatus = base.status === 'running' ? 'hosting' : 'down';
     return base;
   }
 
-  // Subclasses override: return true when the game server process is running.
-  async gameRunning() { return false; }
-
-  // ── power (VM-level) ─────────────────────────────────────────────────────────
+  // ── power ────────────────────────────────────────────────────────────────────
   start()    { return this.client.start(this.vmid); }
-  shutdown() { return this.client.shutdown(this.vmid); } // graceful ACPI
+  shutdown() { return this.client.shutdown(this.vmid); } // graceful
   reboot()   { return this.client.reboot(this.vmid); }   // graceful reboot
   stop()     { return this.client.stop(this.vmid); }     // hard power-off (force)
 
-  // ── game process (in-VM) ─────────────────────────────────────────────────────
-  // Subclasses override to start/stop/restart the game server process in the VM.
-  startGame()   { const e = new Error('startGame not implemented');   e.code = 'BAD_ACTION'; throw e; }
-  stopGame()    { const e = new Error('stopGame not implemented');    e.code = 'BAD_ACTION'; throw e; }
-  restartGame() { const e = new Error('restartGame not implemented'); e.code = 'BAD_ACTION'; throw e; }
-
-  // ── in-VM command execution (Phase 2) ──────────────────────────────────────
-  // Run a /bin/bash login-shell command line inside the guest. The QEMU guest
-  // agent executes as ROOT; pass `asUser` to drop privileges with runuser
-  // (LinuxGSM and most game servers refuse to run as root).
+  // ── in-container command execution ──────────────────────────────────────────
+  // Run a /bin/bash login-shell command line inside the container. Exec already
+  // runs as the container's game user, so there is no privilege-drop wrapping.
+  // (`asUser` is accepted-and-ignored for legacy callers.)
   runShell(shellCommand, { asUser, ...opts } = {}) {
-    const command = asUser
-      ? ['/usr/sbin/runuser', '-u', asUser, '--', '/bin/bash', '-lc', shellCommand]
-      : ['/bin/bash', '-lc', shellCommand];
-    return this.runCommand(command, opts);
+    return this.runCommand(['/bin/bash', '-lc', shellCommand], opts);
   }
 
   // Runs a command via the guest agent and polls until it exits (or times out).
@@ -213,7 +193,6 @@ export class BaseConnector {
   listConfigs()  { throw notSupported('a config library'); }
   getConfig()    { throw notSupported('a config library'); }
   createConfig() { throw notSupported('a config library'); }
-  updateConfig() { throw notSupported('a config library'); }
   deleteConfig() { throw notSupported('a config library'); }
 
   // ── startup-config profiles ──────────────────────────────────────────────────

@@ -74,10 +74,6 @@ export function createServerStore(db) {
     insertConfig: db.prepare(
       `INSERT INTO server_configs (server_id, name, body) VALUES (?, ?, ?)`,
     ),
-    updateConfig: db.prepare(
-      `UPDATE server_configs SET name = ?, body = ?, updated_at = unixepoch()
-        WHERE server_id = ? AND id = ?`,
-    ),
     deleteConfig: db.prepare(
       `DELETE FROM server_configs WHERE server_id = ? AND id = ?`,
     ),
@@ -149,34 +145,7 @@ export function createServerStore(db) {
     closeAllOpen: db.prepare(
       `UPDATE server_sessions SET left_at = ?, source = ? WHERE left_at IS NULL`,
     ),
-    listSessionsLinked: db.prepare(
-      `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
-              s.joined_at, s.left_at, s.source,
-              ${ACCOUNT_COLS}
-         FROM server_sessions s${accountJoin('JOIN')}
-        WHERE s.game_id = ?
-        ORDER BY s.joined_at DESC
-        LIMIT ?`,
-    ),
-    listSessionsAll: db.prepare(
-      `SELECT s.id, s.player_id AS playerId, s.name, s.uid, s.identity_kind AS identityKind,
-              s.joined_at, s.left_at, s.source,
-              ${ACCOUNT_COLS}
-         FROM server_sessions s${accountJoin('LEFT JOIN')}
-        WHERE s.game_id = ?
-        ORDER BY s.joined_at DESC
-        LIMIT ?`,
-    ),
     // ── presence + cross-game activity ──
-    // Open-session counts per hosted slug (uses idx_sessions_game_open). Counts
-    // every open session, linked or not, so live presence does not disappear
-    // before a player has been mapped to a site account.
-    onlineCounts: db.prepare(
-      `SELECT g.slug AS slug, COUNT(*) AS n
-         FROM server_sessions s JOIN games g ON g.id = s.game_id
-        WHERE s.left_at IS NULL AND g.hosted = 1
-        GROUP BY g.slug`,
-    ),
     // Who's online right now, across every hosted server (newest join first).
     listOnline: db.prepare(
       `SELECT s.id, g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
@@ -211,23 +180,6 @@ export function createServerStore(db) {
         WHERE g.hosted = 1
         ORDER BY s.joined_at DESC
         LIMIT ?`,
-    ),
-    linkedPlayerForUser: db.prepare(
-      `SELECT p.id, p.identity_kind AS identityKind, p.uid, p.name,
-              p.first_seen AS firstSeen, p.last_seen AS lastSeen
-         FROM player_accounts pa
-         JOIN players p ON p.id = pa.player_id
-        WHERE pa.user_id = ? AND p.identity_kind = ?
-        ORDER BY p.last_seen DESC
-        LIMIT 1`,
-    ),
-    openSessionForPlayer: db.prepare(
-      `SELECT s.id, s.name, s.uid, s.identity_kind AS identityKind, s.joined_at
-         FROM server_sessions s
-         JOIN games g ON g.id = s.game_id
-        WHERE g.slug = ? AND g.hosted = 1 AND s.player_id = ? AND s.left_at IS NULL
-        ORDER BY s.joined_at DESC
-        LIMIT 1`,
     ),
     openSessionById: db.prepare(
       `SELECT s.id, s.player_id AS playerId, s.name, s.uid,
@@ -335,14 +287,6 @@ export function createServerStore(db) {
       const { lastInsertRowid } = stmts.insertConfig.run(serverId, name, body);
       return this.getConfig(serverId, lastInsertRowid);
     },
-    // Partial update: only the provided fields change. Returns the updated row,
-    // or null if no such config exists.
-    updateConfig(serverId, id, { name, body } = {}) {
-      const existing = this.getConfig(serverId, id);
-      if (!existing) return null;
-      stmts.updateConfig.run(name ?? existing.name, body ?? existing.body, serverId, id);
-      return this.getConfig(serverId, id);
-    },
     deleteConfig(serverId, id) {
       return stmts.deleteConfig.run(serverId, id).changes > 0;
     },
@@ -433,24 +377,8 @@ export function createServerStore(db) {
     closeAllOpenSessions(leftAt, source = 'reconciled') {
       return stmts.closeAllOpen.run(leftAt, source).changes;
     },
-    listSessions(slug, { limit = 200, includeUnlinked = false } = {}) {
-      const gid = gameId(slug);
-      if (gid == null) return [];
-      const lim = Math.min(500, Math.max(1, Number(limit) || 200));
-      return (includeUnlinked ? stmts.listSessionsAll : stmts.listSessionsLinked).all(gid, lim);
-    },
-
     // ── presence + cross-game activity ───────────────────────────────────────
-    // These are read-only aggregate views over server_sessions for the panel.
-    //
-    // Open-session count per hosted slug, e.g. { gmod: 2, minecraft: 1 } — drives
-    // the fleet tiles' "playing now" badge. Slugs with nobody online are omitted
-    // (GROUP BY only yields rows that have at least one open session).
-    onlineCountsBySlug() {
-      const out = {};
-      for (const r of stmts.onlineCounts.all()) out[r.slug] = r.n;
-      return out;
-    },
+    // Read-only aggregate views over server_sessions for the panel.
     // The live roster across all hosted servers (every session with left_at NULL),
     // newest join first. Each row carries the player snapshot plus the game's slug
     // and display name for rendering "who's on which server right now".
@@ -474,12 +402,6 @@ export function createServerStore(db) {
         topPlayers: stmts.statsTopPlayers.all(since),
         heatmap: stmts.statsHeatmap.all(tzMod, tzMod, since),
       };
-    },
-    linkedPlayerForUser(userId, identityKind) {
-      return stmts.linkedPlayerForUser.get(userId, identityKind) ?? null;
-    },
-    openSessionForPlayer(slug, playerId) {
-      return stmts.openSessionForPlayer.get(slug, playerId) ?? null;
     },
     openSessionById(slug, sessionId) {
       return stmts.openSessionById.get(slug, Number(sessionId)) ?? null;

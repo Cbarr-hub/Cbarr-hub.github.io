@@ -19,7 +19,10 @@ export class ServerControlError extends Error {
   }
 }
 
-const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame']);
+const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop']);
+// The container IS the game, so the legacy game-service action names alias to
+// container power at this boundary ("never BAD_ACTION" — see docker.test.mjs).
+const LEGACY_POWER_ALIAS = { startGame: 'start', stopGame: 'shutdown', restartGame: 'reboot' };
 // Status-cache freshness windows. 'quick' lists skip per-container stats so they
 // poll fast and tolerate only ~1s of staleness; 'full' lists carry cpu/mem and
 // refresh less often. The host dashboard (containers count etc.) moves slowly, so
@@ -264,8 +267,6 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   }
 
   return {
-    isConfigured: () => Boolean(connectors),
-
     // Host-level dashboard: the Docker host/engine facts (kind:'docker'); the UI
     // pairs that with the per-container cpu/mem it already gets from /api/servers.
     // Throws NOT_CONFIGURED when the backend isn't wired.
@@ -308,14 +309,15 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return { ...(await publicMeta(server, connector)), ...status };
     },
 
-    // action ∈ start|shutdown|reboot|stop. Returns { ok, action } (the backend
-    // returns a task id we don't surface yet).
+    // action ∈ start|shutdown|reboot|stop (+ the legacy aliases). Returns
+    // { ok, action } (the backend returns a task id we don't surface yet).
     async doAction(id, action) {
-      if (!POWER_ACTIONS.has(action)) {
+      const verb = LEGACY_POWER_ALIAS[action] ?? action;
+      if (!POWER_ACTIONS.has(verb)) {
         throw new ServerControlError(`invalid action: ${action}`, 'BAD_ACTION');
       }
       const connector = connectorFor(id);
-      await connector[action]();
+      await connector[verb]();
       clearStatusCache();
       return { ok: true, action };
     },
@@ -374,9 +376,6 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     createConfig(id, body) {
       return connectorFor(id).createConfig(body);
     },
-    updateConfig(id, configId, body) {
-      return connectorFor(id).updateConfig(configId, body);
-    },
     deleteConfig(id, configId) {
       return connectorFor(id).deleteConfig(configId);
     },
@@ -419,24 +418,11 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return connectorFor(id).runLiveAction(action, value);
     },
 
-    // ── player sessions (read-only; written host-side by the collector) ───────
-    // Validate the id against the registry (like getStatus) so an unknown server
-    // 404s instead of silently returning []. With no DB, sessions are empty.
-    listSessions(id, opts = {}) {
-      if (!getServer(id)) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
-      return store ? store.listSessions(id, opts) : [];
-    },
-
     // ── presence + activity (read-only; written host-side) ───────────────────
     // Who's online across every hosted server, right now.
     async listOnline() {
       const rows = store ? store.listOnline() : [];
       return mergeLiveOnlineRows(rows, await readLivePresence());
-    },
-    // Host-tracked open sessions only (no cross-server RCON live-presence fan-out).
-    // Cheap enough to call on a tight loop.
-    listTrackedOnline() {
-      return store ? store.listOnline() : [];
     },
     // Live online players for ONE server, each with a current position — the source
     // for the BlueMap live-marker writer. Unlike listTrackedOnline() (host-tracker
@@ -516,38 +502,6 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
         heatmap: raw.heatmap,
         busiest,
       };
-    },
-
-    async getCurrentPlayerPosition(id, userId) {
-      const server = getServer(id);
-      if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
-      if (!server.identityKind) throw new ServerControlError(`${server.name} has no player identity namespace`, 'NOT_SUPPORTED');
-      if (!store) return { serverId: id, serverName: server.name, linked: false, online: false, reason: 'database unavailable' };
-      const player = store.linkedPlayerForUser(userId, server.identityKind);
-      if (!player) return { serverId: id, serverName: server.name, linked: false, online: false, reason: `no linked ${server.name} account` };
-      const session = store.openSessionForPlayer(id, player.id);
-      if (!session) return { serverId: id, serverName: server.name, linked: true, online: false, player, reason: `linked ${server.name} account is not online` };
-      const connector = connectorFor(id);
-      if (!connector.getPlayerPosition) {
-        throw new ServerControlError(`${server.name} position lookup is not supported`, 'NOT_SUPPORTED');
-      }
-      const target = player.uid || player.name;
-      const position = await connector.getPlayerPosition(target, player);
-      const online = position?.connected === false ? false : true;
-      return {
-        serverId: id,
-        serverName: server.name,
-        linked: true,
-        online,
-        player,
-        session,
-        position,
-        ...(online ? {} : { reason: position?.reason || `${server.name} position unavailable` }),
-      };
-    },
-
-    getCurrentMinecraftPosition(userId) {
-      return this.getCurrentPlayerPosition('minecraft', userId);
     },
 
     async getOnlinePlayerPosition(id, sessionId) {

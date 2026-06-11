@@ -9,6 +9,8 @@ import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/c
 import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
 import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
 import { buildConnectors } from '../src/servers/connectors/index.js';
+import { createServerService } from '../src/servers/service.js';
+import { listServers } from '../src/servers/registry.js';
 
 // ── a fake fetch that records calls and returns canned Engine responses ─────────
 function res({ ok = true, status = 200, json, bytes, text } = {}) {
@@ -389,47 +391,33 @@ test('buildConnectors builds every docker-backed entry, and skips when no client
 
 // ── action surface the control panel relies on (container == game) ──────────────
 // The panel collapsed the old Game-Service / Virtual-Machine split into one
-// container-power model (Start/Restart/Stop). Codify what Docker connectors
-// actually support: the container IS the game, so the game-service actions alias
-// onto container power (no separate in-VM service to error on); and every image
-// now has an in-panel updater (SteamCMD for the Steam games, re-download on
-// restart for the others) instead of NO_UPDATE_RECIPE.
-test('non-LinuxGSM Docker connectors: container IS the game (game-service → container power; updatable)', async () => {
-  const FX = { id: 'factorio', name: 'Factorio', backend: 'docker', container: 'factorio', port: 34197 };
-  const CS = { id: 'counterstrike', name: 'CS', backend: 'docker', container: 'counterstrike', port: 27015 };
-  const make = (Cls, server) => {
+// container-power model (Start/Restart/Stop). The contract now lives at the
+// SERVICE boundary: the legacy game-service action names (startGame/stopGame/
+// restartGame) alias onto container power for EVERY server — never BAD_ACTION —
+// and the response echoes the ORIGINAL action name so older clients keep working.
+// (Each image's update() recipe is pinned in its own docker-*.test.mjs file.)
+test('service maps the legacy game-service actions onto container power for every server', async () => {
+  const stubs = new Map(listServers().map((s) => {
     const calls = [];
-    const client = fakeDockerClient();
-    client.start = () => { calls.push('start'); return Promise.resolve(); };
-    client.shutdown = () => { calls.push('shutdown'); return Promise.resolve(); };
-    client.reboot = () => { calls.push('reboot'); return Promise.resolve(); };
-    return { conn: new Cls(server, client), calls };
-  };
-  for (const [Cls, server] of [
-    [DockerMinecraftConnector, MC_DOCKER],
-    [DockerFactorioConnector, FX],
-    [DockerCounterStrikeConnector, CS],
-  ]) {
-    const { conn, calls } = make(Cls, server);
-    // game-service actions map to container start/shutdown/reboot (never BAD_ACTION).
-    await conn.startGame(); await conn.stopGame(); await conn.restartGame();
-    assert.deepEqual(calls, ['start', 'shutdown', 'reboot']);
-    // …and update() now resolves (no NO_UPDATE_RECIPE).
-    const upd = await conn.update();
-    assert.ok(upd && upd.ok !== false, `${server.id} update should resolve`);
+    return [s.id, {
+      calls,
+      async start()    { calls.push('start'); },
+      async shutdown() { calls.push('shutdown'); },
+      async reboot()   { calls.push('reboot'); },
+      async stop()     { calls.push('stop'); },
+    }];
+  }));
+  const svc = createServerService({ db: null, connectorsOverride: stubs });
+  for (const { id } of listServers()) {
+    const stub = stubs.get(id);
+    // legacy aliases map to container start/shutdown/reboot (never BAD_ACTION)…
+    assert.deepEqual(await svc.doAction(id, 'startGame'), { ok: true, action: 'startGame' }, id);
+    assert.deepEqual(await svc.doAction(id, 'stopGame'), { ok: true, action: 'stopGame' }, id);
+    assert.deepEqual(await svc.doAction(id, 'restartGame'), { ok: true, action: 'restartGame' }, id);
+    assert.deepEqual(stub.calls, ['start', 'shutdown', 'reboot'], id);
+    // …while a genuinely bogus action still rejects with BAD_ACTION.
+    await assert.rejects(() => svc.doAction(id, 'explode'), (e) => e.code === 'BAD_ACTION');
   }
-});
-
-test('DockerGmod maps the game-service actions onto container power', async () => {
-  const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
-  const calls = [];
-  const client = fakeDockerClient();
-  client.start = () => { calls.push('start'); return Promise.resolve(); };
-  client.shutdown = () => { calls.push('shutdown'); return Promise.resolve(); };
-  client.reboot = () => { calls.push('reboot'); return Promise.resolve(); };
-  const conn = new DockerGmodConnector(GMOD, client);
-  await conn.startGame(); await conn.stopGame(); await conn.restartGame();
-  assert.deepEqual(calls, ['start', 'shutdown', 'reboot']);
 });
 
 // The Runtime panel's live change-map dropdown reads getSettings().map. CS uses the

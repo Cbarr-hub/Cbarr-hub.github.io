@@ -72,8 +72,7 @@ test('normalizeStatus maps the qemu/container status payload to a stable shape',
 
 // ── service: not configured ──────────────────────────────────────────────────────
 test('service without a docker client reports not-configured', async () => {
-  const svc = createServerService({});
-  assert.equal(svc.isConfigured(), false);
+  const svc = createServerService({ dockerClient: null });
   await assert.rejects(() => svc.listServers(), (e) =>
     e instanceof ServerControlError && e.code === 'NOT_CONFIGURED');
   await assert.rejects(() => svc.doAction('factorio', 'start'), (e) => e.code === 'NOT_CONFIGURED');
@@ -218,15 +217,11 @@ test('CS map catalog: add, rename, delete via the service', async () => {
   await assert.rejects(async () => svc.renameMap('counterstrike', 'nope', 'x'), (e) => e.code === 'NOT_FOUND');
 });
 
-test('CS config library: CRUD + unique name + validation', async () => {
+test('CS config library: create/get/list/delete + unique name + validation', async () => {
   const svc = createServerService({ dockerClient: fakeDocker(), db: testDb() });
   const c = await svc.createConfig('counterstrike', { name: 'bunnyhop', body: 'sv_autobunnyhopping 1\n' });
   assert.ok(c.id > 0);
   assert.equal((await svc.getConfig('counterstrike', c.id)).body, 'sv_autobunnyhopping 1\n');
-
-  const u = await svc.updateConfig('counterstrike', c.id, { body: 'sv_autobunnyhopping 0\n' });
-  assert.equal(u.name, 'bunnyhop');            // unchanged
-  assert.equal(u.body, 'sv_autobunnyhopping 0\n');
   assert.ok((await svc.listConfigs('counterstrike')).some((x) => x.name === 'bunnyhop'));
 
   await assert.rejects(async () => svc.createConfig('counterstrike', { name: 'bunnyhop', body: '' }), (e) => e.code === 'BAD_SETTING'); // dup

@@ -325,23 +325,6 @@ test('DockerFactorio sendCommand rejects bad input before opening RCON', async (
   await assert.rejects(() => conn.sendCommand('/players\n/time'), (e) => e.code === 'BAD_SETTING');
 });
 
-test('DockerFactorio getPlayerPosition parses /sc coordinate output', async () => {
-  const client = fakeFctrClient({ '/factorio/config/rconpw': 'secret\n' });
-  let position;
-  const { command } = await withRconCapture(async ({ port }) => {
-    const server = { ...FCTR, container: '127.0.0.1', rconPort: port };
-    const conn = new DockerFactorioConnector(server, client);
-    position = await conn.getPlayerPosition('Builder_1');
-  }, () => '{"ok":true,"name":"Builder_1","connected":true,"x":42.25,"y":-13.5,"surface":"nauvis"}');
-  assert.match(command, /^\/sc local p=game\.get_player\("Builder_1"\)/);
-  assert.equal(position.connected, true);
-  assert.equal(position.name, 'Builder_1');
-  assert.equal(position.x, 42.25);
-  assert.equal(position.y, -13.5);
-  assert.equal(position.surface, 'nauvis');
-  assert.match(position.achievementWarning, /disables achievements/);
-});
-
 test('DockerFactorio runLiveAction clamps game_speed to its bounds and pushes /sc', async () => {
   assert.equal(await captureLive('game_speed', 99), '/sc game.speed=4');    // clamp high
   assert.equal(await captureLive('game_speed', -5), '/sc game.speed=0.25'); // clamp low

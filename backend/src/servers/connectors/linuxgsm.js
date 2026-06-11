@@ -1,68 +1,15 @@
-// Shared connector for LinuxGSM-managed game servers (the GMOD family, plus the
-// retired VM-era CS/Factorio path).
+// Shared connector base for LinuxGSM-managed game servers (the GMOD family).
 //
-// LinuxGSM installs each game under a normal user's home as an instance with a
-// control script (e.g. ~/csserver/cs2server). Management is done by running that
-// script as the owning user: `./<script> start|stop|restart|update`. Subclasses
-// only declare the instance specifics (user, dir, script) + their config-file
-// whitelist; all the LinuxGSM mechanics live here.
-//
-// Post-Docker-migration note: GmodConnector/PropHuntConnector extend this for the
-// LinuxGSM cfg/path machinery, but the Docker mixin (dockerizeGmod + the
-// containerGameLifecycle wrapper) SHADOWS the power methods + gameRunning + update
-// below — for a live container the game lifecycle is container power, not `runGsm`.
-// So in the running stack the methods below serve the VM-era path; the GMOD family
-// inherits them only as a fallback behind the Docker overrides.
+// LinuxGSM installs each game as an instance with a control script (e.g.
+// /data/gmodserver); subclasses declare the instance specifics (dir, script) +
+// their config-file whitelist. The game lifecycle itself is container power
+// (the dockerize mixin), so no runtime LinuxGSM machinery lives here anymore.
 
 import { BaseConnector } from './base.js';
 
 export class LinuxGsmConnector extends BaseConnector {
   // Subclasses set these:
-  gsmUser = 'miles';   // OS user that owns the install
-  gsmDir = '';         // e.g. /home/miles/csserver
-  gsmScript = '';      // e.g. cs2server
-
-  runGsm(action, timeoutMs, awaitAgentMs = 0) {
-    return this.runShell(`cd ${this.gsmDir} && ./${this.gsmScript} ${action}`, {
-      asUser: this.gsmUser,
-      timeoutMs,
-      awaitAgentMs,
-    });
-  }
-
-  // True when the game is actually serving. LinuxGSM has no reliable `status`
-  // subcommand (it errors "Unknown command"), so the truthful signal is whether
-  // the game's public port is bound — works for CS2 (TCP) and Factorio (UDP).
-  // Runs as root so `ss` sees every socket.
-  async gameRunning() {
-    const port = this.server.port;
-    if (!port) return false;
-    const res = await this.runShell(`ss -tuln 2>/dev/null | grep -qE ':${port}\\b'`, { timeoutMs: 10_000 });
-    return res.exitCode === 0;
-  }
-
-  // Start/restart may be fired right after a Start VM, so wait out the guest
-  // agent's post-boot warm-up (up to 45s) instead of erroring immediately.
-  async startGame() {
-    await this.runGsm('start', 120_000, 45_000);
-    return { ok: true };
-  }
-
-  async stopGame() {
-    await this.runGsm('stop', 120_000);
-    return { ok: true };
-  }
-
-  async restartGame() {
-    await this.runGsm('restart', 180_000, 45_000);
-    return { ok: true };
-  }
-
-  // LinuxGSM `update` validates/updates server files via SteamCMD, then we
-  // restart the instance so the new build is live.
-  async update() {
-    const upd = await this.runGsm('update', 600_000);
-    const restart = await this.runGsm('restart', 120_000);
-    return { steps: [{ name: 'update', ...upd }, { name: 'restart', ...restart }] };
-  }
+  gsmUser = 'miles';   // OS user that owns the install (in-container)
+  gsmDir = '';         // e.g. /data
+  gsmScript = '';      // e.g. gmodserver
 }

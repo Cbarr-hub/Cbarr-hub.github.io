@@ -17,7 +17,6 @@
 //     game cfg) — the docker/counterstrike.js pattern.
 
 import { rconExchange } from '../../rcon-tcp.js';
-import { containerGameLifecycle } from '../docker-base.js';
 import { GmodConnector } from '../gmod.js';
 
 // The in-container LinuxGSM instance root: the image installs the gmodserver instance
@@ -26,7 +25,7 @@ import { GmodConnector } from '../gmod.js';
 const DATA_DIR = '/data';
 
 export function dockerizeGmod(Base) {
-  return class extends containerGameLifecycle(Base) {
+  return class extends Base {
     gsmDir = DATA_DIR;
 
     // Registry locator for a docker entry is the container name.
@@ -37,15 +36,6 @@ export function dockerizeGmod(Base) {
     runShell(shellCommand, opts = {}) {
       const { asUser, ...rest } = opts;
       return this.runCommand(['/bin/bash', '-lc', shellCommand], rest);
-    }
-
-    // Plain config write — the file is already owned by the game user, so skip Prop
-    // Hunt's VM-only chown-back (which would fail as a non-root in-container exec).
-    async writeConfig(name, content) {
-      const path = this.configFiles[name];
-      if (!path) { const e = new Error(`unknown config file: ${name}`); e.code = 'UNKNOWN_CONFIG'; throw e; }
-      await this.client.agentFileWrite(this.vmid, path, content);
-      return { name, ok: true };
     }
 
     // Update the game client via LinuxGSM (SteamCMD under the hood), in-container.

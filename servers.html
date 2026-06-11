@@ -1100,68 +1100,6 @@ const ICONS = {
   apply:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
 }
 
-/* ───────────────────────── generated key-art (per game) ───────────────────────── */
-/* Each server id maps to a hue range + monogram. Unknown ids fall back. */
-const ART = {
-  mc:   { hue:[120,150], mono:'MC', scene:'mc' },
-  fac:  { hue:[28,42],   mono:'FA', scene:'fac' },
-  cs:   { hue:[200,225], mono:'CS', scene:'cs' },
-  gmod: { hue:[280,310], mono:'TT', scene:'gmod' },
-  ph:   { hue:[330,355], mono:'PH', scene:'ph' },
-}
-function artFor(s){
-  const a = ART[s.id]
-  if (a) return a
-  // deterministic fallback hue + 2-letter monogram from the name
-  const h = String(s.id || s.name).split('').reduce((acc,c)=>acc+c.charCodeAt(0),0) % 360
-  const mono = String(s.name || s.id).replace(/[^a-z0-9]/gi,'').slice(0,2).toUpperCase() || '··'
-  return { hue:[h, (h+30)%360], mono, scene:null }
-}
-function artScene(scene, c){
-  const cube = (x,y,e)=>`
-    <polygon points="${x},${y} ${x+e},${y+e/2} ${x},${y+e} ${x-e},${y+e/2}" fill="${c.hi}" fill-opacity=".72"/>
-    <polygon points="${x-e},${y+e/2} ${x},${y+e} ${x},${y+2*e} ${x-e},${y+e/2+e}" fill="${c.mid}" fill-opacity=".66"/>
-    <polygon points="${x+e},${y+e/2} ${x},${y+e} ${x},${y+2*e} ${x+e},${y+e/2+e}" fill="${c.dark}" fill-opacity=".82"/>`
-  const gear = (cx,cy,r)=>`
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${c.mid}" stroke-width="7" stroke-dasharray="7 8" stroke-opacity=".8"/>
-    <circle cx="${cx}" cy="${cy}" r="${r-8}" fill="none" stroke="${c.mid}" stroke-width="2" stroke-opacity=".55"/>
-    <circle cx="${cx}" cy="${cy}" r="4" fill="${c.hi}"/>`
-  switch(scene){
-    case 'mc': return `${cube(96,70,16)}${cube(128,70,16)}${cube(160,70,16)}${cube(128,38,16)}`
-    case 'fac': return `${gear(118,60,30)}${gear(176,84,22)}
-        <g stroke="${c.hi}" stroke-width="3" stroke-opacity=".5" fill="none" stroke-linecap="round">
-          <path d="M214 104 l10 -8 l-10 -8"/><path d="M234 104 l10 -8 l-10 -8"/><path d="M254 104 l10 -8 l-10 -8"/></g>`
-    case 'cs': return `
-        <g stroke="${c.mid}" stroke-width="2" stroke-opacity=".35" fill="none"><path d="M16 112 L128 18"/><path d="M58 118 L184 26"/></g>
-        <g stroke="${c.hi}" stroke-width="3" stroke-opacity=".85" stroke-linecap="round">
-          <path d="M189 64 H207"/><path d="M221 64 H239"/><path d="M214 39 V57"/><path d="M214 71 V89"/></g>
-        <circle cx="214" cy="64" r="2.5" fill="${c.hi}"/>`
-    case 'gmod': return `
-        <g stroke="${c.mid}" stroke-width="1.5" stroke-opacity=".25"><path d="M0 46 H320 M0 86 H320 M84 0 V128 M168 0 V128 M252 0 V128"/></g>
-        <circle cx="150" cy="56" r="26" fill="none" stroke="${c.hi}" stroke-width="4" stroke-opacity=".8"/>
-        <line x1="169" y1="75" x2="196" y2="102" stroke="${c.hi}" stroke-width="7" stroke-opacity=".8" stroke-linecap="round"/>
-        <text x="150" y="65" text-anchor="middle" font-family="monospace" font-size="26" font-weight="700" fill="${c.hi}" fill-opacity=".8">?</text>`
-    case 'ph': return `
-        <g transform="translate(58,58)"><rect width="44" height="44" rx="3" fill="${c.dark}" fill-opacity=".75" stroke="${c.mid}" stroke-opacity=".7" stroke-width="2"/><path d="M0 0 L44 44 M44 0 L0 44" stroke="${c.mid}" stroke-opacity=".45" stroke-width="2"/></g>
-        <g transform="translate(140,54)"><rect width="34" height="54" rx="11" fill="${c.mid}" fill-opacity=".55" stroke="${c.hi}" stroke-opacity=".5"/><path d="M0 18 H34 M0 38 H34" stroke="${c.dark}" stroke-opacity=".8" stroke-width="3"/></g>
-        <g transform="translate(214,50)" stroke="${c.hi}" stroke-opacity=".7" stroke-width="5" fill="none" stroke-linecap="round"><path d="M4 22 H34 M4 22 V58 M34 22 V58 M34 22 V2"/></g>`
-    default: return ''
-  }
-}
-function artSVG(s){
-  const a = artFor(s)
-  const [h1,h2] = a.hue
-  const grad = `hsl(${h1} 55% 16%)`, grad2 = `hsl(${h2} 45% 8%)`
-  const c = { hi:`hsl(${h2} 80% 62%)`, mid:`hsl(${Math.round((h1+h2)/2)} 55% 42%)`, dark:`hsl(${h1} 45% 14%)` }
-  return `
-  <div class="glow" style="background:
-    radial-gradient(120% 130% at 18% 0%, ${grad}, transparent 60%),
-    radial-gradient(120% 120% at 100% 100%, ${grad2}, transparent 55%),
-    linear-gradient(160deg, ${grad2}, #0a0a0a 92%)"></div>
-  <svg class="deco" viewBox="0 0 320 128" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${artScene(a.scene, c)}</svg>`
-}
-function monoBg(s){ const [h1,h2] = artFor(s).hue; return `linear-gradient(135deg, hsl(${h1} 60% 30%), hsl(${h2} 55% 18%))` }
-
 /* Per-game photographic tile backgrounds. Recognizable, darkened scenes with a
    per-game accent tint so each server has its own identity while staying legible
    under the overlaid mono/status/port chips. `fit:'contain'` is for logo art
@@ -1174,6 +1112,8 @@ const TILE_BG = {
   minecraft:     { src:'assets/tiles/minecraft.png',     accent:'95,110,255', fit:'contain' },
 }
 function tileArt(bg){
+  // Every registry id has a TILE_BG entry; an unknown id gets a plain dark base.
+  if (!bg) return `<div class="glow" style="background:linear-gradient(160deg,#14161c,#0a0a0a 92%)"></div>`
   const contain = bg.fit === 'contain'
   const veil = contain
     ? `linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.20)), radial-gradient(circle at 50% 45%, rgba(${bg.accent},.20), transparent 60%)`
@@ -1324,16 +1264,14 @@ function cardHTML(s){
   const conn = s.connect?.string
   const launch = s.connect?.launch
   const port = s.connect?.port
-  const a = artFor(s)
   const bg = TILE_BG[s.id]
   return `
   <article class="card ${down ? 'down' : ''}" data-id="${esc(s.id)}" tabindex="0" role="button" aria-label="${esc(s.name)} — ${STATUS_LABEL[cls]}">
     <div class="art">
-      ${bg ? tileArt(bg) : artSVG(s)}
-      ${bg ? '' : `<div class="mono" style="background:${monoBg(s)}">${esc(a.mono)}</div>`}
+      ${tileArt(bg)}
       <div class="stat" style="color:${STATUS_COLOR[cls]}"><span class="d ${cls}"></span>${STATUS_LABEL[cls]}</div>
       ${port ? `<div class="port">:${esc(port)}</div>` : ''}
-      ${/* s.online is a host-tracked integer count (service.js → onlineCountsBySlug), not user text — safe to interpolate unescaped. */''}
+      ${/* s.online is a host-tracked integer count (merged presence roster), not user text — safe to interpolate unescaped. */''}
       ${s.online ? `<div class="playing" title="players online right now"><span class="d"></span>${s.online} playing</div>` : ''}
     </div>
     <div class="body">
@@ -2052,7 +1990,7 @@ function detailShell(s){
   const modes = MODES.map(m => `<button${m.key === mode ? ' class="on"' : ''} data-mode="${m.key}">${m.label}</button>`).join('')
   return `
   <div class="dhero">
-    ${bg ? tileArt(bg) : artSVG(s)}
+    ${tileArt(bg)}
     <button class="dclose" id="dClose" aria-label="close">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>

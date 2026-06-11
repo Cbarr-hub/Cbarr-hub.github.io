@@ -20,25 +20,6 @@ export function clampNumber(value, min, max, fallback) {
   return Math.max(min, Math.min(max, effective));
 }
 
-// Mixin: the container IS the game. If the container is running, the game is
-// hosting, so there is no separate in-guest service to start/stop — the
-// game-lifecycle actions (startGame/stopGame/restartGame) alias straight onto
-// container power (start/shutdown/reboot). Applied to BaseConnector below, and
-// reused by the LinuxGSM Docker connectors (GMOD/Prop Hunt) so they share the
-// same alias instead of throwing BAD_ACTION. Each action returns
-// { ok: true, action } so callers/tests can assert which alias fired.
-export function containerGameLifecycle(Base) {
-  return class extends Base {
-    // Always true while reachable: the container IS the game (status running ==
-    // hosting), so base.js's separate 'idle' branch is intentionally unreachable
-    // for Docker games.
-    async gameRunning() { return true; }
-    async startGame()   { await this.start();    return { ok: true, action: 'startGame' }; }
-    async stopGame()    { await this.shutdown(); return { ok: true, action: 'stopGame' }; }
-    async restartGame() { await this.reboot();   return { ok: true, action: 'restartGame' }; }
-  };
-}
-
-export class DockerBaseConnector extends containerGameLifecycle(BaseConnector) {
+export class DockerBaseConnector extends BaseConnector {
   get vmid() { return this.server.container; }
 }

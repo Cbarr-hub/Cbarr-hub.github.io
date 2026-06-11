@@ -184,17 +184,6 @@ export class DockerCounterStrikeConnector extends DockerBaseConnector {
     try { return this.store.createConfig(this.server.id, { name: nm, body: b }); }
     catch (e) { throw duplicateError(e, nm, 'config'); }
   }
-  updateConfig(id, { name, body } = {}) {
-    this.requireStore();
-    const patch = {};
-    if (name !== undefined) patch.name = csProfile.validConfigName(name);
-    if (body !== undefined) patch.body = csProfile.validConfigBody(body);
-    let updated;
-    try { updated = this.store.updateConfig(this.server.id, id, patch); }
-    catch (e) { throw duplicateError(e, patch.name, 'config'); }
-    if (!updated) throw notFound('config not found');
-    return updated;
-  }
   deleteConfig(id) {
     if (!this.requireStore().deleteConfig(this.server.id, id)) throw notFound('config not found');
     return { ok: true };

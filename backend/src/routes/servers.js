@@ -13,11 +13,8 @@ const PLAYER_PARAM = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
 const CONFIG_BODY_MAX = 16_000;
 
-// Shared querystring for the session-list (/:id/sessions) + activity-timeline
-// (/activity) reads — same `limit` bound + linked/unlinked toggle. Factored into one
-// constant so the two near-identical schemas can't drift. `additionalProperties: false`
-// documents the allowed keys; Fastify's default ajv strips unknowns (removeAdditional),
-// so an unknown query param is ignored rather than rejected — behavior is unchanged.
+// Querystring for the activity-timeline read (`limit` bound + linked/unlinked
+// toggle). Fastify's default ajv strips unknown query params (removeAdditional).
 const SESSION_LIST_QS = {
   type: 'object',
   properties: {
@@ -128,8 +125,6 @@ export default async function serversRoutes(app) {
     },
   });
   route('get', '/map/status', () => svc.getBlueMapStatus());
-  route('get', '/map/me', (req) => svc.getCurrentMinecraftPosition(req.currentUser.id));
-  route('get', '/:id/map/me', (req) => svc.getCurrentPlayerPosition(req.params.id, req.currentUser.id), { schema: P({ id: ID_PARAM }) });
   route('get', '/:id/map/sessions/:sessionId', (req) => svc.getOnlinePlayerPosition(req.params.id, req.params.sessionId), {
     schema: P({ id: ID_PARAM, sessionId: SESSION_ID_PARAM }),
   });
@@ -149,6 +144,8 @@ export default async function serversRoutes(app) {
   });
 
   // ── power actions ─────────────────────────────────────────────────────────────
+  // The legacy startGame/stopGame/restartGame names stay accepted (service maps
+  // them to container power) so an older client can never hit BAD_ACTION.
   route('post', '/:id/actions/:action', (req) => svc.doAction(req.params.id, req.params.action), {
     csrf: true,
     schema: P({
@@ -238,17 +235,6 @@ export default async function serversRoutes(app) {
       },
     },
   });
-  route('put', '/:id/configs/:configId', (req) => svc.updateConfig(req.params.id, req.params.configId, req.body), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM, configId: CONFIG_ID_PARAM }),
-      body: {
-        type: 'object',
-        properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, body: { type: 'string', maxLength: CONFIG_BODY_MAX } },
-        additionalProperties: false,
-      },
-    },
-  });
   route('delete', '/:id/configs/:configId', (req) => svc.deleteConfig(req.params.id, req.params.configId), {
     csrf: true, schema: P({ id: ID_PARAM, configId: CONFIG_ID_PARAM }),
   });
@@ -320,19 +306,6 @@ export default async function serversRoutes(app) {
         required: ['action'],
         additionalProperties: false,
       },
-    },
-  });
-
-  // ── player sessions (read-only; the host collector writes them) ───────────────
-  // The frontend derives "online" from `left_at == null` in this list, so there's
-  // no separate online endpoint.
-  route('get', '/:id/sessions', (req) => svc.listSessions(req.params.id, {
-    limit: req.query.limit,
-    includeUnlinked: req.query.includeUnlinked,
-  }), {
-    schema: {
-      ...P({ id: ID_PARAM }),
-      querystring: SESSION_LIST_QS,
     },
   });
 

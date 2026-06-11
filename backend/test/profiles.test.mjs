@@ -395,18 +395,15 @@ test('prophunt: sendCommand validates and forwards raw console commands', async 
   assert.equal(calls.length, 1);
 });
 
-test('prophunt: writeConfig chowns edited files back to the game user', async () => {
+test('prophunt: writeConfig writes the file and returns ok (no chown-back exec)', async () => {
   const { conn, client } = prophuntNoStore({ [PH_ACTIVE]: '' });
   const execs = [];
   const originalExec = client.agentExec;
-  client.agentExec = async (vmid, args) => { execs.push({ vmid, command: args.command }); return originalExec(vmid, args); };
+  client.agentExec = async (vmid, args) => { execs.push(args?.command ?? []); return originalExec(vmid, args); };
 
   assert.deepEqual(await conn.writeConfig('active.cfg', 'phx_verbose 1\n'), { name: 'active.cfg', ok: true });
   assert.equal(client.files[PH_ACTIVE], 'phx_verbose 1\n');
-  assert.deepEqual(execs.at(-1), {
-    vmid: 105,
-    command: ['/bin/bash', '-lc', `chown miles:miles "${PH_ACTIVE}"`],
-  });
+  assert.ok(!execs.some((cmd) => cmd.some((a) => String(a).includes('chown'))), 'no chown exec should run');
 });
 
 test('docker prophunt: update runs the LinuxGSM update command in-container', async () => {

@@ -21,7 +21,6 @@ function baseService(overrides = {}) {
     listConfigs: async () => [],
     getConfig: async () => ({}),
     createConfig: async () => ({}),
-    updateConfig: async () => ({}),
     deleteConfig: async () => ({ ok: true }),
     listProfiles: async () => ({ profiles: [], activeId: null }),
     profileSchema: async () => ({ groups: [] }),
@@ -34,13 +33,10 @@ function baseService(overrides = {}) {
     getLive: async () => ({ available: false }),
     sendCommand: async () => ({ output: '' }),
     runLiveAction: async () => ({ output: '' }),
-    listSessions: async () => [],
     listConfig: async () => ({ files: [] }),
     readConfig: async () => ({ content: '' }),
     writeConfig: async () => ({ ok: true }),
     getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
-    getCurrentMinecraftPosition: async () => ({ serverId: 'minecraft', linked: false }),
-    getCurrentPlayerPosition: async (id) => ({ serverId: id, linked: false }),
     getOnlinePlayerPosition: async (id, sessionId) => ({ serverId: id, sessionId }),
     getOnlinePlayerPositionByName: async (id, player) => ({ serverId: id, player }),
     runUpdate: async () => ({ ok: true }),
@@ -121,8 +117,6 @@ test('servers routes expose BlueMap render status on a static path', async () =>
   const app = await routeApp({
     service: baseService({
       getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
-      getCurrentMinecraftPosition: async (userId) => ({ serverId: 'minecraft', userId }),
-      getCurrentPlayerPosition: async (id, userId) => ({ serverId: id, userId }),
       getOnlinePlayerPosition: async (id, sessionId) => ({ serverId: id, sessionId }),
       getOnlinePlayerPositionByName: async (id, player) => ({ serverId: id, player }),
       getStatus: async () => { throw new Error('map status route was shadowed'); },
@@ -133,18 +127,15 @@ test('servers routes expose BlueMap render status on a static path', async () =>
     assert.equal(res.statusCode, 200);
     assert.equal(res.json().map, 'nether');
     assert.equal(res.json().percent, 45.1);
-    const me = await app.inject({ method: 'GET', url: '/api/servers/map/me' });
-    assert.equal(me.statusCode, 200);
-    assert.equal(me.json().serverId, 'minecraft');
-    const factorio = await app.inject({ method: 'GET', url: '/api/servers/factorio/map/me' });
-    assert.equal(factorio.statusCode, 200);
-    assert.equal(factorio.json().serverId, 'factorio');
     const session = await app.inject({ method: 'GET', url: '/api/servers/minecraft/map/sessions/12' });
     assert.equal(session.statusCode, 200);
     assert.deepEqual(session.json(), { serverId: 'minecraft', sessionId: 12 });
     const player = await app.inject({ method: 'GET', url: '/api/servers/minecraft/map/players/dheagman' });
     assert.equal(player.statusCode, 200);
     assert.deepEqual(player.json(), { serverId: 'minecraft', player: 'dheagman' });
+    // the per-user position endpoints were removed outright
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/map/me' })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/factorio/map/me' })).statusCode, 404);
   } finally { await app.close(); }
 });
 
@@ -186,7 +177,6 @@ test('servers routes accept and dispatch every mutating command endpoint shape',
       renameMap: rec('renameMap'),
       deleteMap: rec('deleteMap'),
       createConfig: rec('createConfig'),
-      updateConfig: rec('updateConfig'),
       deleteConfig: rec('deleteConfig'),
       createProfile: rec('createProfile'),
       captureProfile: rec('captureProfile'),
@@ -211,7 +201,6 @@ test('servers routes accept and dispatch every mutating command endpoint shape',
       { method: 'PATCH', url: '/api/servers/counterstrike/maps/123', body: { name: 'Renamed' }, call: ['renameMap', 'counterstrike', '123', 'Renamed'] },
       { method: 'DELETE', url: '/api/servers/counterstrike/maps/123', call: ['deleteMap', 'counterstrike', '123'] },
       { method: 'POST', url: '/api/servers/counterstrike/configs', body: { name: 'scrim', body: 'mp_maxrounds 24' }, call: ['createConfig', 'counterstrike', { name: 'scrim', body: 'mp_maxrounds 24' }] },
-      { method: 'PUT', url: '/api/servers/counterstrike/configs/7', body: { body: 'mp_roundtime 5' }, call: ['updateConfig', 'counterstrike', 7, { body: 'mp_roundtime 5' }] },
       { method: 'DELETE', url: '/api/servers/counterstrike/configs/7', call: ['deleteConfig', 'counterstrike', 7] },
       { method: 'POST', url: '/api/servers/minecraft/profiles', body: { name: 'Survival', settings: { difficulty: 'hard' } }, call: ['createProfile', 'minecraft', { name: 'Survival', settings: { difficulty: 'hard' } }] },
       { method: 'POST', url: '/api/servers/minecraft/profiles/capture', body: { name: 'Captured' }, call: ['captureProfile', 'minecraft', 'Captured'] },
@@ -260,19 +249,18 @@ test('servers routes map typed RCON and Docker errors', async () => {
   } finally { await app.close(); }
 });
 
-test('servers /:id/sessions + /activity share one querystring schema (valid honored, unknown ignored, bounds enforced)', async () => {
-  const app = await routeApp({ service: baseService({ recentActivity: async () => [], listSessions: async () => [] }) });
+test('servers /activity querystring schema: valid honored, unknown ignored, bounds enforced', async () => {
+  const app = await routeApp({ service: baseService({ recentActivity: async () => [] }) });
   try {
-    // Valid params accepted on BOTH routes (the shared SESSION_LIST_QS schema).
+    // Valid params accepted (the SESSION_LIST_QS schema).
     assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=5&includeUnlinked=true' })).statusCode, 200);
-    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?limit=5&includeUnlinked=true' })).statusCode, 200);
-    // Unknown query params are harmlessly stripped (Fastify removeAdditional), not rejected —
-    // behavior is unchanged by the DRY refactor; the two routes now behave identically.
+    // Unknown query params are harmlessly stripped (Fastify removeAdditional), not rejected.
     assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?bogus=1' })).statusCode, 200);
-    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?bogus=1' })).statusCode, 200);
-    // The shared `limit` bound is enforced on each route (proves the schema is actually applied to both).
+    // The `limit` bound is enforced both ways.
     assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=9999' })).statusCode, 400);
-    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?limit=0' })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=0' })).statusCode, 400);
+    // The per-server /:id/sessions endpoint was removed outright.
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions' })).statusCode, 404);
   } finally { await app.close(); }
 });
 

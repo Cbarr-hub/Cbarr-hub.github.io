@@ -269,10 +269,6 @@ export async function dbCreateServerConfig(id, name, body) {
   return api(`/servers/${encodeURIComponent(id)}/configs`, { method: 'POST', body: { name, body } });
 }
 
-export async function dbUpdateServerConfig(id, configId, patch) {
-  return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`, { method: 'PUT', body: patch });
-}
-
 export async function dbDeleteServerConfig(id, configId) {
   return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`, { method: 'DELETE' });
 }
@@ -289,11 +285,6 @@ export async function dbServerLiveCommand(id, command) {
 export async function dbServerLiveAction(id, action, value) {
   const body = value === undefined ? { action } : { action, value };
   return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body });
-}
-
-// ── player sessions (the standalone "Events" section; written host-side by the collector) ─
-export async function dbGetServerSessions(id, { limit, includeUnlinked } = {}) {
-  return (await api(`/servers/${encodeURIComponent(id)}/sessions`, { query: { limit, includeUnlinked } })) ?? [];
 }
 
 // ── presence + cross-game activity timeline ───────────────────────────────────
@@ -314,14 +305,6 @@ export async function dbGetActivityAll({ limit } = {}) {
 // viewer's UTC offset in minutes (-new Date().getTimezoneOffset()) for local buckets.
 export async function dbGetServerStats({ days, tz } = {}) {
   return (await api('/servers/stats', { query: { days, tz } })) ?? null;
-}
-
-export async function dbGetMapMe() {
-  return api('/servers/map/me');
-}
-
-export async function dbGetServerMapMe(id) {
-  return api(`/servers/${encodeURIComponent(id)}/map/me`);
 }
 
 export async function dbGetServerMapSession(id, sessionId) {

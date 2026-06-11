@@ -137,17 +137,6 @@ export class PropHuntConnector extends GmodConnector {
     };
   }
 
-  // The QEMU guest agent writes as root; chown edited files back to the game user so
-  // the gamemode (running as miles) can keep updating its own data files afterward.
-  async writeConfig(name, content) {
-    const res = await super.writeConfig(name, content);
-    const path = this.configFiles[name];
-    if (path) {
-      await this.runShell(`chown ${this.gsmUser}:${this.gsmUser} "${path}"`, { timeoutMs: 10_000 }).catch(() => {});
-    }
-    return res;
-  }
-
   // ── startup-config profile ────────────────────────────────────────────────────
   defaultProfileSettings() {
     const d = { propHuntMap: DEFAULT_MAP, workshopCollection: COLLECTION, maxPlayers: 16, rawConfig: '' };

@@ -172,9 +172,7 @@ test('DockerCS reuses the DB-backed workshop catalog + config library', () => {
   assert.ok(conn.listMaps().some((m) => m.workshopId === '42' && m.name === 'Aim Map'));
   const cfg = conn.createConfig({ name: 'comp', body: 'mp_maxrounds 24' });
   assert.equal(conn.getConfig(cfg.id).body, 'mp_maxrounds 24');
-  const updated = conn.updateConfig(cfg.id, { name: 'scrim', body: 'mp_roundtime 5\nmp_freezetime 3' });
-  assert.equal(updated.name, 'scrim');
-  assert.equal(conn.getConfig(cfg.id).body, 'mp_roundtime 5\nmp_freezetime 3');
+  assert.ok(conn.listConfigs().some((c) => c.id === cfg.id && c.name === 'comp'));
   assert.deepEqual(conn.deleteConfig(cfg.id), { ok: true });
   assert.throws(() => conn.getConfig(cfg.id), (e) => e.code === 'NOT_FOUND');
   assert.throws(() => conn.createConfig({ name: 'bad name!', body: '' }), (e) => e.code === 'BAD_SETTING');

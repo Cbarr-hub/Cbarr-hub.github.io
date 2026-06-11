@@ -64,7 +64,7 @@ test('workshop maps: add, get, rename, delete, and server isolation', () => {
 });
 
 // ── config library ───────────────────────────────────────────────────────────────
-test('configs: create, get, update (partial), list, delete', () => {
+test('configs: create, get, list, delete', () => {
   const store = createServerStore(storeDb());
 
   const cfg = store.createConfig('counterstrike', {
@@ -78,14 +78,6 @@ test('configs: create, get, update (partial), list, delete', () => {
   // body defaults to empty string when omitted
   const empty = store.createConfig('counterstrike', { name: 'blank' });
   assert.equal(empty.body, '');
-
-  // partial update: change body only, keep name
-  const updated = store.updateConfig('counterstrike', cfg.id, { body: 'sv_cheats 0\n' });
-  assert.equal(updated.name, 'bunnyhop');
-  assert.equal(updated.body, 'sv_cheats 0\n');
-
-  // updating a missing id returns null
-  assert.equal(store.updateConfig('counterstrike', 9999, { name: 'x' }), null);
 
   // list returns metadata (no body), sorted by name
   const list = store.listConfigs('counterstrike');
@@ -185,8 +177,8 @@ test('recordJoin opens a session + upserts the global player; closeSession ends 
   const sid = store.recordJoin('gmod', steam('Alice', '76561197960290419'), 1000, 'rcon');
   assert.ok(sid > 0);
   assert.equal(openCount(db, 'gmod'), 1);
-  const [open] = store.listSessions('gmod', { includeUnlinked: true });
-  assert.equal(open.left_at, null); // still online
+  const [open] = store.listOnline(); // still online → on the live roster
+  assert.equal(open.slug, 'gmod');
   assert.equal(open.name, 'Alice');
   assert.equal(open.uid, '76561197960290419');
   assert.equal(open.identityKind, 'steam');
@@ -197,8 +189,10 @@ test('recordJoin opens a session + upserts the global player; closeSession ends 
 
   assert.equal(store.closeSession(sid, 1600), true);
   assert.equal(openCount(db, 'gmod'), 0);
-  const all = store.listSessions('gmod', { includeUnlinked: true });
+  assert.deepEqual(store.listOnline(), []); // closed → off the live roster
+  const all = store.recentSessions({ includeUnlinked: true });
   assert.equal(all.length, 1);
+  assert.equal(all[0].slug, 'gmod');
   assert.equal(all[0].left_at, 1600);
 });
 
@@ -251,34 +245,19 @@ test('closeAllOpenSessions reconciles every open row', () => {
   store.recordJoin('minecraft', { name: 'Notch', uid: 'uuid-1', identityKind: 'minecraft' }, 1000, 'log');
   assert.equal(store.closeAllOpenSessions(2000), 2);
   assert.equal(openCount(db, 'gmod'), 0);
-  assert.equal(store.listSessions('minecraft', { includeUnlinked: true })[0].source, 'reconciled');
+  assert.equal(openCount(db, 'minecraft'), 0);
+  const mc = store.recentSessions({ includeUnlinked: true }).find((s) => s.slug === 'minecraft');
+  assert.equal(mc.source, 'reconciled');
+  assert.equal(mc.left_at, 2000);
 });
 
-test('session methods on an unknown slug return [] / null instead of throwing', () => {
+test('recordJoin on an unknown slug returns null instead of throwing', () => {
   const store = createServerStore(storeDb());
   store.seedHostedGames(listServers());
-  assert.deepEqual(store.listSessions('nope'), []);
   assert.equal(store.recordJoin('nope', steam('x', '1'), 1, 'rcon'), null);
 });
 
 // ── presence + cross-game activity ────────────────────────────────────────────────
-test('onlineCountsBySlug counts all still-open sessions, per slug', () => {
-  const db = storeDb();
-  const store = createServerStore(db);
-  store.seedHostedGames(listServers());
-  store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
-  store.recordJoin('gmod', steam('Unlinked', '333'), 1050, 'rcon');
-  const closed = store.recordJoin('gmod', steam('Bob', '222'), 1000, 'rcon');
-  store.closeSession(closed, 1100);                                     // closed → not counted
-  store.recordJoin('minecraft', { name: 'Notch', uid: 'u1', identityKind: 'minecraft' }, 1000, 'log');
-  store.recordJoin('counterstrike', steam('NameOnly', null), 1200, 'rcon');
-  addUser(db, 1, 'Alice User');
-  addUser(db, 2, 'Notch User');
-  linkPlayer(db, 'steam', '111', 1);
-  linkPlayer(db, 'minecraft', 'u1', 2);
-  assert.deepEqual(store.onlineCountsBySlug(), { counterstrike: 1, gmod: 2, minecraft: 1 });
-});
-
 test('listOnline returns linked and unlinked live roster rows with game name', () => {
   const db = storeDb();
   const store = createServerStore(db);
@@ -336,9 +315,10 @@ test('openSessionById returns only a matching still-open session for that hosted
 });
 
 // idx_games_slug is partial (WHERE hosted=1), so a hosted=0 game may legitimately
-// share a slug with a hosted server. openSessionForPlayer must scope to hosted=1
-// like its siblings, or it could resolve a non-hosted session sharing the slug.
-test('openSessionForPlayer ignores a non-hosted session sharing a hosted slug', () => {
+// share a slug with a hosted server. openSessionById must scope to hosted=1
+// (the `g.hosted = 1` guard), or it could resolve a non-hosted session sharing
+// the slug.
+test('openSessionById ignores a non-hosted session sharing a hosted slug', () => {
   const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
@@ -354,16 +334,14 @@ test('openSessionForPlayer ignores a non-hosted session sharing a hosted slug', 
   const { lastInsertRowid: ghostGameId } = db
     .prepare('INSERT INTO games (name, slug, identity_kind, hosted) VALUES (?, ?, ?, 0)')
     .run('Ghost Minecraft', 'minecraft', 'minecraft');
-  db.prepare(
+  const { lastInsertRowid: ghostSid } = db.prepare(
     `INSERT INTO server_sessions (game_id, player_id, identity_kind, uid, name, joined_at, source)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).run(ghostGameId, playerId, 'minecraft', 'u1', 'Ghost', 2000, 'log');
 
-  // The lookup must return the hosted session (joined_at 1000), never the ghost.
-  const found = store.openSessionForPlayer('minecraft', playerId);
-  assert.equal(found.id, sid);
-  assert.equal(found.name, 'Notch');
-  assert.equal(found.joined_at, 1000);
+  // The hosted session resolves; the ghost session is invisible despite the slug.
+  assert.equal(store.openSessionById('minecraft', sid).name, 'Notch');
+  assert.equal(store.openSessionById('minecraft', ghostSid), null);
 });
 
 test('recentSessions merges linked servers newest-first and respects limit', () => {

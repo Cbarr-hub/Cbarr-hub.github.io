@@ -474,20 +474,17 @@ test('DockerPropHunt ph_round_time/ph_blind_time sliders clamp (0 → min, not d
   assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_blind_time', ''))).command, 'ph_hunter_blindlock_time 30');
 });
 
-// ── container model: gameRunning is true via the mixin, never an `ss` port-grep ────
-test('DockerGmod gameRunning resolves via the container model, not the ss port-grep', async () => {
-  const client = fakeDockerClient();
-  const conn = new DockerGmodConnector(GMOD, client);
-  assert.equal(await conn.gameRunning(), true);
-  // no `ss -tuln` (or any ss invocation) is ever execed — the container IS the game.
-  assert.ok(!client.execs.some((argv) => argv.some((a) => /\bss\s+-tuln\b/.test(String(a)))),
-    'gameRunning must not shell out to ss -tuln');
-});
+// ── container model: the container IS the game (status drives gameStatus directly) ─
+test('DockerGmod + DockerPropHunt status() maps running → hosting, stopped → down', async () => {
+  for (const [Cls, server] of [[DockerGmodConnector, GMOD], [DockerPropHuntConnector, PH]]) {
+    const up = await new Cls(server, fakeDockerClient()).status();
+    assert.equal(up.status, 'running', server.id);
+    assert.equal(up.gameStatus, 'hosting', server.id);
 
-test('DockerPropHunt gameRunning resolves via the container model, not the ss port-grep', async () => {
-  const client = fakeDockerClient();
-  const conn = new DockerPropHuntConnector(PH, client);
-  assert.equal(await conn.gameRunning(), true);
-  assert.ok(!client.execs.some((argv) => argv.some((a) => /\bss\s+-tuln\b/.test(String(a)))),
-    'gameRunning must not shell out to ss -tuln');
+    const stoppedClient = fakeDockerClient();
+    stoppedClient.statusCurrent = async () => ({ status: 'stopped', uptime: 0 });
+    const down = await new Cls(server, stoppedClient).status();
+    assert.equal(down.status, 'stopped', server.id);
+    assert.equal(down.gameStatus, 'down', server.id);
+  }
 });

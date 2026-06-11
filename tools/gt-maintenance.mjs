@@ -213,14 +213,4 @@ async function daemon() {
   }, 60_000);
 }
 
-const cmd = process.argv[2] || 'daemon';
-if (cmd === 'resources') {
-  await tuneBlueMapOnce();
-} else if (cmd === 'updates') {
-  await updateOnce();
-} else if (cmd === 'daemon') {
-  await daemon();
-} else {
-  console.error('usage: gt-maintenance.mjs [daemon|resources|updates]');
-  process.exit(2);
-}
+await daemon();

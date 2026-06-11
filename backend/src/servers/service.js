@@ -9,7 +9,7 @@
 import { listServers, getServer, connectString, launchUrl } from './registry.js';
 import { buildConnectors } from './connectors/index.js';
 import { createServerStore } from './store.js';
-import { parseBlueMapStatus } from './bluemap-status.js';
+import { parseBlueMapStatus } from './bluemap.js';
 
 export class ServerControlError extends Error {
   constructor(message, code) {

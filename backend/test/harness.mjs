@@ -2,7 +2,7 @@
 //
 // One copy of the fakes that used to be duplicated across docker.test.mjs,
 // docker-{gmod,minecraft,factorio,counterstrike}.test.mjs, profiles.test.mjs and
-// bluemap-players.test.mjs:
+// bluemap.test.mjs:
 //   fakeDockerClient  — in-memory DockerClient speaking the post-halving surface
 //                       (exec / fileRead / fileWrite / fileWriteBytes / power)
 //   encodeRcon        — Source-RCON packet encoder

@@ -258,17 +258,25 @@ export function parseMinecraftPlayerList(text) {
 }
 
 // Parse /data/usercache.json (itzg/minecraft-server) into a lowercased
-// name→uuid map. Best-effort: any read/parse failure yields an empty map.
+// name→uuid map. Best-effort: any read/parse failure serves the last good map.
+// TTL-cached per connector: the BlueMap marker tick calls listOnlinePlayers
+// every few seconds, and a docker-exec cat per tick was the single biggest
+// proxy-traffic cost. A brand-new player gets a default head for up to 60s.
+const USERCACHE_TTL_MS = 60_000;
+const usercacheByConn = new WeakMap();
 async function usercache(conn) {
+  const hit = usercacheByConn.get(conn);
+  if (hit && Date.now() - hit.at < USERCACHE_TTL_MS) return hit.map;
   try {
     const { content = '' } = await conn.client.fileRead(conn.vmid, `${DATA}/usercache.json`);
     const map = new Map();
     for (const entry of JSON.parse(content || '[]')) {
       if (entry?.name && entry?.uuid) map.set(String(entry.name).toLowerCase(), String(entry.uuid));
     }
+    usercacheByConn.set(conn, { at: Date.now(), map });
     return map;
   } catch {
-    return new Map();
+    return hit?.map ?? new Map();
   }
 }
 

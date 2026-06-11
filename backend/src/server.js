@@ -10,8 +10,8 @@ import { attachSession } from './middleware/auth.js';
 import { DockerClient } from './docker/client.js';
 import { createServerService } from './servers/service.js';
 import { createEconomy } from './economy.js';
-import { createBlueMapResourceController } from './servers/bluemap-resources.js';
-import { createBlueMapPlayersController } from './servers/bluemap-players.js';
+import { createBlueMapResourceController, createBlueMapPlayersController } from './servers/bluemap.js';
+import { onlineCount } from './servers/session-sql.js';
 
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
@@ -76,9 +76,12 @@ export async function buildApp(env = loadEnv()) {
   });
   app.decorate('serverService', serverService);
 
+  // The tuner's presence read is one indexed COUNT over the host tracker's open
+  // sessions — no RCON, no docker calls (the old tick did a live-presence merge).
+  const onlineStmt = db.prepare(onlineCount);
   const blueMapResources = createBlueMapResourceController({
     dockerClient: docker,
-    serverService,
+    countOnline: () => Number(onlineStmt.get()?.n ?? 0),
     logger: app.log,
     env,
   });

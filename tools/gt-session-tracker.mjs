@@ -14,7 +14,7 @@
 //   • GMOD / Prop Hunt / CS2 → poll RCON `status` every 60s and diff (±60s).
 //     GMOD/PH give SteamID64; CS2 redacts it → name-only.
 //
-// Pure Node by design (no node_modules on the host): it imports three
+// Pure Node by design (no node_modules on the host): it imports four
 // dependency-free repo modules and shells out to `docker` + `sqlite3` (both already
 // used by gt-backup.sh). Needs `node` + `sqlite3` on the keeper. NEEDS HOST
 // VALIDATION against the real containers (log formats / sqlite3 -json support).
@@ -32,6 +32,7 @@ import { rconExchange } from '../backend/src/servers/rcon-tcp.js';
 import {
   parseSourceStatus, parseMinecraftLog, parseFactorioLog,
 } from '../backend/src/servers/connectors/online-parse.js';
+import * as sessionSql from '../backend/src/servers/session-sql.js';
 
 const execFileP = promisify(execFile);
 
@@ -60,10 +61,30 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 const nowSec = () => Math.floor(Date.now() / 1000);
 
 // ── sqlite3 CLI helpers ───────────────────────────────────────────────────────
-// We can't load better-sqlite3 on the host, so writes go through the `sqlite3` CLI
-// (TEXT values single-quote-escaped). The canonical, tested SQL lives in
-// backend/src/servers/store.js — keep these in sync.
-const q = (v) => (v == null ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
+// We can't load better-sqlite3 on the host, so writes go through the `sqlite3` CLI.
+// The statements themselves are the canonical, tested copies imported from
+// backend/src/servers/session-sql.js (store.js prepares the same strings) — the
+// only collector-local piece is render(), which inlines each `?` placeholder as a
+// safely-quoted literal because the CLI one-shot path has no parameter binding.
+// Strings single-quote-double (''), finite numbers go verbatim, null → NULL, and
+// raw() marks a trusted SQL fragment (used for the player-id subselect below).
+const raw = (sql) => ({ raw: String(sql) });
+function render(sql, params) {
+  let i = 0;
+  const out = sql.replace(/\?/g, () => {
+    if (i >= params.length) throw new Error('render: more placeholders than params');
+    const v = params[i++];
+    if (v != null && typeof v === 'object' && typeof v.raw === 'string') return v.raw;
+    if (v == null) return 'NULL';
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v)) throw new Error('render: non-finite number');
+      return String(v);
+    }
+    return `'${String(v).replace(/'/g, "''")}'`;
+  });
+  if (i !== params.length) throw new Error('render: more params than placeholders');
+  return out;
+}
 // Set the busy timeout with the `.timeout` DOT-COMMAND, run before the SQL via -cmd.
 // NOT `PRAGMA busy_timeout=N;` prefixed onto the SQL: that pragma EMITS its value as
 // a result row, which in `-json` mode pollutes querySql() with a phantom {timeout:N}
@@ -105,16 +126,31 @@ async function assertSqliteVersion() {
 
 // Resolve a hosted game's slug → games.id, or null if it isn't seeded yet. The app
 // seeds the `games` table (hosted=1) from the registry on boot; if the collector
-// raced ahead of that, the id is still null. Positive results are cached (the id is
-// stable once seeded); a null is NOT cached, so a later poll re-resolves it.
+// raced ahead of that, the id is still null. Same model as store.js's gameId():
+// read the canonical hosted-games list, resolve the slug in JS. Positive results
+// are cached (the id is stable once seeded); a null is NOT cached, so a later
+// poll re-resolves it.
 const gidCache = new Map();
 async function gameIdFor(slug) {
   if (gidCache.has(slug)) return gidCache.get(slug);
-  const rows = await querySql(`SELECT id FROM games WHERE slug=${q(slug)} AND hosted=1;`);
-  const gid = rows.length ? rows[0].id : null;
+  const rows = await querySql(sessionSql.listHostedGames);
+  const gid = rows.find((r) => r.slug === slug)?.id ?? null;
   if (gid != null) gidCache.set(slug, gid);
   return gid;
 }
+
+// session-sql's upsertPlayer reads the player id back with `RETURNING id` —
+// that's how store.js's prepared-statement path links the session. The CLI
+// one-shot path CAN'T use it: a second row-emitting statement inside a -json
+// script concatenates a second JSON array onto the output, breaking JSON.parse
+// (the same trap as the busy_timeout pragma above). So strip RETURNING here and
+// re-read the id with a subselect; the new session id still comes back via the
+// single trailing `SELECT last_insert_rowid()` in recordJoin.
+const UPSERT_PLAYER_NO_RETURNING = sessionSql.upsertPlayer.replace(/\s*RETURNING id\s*$/, '');
+if (UPSERT_PLAYER_NO_RETURNING === sessionSql.upsertPlayer) {
+  throw new Error('session-sql.js upsertPlayer no longer ends in RETURNING id — update the collector');
+}
+const PLAYER_ID_BY_UID = 'SELECT id FROM players WHERE identity_kind = ? AND uid = ?';
 
 // Open a session (snapshotting the join). When the player has a uid (not
 // CS2-redacted), upsert the global `players` roster first and link the session.
@@ -131,33 +167,34 @@ async function gameIdFor(slug) {
 async function recordJoin(slug, p, ts, source) {
   const gid = await gameIdFor(slug);
   if (gid == null) { log(`${slug}: not a seeded hosted game — skipping join for ${p.name}`); return null; }
-  let playerSql = '';
-  let playerId = 'NULL';
-  if (p.uid != null) {
-    playerSql = `INSERT INTO players (identity_kind, uid, name) VALUES (${q(p.identityKind)}, ${q(p.uid)}, ${q(p.name)})
-      ON CONFLICT(identity_kind, uid) DO UPDATE SET name=excluded.name, last_seen=unixepoch();`;
-    playerId = `(SELECT id FROM players WHERE identity_kind=${q(p.identityKind)} AND uid=${q(p.uid)})`;
-  }
+  const uid = p.uid == null ? null : String(p.uid);
+  const playerId = uid == null
+    ? null
+    : raw(`(${render(PLAYER_ID_BY_UID, [p.identityKind, uid])})`);
   const rows = await querySql(
     'BEGIN IMMEDIATE;' +
-    playerSql +
-    `INSERT INTO server_sessions (game_id, player_id, identity_kind, uid, name, joined_at, source)
-       VALUES (${gid}, ${playerId}, ${q(p.identityKind)}, ${q(p.uid)}, ${q(p.name)}, ${ts}, ${q(source)});` +
+    (uid == null ? '' : render(UPSERT_PLAYER_NO_RETURNING, [p.identityKind, uid, p.name]) + ';') +
+    render(sessionSql.openSession, [gid, playerId, p.identityKind, uid, p.name, ts, source]) + ';' +
     'SELECT last_insert_rowid() AS id;' +
     'COMMIT;',
   );
   return rows.length ? rows[rows.length - 1].id : null;
 }
 async function closeSession(id, ts) {
-  await runSql(`UPDATE server_sessions SET left_at=${ts} WHERE id=${id} AND left_at IS NULL;`);
+  await runSql(render(sessionSql.closeSession, [ts, id]));
 }
 // Close a game's still-open sessions (collector/container restart — real leave
-// time unknowable). `slug` omitted = all games (startup reconciliation).
+// time unknowable). `slug` omitted = all games (startup reconciliation). The
+// per-game variant scopes the canonical close-all UPDATE by the resolved game id;
+// an unseeded game is a no-op either way (no sessions can reference it).
 async function reconcile(slug, ts) {
-  const where = slug
-    ? `game_id=(SELECT id FROM games WHERE slug=${q(slug)} AND hosted=1) AND left_at IS NULL`
-    : 'left_at IS NULL';
-  await runSql(`UPDATE server_sessions SET left_at=${ts}, source='reconciled' WHERE ${where};`);
+  let scope = '';
+  if (slug) {
+    const gid = await gameIdFor(slug);
+    if (gid == null) return;
+    scope = ` AND game_id = ${gid}`;
+  }
+  await runSql(render(sessionSql.closeAllOpen, [ts, 'reconciled']) + scope);
 }
 // ── docker helpers ────────────────────────────────────────────────────────────
 async function dockerInspect(container, fmt) {
@@ -375,6 +412,25 @@ async function main() {
   };
   tick();
   setInterval(tick, POLL_MS);
+}
+
+// ── render() self-test ──────────────────────────────────────────────────────────
+// `GT_SELF_TEST=1 node tools/gt-session-tracker.mjs` checks the literal-quoting
+// rules and exits without touching docker/sqlite — a keeper-runnable smoke for
+// the CLI rendering path (quote doubling, NULL, numbers, raw fragments).
+if (process.env.GT_SELF_TEST) {
+  const check = (got, want, what) => {
+    if (got === want) return;
+    console.error(`render self-test FAILED (${what}):\n  got:  ${got}\n  want: ${want}`);
+    process.exit(1);
+  };
+  check(render('n=?', ["O'Brien"]), "n='O''Brien'", 'single-quote doubling');
+  check(render('a=?, b=?, c=?', [42, null, raw('(SELECT 1)')]), 'a=42, b=NULL, c=(SELECT 1)', 'number/null/raw');
+  check(render(sessionSql.closeSession, [1700000000, 7]),
+    'UPDATE server_sessions SET left_at = 1700000000 WHERE id = 7 AND left_at IS NULL',
+    'canonical closeSession');
+  console.log('render self-test OK');
+  process.exit(0);
 }
 
 main().catch((e) => { log('fatal', e); process.exit(1); });

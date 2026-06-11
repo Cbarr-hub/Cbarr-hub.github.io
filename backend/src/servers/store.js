@@ -11,13 +11,33 @@
 //   1. Workshop map catalog  — persisted Steam Workshop maps (migration 002).
 //   2. Config library        — reusable raw cfg snippets (migration 002).
 //   3. Startup-config profiles — named structured boot configs (migration 003).
-//   4. Player-session tracking — who joined/left each hosted server. WRITES here
-//      are the tested canonical SQL; the host collector (tools/gt-session-tracker.mjs)
-//      mirrors the same statements via the sqlite3 CLI (migration 005/006).
+//   4. Player-session tracking — who joined/left each hosted server. The write
+//      SQL is imported from ./session-sql.js (the single source of truth the
+//      host collector tools/gt-session-tracker.mjs mirrors via the sqlite3 CLI;
+//      migration 005/006).
 //   5. Presence + cross-game activity — read-only roster/timeline views over the
 //      session rows for the panel's "Events"/fleet badges.
 
+import * as sessionSql from './session-sql.js';
+
 export function createServerStore(db) {
+  // The three per-server catalogs (maps / configs / profiles) share a
+  // list/get/delete statement shape: rows scoped by server_id, listed by name
+  // (case-insensitive), fetched + deleted by `key`. Projections stay explicit
+  // per table; the write statements stay hand-written below.
+  const crud = (table, key, listCols, getCols = listCols) => ({
+    list: db.prepare(`SELECT ${listCols} FROM ${table} WHERE server_id = ? ORDER BY name COLLATE NOCASE`),
+    get: db.prepare(`SELECT ${getCols} FROM ${table} WHERE server_id = ? AND ${key} = ?`),
+    delete: db.prepare(`DELETE FROM ${table} WHERE server_id = ? AND ${key} = ?`),
+  });
+  const maps = crud('server_workshop_maps', 'workshop_id',
+    'workshop_id AS workshopId, name, created_at, updated_at');
+  const configs = crud('server_configs', 'id',
+    'id, name, created_at, updated_at',
+    'id, name, body, created_at, updated_at');
+  const profiles = crud('server_profiles', 'id',
+    'id, name, created_at, updated_at',
+    'id, name, settings, created_at, updated_at');
   // The session-projection reads all surface the linked site account (if any) via
   // the same player_accounts→users hop. `kind` is INNER `JOIN` (linked-only) or
   // `LEFT JOIN` (include unlinked); ACCOUNT_COLS are the two columns it contributes.
@@ -32,19 +52,28 @@ export function createServerStore(db) {
   // to interpolate (no user input). Open sessions count up to "now".
   const DUR = 'MAX(0, MIN(COALESCE(s.left_at, unixepoch()) - s.joined_at, 86400))';
 
+  // The session-projection reads share one SELECT shape: server_sessions s
+  // joined to games g + the account hop (`accounts` is the accountJoin kind),
+  // optionally LEFT JOIN players p (the `ignored` flag), scoped by `where`.
+  // `cols` keeps each read's documented projection (store.test.mjs pins the
+  // column sets, so the shapes can't silently drift).
+  const sessionSelect = ({ cols, accounts = 'LEFT JOIN', players = false, where, tail = '' }) => db.prepare(
+    `SELECT ${cols},
+            ${ACCOUNT_COLS}
+       FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin(accounts)}
+       ${players ? 'LEFT JOIN players p ON p.id = s.player_id' : ''}
+      WHERE ${where}
+      ${tail}`,
+  );
+  // Timeline projection: includes closed sessions (left_at) and the additive
+  // players-join `ignored` flag (no row filtering — dismissed identities still
+  // appear; the panel just drops their link affordance).
+  const RECENT_COLS = `s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
+            s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
+            COALESCE(p.ignored, 0) AS ignored`;
+
   const stmts = {
-    // ── workshop map catalog ──
-    listMaps: db.prepare(
-      `SELECT workshop_id AS workshopId, name, created_at, updated_at
-         FROM server_workshop_maps
-        WHERE server_id = ?
-        ORDER BY name COLLATE NOCASE`,
-    ),
-    getMap: db.prepare(
-      `SELECT workshop_id AS workshopId, name, created_at, updated_at
-         FROM server_workshop_maps
-        WHERE server_id = ? AND workshop_id = ?`,
-    ),
+    // ── workshop map catalog (list/get/delete via crud above) ──
     upsertMap: db.prepare(
       `INSERT INTO server_workshop_maps (server_id, workshop_id, name)
             VALUES (?, ?, ?)
@@ -55,41 +84,13 @@ export function createServerStore(db) {
       `UPDATE server_workshop_maps SET name = ?, updated_at = unixepoch()
         WHERE server_id = ? AND workshop_id = ?`,
     ),
-    deleteMap: db.prepare(
-      `DELETE FROM server_workshop_maps WHERE server_id = ? AND workshop_id = ?`,
-    ),
 
-    // ── config library ──
-    listConfigs: db.prepare(
-      `SELECT id, name, created_at, updated_at
-         FROM server_configs
-        WHERE server_id = ?
-        ORDER BY name COLLATE NOCASE`,
-    ),
-    getConfig: db.prepare(
-      `SELECT id, name, body, created_at, updated_at
-         FROM server_configs
-        WHERE server_id = ? AND id = ?`,
-    ),
+    // ── config library (list/get/delete via crud above) ──
     insertConfig: db.prepare(
       `INSERT INTO server_configs (server_id, name, body) VALUES (?, ?, ?)`,
     ),
-    deleteConfig: db.prepare(
-      `DELETE FROM server_configs WHERE server_id = ? AND id = ?`,
-    ),
 
-    // ── startup-config profiles ──
-    listProfiles: db.prepare(
-      `SELECT id, name, created_at, updated_at
-         FROM server_profiles
-        WHERE server_id = ?
-        ORDER BY name COLLATE NOCASE`,
-    ),
-    getProfile: db.prepare(
-      `SELECT id, name, settings, created_at, updated_at
-         FROM server_profiles
-        WHERE server_id = ? AND id = ?`,
-    ),
+    // ── startup-config profiles (list/get/delete via crud above) ──
     countProfiles: db.prepare(
       `SELECT COUNT(*) AS n FROM server_profiles WHERE server_id = ?`,
     ),
@@ -99,9 +100,6 @@ export function createServerStore(db) {
     updateProfile: db.prepare(
       `UPDATE server_profiles SET name = ?, settings = ?, updated_at = unixepoch()
         WHERE server_id = ? AND id = ?`,
-    ),
-    deleteProfile: db.prepare(
-      `DELETE FROM server_profiles WHERE server_id = ? AND id = ?`,
     ),
     clearActiveForProfile: db.prepare(
       `DELETE FROM server_active_profile WHERE server_id = ? AND profile_id = ?`,
@@ -114,82 +112,41 @@ export function createServerStore(db) {
        ON CONFLICT(server_id) DO UPDATE SET profile_id = excluded.profile_id`,
     ),
 
-    // ── player-session tracking (shared with the host collector) ──
+    // ── player-session tracking ──
     // The five game servers live in the party-games `games` table tagged
-    // hosted=1; sessions FK to games(id). slug→id is cached below.
-    // Conflict target carries the partial-index predicate (migration 006:
-    // `idx_games_slug ... WHERE hosted = 1`) — SQLite requires the WHERE clause in
-    // the ON CONFLICT target to match the partial unique index it should use.
-    upsertHostedGame: db.prepare(
-      `INSERT INTO games (name, slug, identity_kind, hosted) VALUES (?, ?, ?, 1)
-       ON CONFLICT(slug) WHERE hosted = 1
-         DO UPDATE SET name = excluded.name, identity_kind = excluded.identity_kind`,
-    ),
-    listHostedGames: db.prepare(
-      `SELECT id, slug FROM games WHERE hosted = 1`,
-    ),
-    upsertPlayer: db.prepare(
-      `INSERT INTO players (identity_kind, uid, name) VALUES (?, ?, ?)
-       ON CONFLICT(identity_kind, uid)
-         DO UPDATE SET name = excluded.name, last_seen = unixepoch()
-       RETURNING id`,
-    ),
-    openSession: db.prepare(
-      `INSERT INTO server_sessions
-         (game_id, player_id, identity_kind, uid, name, joined_at, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ),
-    closeSession: db.prepare(
-      `UPDATE server_sessions SET left_at = ? WHERE id = ? AND left_at IS NULL`,
-    ),
-    closeAllOpen: db.prepare(
-      `UPDATE server_sessions SET left_at = ?, source = ? WHERE left_at IS NULL`,
-    ),
-    // ── presence + cross-game activity ──
+    // hosted=1; sessions FK to games(id). slug→id is cached below. The SQL
+    // itself is the canonical copy in ./session-sql.js (shared with the host
+    // collector) — prepare it, never inline a duplicate here.
+    upsertHostedGame: db.prepare(sessionSql.upsertHostedGame),
+    listHostedGames: db.prepare(sessionSql.listHostedGames),
+    upsertPlayer: db.prepare(sessionSql.upsertPlayer),
+    openSession: db.prepare(sessionSql.openSession),
+    closeSession: db.prepare(sessionSql.closeSession),
+    closeAllOpen: db.prepare(sessionSql.closeAllOpen),
+    // ── presence + cross-game activity (sessionSelect above) ──
     // Who's online right now, across every hosted server (newest join first).
-    listOnline: db.prepare(
-      `SELECT s.id, g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
-              s.name, s.uid, s.identity_kind AS identityKind, s.joined_at, s.source,
-              ${ACCOUNT_COLS}
-         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
-        WHERE s.left_at IS NULL AND g.hosted = 1
-        ORDER BY s.joined_at DESC`,
-    ),
-    // Recent join/leave activity merged across all hosted servers (the timeline).
-    // `ignored` is surfaced via an additive LEFT JOIN players (no row filtering, so
-    // dismissed identities still appear in the timeline) so the panel can drop the
-    // link affordance for dismissed identities without hiding their playtime.
-    recentSessionsLinked: db.prepare(
-      `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
-              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
-              COALESCE(p.ignored, 0) AS ignored,
-              ${ACCOUNT_COLS}
-         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('JOIN')}
-         LEFT JOIN players p ON p.id = s.player_id
-        WHERE g.hosted = 1
-        ORDER BY s.joined_at DESC
-        LIMIT ?`,
-    ),
-    recentSessionsAll: db.prepare(
-      `SELECT s.id, s.player_id AS playerId, g.slug AS slug, g.name AS gameName, s.name, s.uid,
-              s.identity_kind AS identityKind, s.joined_at, s.left_at, s.source,
-              COALESCE(p.ignored, 0) AS ignored,
-              ${ACCOUNT_COLS}
-         FROM server_sessions s JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
-         LEFT JOIN players p ON p.id = s.player_id
-        WHERE g.hosted = 1
-        ORDER BY s.joined_at DESC
-        LIMIT ?`,
-    ),
-    openSessionById: db.prepare(
-      `SELECT s.id, s.player_id AS playerId, s.name, s.uid,
-              s.identity_kind AS identityKind, s.joined_at, s.source,
-              ${ACCOUNT_COLS}
-         FROM server_sessions s
-         JOIN games g ON g.id = s.game_id${accountJoin('LEFT JOIN')}
-        WHERE g.slug = ? AND g.hosted = 1 AND s.id = ? AND s.left_at IS NULL
-        LIMIT 1`,
-    ),
+    listOnline: sessionSelect({
+      cols: `s.id, g.slug AS slug, g.name AS gameName, s.player_id AS playerId,
+            s.name, s.uid, s.identity_kind AS identityKind, s.joined_at, s.source`,
+      where: 's.left_at IS NULL AND g.hosted = 1',
+      tail: 'ORDER BY s.joined_at DESC',
+    }),
+    // Recent join/leave activity merged across all hosted servers (the
+    // timeline): linked-only (INNER account join) vs everyone.
+    recentSessionsLinked: sessionSelect({
+      cols: RECENT_COLS, accounts: 'JOIN', players: true,
+      where: 'g.hosted = 1', tail: 'ORDER BY s.joined_at DESC LIMIT ?',
+    }),
+    recentSessionsAll: sessionSelect({
+      cols: RECENT_COLS, players: true,
+      where: 'g.hosted = 1', tail: 'ORDER BY s.joined_at DESC LIMIT ?',
+    }),
+    openSessionById: sessionSelect({
+      cols: `s.id, s.player_id AS playerId, s.name, s.uid,
+            s.identity_kind AS identityKind, s.joined_at, s.source`,
+      where: 'g.slug = ? AND g.hosted = 1 AND s.id = ? AND s.left_at IS NULL',
+      tail: 'LIMIT 1',
+    }),
 
     // ── pulse activity stats ──
     // Four read-only aggregates over the session rows for the "Pulse" view. All
@@ -256,10 +213,10 @@ export function createServerStore(db) {
   return {
     // ── workshop map catalog ─────────────────────────────────────────────────
     listWorkshopMaps(serverId) {
-      return stmts.listMaps.all(serverId);
+      return maps.list.all(serverId);
     },
     getWorkshopMap(serverId, workshopId) {
-      return stmts.getMap.get(serverId, String(workshopId)) ?? null;
+      return maps.get.get(serverId, String(workshopId)) ?? null;
     },
     // Add a map, or update its name if the workshop id already exists. Returns
     // the stored row.
@@ -273,22 +230,22 @@ export function createServerStore(db) {
     },
     // Remove a map from the catalog. Returns true if a row was deleted.
     deleteWorkshopMap(serverId, workshopId) {
-      return stmts.deleteMap.run(serverId, String(workshopId)).changes > 0;
+      return maps.delete.run(serverId, String(workshopId)).changes > 0;
     },
 
     // ── config library ───────────────────────────────────────────────────────
     listConfigs(serverId) {
-      return stmts.listConfigs.all(serverId);
+      return configs.list.all(serverId);
     },
     getConfig(serverId, id) {
-      return stmts.getConfig.get(serverId, id) ?? null;
+      return configs.get.get(serverId, id) ?? null;
     },
     createConfig(serverId, { name, body = '' }) {
       const { lastInsertRowid } = stmts.insertConfig.run(serverId, name, body);
       return this.getConfig(serverId, lastInsertRowid);
     },
     deleteConfig(serverId, id) {
-      return stmts.deleteConfig.run(serverId, id).changes > 0;
+      return configs.delete.run(serverId, id).changes > 0;
     },
 
     // ── startup-config profiles ──────────────────────────────────────────────
@@ -296,10 +253,10 @@ export function createServerStore(db) {
     // only ever see/pass plain objects. listProfiles omits the body for cheap
     // catalogs; getProfile returns the parsed settings.
     listProfiles(serverId) {
-      return stmts.listProfiles.all(serverId);
+      return profiles.list.all(serverId);
     },
     getProfile(serverId, id) {
-      const row = stmts.getProfile.get(serverId, id);
+      const row = profiles.get.get(serverId, id);
       if (!row) return null;
       return { ...row, settings: parseSettings(row.settings) };
     },
@@ -325,7 +282,7 @@ export function createServerStore(db) {
     deleteProfile(serverId, id) {
       const tx = db.transaction(() => {
         stmts.clearActiveForProfile.run(serverId, id);
-        return stmts.deleteProfile.run(serverId, id).changes;
+        return profiles.delete.run(serverId, id).changes;
       });
       return tx() > 0;
     },

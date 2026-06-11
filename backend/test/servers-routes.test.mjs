@@ -4,12 +4,13 @@ import Fastify from 'fastify';
 
 import serversRoutes from '../src/routes/servers.js';
 
-function baseService(overrides = {}) {
+// The OPS dispatcher in routes/servers.js calls svc.connectorFor(id)[op](…) for
+// every connector pass-through route, so the stub service carries the composite
+// methods directly plus a connectorFor returning a stub connector.
+// `connectorOverrides` is an object (or an (id) => object factory, so per-op
+// recorders can see which server id was resolved) merged over the defaults.
+function baseConnector(overrides = {}) {
   return {
-    listServers: async () => [],
-    getNodeStatus: async () => ({ kind: 'docker' }),
-    getStatus: async (id) => ({ id, status: 'running' }),
-    doAction: async (id, action) => ({ ok: true, id, action }),
     getSettings: async () => ({ fields: [] }),
     setSettings: async () => ({ ok: true }),
     listMaps: async () => [],
@@ -33,13 +34,27 @@ function baseService(overrides = {}) {
     getLive: async () => ({ available: false }),
     sendCommand: async () => ({ output: '' }),
     runLiveAction: async () => ({ output: '' }),
-    listConfig: async () => ({ files: [] }),
+    listConfigFiles: () => [],
     readConfig: async () => ({ content: '' }),
     writeConfig: async () => ({ ok: true }),
+    update: async () => ({ ok: true }),
+    ...overrides,
+  };
+}
+
+function baseService(overrides = {}, connectorOverrides) {
+  return {
+    listServers: async () => [],
+    getNodeStatus: async () => ({ kind: 'docker' }),
+    getStatus: async (id) => ({ id, status: 'running' }),
+    doAction: async (id, action) => ({ ok: true, id, action }),
     getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
     getOnlinePlayerPosition: async (id, sessionId) => ({ serverId: id, sessionId }),
     getOnlinePlayerPositionByName: async (id, player) => ({ serverId: id, player }),
-    runUpdate: async () => ({ ok: true }),
+    clearStatusCache() {},
+    connectorFor: (id) => baseConnector(
+      typeof connectorOverrides === 'function' ? connectorOverrides(id) : connectorOverrides,
+    ),
     ...overrides,
   };
 }
@@ -163,31 +178,37 @@ test('servers mutating routes require csrf and dispatch after a valid token', as
 
 test('servers routes accept and dispatch every mutating command endpoint shape', async () => {
   const calls = [];
-  const rec = (name, result = { ok: true }) => async (...args) => {
-    calls.push([name, ...args]);
+  const busts = [];
+  // Connector-op recorder: the dispatcher resolves connectorFor(id) then calls
+  // the op with the request-derived args, so each call records [name, id, ...args]
+  // — the same tuples the old service-stub recorder produced.
+  const rec = (name, id, result = { ok: true }) => async (...args) => {
+    calls.push([name, id, ...args]);
     return result;
   };
   const app = await routeApp({
     service: baseService({
-      doAction: rec('doAction'),
-      setSettings: rec('setSettings'),
-      addMap: rec('addMap'),
-      syncMaps: rec('syncMaps'),
-      importCollection: rec('importCollection'),
-      renameMap: rec('renameMap'),
-      deleteMap: rec('deleteMap'),
-      createConfig: rec('createConfig'),
-      deleteConfig: rec('deleteConfig'),
-      createProfile: rec('createProfile'),
-      captureProfile: rec('captureProfile'),
-      updateProfile: rec('updateProfile'),
-      deleteProfile: rec('deleteProfile'),
-      applyProfile: rec('applyProfile'),
-      sendCommand: rec('sendCommand'),
-      runLiveAction: rec('runLiveAction'),
-      writeConfig: rec('writeConfig'),
-      runUpdate: rec('runUpdate'),
-    }),
+      doAction: async (id, action) => { calls.push(['doAction', id, action]); return { ok: true }; },
+      clearStatusCache: () => { busts.push(calls.at(-1)?.[0] ?? null); },
+    }, (id) => ({
+      setSettings: rec('setSettings', id),
+      addMap: rec('addMap', id),
+      syncMaps: rec('syncMaps', id),
+      importCollection: rec('importCollection', id),
+      renameMap: rec('renameMap', id),
+      deleteMap: rec('deleteMap', id),
+      createConfig: rec('createConfig', id),
+      deleteConfig: rec('deleteConfig', id),
+      createProfile: rec('createProfile', id),
+      captureProfile: rec('captureProfile', id),
+      updateProfile: rec('updateProfile', id),
+      deleteProfile: rec('deleteProfile', id),
+      applyProfile: rec('applyProfile', id),
+      sendCommand: rec('sendCommand', id),
+      runLiveAction: rec('runLiveAction', id),
+      writeConfig: rec('writeConfig', id),
+      update: rec('runUpdate', id), // connector method is update(); keep the recorded name
+    })),
   });
   try {
     const rows = [
@@ -223,14 +244,18 @@ test('servers routes accept and dispatch every mutating command endpoint shape',
       assert.equal(res.statusCode, 200, `${row.method} ${row.url}: ${res.body}`);
     }
     assert.deepEqual(calls, rows.map((r) => r.call));
+    // The status caches are busted (after success) by exactly this op set; the
+    // power actions bust inside the real service's doAction instead.
+    assert.deepEqual(busts, ['setSettings', 'applyProfile', 'runUpdate']);
   } finally { await app.close(); }
 });
 
 test('servers routes map typed RCON and Docker errors', async () => {
   const app = await routeApp({
     service: baseService({
-      getLive: async () => { const e = new Error('bad password'); e.code = 'RCON_AUTH'; throw e; },
       getStatus: async () => { const e = new Error('socket proxy down'); e.name = 'DockerError'; throw e; },
+    }, {
+      getLive: async () => { const e = new Error('bad password'); e.code = 'RCON_AUTH'; throw e; },
       getSettings: async () => { const e = new Error('docker POST /exec/slow/start timed out'); e.name = 'DockerError'; e.code = 'DOCKER_TIMEOUT'; throw e; },
     }),
   });

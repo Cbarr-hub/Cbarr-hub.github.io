@@ -1,6 +1,9 @@
 // HTTP layer for game-server control. Thin by design: authenticate (admin only),
-// validate input shape, call app.serverService, map typed errors to status codes.
-// No transport or game knowledge lives here.
+// validate input shape, dispatch, map typed errors to status codes. The
+// service-level composites (list/status/power/presence/stats/map) are
+// hand-written routes; every per-connector operation is one row in the OPS
+// table and is dispatched straight to svc.connectorFor(id)[op]. No transport
+// or game knowledge lives here.
 
 import { requireAdmin } from '../middleware/auth.js';
 import { ServerControlError } from '../servers/service.js';
@@ -12,6 +15,7 @@ const SESSION_ID_PARAM = { type: 'integer', minimum: 1 };
 const PLAYER_PARAM = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
 const CONFIG_BODY_MAX = 16_000;
+const PROFILE_NAME = { type: 'string', minLength: 1, maxLength: 48 };
 
 // Querystring for the activity-timeline read (`limit` bound + linked/unlinked
 // toggle). Fastify's default ajv strips unknown query params (removeAdditional).
@@ -44,6 +48,121 @@ const CODE_STATUS = {
 
 // Build a `params` JSON-schema where every listed property is required.
 const P = (props) => ({ params: { type: 'object', properties: props, required: Object.keys(props) } });
+
+// Body schemas for the OPS rows. These are the byte-level HTTP contract —
+// preserve every pattern / maxLength / additionalProperties flag.
+const S = {
+  settings: {
+    type: 'object',
+    properties: {
+      // Factorio / Minecraft quick-settings sections
+      section:      { type: 'string', maxLength: 32 },
+      saveName:     { type: 'string', maxLength: 64 },
+      // Factorio new-world generation
+      preset:       { type: 'string', maxLength: 32 },
+      seed:         { type: 'string', maxLength: 12 },
+      startingArea: { type: 'string', maxLength: 16 },
+      oreFrequency: { type: 'string', maxLength: 16 },
+      oreSize:      { type: 'string', maxLength: 16 },
+      oreRichness:  { type: 'string', maxLength: 16 },
+      enemies:      { type: 'string', maxLength: 16 },
+    },
+    // connector validates game-specific fields; no additionalProperties restriction
+  },
+  addMap: {
+    type: 'object',
+    // name is optional — when omitted the connector auto-fetches the Workshop title.
+    properties: { workshopId: WS_PARAM, name: { type: 'string', maxLength: 64 } },
+    required: ['workshopId'],
+    additionalProperties: false,
+  },
+  collection: { type: 'object', properties: { collectionId: WS_PARAM }, required: ['collectionId'], additionalProperties: false },
+  mapName: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 64 } }, required: ['name'], additionalProperties: false },
+  config: {
+    type: 'object',
+    properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, body: { type: 'string', maxLength: CONFIG_BODY_MAX } },
+    required: ['name'],
+    additionalProperties: false,
+  },
+  profile: {
+    type: 'object',
+    properties: { name: PROFILE_NAME, settings: { type: 'object' } },
+    required: ['name'],
+    additionalProperties: false,
+  },
+  profileName: { type: 'object', properties: { name: PROFILE_NAME }, required: ['name'], additionalProperties: false },
+  profilePatch: {
+    type: 'object',
+    properties: { name: PROFILE_NAME, settings: { type: 'object' } },
+    additionalProperties: false,
+  },
+  command: { type: 'object', properties: { command: { type: 'string', minLength: 1, maxLength: 512 } }, required: ['command'], additionalProperties: false },
+  liveAction: {
+    type: 'object',
+    properties: {
+      action: { type: 'string', minLength: 1, maxLength: 64 },
+      value:  { type: 'string', maxLength: 80 }, // optional param, e.g. change_map target
+    },
+    required: ['action'],
+    additionalProperties: false,
+  },
+  content: { type: 'object', properties: { content: { type: 'string', maxLength: 1_000_000 } }, required: ['content'], additionalProperties: false },
+};
+
+// ── connector operation table ───────────────────────────────────────────────
+// [method, path, op, opts] — one row per connector pass-through route. The
+// registrar below turns each into an admin-only route whose handler is
+// `svc.connectorFor(req.params.id)[op](...args(req))`.
+//   op      the connector method name
+//   args    builds the connector argument list from the request (default [])
+//   csrf    adds the CSRF onRequest guard (mutating routes)
+//   bust    svc.clearStatusCache() after success — the mutations whose effect
+//           must show on the next status read (setSettings / applyProfile /
+//           update; doAction busts inside the service itself)
+//   params  extra :path params merged into P({ id: ID_PARAM, … })
+//   body    body schema (S.*)
+//   wrap    reshapes the connector result for the HTTP response
+// DECLARATION ORDER MATTERS for static-vs-param matching: '/maps/sync' and
+// '/maps/collection' stay before '/maps/:workshopId'; '/profiles/schema' and
+// '/profiles/capture' before '/profiles/:profileId'.
+const OPS = [
+  // ── structured quick settings (map / game mode / …) ──
+  ['get',    '/:id/settings',                  'getSettings'],
+  ['put',    '/:id/settings',                  'setSettings',     { csrf: true, bust: true, body: S.settings, args: (r) => [r.body] }],
+  // ── workshop map catalog (Phase 2; CS) ── sync installs collection maps into
+  // the single garrysmod/maps/ source (GMOD); collection imports a public Steam
+  // Workshop collection with names auto-fetched (CS).
+  ['get',    '/:id/maps',                      'listMaps'],
+  ['post',   '/:id/maps',                      'addMap',          { csrf: true, body: S.addMap, args: (r) => [r.body] }],
+  ['post',   '/:id/maps/sync',                 'syncMaps',        { csrf: true }],
+  ['post',   '/:id/maps/collection',           'importCollection', { csrf: true, body: S.collection, args: (r) => [r.body.collectionId] }],
+  ['patch',  '/:id/maps/:workshopId',          'renameMap',       { csrf: true, params: { workshopId: WS_PARAM }, body: S.mapName, args: (r) => [r.params.workshopId, r.body.name] }],
+  ['delete', '/:id/maps/:workshopId',          'deleteMap',       { csrf: true, params: { workshopId: WS_PARAM }, args: (r) => [r.params.workshopId] }],
+  // ── config library (Phase 2; CS) ──
+  ['get',    '/:id/configs',                   'listConfigs'],
+  ['get',    '/:id/configs/:configId',         'getConfig',       { params: { configId: CONFIG_ID_PARAM }, args: (r) => [r.params.configId] }],
+  ['post',   '/:id/configs',                   'createConfig',    { csrf: true, body: S.config, args: (r) => [r.body] }],
+  ['delete', '/:id/configs/:configId',         'deleteConfig',    { csrf: true, params: { configId: CONFIG_ID_PARAM }, args: (r) => [r.params.configId] }],
+  // ── startup-config profiles ──
+  ['get',    '/:id/profiles',                  'listProfiles'],
+  ['get',    '/:id/profiles/schema',           'profileSchema'],
+  ['post',   '/:id/profiles',                  'createProfile',   { csrf: true, body: S.profile, args: (r) => [r.body] }],
+  ['post',   '/:id/profiles/capture',          'captureProfile',  { csrf: true, body: S.profileName, args: (r) => [r.body.name] }],
+  ['get',    '/:id/profiles/:profileId',       'getProfile',      { params: { profileId: CONFIG_ID_PARAM }, args: (r) => [r.params.profileId] }],
+  ['put',    '/:id/profiles/:profileId',       'updateProfile',   { csrf: true, params: { profileId: CONFIG_ID_PARAM }, body: S.profilePatch, args: (r) => [r.params.profileId, r.body] }],
+  ['delete', '/:id/profiles/:profileId',       'deleteProfile',   { csrf: true, params: { profileId: CONFIG_ID_PARAM }, args: (r) => [r.params.profileId] }],
+  ['post',   '/:id/profiles/:profileId/apply', 'applyProfile',    { csrf: true, bust: true, params: { profileId: CONFIG_ID_PARAM }, args: (r) => [r.params.profileId] }],
+  // ── live commands (Phase 3; RCON / console) ──
+  ['get',    '/:id/live',                      'getLive'],
+  ['post',   '/:id/live/command',              'sendCommand',     { csrf: true, body: S.command, args: (r) => [r.body.command] }],
+  ['post',   '/:id/live/action',               'runLiveAction',   { csrf: true, body: S.liveAction, args: (r) => [r.body.action, r.body.value] }],
+  // ── raw config files (Phase 3) ──
+  ['get',    '/:id/config',                    'listConfigFiles', { wrap: (files, r) => ({ id: r.params.id, files }) }],
+  ['get',    '/:id/config/:file',              'readConfig',      { params: { file: FILE_PARAM }, args: (r) => [r.params.file] }],
+  ['put',    '/:id/config/:file',              'writeConfig',     { csrf: true, params: { file: FILE_PARAM }, body: S.content, args: (r) => [r.params.file, r.body.content] }],
+  // ── update recipe (Phase 3) ──
+  ['post',   '/:id/update',                    'update',          { csrf: true, bust: true }],
+];
 
 export default async function serversRoutes(app) {
   const svc = app.serverService;
@@ -154,174 +273,14 @@ export default async function serversRoutes(app) {
     }),
   });
 
-  // ── structured quick settings (map / game mode / …) ──────────────────────────
-  route('get', '/:id/settings', (req) => svc.getSettings(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('put', '/:id/settings', (req) => svc.setSettings(req.params.id, req.body), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: {
-        type: 'object',
-        properties: {
-          // Factorio / Minecraft quick-settings sections
-          section:      { type: 'string', maxLength: 32 },
-          saveName:     { type: 'string', maxLength: 64 },
-          // Factorio new-world generation
-          preset:       { type: 'string', maxLength: 32 },
-          seed:         { type: 'string', maxLength: 12 },
-          startingArea: { type: 'string', maxLength: 16 },
-          oreFrequency: { type: 'string', maxLength: 16 },
-          oreSize:      { type: 'string', maxLength: 16 },
-          oreRichness:  { type: 'string', maxLength: 16 },
-          enemies:      { type: 'string', maxLength: 16 },
-        },
-        // connector validates game-specific fields; no additionalProperties restriction
-      },
-    },
-  });
-
-  // ── workshop map catalog (Phase 2; CS) ────────────────────────────────────────
-  route('get', '/:id/maps', (req) => svc.listMaps(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('post', '/:id/maps', (req) => svc.addMap(req.params.id, req.body), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: {
-        type: 'object',
-        // name is optional — when omitted the connector auto-fetches the Workshop title.
-        properties: { workshopId: WS_PARAM, name: { type: 'string', maxLength: 64 } },
-        required: ['workshopId'],
-        additionalProperties: false,
-      },
-    },
-  });
-  // Install collection maps into the single garrysmod/maps/ source (GMOD). Static
-  // '/maps/sync' is declared before '/maps/:workshopId' so it can't be shadowed.
-  route('post', '/:id/maps/sync', (req) => svc.syncMaps(req.params.id), { csrf: true, schema: P({ id: ID_PARAM }) });
-  // Import every map in a public Steam Workshop collection into the catalog (CS),
-  // names auto-fetched. Static '/maps/collection' before '/maps/:workshopId'.
-  route('post', '/:id/maps/collection', (req) => svc.importCollection(req.params.id, req.body.collectionId), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: { type: 'object', properties: { collectionId: WS_PARAM }, required: ['collectionId'], additionalProperties: false },
-    },
-  });
-  route('patch', '/:id/maps/:workshopId', (req) => svc.renameMap(req.params.id, req.params.workshopId, req.body.name), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM, workshopId: WS_PARAM }),
-      body: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 64 } }, required: ['name'], additionalProperties: false },
-    },
-  });
-  route('delete', '/:id/maps/:workshopId', (req) => svc.deleteMap(req.params.id, req.params.workshopId), {
-    csrf: true, schema: P({ id: ID_PARAM, workshopId: WS_PARAM }),
-  });
-
-  // ── config library (Phase 2; CS) ──────────────────────────────────────────────
-  route('get', '/:id/configs', (req) => svc.listConfigs(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('get', '/:id/configs/:configId', (req) => svc.getConfig(req.params.id, req.params.configId), {
-    schema: P({ id: ID_PARAM, configId: CONFIG_ID_PARAM }),
-  });
-  route('post', '/:id/configs', (req) => svc.createConfig(req.params.id, req.body), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: {
-        type: 'object',
-        properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, body: { type: 'string', maxLength: CONFIG_BODY_MAX } },
-        required: ['name'],
-        additionalProperties: false,
-      },
-    },
-  });
-  route('delete', '/:id/configs/:configId', (req) => svc.deleteConfig(req.params.id, req.params.configId), {
-    csrf: true, schema: P({ id: ID_PARAM, configId: CONFIG_ID_PARAM }),
-  });
-
-  // ── startup-config profiles ───────────────────────────────────────────────────
-  // Static sub-paths (/schema, /capture) are declared before '/:profileId' so the
-  // parametric matcher can't shadow them.
-  route('get', '/:id/profiles', (req) => svc.listProfiles(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('get', '/:id/profiles/schema', (req) => svc.profileSchema(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('post', '/:id/profiles', (req) => svc.createProfile(req.params.id, req.body), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: {
-        type: 'object',
-        properties: { name: { type: 'string', minLength: 1, maxLength: 48 }, settings: { type: 'object' } },
-        required: ['name'],
-        additionalProperties: false,
-      },
-    },
-  });
-  route('post', '/:id/profiles/capture', (req) => svc.captureProfile(req.params.id, req.body.name), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 48 } }, required: ['name'], additionalProperties: false },
-    },
-  });
-  route('get', '/:id/profiles/:profileId', (req) => svc.getProfile(req.params.id, req.params.profileId), {
-    schema: P({ id: ID_PARAM, profileId: CONFIG_ID_PARAM }),
-  });
-  route('put', '/:id/profiles/:profileId', (req) => svc.updateProfile(req.params.id, req.params.profileId, req.body), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM, profileId: CONFIG_ID_PARAM }),
-      body: {
-        type: 'object',
-        properties: { name: { type: 'string', minLength: 1, maxLength: 48 }, settings: { type: 'object' } },
-        additionalProperties: false,
-      },
-    },
-  });
-  route('delete', '/:id/profiles/:profileId', (req) => svc.deleteProfile(req.params.id, req.params.profileId), {
-    csrf: true, schema: P({ id: ID_PARAM, profileId: CONFIG_ID_PARAM }),
-  });
-  route('post', '/:id/profiles/:profileId/apply', (req) => svc.applyProfile(req.params.id, req.params.profileId), {
-    csrf: true, schema: P({ id: ID_PARAM, profileId: CONFIG_ID_PARAM }),
-  });
-
-  // ── live commands (Phase 3; RCON / console) ───────────────────────────────────
-  route('get', '/:id/live', (req) => svc.getLive(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('post', '/:id/live/command', (req) => svc.sendCommand(req.params.id, req.body.command), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: { type: 'object', properties: { command: { type: 'string', minLength: 1, maxLength: 512 } }, required: ['command'], additionalProperties: false },
-    },
-  });
-  route('post', '/:id/live/action', (req) => svc.runLiveAction(req.params.id, req.body.action, req.body.value), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM }),
-      body: {
-        type: 'object',
-        properties: {
-          action: { type: 'string', minLength: 1, maxLength: 64 },
-          value:  { type: 'string', maxLength: 80 }, // optional param, e.g. change_map target
-        },
-        required: ['action'],
-        additionalProperties: false,
-      },
-    },
-  });
-
-  // ── raw config files (Phase 3) ────────────────────────────────────────────────
-  route('get', '/:id/config', (req) => svc.listConfig(req.params.id), { schema: P({ id: ID_PARAM }) });
-  route('get', '/:id/config/:file', (req) => svc.readConfig(req.params.id, req.params.file), {
-    schema: P({ id: ID_PARAM, file: FILE_PARAM }),
-  });
-  route('put', '/:id/config/:file', (req) => svc.writeConfig(req.params.id, req.params.file, req.body.content), {
-    csrf: true,
-    schema: {
-      ...P({ id: ID_PARAM, file: FILE_PARAM }),
-      body: { type: 'object', properties: { content: { type: 'string', maxLength: 1_000_000 } }, required: ['content'], additionalProperties: false },
-    },
-  });
-
-  // ── update recipe (Phase 3) ─────────────────────────────────────────────────
-  route('post', '/:id/update', (req) => svc.runUpdate(req.params.id), { csrf: true, schema: P({ id: ID_PARAM }) });
+  // ── connector operations (the OPS table) ──────────────────────────────────────
+  for (const [method, path, op, opts = {}] of OPS) {
+    const { csrf = false, bust = false, params, body, args = () => [], wrap } = opts;
+    const schema = { ...P({ id: ID_PARAM, ...params }), ...(body ? { body } : {}) };
+    route(method, path, async (req) => {
+      const result = await svc.connectorFor(req.params.id)[op](...args(req));
+      if (bust) svc.clearStatusCache();
+      return wrap ? wrap(result, req) : result;
+    }, { csrf, schema });
+  }
 }

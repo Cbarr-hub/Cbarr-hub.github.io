@@ -3,8 +3,12 @@ import test from 'node:test';
 
 import { fakeDockerClient, withRconCapture, withEnv } from './harness.mjs';
 import * as mp from '../src/servers/connectors/minecraft-profile.js';
-import { clampNumber } from '../src/servers/connectors/docker-base.js';
 import { DockerMinecraftConnector, parseMinecraftPlayerList } from '../src/servers/connectors/docker/minecraft.js';
+
+// The live-action/control/sendCommand/update command canon for the Minecraft
+// connector is pinned in connector-goldens.test.mjs; this file keeps the pure
+// minecraft-profile module tests plus the per-game quirks (world discovery,
+// online-player parsing, BlueMap positions).
 
 // ── pure profile module (shared server.properties logic) ─────────────────────────
 test('mc-profile validate normalizes enums + rejects bad values', () => {
@@ -155,105 +159,6 @@ test('DockerMinecraft profileSchema discovers /data worlds with the level.dat fi
   assert.deepEqual(options, ['', 'active', 'creative_world']);
 });
 
-// Live runtime: getLive shape (actions + slider controls, NO changeMap).
-test('DockerMinecraft getLive advertises actions + controls and no changeMap', async () => {
-  await withEnv('MINECRAFT_RCON_PASSWORD', 'x', async () => {
-    const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
-    const live = await conn.getLive();
-    assert.equal(live.available, true);
-    assert.equal(live.changeMap, undefined); // world switch is restart-only
-    const actionKeys = live.actions.map((a) => a.key);
-    assert.deepEqual(actionKeys,
-      ['list', 'save', 'day', 'night', 'clear', 'rain', 'keepinv_on', 'keepinv_off', 'mobs_on', 'mobs_off',
-       'daycycle_on', 'daycycle_off', 'griefing_on', 'griefing_off', 'falldmg_on', 'falldmg_off',
-       'instarespawn_on', 'instarespawn_off', 'phantoms_on', 'phantoms_off', 'firetick_on', 'firetick_off', 'thunder']);
-    const ctlKeys = live.controls.map((c) => c.key);
-    assert.deepEqual(ctlKeys, ['time', 'randomtick', 'sleeppct']);
-    const t = live.controls.find((c) => c.key === 'time');
-    assert.equal(t.min, 0); assert.equal(t.max, 24000);
-  });
-});
-
-test('DockerMinecraft getLive is unavailable without an RCON password', async () => {
-  await withEnv('MINECRAFT_RCON_PASSWORD', undefined, async () => {
-    const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
-    const live = await conn.getLive();
-    assert.equal(live.available, false);
-  });
-});
-
-// ── runLiveAction: unknown keys reject before any RCON I/O ───────────────────────
-// (The range/action cases issue real Source-RCON over a socket, so they're left to
-// the host smoke-test; the unknown-key guard short-circuits before #rcon is called.)
-test('DockerMinecraft runLiveAction rejects unknown keys with BAD_SETTING', async () => {
-  const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
-  await assert.rejects(() => conn.runLiveAction('nope'), (e) => e.code === 'BAD_SETTING');
-});
-
-test('DockerMinecraft runLiveAction maps every advertised action to its RCON command', async () => {
-  const expected = [
-    ['list', 'list'],
-    ['save', 'save-all'],
-    ['day', 'time set day'],
-    ['night', 'time set night'],
-    ['clear', 'weather clear'],
-    ['rain', 'weather rain'],
-    ['keepinv_on', 'gamerule keep_inventory true'],
-    ['keepinv_off', 'gamerule keep_inventory false'],
-    ['mobs_on', 'gamerule spawn_mobs true'],
-    ['mobs_off', 'gamerule spawn_mobs false'],
-    ['daycycle_on', 'gamerule do_daylight_cycle true'],
-    ['daycycle_off', 'gamerule do_daylight_cycle false'],
-    ['griefing_on', 'gamerule mob_griefing true'],
-    ['griefing_off', 'gamerule mob_griefing false'],
-    ['falldmg_on', 'gamerule fall_damage true'],
-    ['falldmg_off', 'gamerule fall_damage false'],
-    ['instarespawn_on', 'gamerule do_immediate_respawn true'],
-    ['instarespawn_off', 'gamerule do_immediate_respawn false'],
-    ['phantoms_on', 'gamerule do_insomnia true'],
-    ['phantoms_off', 'gamerule do_insomnia false'],
-    ['firetick_on', 'gamerule do_fire_tick true'],
-    ['firetick_off', 'gamerule do_fire_tick false'],
-    ['thunder', 'weather thunder'],
-  ];
-  const commands = await captureMinecraftRcon(async (conn) => {
-    for (const [key] of expected) await conn.runLiveAction(key);
-  });
-  assert.deepEqual(commands, expected.map(([, command]) => command));
-});
-
-test('DockerMinecraft runLiveAction maps every slider control to clamped RCON commands', async () => {
-  const cases = [
-    ['time', 12345, 'time set 12345'],
-    ['time', 99999, 'time set 24000'],
-    ['time', -5, 'time set 0'],
-    ['time', '', 'time set 6000'],
-    ['randomtick', 7, 'gamerule random_tick_speed 7'],
-    ['randomtick', 99, 'gamerule random_tick_speed 20'],
-    ['randomtick', 0, 'gamerule random_tick_speed 0'],
-    ['randomtick', 'abc', 'gamerule random_tick_speed 3'],
-    ['sleeppct', 55, 'gamerule players_sleeping_percentage 55'],
-    ['sleeppct', 101, 'gamerule players_sleeping_percentage 100'],
-    ['sleeppct', -1, 'gamerule players_sleeping_percentage 0'],
-    ['sleeppct', null, 'gamerule players_sleeping_percentage 100'],
-  ];
-  assert.deepEqual([...new Set(cases.map(([key]) => key))], ['time', 'randomtick', 'sleeppct']);
-  const commands = await captureMinecraftRcon(async (conn) => {
-    for (const [key, value] of cases) await conn.runLiveAction(key, value);
-  });
-  assert.deepEqual(commands, cases.map(([, , command]) => command));
-});
-
-test('DockerMinecraft sendCommand trims + forwards valid commands and rejects bad input', async () => {
-  const commands = await captureMinecraftRcon((conn) => conn.sendCommand('  say hello  '));
-  assert.deepEqual(commands, ['say hello']);
-
-  const conn = new DockerMinecraftConnector(MC, fakeDockerClient());
-  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.sendCommand('a\nb'), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.sendCommand('x'.repeat(513)), (e) => e.code === 'BAD_SETTING');
-});
-
 test('DockerMinecraft listOnlinePlayers parses the RCON list output', async () => {
   assert.deepEqual(parseMinecraftPlayerList('There are 0 of a max of 20 players online:'), []);
   assert.deepEqual(
@@ -341,28 +246,3 @@ test('DockerMinecraft getPlayerPosition returns offline shape when the player ha
   assert.equal(online.z, -30.25);
 });
 
-// Range clamping is pure arithmetic on the issued command; verify the clamp helper's
-// contract against MC_LIVE_CONTROLS bounds without touching the network. We mirror the
-// exact clamp the connector uses so a bounds regression in the controls table is caught.
-test('DockerMinecraft live-control bounds clamp slider values', () => {
-  const clamp = clampNumber;
-  // time 0..24000, randomtick 0..20, sleeppct 0..100 (mirrors MC_LIVE_CONTROLS)
-  assert.equal(clampNumber(99999, 0, 24000, 6000), 24000);
-  assert.equal(clampNumber(-5, 0, 24000, 6000), 0);
-  assert.equal(clampNumber(0, 0, 24000, 6000), 0);
-  assert.equal(clampNumber('', 0, 24000, 6000), 6000);
-  assert.equal(clampNumber(null, 0, 24000, 6000), 6000);
-  assert.equal(clamp('abc', 0, 24000, 6000), 6000); // non-numeric → default
-  assert.equal(clampNumber(50, 0, 20, 3), 20);
-  assert.equal(clampNumber(0, 0, 20, 3), 0);
-  assert.equal(clampNumber(200, 0, 100, 100), 100);
-});
-
-test('DockerMinecraft update reboots the container to refresh the configured VERSION', async () => {
-  const client = fakeDockerClient();
-  const conn = new DockerMinecraftConnector(MC, client);
-  const res = await conn.update();
-  assert.deepEqual(client.powerCalls, [['reboot', 'minecraft']]);
-  assert.equal(res.ok, true);
-  assert.match(res.note, /VERSION/);
-});

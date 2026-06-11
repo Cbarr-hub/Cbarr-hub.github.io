@@ -18,8 +18,7 @@
 import { DockerBaseConnector } from '../docker-base.js';
 import * as csProfile from '../counterstrike-profile.js';
 import { fetchItemTitle, fetchCollectionMaps } from '../../steam-workshop.js';
-import { rconExchange } from '../../rcon-tcp.js';
-import { validateLiveCommand } from '../../rcon.js';
+import { rconExchange, validateLiveCommand } from '../../rcon-tcp.js';
 import { badSetting, notFound, duplicateError } from '../../errors.js';
 
 // joedwards32/cs2 install/cfg layout (image-dependent — validate on the host).

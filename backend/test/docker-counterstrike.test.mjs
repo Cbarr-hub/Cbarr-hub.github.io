@@ -2,10 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { testDb } from './test-db.js';
-import { fakeDockerClient, withRconCapture, withEnv } from './harness.mjs';
+import { withRconCapture, withEnv } from './harness.mjs';
 import { createServerStore } from '../src/servers/store.js';
 import * as cs from '../src/servers/connectors/counterstrike-profile.js';
 import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/counterstrike.js';
+
+// The live-action/control/sendCommand/update command canon for the CS connector
+// is pinned in connector-goldens.test.mjs; this file keeps the pure cs-profile
+// module tests plus the per-game quirks (live-apply batching/chunking, the
+// workshop catalog + config library, auto-name fetch, connectPassword).
 
 const CS = { id: 'counterstrike', name: 'Counter-Strike', backend: 'docker', container: 'cs2', port: 27015 };
 
@@ -180,95 +185,12 @@ test('DockerCS importCollection imports every child with fetched names', async (
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('DockerCS update runs SteamCMD app_update 730 in-container', async () => {
-  const client = fakeDockerClient();
-  client.execStdout = 'ok';
-  const conn = new DockerCounterStrikeConnector(CS, client);
-  const res = await conn.update();
-  assert.equal(res.ok, true);
-  assert.equal(client.execCalls[0].command.join(' '),
-    '/bin/bash -lc /home/steam/steamcmd/steamcmd.sh +force_install_dir /home/steam/cs2-dedicated +login anonymous +app_update 730 +quit');
-  assert.equal(res.steps[0].name, 'steamcmd +app_update 730');
-});
-
-test('DockerCS live control is gated on CS2_RCON_PASSWORD', async () => {
+test('DockerCS applyProfileSettings fails fast without CS2_RCON_PASSWORD', async () => {
   await withEnv('CS2_RCON_PASSWORD', undefined, async () => {
     const conn = new DockerCounterStrikeConnector(CS, {});
-    assert.equal((await conn.getLive()).available, false);
     // apply pushes via RCON → without a password it fails fast (no socket opened)
     await assert.rejects(() => conn.applyProfileSettings(cs.defaultProfileSettings()), (e) => e.code === 'NO_RCON');
-
-    process.env.CS2_RCON_PASSWORD = 'x';
-    const live = await conn.getLive();
-    assert.equal(live.available, true);
-    // Exact advertised runtime inventory: every key below has a runLiveAction test.
-    assert.deepEqual(live.actions.map((a) => a.key),
-      ['restart_round', 'cheats_on', 'cheats_off', 'bunnyhop_on', 'bunnyhop_off',
-       'warmup_end', 'add_bot', 'kick_bots', 'list_players', 'knife_only', 'zeus_battle', 'infinite_ammo_on', 'infinite_ammo_off']);
-    assert.deepEqual(live.controls.map((c) => c.key), ['gravity', 'roundtime', 'startmoney', 'bots']);
-    assert.equal(live.changeMap, true);
-    assert.match(live.commandHint, /mp_warmup_end/);
-    assert.ok(!live.actions.some((a) => a.key === 'apply_config'), 'no dead exec gamertown/active action');
   });
-});
-
-test('DockerCS runLiveAction sends every advertised button action', async () => {
-  const expected = {
-    restart_round: 'mp_restartgame 1',
-    cheats_on: 'sv_cheats 1',
-    cheats_off: 'sv_cheats 0',
-    bunnyhop_on: 'sv_cheats 1; sv_autobunnyhopping 1; sv_enablebunnyhopping 1; sv_staminamax 0; sv_airaccelerate 1000',
-    bunnyhop_off: 'sv_autobunnyhopping 0; sv_enablebunnyhopping 0; sv_staminamax 14; sv_airaccelerate 12',
-    warmup_end: 'mp_warmup_end',
-    add_bot: 'bot_add',
-    kick_bots: 'bot_kick',
-    list_players: 'status',
-    knife_only: 'mp_ct_default_primary ""; mp_t_default_primary ""; mp_ct_default_secondary ""; mp_t_default_secondary ""; mp_free_armor 0; mp_buy_allow_guns 0; mp_restartgame 1',
-    zeus_battle: 'game_alias competitive; mp_ct_default_primary ""; mp_t_default_primary ""; mp_ct_default_secondary weapon_taser; mp_t_default_secondary weapon_taser; mp_weapons_allow_zeus 1; mp_free_armor 0; mp_max_armor 0; mp_buy_allow_guns 0; mp_buy_allow_grenades 1; mp_startmoney 800; mp_maxmoney 16000; mp_restartgame 1',
-    infinite_ammo_on: 'sv_cheats 1; sv_infinite_ammo 1',
-    infinite_ammo_off: 'sv_infinite_ammo 0; sv_cheats 0',
-  };
-  assert.deepEqual(cs.CS_LIVE_ACTIONS.map((a) => a.key), Object.keys(expected));
-  assert.deepEqual(Object.keys(cs.CS_ACTION_CMDS), Object.keys(expected));
-  for (const [key, commandText] of Object.entries(expected)) {
-    const { command } = await captureCsRcon((conn) => conn.runLiveAction(key));
-    assert.equal(command, commandText, key);
-  }
-});
-
-test('DockerCS runLiveAction sends every advertised slider control', async () => {
-  const cases = [
-    ['gravity', 250, 'sv_cheats 1; sv_gravity 250'],
-    ['roundtime', 5, 'mp_roundtime_defuse 5; mp_roundtime 5'],
-    ['startmoney', 1200, 'mp_startmoney 1200; mp_maxmoney 16000'],
-    ['bots', 3, 'bot_quota 3'],
-    ['bots', 0, 'bot_quota 0; bot_kick'],
-  ];
-  assert.deepEqual(cs.CS_LIVE_CONTROLS.map((c) => c.key), ['gravity', 'roundtime', 'startmoney', 'bots']);
-  for (const [key, value, commandText] of cases) {
-    const { command } = await captureCsRcon((conn) => conn.runLiveAction(key, value));
-    assert.equal(command, commandText, key);
-  }
-});
-
-test('DockerCS runLiveAction handles stock/workshop map changes and rejects unknown keys', async () => {
-  assert.equal((await captureCsRcon((conn) => conn.runLiveAction('change_map', 'de_mirage'))).command,
-    'changelevel de_mirage');
-  assert.equal((await captureCsRcon((conn) => conn.runLiveAction('change_map', 'ws:3071005299'))).command,
-    'host_workshop_map 3071005299');
-
-  const conn = new DockerCounterStrikeConnector(CS, {});
-  await assert.rejects(() => conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.runLiveAction('bogus_action'), (e) => e.code === 'BAD_SETTING');
-});
-
-test('DockerCS sendCommand validates and sends raw console commands', async () => {
-  const { command } = await captureCsRcon((conn) => conn.sendCommand('mp_warmup_end'));
-  assert.equal(command, 'mp_warmup_end');
-
-  const conn = new DockerCounterStrikeConnector(CS, {});
-  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.sendCommand('status\nquit'), (e) => e.code === 'BAD_SETTING');
 });
 
 test('DockerCS applyProfileSettings pushes Match-Rules cvars in the live RCON batch', async () => {

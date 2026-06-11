@@ -9,8 +9,7 @@
 
 import { DockerBaseConnector, clampNumber } from '../docker-base.js';
 import * as mcProfile from '../minecraft-profile.js';
-import { rconExchange } from '../../rcon-tcp.js';
-import { validateLiveCommand } from '../../rcon.js';
+import { rconExchange, validateLiveCommand } from '../../rcon-tcp.js';
 import { badSetting } from '../../errors.js';
 
 const DATA  = '/data';

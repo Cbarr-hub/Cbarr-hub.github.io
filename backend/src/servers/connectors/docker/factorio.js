@@ -15,8 +15,7 @@
 
 import { DockerBaseConnector, clampNumber } from '../docker-base.js';
 import * as fctrProfile from '../factorio-profile.js';
-import { rconExchange } from '../../rcon-tcp.js';
-import { validateLiveCommand } from '../../rcon.js';
+import { rconExchange, validateLiveCommand } from '../../rcon-tcp.js';
 import { badSetting, SAFE_NAME_RE } from '../../errors.js';
 
 const CONFIG = '/factorio/config';

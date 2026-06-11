@@ -36,7 +36,7 @@
 
 import { LinuxGsmConnector } from './linuxgsm.js';
 import { getVar, setVars, getCvar, setCvars } from '../line-config.js';
-import { rconCommand, validateLiveCommand } from '../rcon.js';
+import { validateLiveCommand } from '../rcon-tcp.js';
 import { badSetting, MAP_NAME_RE } from '../errors.js';
 import { fetchCollectionMaps } from '../steam-workshop.js';
 
@@ -520,11 +520,14 @@ export class GmodConnector extends LinuxGsmConnector {
     };
   }
 
-  // Run one RCON command, returning { output }. The TRANSPORT is overridable so the
-  // Docker subclass (docker/gmod.js) can reach the game port over TCP instead of the
-  // in-guest python client, while inheriting all the live-action command mapping below.
-  async runRcon(command) {
-    return rconCommand(this, { port: this.server.port, password: await this.rconPassword(), command });
+  // Run one RCON command, returning { output }. The VM-era in-guest python
+  // transport is gone — the Docker subclass (docker/gmod.js) overrides this with
+  // RCON-over-TCP to the game port, inheriting all the live-action command
+  // mapping below. The base class itself has no transport.
+  async runRcon() {
+    const e = new Error('no RCON transport for the VM-era connector');
+    e.code = 'NO_RCON';
+    throw e;
   }
 
   // Free-text console passthrough (the Runtime console input). validateLiveCommand

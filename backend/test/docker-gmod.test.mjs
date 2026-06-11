@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fakeDockerClient, withRconCapture, withEnv } from './harness.mjs';
+import { fakeDockerClient } from './harness.mjs';
 import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
 import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
-import {
-  GMOD_LIVE_ACTIONS, GMOD_ACTION_CMDS, GMOD_LIVE_CONTROLS,
-  GMOD_SHARED_LIVE_CONTROLS, TTT_LIVE_CONTROLS, gmodRangeCmd,
-} from '../src/servers/connectors/gmod.js';
+
+// The live-action/control/sendCommand/update command canon for both GMOD-family
+// connectors is pinned in connector-goldens.test.mjs; this file keeps only the
+// per-game QUIRK tests (profile round-trips, boot-map/collection invariants,
+// validation bounds, map sync).
 
 // In-container LinuxGSM paths (gsmDir = /data), derived by GmodConnector.paths.
 const INST  = '/data/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
@@ -17,22 +18,6 @@ const ACTIVE = '/data/serverfiles/garrysmod/cfg/gamertown/active.cfg';
 
 const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
 const PH   = { id: 'prophunt', name: 'Prop Hunt', backend: 'docker', container: 'prophunt', port: 27067 };
-
-function captureGmodRcon(run) {
-  return withEnv('GMOD_RCON_PASSWORD', 'secret', () =>
-    withRconCapture(async ({ port }) => {
-      const conn = new DockerGmodConnector({ ...GMOD, container: '127.0.0.1', port }, fakeDockerClient());
-      await run(conn);
-    }));
-}
-
-function capturePhRcon(run) {
-  return withEnv('PROPHUNT_RCON_PASSWORD', 'secret', () =>
-    withRconCapture(async ({ port }) => {
-      const conn = new DockerPropHuntConnector({ ...PH, container: '127.0.0.1', port }, fakeDockerClient());
-      await run(conn);
-    }));
-}
 
 // ── locator + container-is-game ─────────────────────────────────────────────────
 test('DockerGmod uses the container as locator and treats running == hosting', async () => {
@@ -96,21 +81,8 @@ test('DockerGmod captureProfileSettings lowercases a mixed-case mapcycle.txt', a
   assert.deepEqual(cap.mapcycle, ['ttt_clue_se', 'ttt_dolls']);
 });
 
-// ── live RCON gated on the env password (TCP transport, not in-guest python) ─────
-test('DockerGmod live control is gated on GMOD_RCON_PASSWORD', async () => {
-  await withEnv('GMOD_RCON_PASSWORD', undefined, async () => {
-    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
-    assert.equal((await conn.getLive()).available, false);
-    // sendCommand without a password fails fast (no socket opened)
-    await assert.rejects(() => conn.sendCommand('status'), (e) => e.code === 'NO_RCON');
-
-    process.env.GMOD_RCON_PASSWORD = 'secret';
-    assert.equal((await conn.getLive()).available, true);
-  });
-});
-
-// ── Prop Hunt: capture the PH profile + gate RCON on its own env key ─────────────
-test('DockerPropHunt captures the X2Z profile and gates RCON on PROPHUNT_RCON_PASSWORD', async () => {
+// ── Prop Hunt: capture the PH profile through the container cfgs ─────────────────
+test('DockerPropHunt captures the X2Z profile', async () => {
   const files = {
     [INST]: 'gamemode="prop_hunt"\ndefaultmap="ph_office"\nmaxplayers="20"\nwscollectionid="3737190377"\n',
     [GAME]: 'phx_verbose 1\n',
@@ -130,12 +102,6 @@ test('DockerPropHunt captures the X2Z profile and gates RCON on PROPHUNT_RCON_PA
   assert.equal(cap.roundTime, 250);
   assert.equal(cap.blindTime, 30);
   assert.equal(cap.propJump, 1.4);
-
-  await withEnv('PROPHUNT_RCON_PASSWORD', undefined, async () => {
-    assert.equal((await conn.getLive()).available, false);
-    process.env.PROPHUNT_RCON_PASSWORD = 'pw';
-    assert.equal((await conn.getLive()).available, true);
-  });
 });
 
 // ── writeConfig has no chown-back (the in-container exec already runs as the user) ─
@@ -162,141 +128,6 @@ test('Gmod validateProfileSettings enforces expanded TTT_FIELDS bounds', async (
   const ok = conn.validateProfileSettings({ ...base, haste: '0', allTalk: '1' });
   assert.equal(ok.haste, 0);
   assert.equal(ok.allTalk, 1);
-});
-
-// ── new live actions/cmds present + range cvars clamp to bounds ───────────────────
-test('Gmod live actions cover restart_round/cleanup/alltalk and ranges clamp', () => {
-  const keys = GMOD_LIVE_ACTIONS.map((a) => a.key);
-  for (const k of ['restart_round', 'cleanup', 'alltalk_on', 'alltalk_off']) assert.ok(keys.includes(k), k);
-  assert.equal(GMOD_ACTION_CMDS.restart_round, 'ttt_roundrestart');
-  assert.equal(GMOD_ACTION_CMDS.cleanup, 'gmod_admin_cleanup');
-
-  // new range controls exist
-  const ctlKeys = GMOD_LIVE_CONTROLS.map((c) => c.key);
-  assert.ok(ctlKeys.includes('traitor_pct'));
-  assert.ok(ctlKeys.includes('round_limit'));
-  assert.deepEqual(GMOD_SHARED_LIVE_CONTROLS.map((c) => c.key), ['gravity', 'timescale']);
-  assert.ok(TTT_LIVE_CONTROLS.map((c) => c.key).includes('traitor_pct'));
-  assert.equal(gmodRangeCmd('traitor_pct', 0.25, GMOD_SHARED_LIVE_CONTROLS), null);
-  // traitor_pct clamps to 0.05–0.5
-  assert.equal(gmodRangeCmd('traitor_pct', 99), 'ttt_traitor_pct 0.5');
-  assert.equal(gmodRangeCmd('traitor_pct', 0), 'ttt_traitor_pct 0.05');
-  // round_limit clamps + rounds (1–15)
-  assert.equal(gmodRangeCmd('round_limit', 99), 'ttt_round_limit 15');
-  assert.equal(gmodRangeCmd('round_limit', 0), 'ttt_round_limit 1');
-  // unknown key → null (falls through to the action map)
-  assert.equal(gmodRangeCmd('nope', 1), null);
-});
-
-// ── getLive advertises the expanded actions + controls ───────────────────────────
-test('Gmod getLive shape exposes new actions + controls when RCON is set', async () => {
-  await withEnv('GMOD_RCON_PASSWORD', 'secret', async () => {
-    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
-    const live = await conn.getLive();
-    assert.equal(live.available, true);
-    assert.ok(live.actions.some((a) => a.key === 'restart_round'));
-    assert.ok(live.controls.some((c) => c.key === 'traitor_pct'));
-    assert.equal(live.changeMap, true);
-  });
-});
-
-// ── unified importCollection writes wscollectionid + returns the unified shape ────
-test('DockerGmod getLive advertises the exact TTT runtime inventory', async () => {
-  await withEnv('GMOD_RCON_PASSWORD', 'secret', async () => {
-    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
-    const live = await conn.getLive();
-    assert.equal(live.available, true);
-    assert.deepEqual(live.actions.map((a) => a.key),
-      ['restart_round', 'cleanup', 'bhop_on', 'bhop_off', 'alltalk_on', 'alltalk_off',
-       'cheats_on', 'cheats_off', 'players']);
-    assert.deepEqual(live.controls.map((c) => c.key), ['gravity', 'timescale', 'traitor_pct', 'round_limit']);
-    assert.equal(live.changeMap, true);
-    assert.match(live.commandHint, /ttt_round_limit/);
-  });
-});
-
-test('DockerGmod runLiveAction sends every advertised TTT button action', async () => {
-  const expected = {
-    restart_round: 'ttt_roundrestart',
-    cleanup: 'gmod_admin_cleanup',
-    bhop_on: 'sv_cheats 1; sv_airaccelerate 1000',
-    bhop_off: 'sv_airaccelerate 12',
-    alltalk_on: 'sv_alltalk 1',
-    alltalk_off: 'sv_alltalk 0',
-    cheats_on: 'sv_cheats 1',
-    cheats_off: 'sv_cheats 0',
-    players: 'status',
-  };
-  assert.deepEqual(GMOD_LIVE_ACTIONS.map((a) => a.key), Object.keys(expected));
-  assert.deepEqual(Object.keys(GMOD_ACTION_CMDS), Object.keys(expected));
-  for (const [key, commandText] of Object.entries(expected)) {
-    const { command } = await captureGmodRcon((conn) => conn.runLiveAction(key));
-    assert.equal(command, commandText, key);
-  }
-});
-
-test('DockerGmod runLiveAction sends every advertised TTT slider control', async () => {
-  const expected = {
-    gravity: ['sv_gravity 600', 600],
-    timescale: ['sv_cheats 1; host_timescale 1', 1],
-    traitor_pct: ['ttt_traitor_pct 0.25', 0.25],
-    round_limit: ['ttt_round_limit 6', 6],
-  };
-  assert.deepEqual(GMOD_LIVE_CONTROLS.map((c) => c.key), Object.keys(expected));
-  for (const control of GMOD_LIVE_CONTROLS) {
-    assert.equal(control.default, expected[control.key][1], control.key);
-    const { command } = await captureGmodRcon((conn) => conn.runLiveAction(control.key, control.default));
-    assert.equal(command, expected[control.key][0], control.key);
-  }
-});
-
-test('DockerGmod runLiveAction clamps TTT slider commands to bounds', async () => {
-  const cases = [
-    ['gravity', 99999, 'sv_gravity 1000'],
-    ['gravity', -1, 'sv_gravity 0'],
-    ['timescale', 99, 'sv_cheats 1; host_timescale 3'],
-    ['timescale', 0, 'sv_cheats 1; host_timescale 0.25'],
-    ['traitor_pct', 99, 'ttt_traitor_pct 0.5'],
-    ['traitor_pct', 0, 'ttt_traitor_pct 0.05'],
-    ['round_limit', 99, 'ttt_round_limit 15'],
-    ['round_limit', 0, 'ttt_round_limit 1'],
-  ];
-  for (const [key, value, commandText] of cases) {
-    const { command } = await captureGmodRcon((conn) => conn.runLiveAction(key, value));
-    assert.equal(command, commandText, key);
-  }
-});
-
-test('DockerGmod runLiveAction changes maps and rejects invalid live keys', async () => {
-  assert.equal((await captureGmodRcon((conn) => conn.runLiveAction('change_map', 'ttt_minecraft_b5'))).command,
-    'changelevel ttt_minecraft_b5');
-  assert.equal((await captureGmodRcon((conn) => conn.runLiveAction('change_map', 'gm_construct'))).command,
-    'changelevel gm_construct');
-
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
-  await assert.rejects(() => conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.runLiveAction('bogus_action'), (e) => e.code === 'BAD_SETTING');
-});
-
-test('DockerGmod sendCommand trims, forwards, and rejects bad console input', async () => {
-  const { command } = await captureGmodRcon((conn) => conn.sendCommand('  status  '));
-  assert.equal(command, 'status');
-
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
-  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.sendCommand('status\nquit'), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.sendCommand('x'.repeat(513)), (e) => e.code === 'BAD_SETTING');
-});
-
-test('DockerGmod update runs the LinuxGSM gmodserver update command in-container', async () => {
-  const client = fakeDockerClient();
-  client.execStdout = 'updated';
-  const conn = new DockerGmodConnector(GMOD, client);
-  const res = await conn.update();
-  assert.equal(res.ok, true);
-  assert.deepEqual(client.execCalls.at(-1).command, ['/bin/bash', '-lc', '/data/gmodserver update']);
-  assert.equal(res.steps[0].name, 'gmodserver update');
-  assert.match(res.note, /LinuxGSM/);
 });
 
 test('DockerGmod syncMaps extracts workshop maps with the in-container GMOD paths', async () => {
@@ -355,25 +186,14 @@ test('PropHunt applyProfileSettings does not write wscollectionid', async () => 
   assert.ok(!/wscollectionid/.test(files[INST]), 'apply must not introduce wscollectionid');
 });
 
-// ── PH typed cvars: numeric bounds enforced + getLive merges PH sliders ──────────
-test('PropHunt validates numeric PH_CVARS bounds and exposes PH sliders', async () => {
-  await withEnv('PROPHUNT_RCON_PASSWORD', 'pw', async () => {
-    const conn = new DockerPropHuntConnector(PH, fakeDockerClient());
-    const base = conn.defaultProfileSettings();
-    assert.doesNotThrow(() => conn.validateProfileSettings(base));
-    assert.throws(() => conn.validateProfileSettings({ ...base, roundTime: 10 }), /Round Time/);   // min 60
-    assert.throws(() => conn.validateProfileSettings({ ...base, blindTime: 99 }), /Hide Time/);    // max 60
-    assert.throws(() => conn.validateProfileSettings({ ...base, roundsPerMap: 1.5 }), /whole number/);
-
-    const live = await conn.getLive();
-    const ctlKeys = live.controls.map((c) => c.key);
-    assert.ok(ctlKeys.includes('gravity'));        // shared GMOD slider
-    assert.ok(ctlKeys.includes('ph_round_time'));  // PH-specific slider
-    assert.ok(ctlKeys.includes('ph_blind_time'));
-    assert.ok(!ctlKeys.includes('traitor_pct'));
-    assert.ok(!ctlKeys.includes('round_limit'));
-    assert.ok(live.actions.some((a) => a.key === 'luckyballs_on'));
-  });
+// ── PH typed cvars: numeric bounds enforced ──────────────────────────────────────
+test('PropHunt validates numeric PH_CVARS bounds', () => {
+  const conn = new DockerPropHuntConnector(PH, fakeDockerClient());
+  const base = conn.defaultProfileSettings();
+  assert.doesNotThrow(() => conn.validateProfileSettings(base));
+  assert.throws(() => conn.validateProfileSettings({ ...base, roundTime: 10 }), /Round Time/);   // min 60
+  assert.throws(() => conn.validateProfileSettings({ ...base, blindTime: 99 }), /Hide Time/);    // max 60
+  assert.throws(() => conn.validateProfileSettings({ ...base, roundsPerMap: 1.5 }), /whole number/);
 });
 
 // ── cvarRef is embedded in both schemas (Raw Config autocomplete source) ─────────
@@ -389,17 +209,6 @@ test('Gmod + PropHunt profileSchema embeds a cvarRef built from their field tabl
   assert.ok(Array.isArray(ps.cvarRef) && ps.cvarRef.length);
   assert.ok(ps.cvarRef.some((c) => c.name === 'ph_round_time' && c.type === 'number'));
   assert.ok(ps.cvarRef.some((c) => c.name === 'ph_enable_lucky_balls' && c.type === 'bool'));
-});
-
-// ── PH sliders clamp via clampNumber: a literal 0 hits the MIN, not the default ────
-test('DockerPropHunt ph_round_time/ph_blind_time sliders clamp (0 → min, not default)', async () => {
-  // ph_round_time: bounds 60–600, default 250.
-  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_round_time', '0'))).command, 'ph_round_time 60');
-  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_round_time', ''))).command, 'ph_round_time 250');
-  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_round_time', '9999'))).command, 'ph_round_time 600');
-  // ph_blind_time: bounds 10–60, default 30.
-  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_blind_time', '0'))).command, 'ph_hunter_blindlock_time 10');
-  assert.equal((await capturePhRcon((c) => c.runLiveAction('ph_blind_time', ''))).command, 'ph_hunter_blindlock_time 30');
 });
 
 // ── container model: the container IS the game (status drives gameStatus directly) ─

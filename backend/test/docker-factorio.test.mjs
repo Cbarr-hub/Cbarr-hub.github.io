@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fakeDockerClient, withRconCapture } from './harness.mjs';
+import { fakeDockerClient } from './harness.mjs';
 import * as fp from '../src/servers/connectors/factorio-profile.js';
 import { DockerFactorioConnector } from '../src/servers/connectors/docker/factorio.js';
 import { getServer } from '../src/servers/registry.js';
+
+// The live-action/control/sendCommand/update command canon for the Factorio
+// connector is pinned in connector-goldens.test.mjs; this file keeps the pure
+// factorio-profile module tests plus the per-game quirks (apply/capture through
+// the two settings files, _active.zip staging, Save As, the rconPort invariant).
 
 // ── pure profile module ─────────────────────────────────────────────────────────
 test('factorio-profile validate normalizes + rejects bad values', () => {
@@ -183,25 +188,6 @@ test('DockerFactorio captureProfileSettings reads server-settings (world = keep 
   assert.equal(c.saveName, ''); // container loads _active.zip; original name not recoverable
 });
 
-test('DockerFactorio getLive is unavailable without an rconpw file', async () => {
-  const conn = new DockerFactorioConnector(FCTR, fakeDockerClient());
-  assert.equal((await conn.getLive()).available, false);
-});
-
-test('DockerFactorio getLive is available once rconpw is readable, with actions + controls', async () => {
-  const conn = new DockerFactorioConnector(FCTR, fakeDockerClient({ '/factorio/config/rconpw': 'secret\n' }));
-  const live = await conn.getLive();
-  assert.equal(live.available, true);
-  assert.deepEqual(live.actions.map((a) => a.key),
-    ['players', 'time', 'show_evolution', 'save', 'peaceful_on', 'peaceful_off', 'alwaysday_on', 'alwaysday_off',
-     'research_all', 'cheat_mode_on']);
-  assert.deepEqual(live.controls.map((c) => c.key), ['game_speed', 'evolution']);
-  for (const c of live.controls) {
-    assert.ok(Number.isFinite(c.min) && Number.isFinite(c.max) && c.min < c.max);
-  }
-  assert.match(live.commandHint, /achievement/i); // /sc caveat surfaced
-});
-
 test('DockerFactorio getSettings exposes only the Save As quick operation', async () => {
   const conn = new DockerFactorioConnector(FCTR, fakeDockerClient());
   const settings = await conn.getSettings();
@@ -230,103 +216,6 @@ test('DockerFactorio setSettings validates section and save name before copying'
   await assert.rejects(() => conn.setSettings({ section: 'saveAs', saveName: 'bad name!' }), (e) => e.code === 'BAD_SETTING');
   await assert.rejects(() => conn.setSettings({ section: 'saveAs', saveName: '' }), (e) => e.code === 'BAD_SETTING');
   assert.deepEqual(client.execCalls, []);
-});
-
-test('DockerFactorio update restarts the container and reports host-side upgrade guidance', async () => {
-  const client = fakeDockerClient();
-  const conn = new DockerFactorioConnector(FCTR, client);
-  const result = await conn.update();
-  assert.equal(result.ok, true);
-  assert.deepEqual(client.powerCalls, [['reboot', 'factorio']]);
-  assert.match(result.note, /docker compose pull/);
-});
-
-// Each withRconCapture run captures the FIRST exec, so use one server per assertion.
-async function captureLive(key, value) {
-  const client = fakeDockerClient({ '/factorio/config/rconpw': 'secret\n' });
-  const { command } = await withRconCapture({ responder: () => '' }, async ({ port }) => {
-    const server = { ...FCTR, container: '127.0.0.1', rconPort: port };
-    const conn = new DockerFactorioConnector(server, client);
-    await conn.runLiveAction(key, value);
-  });
-  return command;
-}
-
-test('DockerFactorio sendCommand validates and sends a raw Factorio console command', async () => {
-  const client = fakeDockerClient({ '/factorio/config/rconpw': 'secret\n' });
-  const { command } = await withRconCapture({ responder: () => '' }, async ({ port }) => {
-    const server = { ...FCTR, container: '127.0.0.1', rconPort: port };
-    const conn = new DockerFactorioConnector(server, client);
-    assert.deepEqual(await conn.sendCommand('  /players  '), { output: '' });
-  });
-  assert.equal(command, '/players');
-});
-
-test('DockerFactorio sendCommand rejects bad input before opening RCON', async () => {
-  const conn = new DockerFactorioConnector(
-    { ...FCTR, container: '127.0.0.1' },
-    fakeDockerClient({ '/factorio/config/rconpw': 'secret\n' }),
-  );
-  await assert.rejects(() => conn.sendCommand(''), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(() => conn.sendCommand('/players\n/time'), (e) => e.code === 'BAD_SETTING');
-});
-
-test('DockerFactorio runLiveAction clamps game_speed to its bounds and pushes /sc', async () => {
-  assert.equal(await captureLive('game_speed', 99), '/sc game.speed=4');    // clamp high
-  assert.equal(await captureLive('game_speed', -5), '/sc game.speed=0.25'); // clamp low
-  assert.equal(await captureLive('game_speed', 0),  '/sc game.speed=0.25'); // zero parses, then clamps low
-  assert.equal(await captureLive('game_speed', 2),  '/sc game.speed=2');    // in range
-});
-
-test('DockerFactorio runLiveAction clamps evolution and pushes set_evolution_factor', async () => {
-  assert.equal(await captureLive('evolution', 5),
-    '/sc game.forces["enemy"].set_evolution_factor(1)');  // clamp high
-  assert.equal(await captureLive('evolution', -1),
-    '/sc game.forces["enemy"].set_evolution_factor(0)');  // clamp low
-  assert.equal(await captureLive('evolution', 0),
-    '/sc game.forces["enemy"].set_evolution_factor(0)');  // zero is preserved
-});
-
-test('DockerFactorio runLiveAction handles every advertised control key', async () => {
-  const conn = new DockerFactorioConnector(FCTR, fakeDockerClient({ '/factorio/config/rconpw': 'secret\n' }));
-  const live = await conn.getLive();
-  const expected = {
-    game_speed: '/sc game.speed=1',
-    evolution: '/sc game.forces["enemy"].set_evolution_factor(0)',
-  };
-  assert.deepEqual(live.controls.map((c) => c.key), Object.keys(expected));
-  for (const control of live.controls) {
-    assert.equal(await captureLive(control.key, control.default), expected[control.key], control.key);
-  }
-});
-
-test('DockerFactorio runLiveAction maps every advertised action to its command', async () => {
-  const conn = new DockerFactorioConnector(FCTR, fakeDockerClient({ '/factorio/config/rconpw': 'secret\n' }));
-  const live = await conn.getLive();
-  const expected = {
-    players: '/players',
-    time: '/time',
-    show_evolution: '/evolution',
-    save: '/server-save',
-    peaceful_on: '/sc game.surfaces[1].peaceful_mode=true',
-    peaceful_off: '/sc game.surfaces[1].peaceful_mode=false',
-    alwaysday_on: '/sc game.surfaces[1].always_day=true',
-    alwaysday_off: '/sc game.surfaces[1].always_day=false',
-    research_all: '/c game.forces.player.research_all_technologies()',
-    cheat_mode_on: '/c for _,p in pairs(game.players) do p.cheat_mode=true end',
-  };
-  assert.deepEqual(live.actions.map((a) => a.key), Object.keys(expected));
-  for (const action of live.actions) {
-    assert.equal(await captureLive(action.key), expected[action.key], action.key);
-  }
-});
-
-test('DockerFactorio runLiveAction rejects unknown keys with BAD_SETTING', async () => {
-  const conn = new DockerFactorioConnector(
-    { ...FCTR, container: '127.0.0.1' },
-    fakeDockerClient({ '/factorio/config/rconpw': 'secret\n' }),
-  );
-  await assert.rejects(() => conn.runLiveAction('nope'), (e) => e.code === 'BAD_SETTING');
 });
 
 // ── registry: Factorio RCON port (factoriotools exposes RCON on 27015) ───────────

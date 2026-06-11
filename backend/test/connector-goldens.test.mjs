@@ -40,7 +40,7 @@ function capture(g, run) {
       const row = { ...g.serverRow, container: '127.0.0.1' };
       if (g.rcon.port === 'server.port') row.port = port;
       else row.rconPort = port;
-      const conn = new g.connectorClass(row, fakeDockerClient(credFiles(g)));
+      const conn = g.build(row, fakeDockerClient(credFiles(g)));
       await run(conn);
     })).then((r) => r.commands);
 }
@@ -48,7 +48,7 @@ function capture(g, run) {
 for (const g of GOLDENS) {
   test(`goldens/${g.id}: getLive advertises exactly the golden actions + controls`, async () => {
     await withEnvMany(credEnv(g), async () => {
-      const conn = new g.connectorClass(g.serverRow, fakeDockerClient(credFiles(g)));
+      const conn = g.build(g.serverRow, fakeDockerClient(credFiles(g)));
       const live = await conn.getLive();
       assert.equal(live.available, true);
       assert.deepEqual(live.actions.map((a) => a.key), g.liveActions.map((a) => a.key));
@@ -62,7 +62,7 @@ for (const g of GOLDENS) {
     await withEnvMany(noCredEnv(g), async () => {
       // No env password AND no rconpw file -> unavailable, and sendCommand
       // fails fast with NO_RCON (no socket is ever opened).
-      const conn = new g.connectorClass(g.serverRow, fakeDockerClient());
+      const conn = g.build(g.serverRow, fakeDockerClient());
       const live = await conn.getLive();
       assert.equal(live.available, false);
       assert.equal(live.reason, g.getLiveGate.reason);
@@ -93,13 +93,13 @@ for (const g of GOLDENS) {
       assert.deepEqual(commands, g.changeMap.map((s) => s.cmd));
 
       // The map-name guard throws before any RCON I/O.
-      const conn = new g.connectorClass(g.serverRow, fakeDockerClient(credFiles(g)));
+      const conn = g.build(g.serverRow, fakeDockerClient(credFiles(g)));
       await assert.rejects(() => conn.runLiveAction('change_map', 'bad map!'), (e) => e.code === 'BAD_SETTING');
     });
   }
 
   test(`goldens/${g.id}: unknown live action rejects BAD_SETTING before any RCON I/O`, async () => {
-    const conn = new g.connectorClass(g.serverRow, fakeDockerClient(credFiles(g)));
+    const conn = g.build(g.serverRow, fakeDockerClient(credFiles(g)));
     await assert.rejects(() => conn.runLiveAction('bogus_action'), (e) => e.code === 'BAD_SETTING');
   });
 
@@ -108,19 +108,19 @@ for (const g of GOLDENS) {
     assert.deepEqual(commands, [g.sendCommand.cmd]);
 
     // Validation trio: empty / newline / >512 chars all reject before RCON.
-    const conn = new g.connectorClass(g.serverRow, fakeDockerClient(credFiles(g)));
+    const conn = g.build(g.serverRow, fakeDockerClient(credFiles(g)));
     for (const bad of ['', 'status\nquit', 'x'.repeat(513)]) {
       await assert.rejects(() => conn.sendCommand(bad), (e) => e.code === 'BAD_SETTING');
     }
   });
 
   test(`goldens/${g.id}: defaultProfileSettings matches the golden profile doc`, () => {
-    const conn = new g.connectorClass(g.serverRow, fakeDockerClient());
+    const conn = g.build(g.serverRow, fakeDockerClient());
     assert.deepEqual(conn.defaultProfileSettings(), g.profileDefaults);
   });
 
   test(`goldens/${g.id}: profileSchema groups, field keys, and basic flags match`, async () => {
-    const conn = new g.connectorClass(g.serverRow, fakeDockerClient());
+    const conn = g.build(g.serverRow, fakeDockerClient());
     const schema = await conn.profileSchema();
     assert.deepEqual(schema.groups.map((x) => x.key), g.schemaGroups.map((x) => x.key));
     for (const [i, gg] of g.schemaGroups.entries()) {
@@ -131,14 +131,14 @@ for (const g of GOLDENS) {
   });
 
   test(`goldens/${g.id}: config-file whitelist matches exactly`, () => {
-    const conn = new g.connectorClass(g.serverRow, fakeDockerClient());
+    const conn = g.build(g.serverRow, fakeDockerClient());
     assert.deepEqual({ ...conn.configFiles }, g.configFiles);
     assert.deepEqual(conn.listConfigFiles(), Object.keys(g.configFiles));
   });
 
   test(`goldens/${g.id}: update() runs the exact golden recipe`, async () => {
     const client = fakeDockerClient();
-    const conn = new g.connectorClass(g.serverRow, client);
+    const conn = g.build(g.serverRow, client);
     const res = await conn.update();
     assert.equal(res.ok, true);
     if (g.update.kind === 'exec') {

@@ -4,27 +4,29 @@ import test from 'node:test';
 import { testDb } from './test-db.js';
 import { withRconCapture, withEnv } from './harness.mjs';
 import { createServerStore } from '../src/servers/store.js';
-import * as cs from '../src/servers/connectors/counterstrike-profile.js';
-import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/counterstrike.js';
+import { buildConnector } from '../src/servers/connectors/engine.js';
+import * as cs from '../src/servers/connectors/specs/counterstrike.js';
 
 // The live-action/control/sendCommand/update command canon for the CS connector
-// is pinned in connector-goldens.test.mjs; this file keeps the pure cs-profile
-// module tests plus the per-game quirks (live-apply batching/chunking, the
-// workshop catalog + config library, auto-name fetch, connectPassword).
+// is pinned in connector-goldens.test.mjs; this file keeps the pure profile/
+// validation tests (now on the spec's exported helpers) plus the per-game quirks
+// (live-apply batching/chunking, the workshop catalog + config library,
+// auto-name fetch, connectPassword, strict slider clamping).
 
 const CS = { id: 'counterstrike', name: 'Counter-Strike', backend: 'docker', container: 'cs2', port: 27015 };
+
+const buildCs = (row, store = null) => buildConnector(row, cs.counterstrikeSpec, {}, store);
 
 function captureCsRcon(run) {
   return withEnv('CS2_RCON_PASSWORD', 'x', () =>
     withRconCapture(async ({ port }) => {
-      const conn = new DockerCounterStrikeConnector(
-        { ...CS, container: '127.0.0.1', rconPort: port }, {});
+      const conn = buildCs({ ...CS, container: '127.0.0.1', rconPort: port });
       await run(conn);
     }));
 }
 
-// ── shared pure module ──────────────────────────────────────────────────────────
-test('cs-profile validate: map (stock/ws), mode, hostname (no maxPlayers — env-only)', () => {
+// ── shared pure helpers (spec surface) ──────────────────────────────────────────
+test('cs-spec validate: map (stock/ws), mode, hostname (no maxPlayers — env-only)', () => {
   const base = cs.defaultProfileSettings();
   assert.equal(base.maxPlayers, undefined); // maxPlayers is NOT a profile field (compose env)
   assert.equal(cs.validateProfileSettings({ ...base, map: 'ws:3071005299' }).map, 'ws:3071005299');
@@ -39,14 +41,14 @@ test('cs-profile validate: map (stock/ws), mode, hostname (no maxPlayers — env
   assert.equal(cs.validateProfileSettings({ ...base, maxPlayers: 99 }).maxPlayers, undefined);
 });
 
-test('cs-profile schema applies LIVE over RCON (no restart) and drops maxPlayers', () => {
+test('cs-spec schema applies LIVE over RCON (no restart) and drops maxPlayers', () => {
   const { groups, apply } = cs.profileGroups([{ value: 'de_dust2', label: 'de_dust2' }], 'note');
   assert.equal(apply?.mode, 'live');
   assert.ok(apply.label && apply.note);
   assert.ok(!groups[0].fields.some((f) => f.key === 'maxPlayers'));
 });
 
-test('cs-profile CS_CVAR_FIELDS: seeded as defaults, validated within bounds', () => {
+test('cs-spec CS_CVAR_FIELDS: seeded as defaults, validated within bounds', () => {
   const base = cs.defaultProfileSettings();
   // every cvar field is seeded to its default
   for (const f of cs.CS_CVAR_FIELDS) assert.equal(base[f.key], f.def);
@@ -62,7 +64,7 @@ test('cs-profile CS_CVAR_FIELDS: seeded as defaults, validated within bounds', (
   assert.equal(cs.validateProfileSettings({ ...base, roundTime: 1.92 }).roundTime, 1.92);
 });
 
-test('cs-profile schema: Match Rules group + embedded cvarRef', () => {
+test('cs-spec schema: Match Rules group + embedded cvarRef', () => {
   const { groups, cvarRef } = cs.profileGroups([{ value: 'de_dust2', label: 'de_dust2' }], 'note');
   const rules = groups.find((g) => g.key === 'rules');
   assert.ok(rules && rules.title === 'Match Rules');
@@ -76,61 +78,77 @@ test('cs-profile schema: Match Rules group + embedded cvarRef', () => {
   assert.ok(cvarRef.some((r) => r.name === 'sv_gravity' && r.help));
 });
 
-test('cs-profile csRangeCmd: clamps to bounds, gravity gates cheats, unknown → null', () => {
-  assert.equal(cs.csRangeCmd('gravity', 99999), 'sv_cheats 1; sv_gravity 2000'); // clamp high
-  assert.equal(cs.csRangeCmd('gravity', 0), 'sv_cheats 1; sv_gravity 100');      // clamp low
-  assert.equal(cs.csRangeCmd('startmoney', 800), 'mp_startmoney 800; mp_maxmoney 16000');
-  assert.equal(cs.csRangeCmd('roundtime', 5), 'mp_roundtime_defuse 5; mp_roundtime 5');
-  assert.equal(cs.csRangeCmd('bots', 99), 'bot_quota 10');
-  assert.equal(cs.csRangeCmd('bots', 0), 'bot_quota 0; bot_kick');
-  assert.equal(cs.csRangeCmd('nope', 1), null);
-  assert.throws(() => cs.csRangeCmd('gravity', 'NaN'), /invalid value/);
+test('cs-spec live sliders: clamp to bounds, gravity gates cheats, unknown/NaN reject', async () => {
+  // The old csRangeCmd surface is now the spec's strict control rows, dispatched
+  // by the engine — exercise the REAL runLiveAction path via loopback capture.
+  const { commands } = await captureCsRcon(async (conn) => {
+    await conn.runLiveAction('gravity', 99999); // clamp high
+    await conn.runLiveAction('gravity', 0);     // clamp low
+    await conn.runLiveAction('startmoney', 800);
+    await conn.runLiveAction('roundtime', 5);
+    await conn.runLiveAction('bots', 99);       // clamp to 10
+    await conn.runLiveAction('bots', 0);        // zero also kicks
+  });
+  assert.deepEqual(commands, [
+    'sv_cheats 1; sv_gravity 2000',
+    'sv_cheats 1; sv_gravity 100',
+    'mp_startmoney 800; mp_maxmoney 16000',
+    'mp_roundtime_defuse 5; mp_roundtime 5',
+    'bot_quota 10',
+    'bot_quota 0; bot_kick',
+  ]);
+  // strict slider semantics: a non-numeric value is an error, not a default
+  await assert.rejects(
+    () => captureCsRcon((conn) => conn.runLiveAction('gravity', 'NaN')), /invalid value/);
+  // an unknown key falls through sliders + actions → BAD_SETTING before any RCON I/O
+  const conn = buildCs(CS);
+  await assert.rejects(() => conn.runLiveAction('nope', 1), (e) => e.code === 'BAD_SETTING');
 });
 
-test('cs-profile botQuotaCmd: zero also kicks, non-zero sets the quota (rounded)', () => {
+test('cs-spec botQuotaCmd: zero also kicks, non-zero sets the quota (rounded)', () => {
   assert.equal(cs.botQuotaCmd(0), 'bot_quota 0; bot_kick');
   assert.equal(cs.botQuotaCmd(5), 'bot_quota 5');
   assert.equal(cs.botQuotaCmd(0.4), 'bot_quota 0; bot_kick'); // rounds to 0 → kick
 });
 
-test('cs-profile buildChangeMapCmd: stock vs workshop vs invalid', () => {
+test('cs-spec buildChangeMapCmd: stock vs workshop vs invalid', () => {
   assert.equal(cs.buildChangeMapCmd('de_dust2'), 'changelevel de_dust2');
   assert.equal(cs.buildChangeMapCmd('ws:123'), 'host_workshop_map 123');
   assert.throws(() => cs.buildChangeMapCmd('ws:bad'), /workshop id/);
   assert.throws(() => cs.buildChangeMapCmd('bad map!'), /invalid map/);
 });
 
-test('cs-profile groups are Map & Mode / Match Rules / Advanced', () => {
+test('cs-spec groups are Map & Mode / Match Rules / Advanced', () => {
   const { groups } = cs.profileGroups([{ value: 'de_dust2', label: 'de_dust2' }], 'note');
   assert.deepEqual(groups.map((g) => g.key), ['map', 'rules', 'advanced']);
 });
 
-// ── Docker connector ────────────────────────────────────────────────────────────
-test('DockerCS profileSchema includes stock + saved workshop maps', async () => {
+// ── spec-built connector ────────────────────────────────────────────────────────
+test('CS spec profileSchema includes stock + saved workshop maps', async () => {
   const store = createServerStore(testDb());
   store.addWorkshopMap('counterstrike', { workshopId: '777', name: 'My WS Map' });
-  const conn = new DockerCounterStrikeConnector(CS, {}, store);
+  const conn = buildCs(CS, store);
   const { groups } = await conn.profileSchema();
   const mapField = groups[0].fields.find((f) => f.key === 'map');
   assert.ok(mapField.options.some((o) => o.value === 'de_dust2'));
   assert.ok(mapField.options.some((o) => o.value === 'ws:777' && o.label === 'My WS Map'));
 });
 
-test('DockerCS connectPassword is always empty (live sv_password reverts on restart)', async () => {
+test('CS spec connectPassword is always empty (live sv_password reverts on restart)', async () => {
   const store = createServerStore(testDb());
   const prof = store.createProfile('counterstrike', {
     name: 'pw', settings: { ...cs.defaultProfileSettings(), password: 'secret123' },
   });
   store.setActiveProfile('counterstrike', prof.id);
-  const conn = new DockerCounterStrikeConnector(CS, {}, store);
+  const conn = buildCs(CS, store);
   // Even with an active profile carrying a password, the join string must advertise
   // none — a freshly-booted container enforces no password (compose env / unset).
   assert.equal(await conn.connectPassword(), '');
 });
 
-test('DockerCS reuses the DB-backed workshop catalog + config library', () => {
+test('CS spec reuses the DB-backed workshop catalog + config library', () => {
   const store = createServerStore(testDb());
-  const conn = new DockerCounterStrikeConnector(CS, {}, store);
+  const conn = buildCs(CS, store);
   conn.addMap({ workshopId: '42', name: 'Aim Map' });
   assert.ok(conn.listMaps().some((m) => m.workshopId === '42' && m.name === 'Aim Map'));
   const cfg = conn.createConfig({ name: 'comp', body: 'mp_maxrounds 24' });
@@ -143,9 +161,9 @@ test('DockerCS reuses the DB-backed workshop catalog + config library', () => {
     (e) => e.code === 'BAD_SETTING');
 });
 
-test('DockerCS addMap auto-fetches the Workshop title when name is omitted', async () => {
+test('CS spec addMap auto-fetches the Workshop title when name is omitted', async () => {
   const store = createServerStore(testDb());
-  const conn = new DockerCounterStrikeConnector(CS, {}, store);
+  const conn = buildCs(CS, store);
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     ok: true,
@@ -159,9 +177,9 @@ test('DockerCS addMap auto-fetches the Workshop title when name is omitted', asy
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('DockerCS importCollection imports every child with fetched names', async () => {
+test('CS spec importCollection imports every child with fetched names', async () => {
   const store = createServerStore(testDb());
-  const conn = new DockerCounterStrikeConnector(CS, {}, store);
+  const conn = buildCs(CS, store);
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => ({
     ok: true,
@@ -185,15 +203,15 @@ test('DockerCS importCollection imports every child with fetched names', async (
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('DockerCS applyProfileSettings fails fast without CS2_RCON_PASSWORD', async () => {
+test('CS spec applyProfileSettings fails fast without CS2_RCON_PASSWORD', async () => {
   await withEnv('CS2_RCON_PASSWORD', undefined, async () => {
-    const conn = new DockerCounterStrikeConnector(CS, {});
+    const conn = buildCs(CS);
     // apply pushes via RCON → without a password it fails fast (no socket opened)
     await assert.rejects(() => conn.applyProfileSettings(cs.defaultProfileSettings()), (e) => e.code === 'NO_RCON');
   });
 });
 
-test('DockerCS applyProfileSettings pushes Match-Rules cvars in the live RCON batch', async () => {
+test('CS spec applyProfileSettings pushes Match-Rules cvars in the live RCON batch', async () => {
   // Stand up a throwaway RCON server that captures the command the connector sends,
   // so we assert the REAL applyProfileSettings batch (not a reimplementation).
   const { command } = await captureCsRcon((conn) =>
@@ -206,7 +224,7 @@ test('DockerCS applyProfileSettings pushes Match-Rules cvars in the live RCON ba
     'map + mode still in the batch');
 });
 
-test('DockerCS applyProfileSettings chunks rawConfig into bounded RCON batches', async () => {
+test('CS spec applyProfileSettings chunks rawConfig into bounded RCON batches', async () => {
   const rawConfig = Array.from({ length: 20 }, (_, i) => `say ${'x'.repeat(180)}${i}`).join('\n');
   const { commands } = await captureCsRcon((conn) =>
     conn.applyProfileSettings({ ...cs.defaultProfileSettings(), rawConfig }));

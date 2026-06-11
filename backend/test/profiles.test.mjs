@@ -4,44 +4,44 @@ import test from 'node:test';
 import { testDb } from './test-db.js';
 import { fakeDockerClient } from './harness.mjs';
 import { createServerStore } from '../src/servers/store.js';
-import { GmodConnector } from '../src/servers/connectors/gmod.js';
-import { PropHuntConnector } from '../src/servers/connectors/prophunt.js';
+import { buildConnector } from '../src/servers/connectors/engine.js';
+import { gmodSpec } from '../src/servers/connectors/specs/gmod.js';
+import { prophuntSpec } from '../src/servers/connectors/specs/prophunt.js';
 
 // CS / Factorio / Minecraft profile logic is covered by the docker-*.test.mjs
-// files (the live Docker connectors + their shared *-profile.js modules). This
-// file covers the store + the GMOD-family connectors (GMOD/Prop Hunt) directly.
-// The live RCON action/control command canon lives in connector-goldens.test.mjs
-// (the VM-era base classes no longer carry an RCON transport of their own).
+// files. This file covers the store + the GMOD-family specs (GMOD/Prop Hunt)
+// directly, built through the declarative engine (buildConnector + spec).
+// The live RCON action/control command canon lives in connector-goldens.test.mjs.
 //
 // The transport fake is the shared harness client: an in-memory file map behind
 // fileRead/fileWrite plus a benign-success exec. Map-listing helpers that grep
 // see empty stdout → [].
 
-const GMOD = { id: 'gmod', name: "Garry's Mod (TTT)", vmid: 104, port: 27066, connect: 'cs' };
-const INSTANCE_CFG = '/home/miles/gmodserver/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
-const SERVER_CFG   = '/home/miles/gmodserver/serverfiles/garrysmod/cfg/gmodserver.cfg';
-const MAPCYCLE     = '/home/miles/gmodserver/serverfiles/garrysmod/mapcycle.txt';
+const GMOD = { id: 'gmod', name: "Garry's Mod (TTT)", backend: 'docker', container: 'gmod', port: 27066, connect: 'cs' };
+const INSTANCE_CFG = '/data/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
+const SERVER_CFG   = '/data/serverfiles/garrysmod/cfg/gmodserver.cfg';
+const MAPCYCLE     = '/data/serverfiles/garrysmod/mapcycle.txt';
 
 function gmod(files) {
   const store = createServerStore(testDb());
   const client = fakeDockerClient(files);
-  return { conn: new GmodConnector(GMOD, client, store), store, client };
+  return { conn: buildConnector(GMOD, gmodSpec, client, store), store, client };
 }
 
-const PROPHUNT = { id: 'prophunt', name: 'Prop Hunt', vmid: 105, port: 27067, connect: 'cs' };
-const PH_INST   = '/home/miles/phserver/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
-const PH_GAME   = '/home/miles/phserver/serverfiles/garrysmod/cfg/gmodserver.cfg';
-const PH_ACTIVE = '/home/miles/phserver/serverfiles/garrysmod/cfg/gamertown/active.cfg';
+const PROPHUNT = { id: 'prophunt', name: 'Prop Hunt', backend: 'docker', container: 'prophunt', port: 27067, connect: 'cs' };
+const PH_INST   = '/data/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
+const PH_GAME   = '/data/serverfiles/garrysmod/cfg/gmodserver.cfg';
+const PH_ACTIVE = '/data/serverfiles/garrysmod/cfg/gamertown/active.cfg';
 
 function prophunt(files) {
   const store = createServerStore(testDb());
   const client = fakeDockerClient(files);
-  return { conn: new PropHuntConnector(PROPHUNT, client, store), store, client };
+  return { conn: buildConnector(PROPHUNT, prophuntSpec, client, store), store, client };
 }
 
 function prophuntNoStore(files) {
   const client = fakeDockerClient(files);
-  return { conn: new PropHuntConnector(PROPHUNT, client), client };
+  return { conn: buildConnector(PROPHUNT, prophuntSpec, client), client };
 }
 
 // ── store: profile CRUD + active pointer ─────────────────────────────────────────
@@ -91,7 +91,7 @@ test('profiles: active pointer set, read, and cleared on delete', () => {
   assert.equal(store.getActiveProfileId('gmod'), null);
 });
 
-// ── GMOD connector: schema / validate / apply / capture ──────────────────────────
+// ── GMOD spec: schema / validate / apply / capture ───────────────────────────────
 test('gmod: listProfiles seeds a Default the first time', () => {
   const { conn, store } = gmod();
   const { profiles, activeId } = conn.listProfiles();
@@ -190,7 +190,7 @@ test('gmod: syncMaps runs the extract and returns the installed map list', async
   assert.ok(Array.isArray(r.maps));
 });
 
-// ── Prop Hunt connector: schema / validate / apply / capture / live ──────────────
+// ── Prop Hunt spec: schema / validate / apply / capture ──────────────────────────
 test('prophunt: validateProfileSettings rejects bad values + normalizes cvars', () => {
   const { conn } = prophunt();
   const base = conn.defaultProfileSettings();
@@ -264,9 +264,9 @@ test('prophunt: profileSchema groups Map/X2Z/Controls/Advanced', async () => {
   assert.ok(mapG.fields.some((f) => f.key === 'propHuntMap' && f.type === 'select'));
   assert.ok(mapG.fields.some((f) => f.key === 'workshopCollection' && f.type === 'text' && f.readOnly === true));
   assert.ok(mapG.fields.some((f) => f.type === 'mapsync'));
-  // X2Z group now mixes bool toggles + numeric cvars (round time, hide time, …).
+  // X2Z group mixes bool toggles + numeric cvars (round time, hide time, …).
   assert.ok(x2zG.fields.every((f) => f.type === 'bool' || f.type === 'number') && x2zG.fields.length >= 3);
-  assert.ok(x2zG.fields.some((f) => f.type === 'number')); // the new numeric X2Z cvars
+  assert.ok(x2zG.fields.some((f) => f.type === 'number')); // the numeric X2Z cvars
   assert.ok(ctrlG.fields.length >= 4 && ctrlG.fields.every((f) => f.type === 'info' && f.help));
   assert.ok(advG.fields.some((f) => f.key === 'rawConfig' && f.type === 'textarea'));
 });

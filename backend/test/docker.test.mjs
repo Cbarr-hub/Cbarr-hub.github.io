@@ -3,12 +3,10 @@ import test from 'node:test';
 
 import { fakeDockerClient, withEnv } from './harness.mjs';
 import { DockerClient } from '../src/docker/client.js';
-import { DockerBaseConnector } from '../src/servers/connectors/docker-base.js';
-import { DockerMinecraftConnector } from '../src/servers/connectors/docker/minecraft.js';
-import { DockerFactorioConnector } from '../src/servers/connectors/docker/factorio.js';
-import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/counterstrike.js';
-import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
-import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
+import { GameConnector, buildConnector } from '../src/servers/connectors/engine.js';
+import { minecraftSpec } from '../src/servers/connectors/specs/minecraft.js';
+import { counterstrikeSpec } from '../src/servers/connectors/specs/counterstrike.js';
+import { gmodSpec } from '../src/servers/connectors/specs/gmod.js';
 import { buildConnectors } from '../src/servers/connectors/index.js';
 import { createServerService } from '../src/servers/service.js';
 import { listServers } from '../src/servers/registry.js';
@@ -409,18 +407,18 @@ test('DockerClient file ops throw a DockerError with the stderr detail on non-ze
 // ── Docker connectors: locator + container-is-game + shared profile logic ───────
 const MC_DOCKER = { id: 'minecraft', name: 'Minecraft', backend: 'docker', container: 'minecraft', port: 25565 };
 
-test('DockerBaseConnector uses the container as its locator and treats running == hosting', async () => {
-  const conn = new DockerBaseConnector({ id: 'x', container: 'box' }, fakeDockerClient());
+test('a spec-less GameConnector uses the container as its locator and treats running == hosting', async () => {
+  const conn = new GameConnector({ id: 'x', container: 'box' }, {}, fakeDockerClient());
   assert.equal(conn.vmid, 'box');
   const s = await conn.status();
   assert.equal(s.status, 'running');
   assert.equal(s.gameStatus, 'hosting');
 });
 
-test('DockerMinecraftConnector apply/capture round-trips /data/server.properties', async () => {
+test('minecraft spec apply/capture round-trips /data/server.properties', async () => {
   const PROPS = '/data/server.properties';
   const client = fakeDockerClient({ [PROPS]: 'level-name=world\nmax-players=20\n' });
-  const conn = new DockerMinecraftConnector(MC_DOCKER, client);
+  const conn = buildConnector(MC_DOCKER, minecraftSpec, client);
   await conn.applyProfileSettings({
     world: 'GTown', gamemode: 'creative', difficulty: 'hard', maxPlayers: 8, motd: 'Hi',
     pvp: '0', hardcore: '1', whitelist: '1', onlineMode: '0', viewDistance: 16, spawnProtection: 0,
@@ -435,9 +433,9 @@ test('DockerMinecraftConnector apply/capture round-trips /data/server.properties
   assert.equal(captured.whitelist, '1');
 });
 
-test('DockerMinecraftConnector.getLive is unavailable without an RCON password', async () => {
+test('minecraft spec getLive is unavailable without an RCON password', async () => {
   await withEnv('MINECRAFT_RCON_PASSWORD', undefined, async () => {
-    const conn = new DockerMinecraftConnector(MC_DOCKER, fakeDockerClient());
+    const conn = buildConnector(MC_DOCKER, minecraftSpec, fakeDockerClient());
     const live = await conn.getLive();
     assert.equal(live.available, false);
   });
@@ -447,14 +445,13 @@ test('DockerMinecraftConnector.getLive is unavailable without an RCON password',
 test('buildConnectors builds every docker-backed entry, and skips when no client', () => {
   const docker = fakeDockerClient();
   // A docker client → all five (docker-backed) registry entries build, EACH wired
-  // to its concrete custom class (a missing class would now throw, not fall back).
+  // to its spec (engine GameConnector) or its concrete legacy class (a missing
+  // spec/class would now throw, not fall back).
   const built = buildConnectors({ docker });
   assert.equal(built.size, 5);
-  assert.ok(built.get('minecraft') instanceof DockerMinecraftConnector);
-  assert.ok(built.get('factorio') instanceof DockerFactorioConnector);
-  assert.ok(built.get('counterstrike') instanceof DockerCounterStrikeConnector);
-  assert.ok(built.get('gmod') instanceof DockerGmodConnector);
-  assert.ok(built.get('prophunt') instanceof DockerPropHuntConnector);
+  for (const id of ['minecraft', 'factorio', 'counterstrike', 'gmod', 'prophunt']) {
+    assert.ok(built.get(id) instanceof GameConnector, `${id} builds on the engine`);
+  }
 
   // No docker client → every entry is skipped (nothing to build).
   const none = buildConnectors({ docker: null });
@@ -503,7 +500,7 @@ test('DockerCounterStrike.getSettings feeds the live change-map dropdown (stock 
     getActiveProfileId: () => 7,
     getProfile: () => ({ id: 7, name: 'p', settings: { map: 'ws:123' } }),
   };
-  const conn = new DockerCounterStrikeConnector(CS, fakeDockerClient(), store);
+  const conn = buildConnector(CS, counterstrikeSpec, fakeDockerClient(), store);
   const s = await conn.getSettings();
   assert.ok(Array.isArray(s.map.stock) && s.map.stock.length > 0); // stock maps present
   assert.deepEqual(s.map.workshop, [{ id: '123', name: 'Assembly' }]); // saved workshop maps, by name
@@ -518,7 +515,7 @@ test('DockerCounterStrike.getSettings feeds the live change-map dropdown (stock 
 test('DockerGmod (TTT) getLive: binary toggles as buttons, ranges as slider controls', async () => {
   const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
   await withEnv('GMOD_RCON_PASSWORD', 'secret', async () => {
-    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+    const conn = buildConnector(GMOD, gmodSpec, fakeDockerClient());
     const live = await conn.getLive();
     assert.equal(live.available, true);
     assert.equal(live.changeMap, true);
@@ -546,7 +543,7 @@ test('DockerGmod runLiveAction maps range keys to clamped cvar commands', async 
   const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
   await withEnv('GMOD_RCON_PASSWORD', 'secret', async () => {
     const sent = [];
-    const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+    const conn = buildConnector(GMOD, gmodSpec, fakeDockerClient());
     conn.runRcon = async (command) => { sent.push(command); return { output: '' }; };
     await conn.runLiveAction('gravity', '250');
     await conn.runLiveAction('timescale', '0.5');

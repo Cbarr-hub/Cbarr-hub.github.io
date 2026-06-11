@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { testDb } from './test-db.js';
 import { connectString, getServer, launchUrl, listServers } from '../src/servers/registry.js';
-import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
+import { GameConnector, normalizeStatus } from '../src/servers/connectors/engine.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
 import { createServerStore } from '../src/servers/store.js';
 import { getVar, setVar, setVars, getCvar, setCvars } from '../src/servers/line-config.js';
@@ -281,9 +281,9 @@ test('Minecraft live control gates on MINECRAFT_RCON_PASSWORD', async () => {
   delete process.env.MINECRAFT_RCON_PASSWORD;
 });
 
-// ── BaseConnector defaults ──────────────────────────────────────────────────────
+// ── engine defaults (a spec-less connector) ─────────────────────────────────────
 test('a base server reports live unavailable and has no quick settings', async () => {
-  const base = new BaseConnector({ id: 'x', name: 'X', vmid: 1 }, fakeDocker());
+  const base = new GameConnector({ id: 'x', name: 'X', container: 'x' }, {}, fakeDocker());
   assert.equal((await base.getLive()).available, false);
   await assert.rejects(async () => base.sendCommand('x'), (e) => e.code === 'NO_RCON');
   assert.deepEqual(await base.getSettings(), { fields: [] });

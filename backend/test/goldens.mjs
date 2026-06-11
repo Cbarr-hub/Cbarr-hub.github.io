@@ -9,7 +9,7 @@
 //
 // Shape of one entry:
 //   id              registry id (also the server-row id)
-//   connectorClass  the Docker* class under test
+//   build           (row, client, store) -> the connector under test
 //   serverRow       the registry-shaped row the per-game tests construct
 //                   (container is swapped for '127.0.0.1' by the RCON capture)
 //   rcon            { passwordSource: {env}|{file}, port: 'server.port'|'server.rconPort' }
@@ -26,17 +26,18 @@
 //                   keys + which fields carry basic:true
 //   update          { kind:'exec', argv, timeoutMs } | { kind:'reboot' }
 
-import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
-import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
-import { DockerCounterStrikeConnector } from '../src/servers/connectors/docker/counterstrike.js';
-import { DockerFactorioConnector } from '../src/servers/connectors/docker/factorio.js';
-import { DockerMinecraftConnector } from '../src/servers/connectors/docker/minecraft.js';
+import { buildConnector } from '../src/servers/connectors/engine.js';
+import { factorioSpec } from '../src/servers/connectors/specs/factorio.js';
+import { minecraftSpec } from '../src/servers/connectors/specs/minecraft.js';
+import { counterstrikeSpec } from '../src/servers/connectors/specs/counterstrike.js';
+import { gmodSpec } from '../src/servers/connectors/specs/gmod.js';
+import { prophuntSpec } from '../src/servers/connectors/specs/prophunt.js';
 
 export const GOLDENS = [
   // ── GMOD (TTT) ────────────────────────────────────────────────────────────────
   {
     id: 'gmod',
-    connectorClass: DockerGmodConnector,
+    build: (row, client, store) => buildConnector(row, gmodSpec, client, store),
     serverRow: { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 },
     rcon: { passwordSource: { env: 'GMOD_RCON_PASSWORD' }, port: 'server.port' },
     getLiveGate: { reason: 'RCON disabled — set rcon_password in server.cfg and restart' },
@@ -116,7 +117,7 @@ export const GOLDENS = [
   // ── Prop Hunt (X2Z) ───────────────────────────────────────────────────────────
   {
     id: 'prophunt',
-    connectorClass: DockerPropHuntConnector,
+    build: (row, client, store) => buildConnector(row, prophuntSpec, client, store),
     serverRow: { id: 'prophunt', name: 'Prop Hunt', backend: 'docker', container: 'prophunt', port: 27067 },
     rcon: { passwordSource: { env: 'PROPHUNT_RCON_PASSWORD' }, port: 'server.port' },
     getLiveGate: { reason: 'RCON disabled — set rcon_password in the game cfg and restart' },
@@ -215,7 +216,7 @@ export const GOLDENS = [
   // ── Counter-Strike 2 ──────────────────────────────────────────────────────────
   {
     id: 'counterstrike',
-    connectorClass: DockerCounterStrikeConnector,
+    build: (row, client, store) => buildConnector(row, counterstrikeSpec, client, store),
     serverRow: { id: 'counterstrike', name: 'Counter-Strike', backend: 'docker', container: 'cs2', port: 27015 },
     rcon: { passwordSource: { env: 'CS2_RCON_PASSWORD' }, port: 'server.rconPort' },
     getLiveGate: { reason: 'CS2_RCON_PASSWORD is not set' },
@@ -304,7 +305,7 @@ export const GOLDENS = [
   // ── Factorio ──────────────────────────────────────────────────────────────────
   {
     id: 'factorio',
-    connectorClass: DockerFactorioConnector,
+    build: (row, client, store) => buildConnector(row, factorioSpec, client, store),
     serverRow: { id: 'factorio', name: 'Factorio', backend: 'docker', container: 'factorio', port: 34197 },
     rcon: { passwordSource: { file: '/factorio/config/rconpw' }, port: 'server.rconPort' },
     getLiveGate: { reason: 'RCON password file (/factorio/config/rconpw) not readable' },
@@ -372,7 +373,7 @@ export const GOLDENS = [
   // ── Minecraft ─────────────────────────────────────────────────────────────────
   {
     id: 'minecraft',
-    connectorClass: DockerMinecraftConnector,
+    build: (row, client, store) => buildConnector(row, minecraftSpec, client, store),
     serverRow: { id: 'minecraft', name: 'Minecraft', backend: 'docker', container: 'minecraft', port: 25565 },
     rcon: { passwordSource: { env: 'MINECRAFT_RCON_PASSWORD' }, port: 'server.rconPort' },
     getLiveGate: { reason: 'MINECRAFT_RCON_PASSWORD is not set' },

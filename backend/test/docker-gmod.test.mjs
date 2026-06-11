@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { fakeDockerClient } from './harness.mjs';
-import { DockerGmodConnector } from '../src/servers/connectors/docker/gmod.js';
-import { DockerPropHuntConnector } from '../src/servers/connectors/docker/prophunt.js';
+import { buildConnector } from '../src/servers/connectors/engine.js';
+import { gmodSpec } from '../src/servers/connectors/specs/gmod.js';
+import { prophuntSpec } from '../src/servers/connectors/specs/prophunt.js';
 
 // The live-action/control/sendCommand/update command canon for both GMOD-family
 // connectors is pinned in connector-goldens.test.mjs; this file keeps only the
 // per-game QUIRK tests (profile round-trips, boot-map/collection invariants,
 // validation bounds, map sync).
 
-// In-container LinuxGSM paths (gsmDir = /data), derived by GmodConnector.paths.
+// In-container LinuxGSM paths (the shared /data layout in specs/gmod.js).
 const INST  = '/data/lgsm/config-lgsm/gmodserver/gmodserver.cfg';
 const GAME  = '/data/serverfiles/garrysmod/cfg/gmodserver.cfg';
 const CYCLE = '/data/serverfiles/garrysmod/mapcycle.txt';
@@ -19,9 +20,14 @@ const ACTIVE = '/data/serverfiles/garrysmod/cfg/gamertown/active.cfg';
 const GMOD = { id: 'gmod', name: 'TTT', backend: 'docker', container: 'gmod', port: 27066 };
 const PH   = { id: 'prophunt', name: 'Prop Hunt', backend: 'docker', container: 'prophunt', port: 27067 };
 
+const gmod = (clientOrFiles) => buildConnector(GMOD, gmodSpec,
+  clientOrFiles?.exec ? clientOrFiles : fakeDockerClient(clientOrFiles));
+const prophunt = (clientOrFiles) => buildConnector(PH, prophuntSpec,
+  clientOrFiles?.exec ? clientOrFiles : fakeDockerClient(clientOrFiles));
+
 // ── locator + container-is-game ─────────────────────────────────────────────────
-test('DockerGmod uses the container as locator and treats running == hosting', async () => {
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+test('gmod spec uses the container as locator and treats running == hosting', async () => {
+  const conn = gmod();
   assert.equal(conn.vmid, 'gmod');
   const s = await conn.status();
   assert.equal(s.status, 'running');
@@ -29,9 +35,9 @@ test('DockerGmod uses the container as locator and treats running == hosting', a
 });
 
 // ── TTT profile apply -> capture round-trip through the container cfgs ───────────
-test('DockerGmod applyProfileSettings -> captureProfileSettings round-trips', async () => {
+test('gmod spec applyProfileSettings -> captureProfileSettings round-trips', async () => {
   const files = { [INST]: '', [GAME]: '', [CYCLE]: '' };
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient(files));
+  const conn = gmod(files);
   const profile = {
     maxPlayers: 24, workshopCollection: '12345',          // collection set -> boot-map guard is skipped
     useMapcycle: '1', mapcycle: ['ttt_clue', 'ttt_minecraft_b5'],
@@ -66,7 +72,7 @@ test('DockerGmod applyProfileSettings -> captureProfileSettings round-trips', as
 });
 
 // ── capture tolerates a mixed-case mapcycle.txt (lowercases boot map AND rotation) ─
-test('DockerGmod captureProfileSettings lowercases a mixed-case mapcycle.txt', async () => {
+test('gmod spec captureProfileSettings lowercases a mixed-case mapcycle.txt', async () => {
   // A defaultmap/mapcycle set out-of-band can carry a mixed-case Workshop title; the
   // rotation lines (not just the boot map) must be lowercased or validate's
   // lowercase-only MAP_NAME_RE makes capture throw (HTTP 400).
@@ -75,20 +81,20 @@ test('DockerGmod captureProfileSettings lowercases a mixed-case mapcycle.txt', a
     [GAME]: '',
     [CYCLE]: 'Ttt_Clue_SE\nttt_dolls\n',
   };
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient(files));
+  const conn = gmod(files);
   let cap;
   await assert.doesNotReject(async () => { cap = await conn.captureProfileSettings(); });
   assert.deepEqual(cap.mapcycle, ['ttt_clue_se', 'ttt_dolls']);
 });
 
 // ── Prop Hunt: capture the PH profile through the container cfgs ─────────────────
-test('DockerPropHunt captures the X2Z profile', async () => {
+test('prophunt spec captures the X2Z profile', async () => {
   const files = {
     [INST]: 'gamemode="prop_hunt"\ndefaultmap="ph_office"\nmaxplayers="20"\nwscollectionid="3737190377"\n',
     [GAME]: 'phx_verbose 1\n',
     [ACTIVE]: 'sv_gravity 600\n',
   };
-  const conn = new DockerPropHuntConnector(PH, fakeDockerClient(files));
+  const conn = prophunt(files);
   assert.equal(conn.vmid, 'prophunt');
 
   const cap = await conn.captureProfileSettings();
@@ -105,18 +111,18 @@ test('DockerPropHunt captures the X2Z profile', async () => {
 });
 
 // ── writeConfig has no chown-back (the in-container exec already runs as the user) ─
-test('DockerPropHunt.writeConfig writes the file without a chown step', async () => {
+test('prophunt spec writeConfig writes the file without a chown step', async () => {
   const files = { [ACTIVE]: '' };
   const client = fakeDockerClient(files);
-  const conn = new DockerPropHuntConnector(PH, client);
+  const conn = prophunt(client);
   await conn.writeConfig('active.cfg', 'phx_verbose 1');
   assert.equal(files[ACTIVE], 'phx_verbose 1');
   assert.ok(!client.execCalls.some((c) => JSON.stringify(c.command).includes('chown')), 'no chown exec should run');
 });
 
 // ── expanded TTT validation enforces the new field bounds ────────────────────────
-test('Gmod validateProfileSettings enforces expanded TTT_FIELDS bounds', async () => {
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient());
+test('gmod spec validateProfileSettings enforces expanded TTT_FIELDS bounds', async () => {
+  const conn = gmod();
   const base = conn.defaultProfileSettings();
   // a fully-defaulted doc validates
   assert.doesNotThrow(() => conn.validateProfileSettings(base));
@@ -130,9 +136,9 @@ test('Gmod validateProfileSettings enforces expanded TTT_FIELDS bounds', async (
   assert.equal(ok.allTalk, 1);
 });
 
-test('DockerGmod syncMaps extracts workshop maps with the in-container GMOD paths', async () => {
+test('gmod spec syncMaps extracts workshop maps with the in-container GMOD paths', async () => {
   const client = fakeDockerClient();
-  const conn = new DockerGmodConnector(GMOD, client);
+  const conn = gmod(client);
   const res = await conn.syncMaps();
   assert.deepEqual(res, { ok: true, maps: [] });
 
@@ -149,9 +155,9 @@ test('DockerGmod syncMaps extracts workshop maps with the in-container GMOD path
   assert.match(client.execCalls[1].command[2], /ls -1 \/data\/serverfiles\/garrysmod\/maps\/\*\.bsp/);
 });
 
-test('Gmod importCollection writes wscollectionid and returns requiresRestart:true', async () => {
+test('gmod spec importCollection writes wscollectionid and returns requiresRestart:true', async () => {
   const files = { [INST]: 'defaultmap="gm_construct"\n' };
-  const conn = new DockerGmodConnector(GMOD, fakeDockerClient(files));
+  const conn = gmod(files);
   const res = await conn.importCollection('  3736674438  ');
   assert.match(files[INST], /wscollectionid="3736674438"/);
   assert.equal(res.ok, true);
@@ -163,22 +169,22 @@ test('Gmod importCollection writes wscollectionid and returns requiresRestart:tr
   await assert.rejects(() => conn.importCollection('not-an-id'), (e) => e.code === 'BAD_SETTING');
 });
 
-// PropHunt inherits importCollection unchanged, writing ITS instance cfg.
-test('DockerPropHunt inherits importCollection (same route, requiresRestart:true)', async () => {
+// PropHunt shares importCollection (same route, same /data instance cfg).
+test('prophunt spec shares importCollection (same route, requiresRestart:true)', async () => {
   const files = { [INST]: 'gamemode="prop_hunt"\n' };
-  const conn = new DockerPropHuntConnector(PH, fakeDockerClient(files));
+  const conn = prophunt(files);
   const res = await conn.importCollection('3737190377');
   assert.match(files[INST], /wscollectionid="3737190377"/);
   assert.equal(res.requiresRestart, true);
 });
 
 // ── PH apply must NOT write wscollectionid (X2Z mount bug fix) ────────────────────
-test('PropHunt applyProfileSettings does not write wscollectionid', async () => {
+test('prophunt spec applyProfileSettings does not write wscollectionid', async () => {
   const files = {
     [INST]: 'gamemode="prop_hunt"\ndefaultmap="ph_office"\nmaxplayers="16"\n', // no wscollectionid line
     [GAME]: '', [ACTIVE]: '',
   };
-  const conn = new DockerPropHuntConnector(PH, fakeDockerClient(files));
+  const conn = prophunt(files);
   const profile = { ...conn.defaultProfileSettings(), propHuntMap: 'ph_restaurant', workshopCollection: '999999' };
   await conn.applyProfileSettings(profile);
   // defaultmap + maxplayers are written, wscollectionid is left untouched (absent)
@@ -187,8 +193,8 @@ test('PropHunt applyProfileSettings does not write wscollectionid', async () => 
 });
 
 // ── PH typed cvars: numeric bounds enforced ──────────────────────────────────────
-test('PropHunt validates numeric PH_CVARS bounds', () => {
-  const conn = new DockerPropHuntConnector(PH, fakeDockerClient());
+test('prophunt spec validates numeric PH_CVARS bounds', () => {
+  const conn = prophunt();
   const base = conn.defaultProfileSettings();
   assert.doesNotThrow(() => conn.validateProfileSettings(base));
   assert.throws(() => conn.validateProfileSettings({ ...base, roundTime: 10 }), /Round Time/);   // min 60
@@ -197,14 +203,14 @@ test('PropHunt validates numeric PH_CVARS bounds', () => {
 });
 
 // ── cvarRef is embedded in both schemas (Raw Config autocomplete source) ─────────
-test('Gmod + PropHunt profileSchema embeds a cvarRef built from their field tables', async () => {
-  const gmod = new DockerGmodConnector(GMOD, fakeDockerClient());
-  const gs = await gmod.profileSchema();
+test('gmod + prophunt specs profileSchema embeds a cvarRef built from their field tables', async () => {
+  const g = gmod();
+  const gs = await g.profileSchema();
   assert.ok(Array.isArray(gs.cvarRef) && gs.cvarRef.length);
   assert.ok(gs.cvarRef.some((c) => c.name === 'ttt_traitor_pct' && c.type === 'number'));
   assert.ok(gs.cvarRef.some((c) => c.name === 'sv_alltalk' && c.type === 'bool'));
 
-  const ph = new DockerPropHuntConnector(PH, fakeDockerClient());
+  const ph = prophunt();
   const ps = await ph.profileSchema();
   assert.ok(Array.isArray(ps.cvarRef) && ps.cvarRef.length);
   assert.ok(ps.cvarRef.some((c) => c.name === 'ph_round_time' && c.type === 'number'));
@@ -212,16 +218,16 @@ test('Gmod + PropHunt profileSchema embeds a cvarRef built from their field tabl
 });
 
 // ── container model: the container IS the game (status drives gameStatus directly) ─
-test('DockerGmod + DockerPropHunt status() maps running → hosting, stopped → down', async () => {
-  for (const [Cls, server] of [[DockerGmodConnector, GMOD], [DockerPropHuntConnector, PH]]) {
-    const up = await new Cls(server, fakeDockerClient()).status();
+test('gmod + prophunt specs status() maps running → hosting, stopped → down', async () => {
+  for (const [build, server] of [[gmod, GMOD], [prophunt, PH]]) {
+    const up = await build(fakeDockerClient()).status();
     assert.equal(up.status, 'running', server.id);
     assert.equal(up.gameStatus, 'hosting', server.id);
 
     const stoppedClient = fakeDockerClient({}, {
       statusCurrent: async () => ({ status: 'stopped', uptime: 0 }),
     });
-    const down = await new Cls(server, stoppedClient).status();
+    const down = await build(stoppedClient).status();
     assert.equal(down.status, 'stopped', server.id);
     assert.equal(down.gameStatus, 'down', server.id);
   }

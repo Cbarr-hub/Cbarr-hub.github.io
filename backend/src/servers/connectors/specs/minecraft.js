@@ -1,30 +1,8 @@
-// Minecraft spec — image `itzg/minecraft-server`.
-//
-// Layout: the world + config files live under /data (the image's data volume).
-// Live control is Source-RCON over TCP (the app reaches the container's RCON
-// port by service name; itzg's default is 25575, overridable via the registry
-// entry's `rconPort`) with the password from MINECRAFT_RCON_PASSWORD — the host
-// secrets file via env, never the repo.
-//
-// PROFILE (a profile materializes onto server.properties keys)
-//   Fields (defaults → on-disk key):
-//     world (level-name, '' = keep current; SAFE_NAME_RE), gamemode (one of
-//     GAMEMODES, else 'survival'), difficulty (DIFFICULTIES, else 'normal'),
-//     maxPlayers (max-players, 1–200), motd (≤200, single line), pvp, hardcore,
-//     whitelist (white-list), onlineMode (online-mode), allowNether (allow-nether),
-//     spawnMonsters (spawn-monsters), commandBlocks (enable-command-block) — all
-//     bool '1'/'0' here, written 'true'/'false' — viewDistance (view-distance,
-//     3–32), simulationDistance (simulation-distance, 3–32), spawnProtection
-//     (spawn-protection, 0–1000), playerIdleTimeout (player-idle-timeout, 0–1440).
-//   validate: integer-bounds-checks the numbers (throws badSetting out of range),
-//     normalizes enums to their fallbacks, coerces bools to '1'/'0', and bounds
-//     the motd. Used directly by applyProps + captureProps.
-//   apply (applyProps): validates `settings`, then setProp's each managed key onto
-//     the existing server.properties text (empty world keeps the current
-//     level-name) and writes it back.
-//   capture (captureProps): getProp's each managed key out of the text into a doc,
-//     then runs it back through the validator (so capture also bounds-checks).
-//     CVAR_REF is the on-disk key reference for the Raw Config editor.
+// Minecraft spec — image `itzg/minecraft-server`. World + config under /data;
+// live control is RCON (itzg default 25575, overridable via registry `rconPort`)
+// with the password from MINECRAFT_RCON_PASSWORD. A profile materializes onto
+// server.properties keys (bools '1'/'0' here, 'true'/'false' on disk); capture
+// runs the read back through the validator so it bounds-checks too.
 
 import { badSetting, SAFE_NAME_RE } from '../../errors.js';
 
@@ -43,9 +21,8 @@ export const DIFFICULTIES = ['peaceful', 'easy', 'normal', 'hard'];
 const PROFILE_NOTE =
   'A profile is the startup config the server boots as. Changes apply on the next restart.';
 
-// ── server.properties text helpers ───────────────────────────────────────────
-// server.properties is plain key=value (no quotes). Tiny get/set helpers. setProp
-// uses a function replacer so a value with `$` isn't treated as a backreference.
+// ── server.properties text helpers (plain key=value, no quotes) ──────────────
+// setProp uses a function replacer so a `$` in a value isn't a backreference.
 function getProp(text, key) {
   const m = text.match(new RegExp(`^${key}=(.*)$`, 'm'));
   return m ? m[1].trim() : undefined;
@@ -84,8 +61,7 @@ function validateProfileSettings(s = {}) {
   return out;
 }
 
-// Validate `settings` and materialize them onto server.properties `text`,
-// returning the new text. (Empty `world` keeps the current level-name.)
+// Materialize validated settings onto the text (empty `world` keeps level-name).
 function applyProps(text, settings) {
   const s = validateProfileSettings(settings);
   let out = text;
@@ -133,8 +109,7 @@ function captureProps(text) {
   });
 }
 
-// The Profiles editor groups (World / Gameplay / Access). `worldOpts` is the
-// discovered <select> option list for the active world.
+// The Profiles editor groups (World / Gameplay / Access).
 function profileGroups(worldOpts) {
   const enumOpts = (arr) => arr.map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }));
   return [
@@ -174,9 +149,7 @@ function profileGroups(worldOpts) {
   ];
 }
 
-// Reference catalog of the server.properties keys this connector manages — the
-// Raw Config tab reads it for autocomplete + inline docs (name is the on-disk
-// key, not the camelCase settings key). Booleans are 'true'/'false' in the file.
+// Raw Config tab reference (names are the on-disk keys, not the camelCase ones).
 const CVAR_REF = [
   { name: 'gamemode',             type: 'select', default: 'survival', group: 'gameplay', help: GAMEMODES.join(' / ') },
   { name: 'difficulty',           type: 'select', default: 'normal',   group: 'gameplay', help: DIFFICULTIES.join(' / ') },
@@ -227,9 +200,8 @@ function parseMinecraftVector(text, count) {
   return values;
 }
 
-// Whether an RCON `data get entity … Pos` reply contains a vector-looking value at all.
-// A "no entity" reply (offline player) carries no `[…]` bracket ("No entity was found",
-// "Found no elements"); a bracketed reply whose numbers don't parse is genuine corruption.
+// A "no entity" reply (offline player) carries no `[…]` bracket; a bracketed
+// reply whose numbers don't parse is genuine corruption.
 function hasVectorBracket(text) {
   return /\[/.test(String(text || ''));
 }
@@ -257,11 +229,10 @@ export function parseMinecraftPlayerList(text) {
     .filter((p) => MC_TARGET_RE.test(p));
 }
 
-// Parse /data/usercache.json (itzg/minecraft-server) into a lowercased
-// name→uuid map. Best-effort: any read/parse failure serves the last good map.
-// TTL-cached per connector: the BlueMap marker tick calls listOnlinePlayers
-// every few seconds, and a docker-exec cat per tick was the single biggest
-// proxy-traffic cost. A brand-new player gets a default head for up to 60s.
+// Lowercased name→uuid map from /data/usercache.json, TTL-cached per connector:
+// the ~2s BlueMap tick made a docker-exec cat per tick the biggest proxy cost.
+// Trade-off: a brand-new player gets a default head for up to 60s; read/parse
+// failures serve the last good map.
 const USERCACHE_TTL_MS = 60_000;
 const usercacheByConn = new WeakMap();
 async function usercache(conn) {
@@ -311,10 +282,8 @@ export const minecraftSpec = {
       { key: 'keepinv_off', label: 'Keep Inventory Off' },
       { key: 'mobs_on',  label: 'Mob Spawning On' },
       { key: 'mobs_off', label: 'Mob Spawning Off' },
-      // Fun gamerule pack (Phase 2). NOTE: gamerules are saved per-world in level.dat, so
-      // these PERSIST across container restarts — they are not ephemeral like Source cvars.
-      // Only `thunder` (weather) is transient. snake_case rule names match the deployed
-      // build (see the controls note below); host-validate if the pinned VERSION changes.
+      // Gamerules persist per-world in level.dat (NOT ephemeral like Source cvars);
+      // only `thunder` is transient. snake_case names — see the controls note below.
       { key: 'daycycle_on',     label: 'Day/Night Cycle On' },
       { key: 'daycycle_off',    label: 'Day/Night Cycle Off' },
       { key: 'griefing_on',     label: 'Mobs Break Blocks On' },
@@ -351,13 +320,10 @@ export const minecraftSpec = {
       firetick_off:     'gamerule do_fire_tick false',
       thunder:          'weather thunder',
     },
-    // Continuous live cvars → sliders. Soft clampNumber semantics (no `strict`):
-    // 0 is a real value (time 0 stays 0) but an empty/non-numeric value maps to
-    // `default`. NOTE: gamerule identifiers on the deployed build (validated live
-    // against itzg/minecraft-server v26.1.2) are snake_case — keep_inventory,
-    // random_tick_speed, players_sleeping_percentage — and mob spawning is the
-    // renamed `spawn_mobs` rule (NOT do_mob_spawning). Re-validate with
-    // backend/test-live/rcon-smoke.mjs if the pinned VERSION changes.
+    // Sliders use the SOFT clamp (no `strict`): 0 is a real value, empty/non-numeric
+    // falls back to `default`. Gamerule ids are snake_case on the deployed build
+    // (validated live, v26.1.2); mob spawning is `spawn_mobs` (NOT do_mob_spawning).
+    // Re-validate with backend/test-live/rcon-smoke.mjs if the pinned VERSION changes.
     controls: [
       { key: 'time',       label: 'Time of Day',       min: 0, max: 24000, step: 1000, default: 6000,
         cmd: (n) => `time set ${n}` },
@@ -410,10 +376,8 @@ export const minecraftSpec = {
     const { output } = await conn.runRcon('list');
     const names = parseMinecraftPlayerList(output);
     if (!names.length) return [];
-    // RCON `list` is names-only, but live presence + the BlueMap skin markers need
-    // the Mojang UUID. itzg/minecraft-server keeps a name→uuid cache on disk, so
-    // resolve from there (best-effort — a brand-new player not yet cached comes
-    // back uid:null and just falls back to a default head).
+    // RCON `list` is names-only; resolve Mojang UUIDs from the on-disk usercache
+    // (a not-yet-cached player comes back uid:null → default head).
     const uuidByName = await usercache(conn);
     return names.map((name) => ({
       name,
@@ -434,10 +398,8 @@ export const minecraftSpec = {
     ]);
     const pos = parseMinecraftVector(posOut, 3);
     if (!pos) {
-      // An offline / just-left player has no entity to query, so RCON answers with a
-      // not-found message (no `[x, y, z]` vector). Mirror the Factorio connector's
-      // graceful offline shape so the map UI gets `connected:false` instead of a 400.
-      // Only a vector-LOOKING reply whose numbers aren't finite is genuine corruption.
+      // Offline player → not-found reply with no vector: return `connected:false`
+      // (the graceful offline shape) instead of a 400.
       if (!hasVectorBracket(posOut)) {
         return {
           connected: false,
@@ -463,9 +425,7 @@ export const minecraftSpec = {
     return { ...out, anchor: blueMapAnchor(out) };
   },
 
-  // itzg/minecraft-server re-resolves + downloads the configured VERSION on every
-  // start, so updating the server jar is just a restart. Set VERSION=LATEST in the
-  // compose env to track the newest release; otherwise it re-pulls the pinned one.
+  // The image re-resolves the configured VERSION on every start — update = restart.
   update: {
     kind: 'reboot',
     note: 'Restarted — itzg/minecraft-server re-downloaded the configured VERSION on boot. '

@@ -1,14 +1,10 @@
 // Factorio spec — image `factoriotools/factorio`.
 //
-// Layout: saves at /factorio/saves, config at /factorio/config. The container
-// always loads /factorio/saves/_active.zip (SAVE_NAME=_active in
-// servers.compose.yml), so "switch world" = copy the chosen save over
-// _active.zip + restart. RCON on 27015 with the password in
-// /factorio/config/rconpw. Profile fields span TWO config files:
-// server-settings.json (name/players/visibility/password/autosave/auto_pause)
-// and map-settings.json (world rules — baked into a save at GENERATION, so they
-// only affect a NEWLY generated world; a running world is changed via the live
-// Game Speed / Evolution controls).
+// The container always loads saves/_active.zip (SAVE_NAME=_active), so "switch
+// world" = copy the chosen save over _active.zip + restart. Profile fields span
+// server-settings.json and map-settings.json — the latter's world rules are
+// baked into a save at GENERATION (only a NEWLY generated world is affected;
+// a running world is changed via the live Game Speed / Evolution controls).
 
 import { badSetting, SAFE_NAME_RE } from '../../errors.js';
 
@@ -216,8 +212,7 @@ export const factorioSpec = {
       };
       await conn.client.fileWrite(conn.vmid, MAP_SETTINGS, JSON.stringify(mjson, null, 2) + '\n');
 
-      // Active world: stage the chosen save as the one the container loads.
-      // Takes effect on the next restart (the panel's Apply restarts).
+      // Stage the chosen save as the active world (takes effect on restart).
       if (s.saveName) {
         const res = await conn.runShell(`cp -f "${SAVES}/${s.saveName}.zip" "${ACTIVE}"`, { timeoutMs: 60_000 });
         if (res.exitCode !== 0) throw badSetting(`could not set active world: ${res.stderr || res.stdout}`);
@@ -277,9 +272,8 @@ export const factorioSpec = {
     return typeof json.game_password === 'string' ? json.game_password : '';
   },
 
-  // factoriotools/factorio re-resolves the Factorio build matching the image (or
-  // VERSION env) on start. A true version bump needs `docker compose pull` on
-  // the host — the app can't pull images through the scoped socket-proxy.
+  // A true version bump needs a host `docker compose pull` — the app can't pull
+  // images through the scoped socket-proxy.
   update: {
     kind: 'reboot',
     note: 'Restarted (re-validates the Factorio binary). To upgrade Factorio itself, bump the image '

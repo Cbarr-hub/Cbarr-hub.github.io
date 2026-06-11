@@ -45,8 +45,9 @@ render masks, resource packs, or texture/model behavior.
 - If recent Minecraft changes are not visible, first flush the Minecraft world to
   disk. The standalone BlueMap container can only see saved world-file changes.
 - Keep `render-thread-count: 0` so BlueMap has enough workers for the host. The
-  app and host maintenance runner dynamically cap the container CPU quota: high
-  while nobody is online, low while players are active.
+  app dynamically caps the container CPU quota (`backend/src/servers/bluemap.js`
+  is the single owner of this policy — `gt-maintenance` no longer tunes it):
+  high while nobody is online, low while players are active.
 
 ## Tuned defaults
 
@@ -69,12 +70,15 @@ render masks, resource packs, or texture/model behavior.
 The standalone CLI has no server connection, so BlueMap's native live-player
 markers are normally empty. The app fills them in:
 
-- `backend/src/servers/bluemap-players.js` (`createBlueMapPlayersController`,
-  wired in `server.js`) polls online Minecraft players every ~2s, looks up each
-  position over RCON (the same `getPlayerPosition` the map "locate" used), and
-  writes BlueMap's expected `web/maps/<id>/live/players.json` into the `bluemap`
-  container through the scoped docker-proxy (`EXEC`). `foreign` is set per map so
-  a player only draws as a marker on the dimension they're actually in.
+- `backend/src/servers/bluemap.js` (`createBlueMapPlayersController`, wired in
+  `server.js`; the module also holds the render-status parser and the CPU tuner)
+  polls online Minecraft players every ~2s — backing off to 10s while the server
+  is empty — looks up each position over RCON, and writes BlueMap's expected
+  `web/maps/<id>/live/players.json` into the `bluemap` container through the
+  scoped docker-proxy (`EXEC`). `foreign` is set per map so a player only draws
+  as a marker on the dimension they're actually in. Writes are kept cheap:
+  target dirs are created once per process and the world's `usercache.json`
+  read is TTL-cached (~60s).
 - Real skins: it fetches each player's head PNG (by Mojang UUID, from
   `BLUEMAP_SKIN_BASE`, default `mc-heads.net`) once per process and writes it to
   **each rendered map's own asset root** `web/maps/<id>/assets/playerheads/<uuid>.png`

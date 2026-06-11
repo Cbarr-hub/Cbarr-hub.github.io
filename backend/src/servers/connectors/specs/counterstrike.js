@@ -1,26 +1,11 @@
 // Counter-Strike 2 spec — image `joedwards32/cs2`.
 //
-// IMPORTANT MODEL DIFFERENCE: this image is ENV-DRIVEN at startup — map, mode,
-// max-players, RCON password and the GSLT come from container environment
-// variables (CS2_STARTMAP, CS2_GAMEALIAS, CS2_MAXPLAYERS, CS2_RCONPW,
-// SRCDS_TOKEN, …) set in servers.compose.yml, NOT from an editable
-// cs2server.cfg. There is no in-container file whose edit changes the boot
-// config, and the scoped socket-proxy can't recreate the container with new env.
-//
-// So the split is:
-//   - PERSISTENT boot defaults → servers.compose.yml env (edit + recreate).
-//   - profile.apply            → pushes the profile LIVE via RCON to the running
-//                                server (map/mode/hostname/extra cvars), NEVER a
-//                                restart (a restart would just revert to the
-//                                compose env). Effective immediately; reverts to
-//                                the compose env on restart. profileGroups()
-//                                carries an `apply: { mode:'live', … }` descriptor
-//                                so the panel relabels the button ("Apply Live")
-//                                and skips the reboot a file-based game would do.
-//   - capture                  → env-driven boot config isn't readable back from
-//                                the container, so capture returns the validated
-//                                defaults (the editor is the source of truth).
-// The DB-backed workshop catalog + config library + live RCON port over cleanly.
+// MODEL DIFFERENCE: this image is ENV-DRIVEN at startup (CS2_STARTMAP,
+// CS2_MAXPLAYERS, CS2_RCONPW, SRCDS_TOKEN, … in servers.compose.yml) — no
+// editable boot cfg, and the scoped socket-proxy can't recreate the container
+// with new env. So profile.apply pushes the profile LIVE over RCON (it reverts
+// to the compose env on restart — never apply-by-restart), and capture returns
+// the validated defaults (env isn't readable back; the editor is the truth).
 
 import { badSetting, MAP_NAME_RE } from '../../errors.js';
 import { fetchItemTitle, fetchCollectionMaps } from '../../steam-workshop.js';
@@ -92,16 +77,14 @@ export const MAX_RAW_CONFIG_CHARS = 16_000;
 export const MAX_RAW_CONFIG_LINE_CHARS = 512;
 export const MAX_HOSTNAME_CHARS = 128;
 
-// Setting bot_quota 0 leaves any already-spawned bots in the server, so pair it with
-// bot_kick to actually clear the round. Shared by the live `bots` slider and the
-// Match-Rules profile apply so both paths emit the same combined command.
+// bot_quota 0 leaves already-spawned bots in, so pair it with bot_kick. Shared by
+// the live `bots` slider and the profile apply so both emit the same command.
 export function botQuotaCmd(n) {
   return Math.round(Number(n)) === 0 ? 'bot_quota 0; bot_kick' : `bot_quota ${Math.round(Number(n))}`;
 }
 
-// Structured, live-settable mp_/sv_/bot_ cvars (the "Match Rules" group). Pushed in
-// profile.apply's live RCON batch; they revert to the compose env on restart.
-// `bool` rows render as a checkbox (0/1); the rest as bounded numbers.
+// Structured live-settable cvars (the "Match Rules" group), pushed in apply's RCON
+// batch and reverting to the compose env on restart. `bool` rows are 0/1 checkboxes.
 export const CS_CVAR_FIELDS = [
   { cvar: 'mp_maxrounds',        key: 'maxRounds',     label: 'Max Rounds',         def: 24,   min: 0,    max: 60,    int: true },
   { cvar: 'mp_roundtime_defuse', key: 'roundTime',     label: 'Round Time (min)',   def: 1.92, min: 0.25, max: 60 },
@@ -116,15 +99,11 @@ export const CS_CVAR_FIELDS = [
   { cvar: 'bot_difficulty',      key: 'botDifficulty', label: 'Bot Difficulty',     def: 2,    min: 0,    max: 3,     int: true },
 ];
 
-// Tinkerer "Tweak" surface: the Match-Rules + Bots knobs flagged basic so the persona
-// panel's Tweak mode shows just these (autoBalance + warmupTime stay in Full → Profiles).
-// The Match Rules group mapper propagates the flag onto the rendered field objects.
+// `basic` flags: the knobs the panel's Tweak mode shows (the rest stay in Full).
 const CS_BASIC = new Set(['maxRounds', 'roundTime', 'freezeTime', 'buyTime', 'startMoney', 'friendlyFire', 'overtime', 'botQuota', 'botDifficulty']);
 
-// NOTE: maxPlayers is deliberately NOT a profile field. The joedwards32/cs2 image
-// reads max-players from the container env (CS2_MAXPLAYERS), which Apply (live
-// RCON) can't change and the app can't recreate the container to change — so a
-// maxPlayers input would silently do nothing. It lives in servers.compose.yml env.
+// NOTE: maxPlayers is deliberately NOT a profile field: it's env-only
+// (CS2_MAXPLAYERS), which live Apply can't change — an input would silently do nothing.
 export function defaultProfileSettings() {
   const d = { map: 'de_dust2', gameMode: 'competitive', loadoutMode: 'normal', hostname: '', password: '', rawConfig: '' };
   for (const f of CS_CVAR_FIELDS) d[f.key] = f.def;
@@ -147,9 +126,8 @@ export function validateProfileSettings(s = {}) {
   if (!LOADOUT_MODES[s.loadoutMode ?? 'normal']) throw badSetting(`invalid loadout mode: ${s.loadoutMode}`);
   out.loadoutMode = s.loadoutMode ?? 'normal';
   const hostname = String(s.hostname ?? '');
-  // Reject `;` too: hostname is pushed LIVE over RCON as `hostname "<value>"`, and
-  // Source treats `;` as a console command separator even inside a quoted arg, so an
-  // unescaped `;` would let a crafted name chain arbitrary cvars (RCON injection).
+  // Reject `;` too: Source treats `;` as a command separator even inside a quoted
+  // RCON arg, so a crafted name could chain arbitrary cvars (RCON injection).
   if (/["\n\r;]/.test(hostname)) throw badSetting('server name may not contain quotes, semicolons, or newlines');
   if (hostname.length > MAX_HOSTNAME_CHARS) throw badSetting(`server name too long (max ${MAX_HOSTNAME_CHARS} chars)`);
   out.hostname = hostname;
@@ -177,12 +155,8 @@ export function validateProfileSettings(s = {}) {
   return out;
 }
 
-// The Profiles editor groups (Map & Mode / Match Rules / Advanced). `mapOpts` is
-// the spec-supplied <select> option list (stock + saved workshop maps).
-//
-// CS applies LIVE over RCON (not by restarting), so the schema carries an `apply`
-// descriptor the panel uses to relabel the Apply button and skip the reboot a
-// restart-based game would do (a restart would just revert to the compose env).
+// The Profiles editor groups (Map & Mode / Match Rules / Advanced). The `apply`
+// descriptor tells the panel CS applies LIVE (relabel the button, skip the reboot).
 export function profileGroups(mapOpts, note) {
   return {
     groups: [
@@ -214,8 +188,7 @@ export function profileGroups(mapOpts, note) {
         ],
       },
     ],
-    // Embedded cvar reference (autocomplete/docs for the Raw Config + Extra-cvars
-    // editor). Built from CS_CVAR_FIELDS plus a few live-only knobs.
+    // Embedded cvar reference for the Raw Config / Extra-cvars editor.
     cvarRef: [
       ...CS_CVAR_FIELDS.map((f) => ({
         name: f.cvar, type: f.bool ? 'bool' : 'number',
@@ -288,13 +261,9 @@ function rawConfigCommands(raw) {
     .filter((l) => l && !l.startsWith('//'));
 }
 
-// Pack the ordered command list into the fewest "a; b; c" batches that each stay
+// Pack the ordered commands into the fewest "; "-joined batches that each stay
 // within RCON_BATCH_LIMIT chars, preserving order (so profile.apply's map-change
-// stays LAST). `len` tracks the actual joined length: the first command in a
-// batch adds its bare length, each subsequent one adds 2 ("; ") + its length;
-// the flush check predicts the post-append length before committing. A single
-// command over the limit throws (it can't be split). One await per batch in the
-// caller means any RCON rejection (auth/timeout/connection) propagates.
+// stays LAST). A single command over the limit throws — it can't be split.
 function rconBatches(commands) {
   const batches = [];
   let cur = [];
@@ -334,11 +303,8 @@ export const counterstrikeSpec = {
   live: {
     actions: CS_LIVE_ACTIONS,
     actionCmds: CS_ACTION_CMDS,
-    // Range sliders — continuous cvars pushed via runLiveAction(key, value),
-    // clamped to bounds. `strict`: a non-numeric value is an error, not a
-    // default. Gravity is cheats-gated, so it auto-prefixes sv_cheats 1. These
-    // map onto the same cvars as CS_CVAR_FIELDS but are ephemeral nudges
-    // (Profiles Apply is the persistent path).
+    // Range sliders, clamped. `strict`: a non-numeric value is an error, not a
+    // default. Ephemeral nudges onto the same cvars as CS_CVAR_FIELDS.
     controls: [
       { key: 'gravity',    label: 'Gravity',     min: 100, max: 2000,  step: 50,  default: 800, strict: true,
         cmd: (n) => `sv_cheats 1; sv_gravity ${Math.round(n)}` },
@@ -368,8 +334,7 @@ export const counterstrikeSpec = {
         'persistent boot defaults (map/mode/max-players) live in servers.compose.yml env.');
     },
 
-    // Apply the profile LIVE via RCON (ordered, batched). Persistent boot config
-    // is the compose env — documented in the returned note.
+    // Apply the profile LIVE via RCON (ordered, batched).
     async apply(conn, settings) {
       const s = validateProfileSettings(settings);
       const parts = [];
@@ -393,19 +358,14 @@ export const counterstrikeSpec = {
       };
     },
 
-    // Env-driven boot config isn't readable back from the container, so capture
-    // returns the validated defaults (the profile editor is the source of truth).
+    // Boot config is env-driven (unreadable back) — capture returns the defaults.
     async capture() {
       return validateProfileSettings(defaultProfileSettings());
     },
   },
 
-  // Profiles own the startup config (the Profiles panel), so getSettings exists
-  // only to feed the Runtime panel's live change-map dropdown — the SAME shape
-  // the GMOD-family connectors return: stock maps + the saved workshop catalog
-  // (by name). Without this the dropdown is empty. The container's boot map is
-  // env-driven (unreadable from a file), so `current` reflects the active
-  // profile's saved map when there is one.
+  // Feeds the Runtime panel's live change-map dropdown (same shape as GMOD).
+  // The boot map is env-driven, so `current` is the active profile's saved map.
   async getSettings(conn) {
     const catalog = conn.store ? conn.store.listWorkshopMaps(conn.server.id) : [];
     let current = '';
@@ -424,12 +384,8 @@ export const counterstrikeSpec = {
     };
   },
 
-  // The public join string must reflect the password a freshly-booted container
-  // actually enforces — which is none. A profile's sv_password is only ever pushed
-  // LIVE over RCON (profile.apply) and reverts on ANY restart; the compose env
-  // (CS2_PW/unset) isn't readable through the scoped socket-proxy. Advertising
-  // the saved profile password would tell joiners to enter one the server has
-  // dropped, so always report "no password".
+  // A profile's sv_password is pushed LIVE only and reverts on ANY restart, so the
+  // join string always reports "no password" (what a fresh boot actually enforces).
   connectPassword() {
     return '';
   },
@@ -439,8 +395,7 @@ export const counterstrikeSpec = {
   catalog: true,
   validMapName,
   maps: {
-    // Add one map. When `name` is omitted/blank the title is pulled from Steam
-    // (keyless Workshop lookup); a user-supplied name is validated as before.
+    // Add one map; omitted/blank `name` → keyless Steam title lookup.
     async add(conn, { workshopId, name } = {}) {
       conn.requireStore();
       const id = String(workshopId ?? '').trim();
@@ -451,9 +406,7 @@ export const counterstrikeSpec = {
         : sanitizeAutoName(await fetchItemTitle(id), id);
       return conn.store.addWorkshopMap(conn.server.id, { workshopId: id, name: nm });
     },
-    // Import every item in a public Steam Workshop collection into the catalog,
-    // names fetched automatically. Upserts (re-importing refreshes names), so it's
-    // safe to run repeatedly. Returns the count processed + the refreshed catalog.
+    // Import a public collection into the catalog; upserts, so re-running refreshes names.
     async importCollection(conn, collectionId) {
       conn.requireStore();
       const maps = await fetchCollectionMaps(collectionId);
@@ -462,8 +415,7 @@ export const counterstrikeSpec = {
         conn.store.addWorkshopMap(conn.server.id, { workshopId: m.workshopId, name: sanitizeAutoName(m.name, m.workshopId) });
       }
       const catalog = conn.store.listWorkshopMaps(conn.server.id);
-      // Unified collection-import shape (same as GMOD/PH so the panel renders identically).
-      // CS catalogs live — selectable immediately, no restart needed.
+      // Unified collection-import shape (same as GMOD/PH); CS catalogs live, no restart.
       return {
         ok: true,
         imported: maps.length,
@@ -478,9 +430,7 @@ export const counterstrikeSpec = {
   configLibrary: { validName: validConfigName, validBody: validConfigBody },
 
   // ── update the game client (SteamCMD app_update, in-container) ───────────────
-  // joedwards32/cs2 ships SteamCMD; refresh the CS2 dedicated files in place, then
-  // the panel restarts the container to run the new build. CS2 is Steam appid 730
-  // (anonymous). Paths are image-specific — validated on the host.
+  // CS2 = Steam appid 730 (anonymous). Paths are image-specific — validated on the host.
   update: {
     kind: 'exec',
     argv: ['/bin/bash', '-lc',

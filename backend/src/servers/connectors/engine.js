@@ -1,27 +1,10 @@
-// The one game-server connector. Per-game differences live in a SPEC (data
-// tables + the genuinely imperative functions: validate/apply/capture, map
-// sync, quick ops) under specs/; this engine interprets the spec and owns
-// everything generic:
-//
-//   status/power        container-level via the Docker client (the container IS
-//                       the game: running == hosting).
-//   exec/config files   runShell/runCommand + whitelisted read/write from
-//                       spec.configFiles.
-//   profiles            persistence lifecycle (list/get/create/update/delete/
-//                       apply/capture + auto-seeded "Default") — the game
-//                       semantics come from spec.profile.{defaults,validate,
-//                       schema,apply,capture}.
-//   live control        getLive/sendCommand/runLiveAction driven by
-//                       spec.live.{actions,actionCmds,controls,changeMapCmd};
-//                       RCON over TCP with the password from spec.rcon.password
-//                       ({env} | {file} | {cfgCvar}) — file reads TTL-cached so
-//                       a slider drag isn't a docker exec per tick, short enough
-//                       that a password rotation takes effect in ~a minute.
-//   update              spec.update: {kind:'exec',argv,timeoutMs,…} |
-//                       {kind:'reboot',note} | a custom function.
-//   workshop catalog /  store-backed generics enabled by spec.catalog /
-//   config library      spec.configLibrary (CS); spec.maps.* overrides for the
-//                       gmad-based GMOD flow.
+// The one game-server connector: per-game differences live in a SPEC (data
+// tables + validate/apply/capture/map-sync/quick-ops) under specs/; this engine
+// interprets the spec and owns the generics — container status/power (the
+// container IS the game: running == hosting), exec + whitelisted config files,
+// the profile persistence lifecycle, live RCON control, the update recipe
+// ({kind:'exec'} | {kind:'reboot'} | function), and the store-backed workshop
+// catalog / config library.
 
 import { rconExchange, validateLiveCommand } from '../rcon-tcp.js';
 import { getCvar } from '../line-config.js';
@@ -409,10 +392,9 @@ export class GameConnector {
   }
 }
 
-// Wire the optional presence/position hooks onto the prototype only when a spec
-// has them: service.js feature-detects `connector.listOnlinePlayers` /
-// `connector.getPlayerPosition`, so games without them must NOT expose the
-// methods at all (a throwing stub would break the capability check).
+// Wire the presence/position hooks only when a spec has them: service.js
+// feature-detects these methods, so games without them must NOT expose them
+// (a throwing stub would break the capability check).
 export function buildConnector(server, spec, client, store = null) {
   const conn = new GameConnector(server, spec, client, store);
   if (spec.listOnlinePlayers) conn.listOnlinePlayers = () => spec.listOnlinePlayers(conn);

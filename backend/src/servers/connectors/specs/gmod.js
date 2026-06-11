@@ -1,34 +1,17 @@
-// GMOD (TTT) spec — the LinuxGSM `gmodserver` instance in a container, running
-// the Trouble in Terrorist Town (terrortown) gamemode.
-//
-// This module is ALSO the shared home for the GMOD-family pieces Prop Hunt
-// composes (specs/prophunt.js imports them — no class hierarchy): the /data
-// LinuxGSM path layout + config-file whitelist, the gmad-based map machinery
-// (installedMaps/syncMaps/importCollection, parameterized by the gamemode's
-// map-name prefixes), the gravity/timescale slider rows (strict clamp
-// semantics), the shared bhop/cheats action strings, the live change-map
-// guard, the map-feed getSettings factory, the sv_password connect lookup,
-// and the LinuxGSM update recipe.
-//
-// Where TTT settings live (this is the whole game model):
-//   instance cfg : /data/lgsm/config-lgsm/gmodserver/gmodserver.cfg
-//     gamemode="terrortown"   defaultmap="ttt_…"  maxplayers="<n>"
-//     wscollectionid="<id>"   Steam Workshop COLLECTION — downloads + mounts
-//                             all its maps/addons at (re)start, boot-only
-//   game cfg : /data/serverfiles/garrysmod/cfg/gmodserver.cfg  (Source cvars;
-//              launched via `+servercfgfile gmodserver.cfg` — NOT a server.cfg)
-//     ttt_* gameplay cvars + ttt_always_use_mapcycle + rcon_password
-//   map rotation : /data/serverfiles/garrysmod/mapcycle.txt  (one name per line)
-// All of the above apply on the next restart (the panel's Apply restarts the
-// container, which also downloads + mounts the Workshop collection).
+// GMOD (TTT) spec — the LinuxGSM `gmodserver` container running terrortown.
+// Also the shared home for the GMOD-family pieces specs/prophunt.js composes
+// (path layout, gmad map machinery, slider rows, bhop/cheats strings,
+// getSettings factory, connect-password lookup, update recipe).
+// Settings live in the LinuxGSM instance cfg (gamemode/defaultmap/maxplayers/
+// wscollectionid — the collection mounts at BOOT only), the game cfg
+// (ttt_* cvars + rcon_password; +servercfgfile, NOT server.cfg), and
+// mapcycle.txt; all take effect on restart. See CLAUDE.md § GMOD gotchas.
 
 import { getVar, setVars, getCvar, setCvars } from '../../line-config.js';
 import { badSetting, MAP_NAME_RE } from '../../errors.js';
 import { fetchCollectionMaps } from '../../steam-workshop.js';
 
 // ── shared GMOD-family layout (/data, LinuxGSM instance `gmodserver`) ──────────
-// Both the TTT and Prop Hunt containers use this same layout (only env + the
-// mounted volume differ).
 const DATA = '/data';
 const GARRYSMOD = `${DATA}/serverfiles/garrysmod`;
 const LGSM = `${DATA}/lgsm/config-lgsm/gmodserver`;
@@ -67,9 +50,7 @@ const TTT_PREFIXES = ['ttt_', 'gm_'];
 // ── shared map machinery (gmad extraction; parameterized by mapPrefixes) ───────
 
 // The SINGLE source of truth for available maps: installed .bsp files under
-// garrysmod/maps/ (stock gm_construct/gm_flatgrass + whatever syncMaps() has
-// extracted from the collection). No cache reconciliation — collection maps only
-// appear here once installed via syncMaps. Filtered by `mapPrefixes`.
+// garrysmod/maps/ — collection maps appear only once syncMaps() extracts them.
 export async function installedMaps(conn, mapPrefixes) {
   try {
     // List basenames of the installed .bsp files (strip dir + extension via sed).
@@ -77,10 +58,8 @@ export async function installedMaps(conn, mapPrefixes) {
       `ls -1 ${GMOD_PATHS.mapsDir}/*.bsp 2>/dev/null | sed -E 's#.*/##; s#\\.bsp$##' | sort -u`,
       { timeoutMs: 15_000 },
     );
-    // Keep only maps whose name starts with one of this gamemode's prefixes
-    // (ttt_/gm_ for TTT, ph_/gm_ for PH) so an unrelated bsp can't appear in the
-    // picker. Names are lowercase a-z0-9_ (matches Source/GMOD bsp naming). Any
-    // failure (dir missing, exec error) degrades to an empty list, never throws.
+    // Keep only this gamemode's prefixes so an unrelated bsp can't appear in the
+    // picker; any failure (dir missing, exec error) degrades to an empty list.
     const escapeRe = (p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`^(${mapPrefixes.map(escapeRe).join('|')})[a-z0-9_]+$`);
     const names = (res.stdout || '').split('\n')
@@ -92,14 +71,9 @@ export async function installedMaps(conn, mapPrefixes) {
   }
 }
 
-// Install collection maps as the single source of truth. GMOD scatters downloaded
-// workshop content across two locations/formats — legacy addons as
-// cache/srcds/<id>.gma and modern ones as steam_cache/content/4000/<id>/*.gma — so
-// there is no single existing place with every map. syncMaps extracts each
-// downloaded map's maps/*.bsp into garrysmod/maps/ (the engine's canonical map
-// dir), which installedMaps() then reads as the ONE source. These TTT map addons
-// are self-contained (packed .bsp), so an extracted map loads with no mount
-// dependency. Idempotent (cp -n). Returns the refreshed installed-map list.
+// Extract every downloaded .gma's maps/*.bsp into garrysmod/maps/ (the dir
+// installedMaps reads). Scans BOTH download spots (cache/srcds + steam_cache);
+// a packed .bsp is self-contained, so it loads with no mount. Idempotent (cp -n).
 export async function syncMaps(conn, mapPrefixes) {
   const P = GMOD_PATHS;
   const script = [
@@ -115,13 +89,9 @@ export async function syncMaps(conn, mapPrefixes) {
   return { ok: true, maps: await installedMaps(conn, mapPrefixes) };
 }
 
-// Unified Steam Workshop collection import (the same POST /:id/maps/collection
-// route CS2 uses). GMOD/PH can't live-mount an arbitrary collection — mount is
-// boot-only — so this: (1) writes the collection id into the instance cfg so the
-// NEXT restart downloads + mounts it, (2) best-effort syncs any already-downloaded
-// .gma into maps/ (a no-op pre-restart), and (3) returns the member titles
-// (keyless, advisory) plus requiresRestart:true. PH reuses this unchanged with
-// its own prefixes — the paths are the shared /data layout either way.
+// Collection import (same POST route as CS2). Mount is boot-only, so this writes
+// the id for the NEXT restart, best-effort syncs already-downloaded .gma, and
+// returns the member titles (advisory) + requiresRestart:true.
 export async function importCollection(conn, mapPrefixes, collectionId) {
   const id = String(collectionId ?? '').trim();
   if (!/^\d{1,20}$/.test(id)) throw badSetting('workshop collection id must be digits');
@@ -151,8 +121,7 @@ export async function importCollection(conn, mapPrefixes, collectionId) {
 }
 
 // ── shared quick-settings feed (the Runtime panel's live change-map dropdown) ──
-// Profiles own the startup config; getSettings is kept only to feed the loadable
-// map list (stock vs collection groups). GMOD maps are plain bsp names (no ws: ids).
+// Profiles own the startup config; this only feeds the loadable map list.
 export function makeGmodGetSettings({ mapPrefixes, knownCollectionMaps = [] }) {
   return async function getSettings(conn) {
     const [inst, maps] = await Promise.all([
@@ -185,10 +154,8 @@ export function changeMapCmd(value) {
   return `changelevel ${v}`;
 }
 
-// Shared bhop/cheats toggle strings — identical across every GMOD-family gamemode.
-// GMOD's Source engine has NO sv_autobunnyhopping/sv_enablebunnyhopping (those are
-// CS2-only) — validated live, they error "Unknown command". The honest GMOD bhop is
-// loose air control via sv_airaccelerate (high = bhop-friendly; 12 ≈ default).
+// GMOD has NO sv_autobunnyhopping/sv_enablebunnyhopping (CS2-only; validated live —
+// "Unknown command"); the honest bhop is sv_airaccelerate air control (12 ≈ default).
 export const GMOD_BHOP_CMDS = {
   bhop_on:  'sv_cheats 1; sv_airaccelerate 1000',
   bhop_off: 'sv_airaccelerate 12',
@@ -198,14 +165,10 @@ export const GMOD_CHEATS_CMDS = {
   cheats_off: 'sv_cheats 0',
 };
 
-// Live RANGE sliders shared by every GMOD-family gamemode (both srcds). `strict`
-// is the GMOD-family clamp semantics: a non-numeric value throws badSetting
-// ('invalid value for <label>') instead of falling back to the default; finite
-// values still clamp to [min,max] (the engine's runLiveAction strict branch).
-// NOTE: there is intentionally NO "player speed" control. GMOD has no server cvar
-// for walk speed (hl2_normspeed is HL2-only → "Unknown command" here, validated
-// live; sv_maxspeed only caps, and TTT/PH set speed in gamemode Lua) — Game Speed
-// (host_timescale) + gravity are the honest movement knobs.
+// Shared live sliders. `strict` clamp semantics: non-numeric throws badSetting
+// instead of defaulting; finite values still clamp to [min,max]. Intentionally NO
+// player-speed slider: hl2_normspeed is HL2-only (validated live), sv_maxspeed
+// only caps — TTT/PH set speed in gamemode Lua.
 export const GMOD_FAMILY_CONTROLS = [
   { key: 'gravity',   label: 'Gravity',    min: 0,    max: 1000, step: 25,   default: 600, suffix: '',  strict: true,
     cmd: (n) => `sv_gravity ${Math.round(n)}` },
@@ -213,9 +176,7 @@ export const GMOD_FAMILY_CONTROLS = [
     cmd: (n) => `sv_cheats 1; host_timescale ${n}` },
 ];
 
-// Update the game client via LinuxGSM (SteamCMD under the hood), in-container.
-// `./gmodserver update` refreshes serverfiles; the panel then restarts the
-// container to run the new build (also remounts the Workshop collection).
+// Update via LinuxGSM in-container; the panel restarts to run the new build.
 export const GMOD_UPDATE = {
   kind: 'exec',
   argv: ['/bin/bash', '-lc', `${DATA}/gmodserver update`],
@@ -226,10 +187,8 @@ export const GMOD_UPDATE = {
 
 // ── TTT live control (Source RCON on the game port) ────────────────────────────
 
-// Curated actions — the genuinely BINARY toggles + instant commands that work in
-// ANY GMOD gamemode (the X2Z-specific Next Round / Map Vote / Apply Config have
-// no stock TTT equivalent). The on/off pairs that were really two points on a
-// numeric range (gravity / timescale) render as sliders instead.
+// Curated actions — genuinely binary toggles + instant commands; numeric-range
+// pairs (gravity / timescale) render as sliders instead.
 const TTT_LIVE_ACTIONS = [
   { key: 'restart_round', label: 'Restart Round' },
   { key: 'cleanup',       label: 'Clean Up Props' },
@@ -262,10 +221,8 @@ const TTT_LIVE_CONTROLS = [
 
 // ── TTT profile (the whole startup config) ─────────────────────────────────────
 
-// TTT cvar field specs (key in the game cfg, UI label, numeric bounds). pct fields
-// are 0..1 fractions; the rest are integers; `bool` rows are 0/1 toggles the UI
-// renders as switches. `group` tags partition the panel into two readable groups.
-// Kept as data so defaults/validate/schema/apply/capture all iterate this one list.
+// TTT cvar field table — defaults/validate/schema/apply/capture all iterate this
+// one list. pct fields are 0..1 fractions; `bool` rows are 0/1 toggles.
 const TTT_FIELDS = [
   { cvar: 'ttt_round_limit',          key: 'roundLimit',     label: 'Rounds per Map',        def: 6,    min: 1,  max: 100,  int: true,             group: 'round' },
   { cvar: 'ttt_time_limit_minutes',   key: 'timeLimit',      label: 'Time Limit (min)',      def: 75,   min: 1,  max: 600,  int: true,             group: 'round' },
@@ -286,8 +243,7 @@ const TTT_FIELDS = [
   { cvar: 'ttt_karma_low_ban',        key: 'karmaBan',       label: 'Karma Auto-ban',        def: 0,    min: 0,  max: 1,    int: true, bool: true, group: 'roles' },
 ];
 
-// Tinkerer "Tweak" surface: the high-value TTT knobs flagged basic so the persona
-// panel's Tweak mode shows just these (the rest stay in Full → Profiles).
+// `basic` flags: the knobs the panel's Tweak mode shows (the rest stay in Full).
 const TTT_BASIC = new Set(['roundLimit', 'prepTime', 'haste', 'traitorPct', 'detMinPlayers', 'minPlayers', 'creditsStart', 'karma']);
 
 function tttDefaults() {
@@ -332,17 +288,13 @@ function tttValidate(s = {}) {
 
 async function tttSchema(conn) {
   const discovered = await installedMaps(conn, TTT_PREFIXES);
-  // Always offer the stock fallback maps (gm_construct/gm_flatgrass), plus what
-  // the collection has downloaded. The map fields are combos (custom:true) so a
-  // collection map can be typed as the start map even before its first download.
-  // Tag each map Stock vs Collection so the rotation builder shows two groups.
+  // Stock fallbacks + discovered maps; combos (custom:true) let a collection map
+  // be typed before its first download. Stock/Collection groups the builder UI.
   const mapOpts = [...new Set([...STOCK_ALWAYS, ...discovered, ...TTT_DEFAULT_MAPS])].map((m) => ({
     value: m, label: m, group: STOCK_ALWAYS.includes(m) ? 'Stock' : 'Collection',
   }));
-  // bool rows render as switches; numeric rows as bounded number inputs. The
-  // `group` tag on each TTT_FIELDS row is advisory metadata (round vs roles) the
-  // panel can use to sub-head the list; the schema keeps the single Gameplay group
-  // so the field order stays one flat, predictable list.
+  // bool rows render as switches, numeric rows as bounded inputs; the per-row
+  // `group` tag is advisory (round vs roles) within the single flat Gameplay group.
   const numField = (f) => f.bool
     ? { key: f.key, label: f.label, type: 'bool', group: f.group, ...(TTT_BASIC.has(f.key) ? { basic: true } : {}) }
     : { key: f.key, label: f.label, type: 'number', min: f.min, max: f.max, step: f.int ? 1 : 0.01, group: f.group, ...(TTT_BASIC.has(f.key) ? { basic: true } : {}) };
@@ -371,8 +323,7 @@ async function tttSchema(conn) {
       },
     ],
     note: 'A profile is the startup config the server boots as. Apply saves it and restarts the server (which downloads + mounts your Workshop collection). Maps come from the collection; gm_construct is the always-available fallback.',
-    // Embedded cvar reference (autocomplete / inline docs for the Raw Config tab),
-    // built from the same TTT_FIELDS table the profile renders/validates from.
+    // Embedded cvar reference for the Raw Config tab (same TTT_FIELDS table).
     cvarRef: TTT_FIELDS.map((f) => ({
       name: f.cvar, type: f.bool ? 'bool' : 'number', default: f.def,
       ...(f.bool ? {} : { min: f.min, max: f.max }), group: f.group,
@@ -384,25 +335,20 @@ async function tttSchema(conn) {
   };
 }
 
-// Apply only WRITES the startup files — none of it is live; the restart that
-// re-reads them (and downloads + mounts the workshop collection) is the panel's
-// "Apply = apply config + restart" step. Capture is the inverse read.
+// Apply only WRITES the startup files; the panel's Apply does the restart that
+// re-reads them (and mounts the workshop collection). Capture is the inverse read.
 async function tttApply(conn, settings, profileId) {
   const s = tttValidate(settings);
   const P = GMOD_PATHS;
 
-  // The server boots into the FIRST map of the rotation (stock fallback if the
-  // rotation is somehow empty). One ordered list drives both boot + rotation.
-  // De-dup (order-preserving): a repeated entry would write a no-op map change
-  // into mapcycle.txt. This single deduped list drives the boot-map guard, the
-  // boot map, and the written rotation so they can't diverge.
+  // Boot map = FIRST rotation entry (stock fallback if empty). One deduped list
+  // drives the guard, the boot map, and the written rotation so they can't diverge.
   const rotation = [...new Set(s.mapcycle.length ? s.mapcycle : ['gm_construct'])];
   const bootMap = rotation[0];
 
-  // Boot-map guard. With NO workshop collection set, only stock maps can load —
-  // a workshop map mounts nothing and leaves the server with "no active map"
-  // (the exact brick we hit). Block that; trust any map once a collection is set
-  // (GMOD downloads + mounts it at boot before loading the map).
+  // Boot-map guard: with NO collection set, a workshop boot map mounts nothing and
+  // bricks the boot ("no active map" — the exact brick we hit). Trust any map once
+  // a collection is set.
   if (!s.workshopCollection) {
     const loadable = new Set([...(await installedMaps(conn, TTT_PREFIXES)), ...STOCK_ALWAYS]);
     const missing = rotation.filter((m) => !loadable.has(m));
@@ -445,11 +391,8 @@ async function tttCapture(conn) {
     const v = getCvar(game, cvar);
     return v === undefined || v === '' ? def : Number(v);
   };
-  // Preserve the invariant: the boot map (defaultmap) is the first rotation entry.
-  // Lowercase the boot map AND the rotation lines: bsp names are lowercase, but a
-  // defaultmap/mapcycle set out-of-band can leak a mixed-case Workshop title,
-  // which tttValidate (lowercase-only MAP_NAME_RE) would reject — making capture
-  // throw instead of snapshotting.
+  // Boot map stays the first rotation entry. Lowercase both: an out-of-band
+  // mixed-case Workshop title would fail MAP_NAME_RE and make capture throw.
   const bootMap = (getVar(inst, 'defaultmap') || 'gm_construct').trim().toLowerCase();
   let cycle = mapcycle.replace(/\r/g, '').split('\n').map((l) => l.trim().toLowerCase()).filter(Boolean);
   if (cycle[0] !== bootMap) cycle = [bootMap, ...cycle.filter((m) => m !== bootMap)];

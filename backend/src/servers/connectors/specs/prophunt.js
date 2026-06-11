@@ -1,19 +1,10 @@
 // Prop Hunt spec — a second LinuxGSM gmodserver container (port 27067) running
-// the Prop Hunt: X2Z gamemode.
-//
-// Composes the shared GMOD-family pieces from specs/gmod.js (the /data layout,
-// gmad map machinery, gravity/timescale slider rows, bhop/cheats strings, the
-// change-map guard, getSettings/connectPassword, the LinuxGSM update recipe) —
-// no class hierarchy. Differences from TTT:
-//   - boots ONE ph_ map under gamemode="prop_hunt" (no rotation);
-//   - content mounts from the public Workshop collection 3737190377 (the X2Z
-//     gamemode ships the prop_hunt/base_phx folders + 7 ph_ maps + taunts + a
-//     loadout manager); clients auto-download via the collection.
-//   - X2Z gameplay tuning is mostly via the in-game X Menu (!phmenu), stored in
-//     garrysmod/data/phx_data. Only a handful of real server cvars exist (below);
-//     the panel exposes those + a Controls/Menus reference + the raw config editor.
-//   - the game cfg execs cfg/gamertown/active.cfg last — the free-text rawConfig
-//     escape hatch, re-execable live via the apply_config action.
+// Prop Hunt: X2Z. Composes the shared GMOD-family pieces from specs/gmod.js.
+// Vs TTT: boots ONE ph_ map (no rotation); the gamemode + maps mount from the
+// public Workshop collection 3737190377 (prop_hunt is NOT built into GMOD);
+// most X2Z tuning lives in the in-game X Menu (!phmenu) → garrysmod/data/phx_data;
+// the game cfg execs cfg/gamertown/active.cfg last (the rawConfig escape hatch,
+// re-execable live via the apply_config action).
 
 import {
   GMOD_PATHS, GMOD_FAMILY_CONFIG_FILES, GMOD_FAMILY_CONTROLS, GMOD_BHOP_CMDS, GMOD_CHEATS_CMDS,
@@ -34,11 +25,8 @@ const ACTIVE_EXEC  = 'gamertown/active';
 const ACTIVE_CFG   = `${GMOD_PATHS.garrysmod}/cfg/gamertown/active.cfg`;
 const EXEC_LINE_RE = /^[ \t]*exec[ \t]+gamertown\/active[ \t]*$/m;
 
-// Real X2Z server cvars (from the gamemode's CreateConVar). The typed-table shape
-// mirrors TTT_FIELDS: `bool` rows are 0/1 toggles; numeric rows carry def/min/max
-// (+int). default/validate/schema/apply/capture all iterate this one list, so a row
-// is added in exactly one place. Round length / prop balance still also live in the
-// in-game X Menu (!phmenu) → garrysmod/data/phx_data, but these cvars take effect.
+// Real X2Z server cvars (from the gamemode's CreateConVar); same typed-table shape
+// as TTT_FIELDS — defaults/validate/schema/apply/capture all iterate this one list.
 const PH_CVARS = [
   // booleans:
   { cvar: 'fretta_waitforplayers',      key: 'waitForPlayers',  label: 'Wait for players before a round starts', def: 1, bool: true },
@@ -57,8 +45,7 @@ const PH_CVARS = [
   { cvar: 'ph_hunter_fire_penalty',     key: 'firePenalty',     label: 'Hunter Fire Penalty', def: 10,  min: 0,  max: 25,  int: true },
 ];
 
-// Tinkerer "Tweak" surface: the fun/practical Hunt Rules knobs flagged basic so the
-// persona panel's Tweak mode shows just these (the rest stay in Full → Profiles).
+// `basic` flags: the knobs the panel's Tweak mode shows (the rest stay in Full).
 const PH_BASIC = new Set(['waitForPlayers', 'swapTeams', 'luckyBalls', 'roundTime', 'blindTime', 'roundsPerMap', 'propJump']);
 
 // Default controls + how to reach X2Z's in-game menus (shown read-only in the
@@ -97,18 +84,15 @@ const PH_ACTION_CMDS = {
   luckyballs_off: 'ph_enable_lucky_balls 0',
   autotaunt_on:   'ph_autotaunt_enabled 1',
   autotaunt_off:  'ph_autotaunt_enabled 0',
-  // bhop/cheats are identical to TTT — spread the shared strings from specs/gmod.js
-  // so the air-control bhop note + values live in exactly one place.
+  // bhop/cheats: the shared strings from specs/gmod.js (single home for the values).
   ...GMOD_BHOP_CMDS,
   ...GMOD_CHEATS_CMDS,
   apply_config:   `exec ${ACTIVE_EXEC}`,
   players:        'status',
 };
 
-// Live RANGE controls: the shared GMOD sliders (strict) plus two PH-specific
-// next-round timers (round + hide time). The PH rows use the SOFT clamp (no
-// `strict`): the engine's clampNumber means a literal 0 clamps to min and an
-// empty/non-numeric value falls back to the row's default.
+// Shared GMOD sliders (strict) + two PH next-round timers using the SOFT clamp
+// (no `strict`): a literal 0 clamps to min, empty/non-numeric falls back to default.
 const PH_LIVE_CONTROLS = [
   ...GMOD_FAMILY_CONTROLS,
   { key: 'ph_round_time', label: 'Round Time', min: 60, max: 600, step: 10, default: 250, suffix: 's',
@@ -220,9 +204,8 @@ async function phApply(conn, settings, profileId) {
 
   if (!s.propHuntMap) throw badSetting('pick a starting map (e.g. ph_restaurant).');
 
-  // NOTE: deliberately do NOT write wscollectionid here. Apply must not be able to
-  // break the X2Z mount (an empty/changed collection bricks the gamemode boot) — the
-  // collection id is managed only via importCollection / the Raw Config editor.
+  // Deliberately do NOT write wscollectionid: Apply must not be able to break the
+  // X2Z mount (bricks the boot) — change it only via importCollection / Raw Config.
   let inst = (await conn.client.fileRead(conn.vmid, P.instanceCfg)).content ?? '';
   inst = setVars(inst, {
     gamemode: GAMEMODE,
@@ -252,9 +235,8 @@ async function phCapture(conn) {
     conn.fileText(ACTIVE_CFG),
   ]);
   const doc = {
-    // Lowercase like the TTT capture: a mixed-case Workshop title set as
-    // defaultmap out-of-band would otherwise fail validate's lowercase-only
-    // MAP_NAME_RE and make capture throw instead of snapshotting.
+    // Lowercase like the TTT capture: an out-of-band mixed-case Workshop title
+    // would fail MAP_NAME_RE and make capture throw.
     propHuntMap: (getVar(inst, 'defaultmap') || DEFAULT_MAP).trim().toLowerCase(),
     workshopCollection: (getVar(inst, 'wscollectionid') || COLLECTION).trim(),
     maxPlayers: Number(getVar(inst, 'maxplayers') || 16),
@@ -273,9 +255,7 @@ async function phCapture(conn) {
 export const prophuntSpec = {
   id: 'prophunt',
 
-  // The shared GMOD set (game cfg `server.cfg`, instance cfg `lgsm.cfg`) plus the
-  // live-execable extra-cvars file and X2Z's editable data files (weapon loadouts,
-  // admin list). These open in the panel's Raw Config editor.
+  // The shared GMOD set plus the live-execable extra-cvars file and X2Z's data files.
   configFiles: {
     ...GMOD_FAMILY_CONFIG_FILES,
     'active.cfg':  ACTIVE_CFG,

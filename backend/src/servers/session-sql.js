@@ -42,8 +42,9 @@ export const closeSession =
 export const closeAllOpen =
   'UPDATE server_sessions SET left_at = ?, source = ? WHERE left_at IS NULL';
 
-// Open-session count across all hosted servers — the players-online gate
-// tools/gt-maintenance.mjs polls (BlueMap CPU cap + idle-only update checks).
+// Open-session count across all hosted servers — the players-online gate both
+// the app-side BlueMap CPU tuner (server.js → bluemap.js) and the idle-only
+// update checks in tools/gt-maintenance.mjs poll.
 export const onlineCount =
   `SELECT COUNT(*) AS n
      FROM server_sessions s JOIN games g ON g.id = s.game_id

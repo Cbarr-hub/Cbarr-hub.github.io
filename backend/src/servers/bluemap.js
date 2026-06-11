@@ -1,26 +1,13 @@
-// Everything BlueMap: live player markers, render-status parsing, and the CPU
-// tuner — one module (replaces bluemap-players.js / bluemap-status.js /
-// bluemap-resources.js).
+// Everything BlueMap: live player markers, render-status parsing, the CPU tuner.
 //
-// MARKERS — BlueMap's webapp polls `<webroot>/maps/<id>/live/players.json` and
-// renders each entry as a head-billboard marker, loading the head texture from
-// the SAME map's asset root (`<webroot>/maps/<id>/assets/playerheads/<uuid>.png`
-// — NOT a global dir; per-map triplication is forced by BlueMap v5). With the
-// plugin/mod the game server writes these; we run the standalone renderer, so
-// this controller polls live players over RCON (serverService
-// .liveOnlineWithPositions) and writes the files into the `bluemap` container
-// through the scoped docker-proxy — live markers with real skins, no
-// Fabric/Paper. Perf model: dirs are created once (re-checked only after a
-// failure), the usercache read is TTL-cached in the minecraft spec, the tick
-// backs off 2s→10s while nobody is online, and the JSON is built once with only
-// the `foreign` flag flipped per map.
+// MARKERS — BlueMap's webapp polls `maps/<id>/live/players.json` and loads each
+// head texture from the SAME map's asset root (`maps/<id>/assets/playerheads/
+// <uuid>.png` — NOT a global dir; per-map triplication is forced by BlueMap v5).
+// The renderer runs standalone, so this controller polls live players over RCON
+// and writes those files into the `bluemap` container via the docker-proxy.
 //
-// TUNER — keep render CPU off the game while people play: active = a small cap,
-// idle = host cpus minus a reserve, with an idle-delay hysteresis. Presence
-// comes from a cheap injected countOnline() (one indexed sqlite COUNT over the
-// host tracker's open sessions — no RCON, no docker calls); host NCPU is static
-// and fetched once. (gt-maintenance.mjs used to carry a duplicate of this
-// policy; the app-side tuner is the one that runs everywhere.)
+// TUNER — keep render CPU off the game while people play: a small cap while
+// anyone is online (cheap injected countOnline()), ramping up after an idle delay.
 
 const WEB = '/app/web';
 
@@ -137,12 +124,9 @@ export function parseBlueMapStatus(logText) {
 
 // ── live player markers ─────────────────────────────────────────────────────────
 
-// Normalize a Mojang UUID to dashed lowercase so the players.json `uuid` and the
-// `assets/playerheads/<uuid>.png` filename always agree. FAIL CLOSED: anything
-// that isn't exactly 32 hex chars returns null (callers skip it). The value
-// flows into a container file path and an outbound skin URL, so we never hand
-// back raw input — a stray `/` or `..` would otherwise become a path-traversal
-// / URL sink.
+// Normalize a Mojang UUID to dashed lowercase. FAIL CLOSED (non-32-hex → null):
+// the value flows into a container file path + an outbound skin URL, so raw
+// input (a stray `/` or `..`) would be a path-traversal / URL sink.
 export function normalizeUuid(raw) {
   const hex = String(raw || '').trim().toLowerCase().replace(/[^0-9a-f]/g, '');
   if (hex.length !== 32) return null;
@@ -211,8 +195,7 @@ export function createBlueMapPlayersController({
       const res = await fetchImpl(`${opts.skinBase}/${uuid}/64.png`, { signal: AbortSignal.timeout(opts.skinTimeoutMs) });
       if (!res?.ok) throw new Error(`skin fetch ${res?.status}`);
       const buf = Buffer.from(await res.arrayBuffer());
-      // Write the head under EACH rendered map's asset root — that's where
-      // BlueMap loads it from.
+      // Write the head under EACH rendered map's asset root (where BlueMap loads it).
       for (const { mapId } of MAP_DIMENSIONS) {
         await dockerClient.fileWriteBytes(opts.container, `${WEB}/maps/${mapId}/assets/playerheads/${uuid}.png`, buf);
       }

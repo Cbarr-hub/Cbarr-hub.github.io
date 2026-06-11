@@ -1,15 +1,22 @@
 // Minimal Source-RCON client over a raw TCP socket, for talking to a game server
 // the app can reach directly (e.g. a Minecraft container on the compose network).
-//
-// This is the Docker-world counterpart to rcon.js's in-guest python helper: there
-// the app has no network path to the server's RCON port and must exec inside the
-// VM; here the container's RCON port is reachable by service name, so we speak the
-// protocol straight from Node.
+// The container's RCON port is reachable by service name, so we speak the
+// protocol straight from Node. (The VM-era in-guest python transport that used
+// to live in rcon.js is gone — this is the only RCON transport.)
 //
 // Source RCON packet (little-endian): int32 size | int32 id | int32 type |
 // UTF-8 body + NUL | NUL.  type 3 = auth, 2 = exec / auth-response, 0 = response.
 
 import net from 'node:net';
+
+/** Validate a user-supplied live command. Returns the trimmed command. */
+export function validateLiveCommand(command) {
+  const c = String(command ?? '').trim();
+  if (!c) { const e = new Error('command is required'); e.code = 'BAD_SETTING'; throw e; }
+  if (c.length > 512) { const e = new Error('command too long (max 512 chars)'); e.code = 'BAD_SETTING'; throw e; }
+  if (/[\r\n]/.test(c)) { const e = new Error('command may not contain newlines'); e.code = 'BAD_SETTING'; throw e; }
+  return c;
+}
 
 function encode(id, type, body) {
   const bodyBuf = Buffer.from(body, 'utf8');

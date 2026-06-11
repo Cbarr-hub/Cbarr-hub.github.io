@@ -36,7 +36,8 @@ export function createEconomy(db) {
               p.ignored AS ignored,
               pa.user_id AS userId, u.display_name AS userName,
               COUNT(s.id)                                   AS sessions,
-              COALESCE(SUM(MAX(0, COALESCE(s.left_at, unixepoch()) - s.joined_at)), 0) AS totalSeconds,
+              -- per-session 24h clamp mirrors the store's Pulse DUR cap (servers/store.js) so roster hours agree with Pulse
+              COALESCE(SUM(MAX(0, MIN(COALESCE(s.left_at, unixepoch()) - s.joined_at, 86400))), 0) AS totalSeconds,
               COALESCE(SUM(s.credited_dollars), 0)          AS earned
          FROM players p
          LEFT JOIN player_accounts pa ON pa.player_id = p.id

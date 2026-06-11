@@ -4,12 +4,13 @@ import Fastify from 'fastify';
 
 import serversRoutes from '../src/routes/servers.js';
 
-function baseService(overrides = {}) {
+// The OPS dispatcher in routes/servers.js calls svc.connectorFor(id)[op](…) for
+// every connector pass-through route, so the stub service carries the composite
+// methods directly plus a connectorFor returning a stub connector.
+// `connectorOverrides` is an object (or an (id) => object factory, so per-op
+// recorders can see which server id was resolved) merged over the defaults.
+function baseConnector(overrides = {}) {
   return {
-    listServers: async () => [],
-    getNodeStatus: async () => ({ kind: 'docker' }),
-    getStatus: async (id) => ({ id, status: 'running' }),
-    doAction: async (id, action) => ({ ok: true, id, action }),
     getSettings: async () => ({ fields: [] }),
     setSettings: async () => ({ ok: true }),
     listMaps: async () => [],
@@ -21,7 +22,6 @@ function baseService(overrides = {}) {
     listConfigs: async () => [],
     getConfig: async () => ({}),
     createConfig: async () => ({}),
-    updateConfig: async () => ({}),
     deleteConfig: async () => ({ ok: true }),
     listProfiles: async () => ({ profiles: [], activeId: null }),
     profileSchema: async () => ({ groups: [] }),
@@ -34,16 +34,27 @@ function baseService(overrides = {}) {
     getLive: async () => ({ available: false }),
     sendCommand: async () => ({ output: '' }),
     runLiveAction: async () => ({ output: '' }),
-    listSessions: async () => [],
-    listConfig: async () => ({ files: [] }),
+    listConfigFiles: () => [],
     readConfig: async () => ({ content: '' }),
     writeConfig: async () => ({ ok: true }),
+    update: async () => ({ ok: true }),
+    ...overrides,
+  };
+}
+
+function baseService(overrides = {}, connectorOverrides) {
+  return {
+    listServers: async () => [],
+    getNodeStatus: async () => ({ kind: 'docker' }),
+    getStatus: async (id) => ({ id, status: 'running' }),
+    doAction: async (id, action) => ({ ok: true, id, action }),
     getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
-    getCurrentMinecraftPosition: async () => ({ serverId: 'minecraft', linked: false }),
-    getCurrentPlayerPosition: async (id) => ({ serverId: id, linked: false }),
     getOnlinePlayerPosition: async (id, sessionId) => ({ serverId: id, sessionId }),
     getOnlinePlayerPositionByName: async (id, player) => ({ serverId: id, player }),
-    runUpdate: async () => ({ ok: true }),
+    clearStatusCache() {},
+    connectorFor: (id) => baseConnector(
+      typeof connectorOverrides === 'function' ? connectorOverrides(id) : connectorOverrides,
+    ),
     ...overrides,
   };
 }
@@ -121,8 +132,6 @@ test('servers routes expose BlueMap render status on a static path', async () =>
   const app = await routeApp({
     service: baseService({
       getBlueMapStatus: async () => ({ state: 'rendering', map: 'nether', percent: 45.1 }),
-      getCurrentMinecraftPosition: async (userId) => ({ serverId: 'minecraft', userId }),
-      getCurrentPlayerPosition: async (id, userId) => ({ serverId: id, userId }),
       getOnlinePlayerPosition: async (id, sessionId) => ({ serverId: id, sessionId }),
       getOnlinePlayerPositionByName: async (id, player) => ({ serverId: id, player }),
       getStatus: async () => { throw new Error('map status route was shadowed'); },
@@ -133,18 +142,15 @@ test('servers routes expose BlueMap render status on a static path', async () =>
     assert.equal(res.statusCode, 200);
     assert.equal(res.json().map, 'nether');
     assert.equal(res.json().percent, 45.1);
-    const me = await app.inject({ method: 'GET', url: '/api/servers/map/me' });
-    assert.equal(me.statusCode, 200);
-    assert.equal(me.json().serverId, 'minecraft');
-    const factorio = await app.inject({ method: 'GET', url: '/api/servers/factorio/map/me' });
-    assert.equal(factorio.statusCode, 200);
-    assert.equal(factorio.json().serverId, 'factorio');
     const session = await app.inject({ method: 'GET', url: '/api/servers/minecraft/map/sessions/12' });
     assert.equal(session.statusCode, 200);
     assert.deepEqual(session.json(), { serverId: 'minecraft', sessionId: 12 });
     const player = await app.inject({ method: 'GET', url: '/api/servers/minecraft/map/players/dheagman' });
     assert.equal(player.statusCode, 200);
     assert.deepEqual(player.json(), { serverId: 'minecraft', player: 'dheagman' });
+    // the per-user position endpoints were removed outright
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/map/me' })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/factorio/map/me' })).statusCode, 404);
   } finally { await app.close(); }
 });
 
@@ -172,32 +178,37 @@ test('servers mutating routes require csrf and dispatch after a valid token', as
 
 test('servers routes accept and dispatch every mutating command endpoint shape', async () => {
   const calls = [];
-  const rec = (name, result = { ok: true }) => async (...args) => {
-    calls.push([name, ...args]);
+  const busts = [];
+  // Connector-op recorder: the dispatcher resolves connectorFor(id) then calls
+  // the op with the request-derived args, so each call records [name, id, ...args]
+  // — the same tuples the old service-stub recorder produced.
+  const rec = (name, id, result = { ok: true }) => async (...args) => {
+    calls.push([name, id, ...args]);
     return result;
   };
   const app = await routeApp({
     service: baseService({
-      doAction: rec('doAction'),
-      setSettings: rec('setSettings'),
-      addMap: rec('addMap'),
-      syncMaps: rec('syncMaps'),
-      importCollection: rec('importCollection'),
-      renameMap: rec('renameMap'),
-      deleteMap: rec('deleteMap'),
-      createConfig: rec('createConfig'),
-      updateConfig: rec('updateConfig'),
-      deleteConfig: rec('deleteConfig'),
-      createProfile: rec('createProfile'),
-      captureProfile: rec('captureProfile'),
-      updateProfile: rec('updateProfile'),
-      deleteProfile: rec('deleteProfile'),
-      applyProfile: rec('applyProfile'),
-      sendCommand: rec('sendCommand'),
-      runLiveAction: rec('runLiveAction'),
-      writeConfig: rec('writeConfig'),
-      runUpdate: rec('runUpdate'),
-    }),
+      doAction: async (id, action) => { calls.push(['doAction', id, action]); return { ok: true }; },
+      clearStatusCache: () => { busts.push(calls.at(-1)?.[0] ?? null); },
+    }, (id) => ({
+      setSettings: rec('setSettings', id),
+      addMap: rec('addMap', id),
+      syncMaps: rec('syncMaps', id),
+      importCollection: rec('importCollection', id),
+      renameMap: rec('renameMap', id),
+      deleteMap: rec('deleteMap', id),
+      createConfig: rec('createConfig', id),
+      deleteConfig: rec('deleteConfig', id),
+      createProfile: rec('createProfile', id),
+      captureProfile: rec('captureProfile', id),
+      updateProfile: rec('updateProfile', id),
+      deleteProfile: rec('deleteProfile', id),
+      applyProfile: rec('applyProfile', id),
+      sendCommand: rec('sendCommand', id),
+      runLiveAction: rec('runLiveAction', id),
+      writeConfig: rec('writeConfig', id),
+      update: rec('runUpdate', id), // connector method is update(); keep the recorded name
+    })),
   });
   try {
     const rows = [
@@ -211,7 +222,6 @@ test('servers routes accept and dispatch every mutating command endpoint shape',
       { method: 'PATCH', url: '/api/servers/counterstrike/maps/123', body: { name: 'Renamed' }, call: ['renameMap', 'counterstrike', '123', 'Renamed'] },
       { method: 'DELETE', url: '/api/servers/counterstrike/maps/123', call: ['deleteMap', 'counterstrike', '123'] },
       { method: 'POST', url: '/api/servers/counterstrike/configs', body: { name: 'scrim', body: 'mp_maxrounds 24' }, call: ['createConfig', 'counterstrike', { name: 'scrim', body: 'mp_maxrounds 24' }] },
-      { method: 'PUT', url: '/api/servers/counterstrike/configs/7', body: { body: 'mp_roundtime 5' }, call: ['updateConfig', 'counterstrike', 7, { body: 'mp_roundtime 5' }] },
       { method: 'DELETE', url: '/api/servers/counterstrike/configs/7', call: ['deleteConfig', 'counterstrike', 7] },
       { method: 'POST', url: '/api/servers/minecraft/profiles', body: { name: 'Survival', settings: { difficulty: 'hard' } }, call: ['createProfile', 'minecraft', { name: 'Survival', settings: { difficulty: 'hard' } }] },
       { method: 'POST', url: '/api/servers/minecraft/profiles/capture', body: { name: 'Captured' }, call: ['captureProfile', 'minecraft', 'Captured'] },
@@ -234,14 +244,18 @@ test('servers routes accept and dispatch every mutating command endpoint shape',
       assert.equal(res.statusCode, 200, `${row.method} ${row.url}: ${res.body}`);
     }
     assert.deepEqual(calls, rows.map((r) => r.call));
+    // The status caches are busted (after success) by exactly this op set; the
+    // power actions bust inside the real service's doAction instead.
+    assert.deepEqual(busts, ['setSettings', 'applyProfile', 'runUpdate']);
   } finally { await app.close(); }
 });
 
 test('servers routes map typed RCON and Docker errors', async () => {
   const app = await routeApp({
     service: baseService({
-      getLive: async () => { const e = new Error('bad password'); e.code = 'RCON_AUTH'; throw e; },
       getStatus: async () => { const e = new Error('socket proxy down'); e.name = 'DockerError'; throw e; },
+    }, {
+      getLive: async () => { const e = new Error('bad password'); e.code = 'RCON_AUTH'; throw e; },
       getSettings: async () => { const e = new Error('docker POST /exec/slow/start timed out'); e.name = 'DockerError'; e.code = 'DOCKER_TIMEOUT'; throw e; },
     }),
   });
@@ -260,19 +274,18 @@ test('servers routes map typed RCON and Docker errors', async () => {
   } finally { await app.close(); }
 });
 
-test('servers /:id/sessions + /activity share one querystring schema (valid honored, unknown ignored, bounds enforced)', async () => {
-  const app = await routeApp({ service: baseService({ recentActivity: async () => [], listSessions: async () => [] }) });
+test('servers /activity querystring schema: valid honored, unknown ignored, bounds enforced', async () => {
+  const app = await routeApp({ service: baseService({ recentActivity: async () => [] }) });
   try {
-    // Valid params accepted on BOTH routes (the shared SESSION_LIST_QS schema).
+    // Valid params accepted (the SESSION_LIST_QS schema).
     assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=5&includeUnlinked=true' })).statusCode, 200);
-    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?limit=5&includeUnlinked=true' })).statusCode, 200);
-    // Unknown query params are harmlessly stripped (Fastify removeAdditional), not rejected —
-    // behavior is unchanged by the DRY refactor; the two routes now behave identically.
+    // Unknown query params are harmlessly stripped (Fastify removeAdditional), not rejected.
     assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?bogus=1' })).statusCode, 200);
-    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?bogus=1' })).statusCode, 200);
-    // The shared `limit` bound is enforced on each route (proves the schema is actually applied to both).
+    // The `limit` bound is enforced both ways.
     assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=9999' })).statusCode, 400);
-    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions?limit=0' })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/activity?limit=0' })).statusCode, 400);
+    // The per-server /:id/sessions endpoint was removed outright.
+    assert.equal((await app.inject({ method: 'GET', url: '/api/servers/minecraft/sessions' })).statusCode, 404);
   } finally { await app.close(); }
 });
 

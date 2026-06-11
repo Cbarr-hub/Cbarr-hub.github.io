@@ -59,6 +59,15 @@ test('listPlayers reports seen players with lifetime playtime and link state', (
   assert.equal(p.userName, 'Wiley');
 });
 
+test('listPlayers clamps each session to 24h (mirrors the store DUR cap)', () => {
+  const { store, eco } = setup();
+  const sid = store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');
+  store.closeSession(sid, 1000 + 30 * 3600); // a 30h session…
+  const [p] = eco.listPlayers();
+  assert.equal(p.totalSeconds, 86400);       // …counts as at most 24h
+  assert.equal(p.totalMinutes, 1440);
+});
+
 test('linking settles pre-link closed sessions without paying for them', () => {
   const { store, eco, userId, balanceOf, playerId, db } = setup();
   const sid = store.recordJoin('gmod', steam('Alice', '111'), 1000, 'rcon');

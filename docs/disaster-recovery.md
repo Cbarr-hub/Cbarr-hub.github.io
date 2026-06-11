@@ -232,7 +232,7 @@ Still loose:
 |---|---|
 | `tools/gt.sh` / `tools/gt.ps1` | unified dispatcher: `dev --fresh` / `dev --prod-like` (dev), `prod` / `prod --rollback` / `prod --dry-run` (keeper). Mapping in `tools/gt-modes.conf` |
 | `tools/gt-backup.sh` + `tools/systemd/gt-db-backup.{timer,service}` | **daily** app-DB + Factorio save + Minecraft world → R2 (host root; installed at `/usr/local/bin/`). Also a CLI: `db\|factorio\|minecraft [--prefix P] [--keep N]` (used by `gt prod`) |
-| `tools/gt-maintenance.mjs` + `tools/systemd/gt-maintenance.service` | Host maintenance daemon: tunes BlueMap CPU from player presence and runs hourly no-player game update checks. Needs host Docker/Compose + `sqlite3`. |
+| `tools/gt-maintenance.mjs` + `tools/systemd/gt-maintenance.service` | Host maintenance daemon: idle-gated (no-player) hourly game-update checks — update commands come from the connector specs. BlueMap CPU tuning is app-side only (`backend/src/servers/bluemap.js`). Needs host Docker/Compose + `sqlite3`. |
 | `tools/db-backup.sh` / `tools/db-restore.sh` | portable app-DB snapshot / restore (volume-aware) |
 | `tools/dev-restore-data.ps1` / `.sh` | dev-only seed from R2: restore app DB + Factorio save + Minecraft world into the local compose project volumes (`gt seed-dev`) |
 | `tools/secrets-backup.sh` / `tools/secrets-restore.sh` | age-encrypt the secret **bundle** (`secrets.env` + project `.env` + TLS cert) → R2 / restore |

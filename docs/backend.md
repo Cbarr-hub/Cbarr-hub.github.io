@@ -103,6 +103,10 @@ node src/cli.js delete-user
 | GET    | `/api/servers/node`                   | admin    |
 | GET    | `/api/servers/online`                 | admin    |
 | GET    | `/api/servers/activity?limit=1..500`  | admin    |
+| GET    | `/api/servers/stats?days&tz`          | admin    |
+| GET    | `/api/servers/map/status`             | admin    |
+| GET    | `/api/servers/:id/map/sessions/:sessionId` | admin |
+| GET    | `/api/servers/:id/map/players/:player` | admin   |
 | GET    | `/api/servers/:id?mode=quick|full`    | admin    |
 | POST   | `/api/servers/:id/actions/:action`    | admin    |
 | GET    | `/api/servers/:id/settings`           | admin    |
@@ -113,7 +117,7 @@ node src/cli.js delete-user
 | POST   | `/api/servers/:id/maps/collection`    | admin    |
 | PATCH/DELETE | `/api/servers/:id/maps/:workshopId` | admin |
 | GET/POST | `/api/servers/:id/configs`          | admin    |
-| GET/PUT/DELETE | `/api/servers/:id/configs/:configId` | admin |
+| GET/DELETE | `/api/servers/:id/configs/:configId` | admin  |
 | GET    | `/api/servers/:id/profiles`           | admin    |
 | GET    | `/api/servers/:id/profiles/schema`    | admin    |
 | POST   | `/api/servers/:id/profiles`           | admin    |
@@ -123,7 +127,6 @@ node src/cli.js delete-user
 | GET    | `/api/servers/:id/live`               | admin    |
 | POST   | `/api/servers/:id/live/command`       | admin    |
 | POST   | `/api/servers/:id/live/action`        | admin    |
-| GET    | `/api/servers/:id/sessions?limit=1..500` | admin |
 | GET    | `/api/servers/:id/config`             | admin    |
 | GET    | `/api/servers/:id/config/:file`       | admin    |
 | PUT    | `/api/servers/:id/config/:file`       | admin    |
@@ -139,8 +142,15 @@ node src/cli.js delete-user
 > containers. The UI renders it in `servers.html` `renderHost`.
 
 > Game servers are wired in `src/servers/registry.js` — each entry carries a
-> `backend: 'docker'` flag + a container-name locator and a connector in
-> `src/servers/connectors/` (Docker variants under `connectors/docker/`).
+> `backend: 'docker'` flag + a container-name locator and a `connector` key that
+> `src/servers/connectors/index.js` maps to a per-game **spec** (fail-loud if the
+> mapping is missing). One engine — `connectors/engine.js` (`GameConnector`) —
+> interprets the specs in `connectors/specs/{gmod,prophunt,counterstrike,factorio,minecraft}.js`
+> (data tables + the genuinely imperative functions; `prophunt` composes `gmod`'s
+> exported shared pieces — no class hierarchy). `routes/servers.js` dispatches every
+> per-connector operation through a declarative OPS table
+> (`svc.connectorFor(id)[op]`); `src/servers/service.js` keeps only the composites
+> (status caches, presence overlay, power aliasing, Pulse shaping, BlueMap status).
 > **All five — Counter-Strike, Factorio, Minecraft, Garry's Mod / TTT, Prop Hunt —
 > run as Docker containers.** GMOD/PH reuse the LinuxGSM + Source-RCON pattern;
 > `getSettings`/profiles expose the TTT/PH knobs (map, workshop collection, round/time
@@ -152,11 +162,11 @@ node src/cli.js delete-user
 > **Startup-config profiles** (`server_profiles` + `server_active_profile`,
 > migration 003) are named, structured startup configs per server — the durable
 > counterpart to the ephemeral live-command layer. The generic lifecycle lives on
-> `BaseConnector` (list/get/create/update/delete/apply/capture + an auto-seeded
-> "Default"); each game supplies five hooks (`profileSchema`,
-> `defaultProfileSettings`, `validateProfileSettings`, `applyProfileSettings`,
-> `captureProfileSettings`). **All five games (GMOD, Prop Hunt, Factorio, CS, Minecraft)
-> are wired.** For GMOD/PH/Minecraft/Factorio, `…/apply` writes the config + marks
+> the connector engine (`connectors/engine.js`:
+> list/get/create/update/delete/apply/capture + an auto-seeded "Default"); each
+> game's spec supplies the semantics via
+> `spec.profile.{schema,defaults,validate,apply,capture}`. **All five games (GMOD,
+> Prop Hunt, Factorio, CS, Minecraft) are wired.** For GMOD/PH/Minecraft/Factorio, `…/apply` writes the config + marks
 > the profile active; the panel pairs it with a restart so boot-only settings mount
 > or load. Counter-Strike is the exception: Apply pushes the profile live over RCON
 > and does not restart, because persistent boot defaults live in `servers.compose.yml`.

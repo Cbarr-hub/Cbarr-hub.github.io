@@ -1,17 +1,23 @@
 #!/usr/bin/env node
-// Host-side maintenance runner for Gamertown.
-//
-// Responsibilities:
-//   1. Tune BlueMap's live Docker CPU quota from player presence.
-//   2. Run game-server update checks hourly, but only while nobody is online.
+// Host-side maintenance runner for Gamertown: hourly game-server update checks,
+// run only while nobody is online (presence read from the session-tracker's
+// open-session rows).
 //
 // This intentionally runs on the Docker host, not inside the app container. Image
 // pulls / Compose recreates need full host Docker access; the website only gets a
-// scoped socket proxy.
+// scoped socket proxy. (BlueMap CPU tuning used to live here too — the app-side
+// tuner in backend/src/servers/bluemap.js is now the single owner of that policy.)
+//
+// Pure Node by design (no node_modules on the host): the imported backend modules
+// are dependency-free (node builtins only).
 
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+
+import { onlineCount as ONLINE_COUNT_SQL } from '../backend/src/servers/session-sql.js';
+import { counterstrikeSpec } from '../backend/src/servers/connectors/specs/counterstrike.js';
+import { gmodSpec } from '../backend/src/servers/connectors/specs/gmod.js';
 
 const execFileP = promisify(execFile);
 
@@ -20,12 +26,7 @@ const DB = process.env.GT_DB_PATH
   || '/var/lib/docker/volumes/gamertown_gt-data/_data/gamertown.sqlite';
 const LOCK_DIR = process.env.GT_MAINT_LOCK_DIR || '/tmp/gamertown-maintenance.lock';
 
-const RESOURCE_POLL_MS = seconds('GT_RESOURCE_POLL_SECONDS', 60) * 1000;
 const UPDATE_INTERVAL_MS = seconds('GT_UPDATE_INTERVAL_SECONDS', 3600) * 1000;
-const IDLE_DELAY_MS = seconds('GT_BLUEMAP_IDLE_DELAY_SECONDS', 300) * 1000;
-const ACTIVE_CPUS = number('GT_BLUEMAP_ACTIVE_CPUS', 2);
-const IDLE_CPUS = number('GT_BLUEMAP_IDLE_CPUS', 0); // 0 = auto: host cpus - reserve
-const RESERVED_CPUS = number('GT_BLUEMAP_RESERVED_CPUS', 4);
 const RESTART_STEAM = bool('GT_MAINT_RESTART_STEAM', true);
 
 const COMPOSE_FILES = (process.env.GT_COMPOSE_FILES || 'docker-compose.yml,servers.compose.yml')
@@ -34,17 +35,17 @@ const COMPOSE_FILES = (process.env.GT_COMPOSE_FILES || 'docker-compose.yml,serve
   .filter(Boolean);
 
 const IMAGE_SERVICES = ['minecraft', 'factorio'];
+// In-container SteamCMD update commands come from the connector specs (the single
+// source of truth the panel's in-app Update button also runs): spec.update.argv is
+// ['/bin/bash', '-lc', <command>] — the command is the last element, executed here
+// under a `docker exec <svc> sh -lc` wrapper. Prop Hunt shares GMOD's LinuxGSM
+// recipe (prophuntSpec.update IS gmodSpec's GMOD_UPDATE object).
 const STEAM_UPDATERS = [
-  {
-    service: 'counterstrike',
-    command: '/home/steam/steamcmd/steamcmd.sh +force_install_dir /home/steam/cs2-dedicated +login anonymous +app_update 730 +quit',
-  },
-  { service: 'gmod', command: '/data/gmodserver update' },
-  { service: 'prophunt', command: '/data/gmodserver update' },
+  { service: 'counterstrike', command: counterstrikeSpec.update.argv.at(-1) },
+  { service: 'gmod',          command: gmodSpec.update.argv.at(-1) },
+  { service: 'prophunt',      command: gmodSpec.update.argv.at(-1) },
 ];
 
-let idleSince = null;
-let lastBlueMapCpus = null;
 let lastUpdateAt = 0;
 let updateRunning = false;
 
@@ -89,50 +90,11 @@ async function querySql(sql) {
   return stdout.trim() ? JSON.parse(stdout) : [];
 }
 
+// Open-session count across the hosted servers — the canonical presence read
+// (backend/src/servers/session-sql.js), gating the idle-only update path.
 async function onlineCount() {
-  const rows = await querySql(
-    `SELECT COUNT(*) AS n
-       FROM server_sessions s JOIN games g ON g.id = s.game_id
-      WHERE s.left_at IS NULL AND g.hosted = 1;`,
-  );
+  const rows = await querySql(ONLINE_COUNT_SQL);
   return Number(rows[0]?.n ?? 0);
-}
-
-async function hostCpus() {
-  const { stdout } = await execFileP('docker', ['info', '--format', '{{.NCPU}}']);
-  return Math.max(1, Number(stdout.trim()) || 1);
-}
-
-function targetBlueMapCpus({ online, cpus }) {
-  if (online > 0) return Math.max(1, Math.min(cpus, Math.floor(ACTIVE_CPUS)));
-  const idle = IDLE_CPUS > 0 ? IDLE_CPUS : Math.max(1, cpus - Math.max(0, Math.floor(RESERVED_CPUS)));
-  return Math.max(1, Math.min(cpus, Math.floor(idle)));
-}
-
-async function tuneBlueMapOnce() {
-  let online;
-  try {
-    online = await onlineCount();
-  } catch (err) {
-    log('presence unavailable, keeping BlueMap at active cap:', err.message);
-    online = 1; // fail safe: assume a player might be online
-  }
-
-  const cpus = await hostCpus();
-  let effectiveOnline = online;
-  if (online === 0) {
-    if (idleSince == null) idleSince = Date.now();
-    if (lastBlueMapCpus != null && Date.now() - idleSince < IDLE_DELAY_MS) effectiveOnline = 1;
-  } else {
-    idleSince = null;
-  }
-
-  const target = targetBlueMapCpus({ online: effectiveOnline, cpus });
-  if (target === lastBlueMapCpus) return { online, cpus, target, changed: false };
-  await run('docker', ['update', '--cpus', String(target), 'bluemap']);
-  lastBlueMapCpus = target;
-  log(`BlueMap cpu cap -> ${target}/${cpus} cpus (${online} online)`);
-  return { online, cpus, target, changed: true };
 }
 
 async function containerRunning(name) {
@@ -206,21 +168,11 @@ async function updateOnce() {
 async function daemon() {
   log('maintenance daemon starting');
   lastUpdateAt = Date.now();
-  await tuneBlueMapOnce().catch((err) => log('BlueMap tuning failed:', err.message));
-  setInterval(() => tuneBlueMapOnce().catch((err) => log('BlueMap tuning failed:', err.message)), RESOURCE_POLL_MS);
+  // Check every minute whether the hourly update window has elapsed; updateOnce
+  // itself re-verifies nobody is online before (and during) each step.
   setInterval(() => {
     if (Date.now() - lastUpdateAt >= UPDATE_INTERVAL_MS) updateOnce();
   }, 60_000);
 }
 
-const cmd = process.argv[2] || 'daemon';
-if (cmd === 'resources') {
-  await tuneBlueMapOnce();
-} else if (cmd === 'updates') {
-  await updateOnce();
-} else if (cmd === 'daemon') {
-  await daemon();
-} else {
-  console.error('usage: gt-maintenance.mjs [daemon|resources|updates]');
-  process.exit(2);
-}
+await daemon();

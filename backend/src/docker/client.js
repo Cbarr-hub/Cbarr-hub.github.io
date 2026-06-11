@@ -1,17 +1,10 @@
 // Pure transport layer for the Docker Engine API.
 //
-// It deliberately DUCK-TYPES the small transport surface that BaseConnector
-// consumes (statusCurrent / start / stop / shutdown / reboot / agentExec /
-// agentExecStatus / agentFileRead / agentFileWrite) and returns the SAME payload
-// shapes (a qemu-status-shaped status object), so every connector, profile,
-// config and RCON path works unchanged with a container locator in the `vmid`
-// argument position.
-//
+// Exposes the small surface the connectors consume: statusCurrent / power /
+// nodeStatus / containerLogs / exec / fileRead / fileWrite / fileWriteBytes.
 // It knows nothing about games or Fastify, takes an injectable `fetchImpl` for
 // tests, and reaches the engine over the scoped socket-proxy
 // (DOCKER_HOST=tcp://docker-proxy:2375) — never the raw /var/run/docker.sock.
-
-import { Agent } from 'undici';
 
 export class DockerError extends Error {
   constructor(message, { status, code, cause } = {}) {
@@ -23,58 +16,31 @@ export class DockerError extends Error {
   }
 }
 
-const MAX_OUTPUT = 1_000_000; // cap captured stdout/stderr, mirroring the agent's truncation
-const EXEC_RESULTS_CAP = 256; // bound the stashed-exec-result map (evict oldest on overflow)
+const MAX_OUTPUT = 1_000_000; // cap captured stdout/stderr per stream
 
 export class DockerClient {
   /**
    * @param {object} opts
-   * @param {string} opts.host       DOCKER_HOST, e.g. "tcp://docker-proxy:2375"
-   *                                  (also accepts http(s)://… or unix:///path)
+   * @param {string} opts.host       DOCKER_HOST, e.g. "tcp://docker-proxy:2375" or http(s)://…
    * @param {string} [opts.apiVersion]  pin the Engine API version, e.g. "1.45"
    * @param {typeof fetch} [opts.fetchImpl]  injectable for tests
    */
   constructor({ host, apiVersion, fetchImpl } = {}) {
     if (!host) throw new Error('DockerClient: host is required');
-
-    const { base, socketPath } = parseHost(host);
-    this.base = base + (apiVersion ? `/v${apiVersion}` : '');
+    this.base = parseHost(host) + (apiVersion ? `/v${apiVersion}` : '');
     this.fetch = fetchImpl ?? globalThis.fetch;
-
-    // Unix-socket engines need a dispatcher with a socketPath; the tcp proxy and
-    // tests (fetchImpl) don't. Scoped to this client, never global.
-    this.dispatcher = (socketPath && !fetchImpl)
-      ? new Agent({ connect: { socketPath } })
-      : undefined;
-
-    // agentExec runs to completion and stashes the result here under a synthetic
-    // pid (the exec id); agentExecStatus then returns it as already-exited.
-    //
-    // Reads are NON-destructive (idempotent): a repeat poll for the same pid —
-    // which the normal single-poll runCommand loop never does, but a retry or a
-    // future caller might — returns the SAME real result instead of a misleading
-    // unknown-pid failure. To stop the map growing without bound when a pid is
-    // never read (e.g. a command that times out before its first poll), insertion
-    // evicts the oldest entries past EXEC_RESULTS_CAP (Map preserves insertion
-    // order, so the first key is the oldest).
-    this.execResults = new Map();
   }
 
   // ── low-level request ───────────────────────────────────────────────────────
   // The one engine round-trip. `body` (if set) is JSON-encoded; `raw:true` returns
-  // the response as a Uint8Array (the demux'd exec attach stream) instead of parsed
-  // JSON. A timeout `signal` aborts the request, and EACH await that can observe the
-  // abort (the fetch, plus the body read — arrayBuffer/text — which can resolve after
-  // the fetch but still get cancelled mid-stream) maps the abort to a DockerError with
-  // code DOCKER_TIMEOUT; any other failure (including a non-abort body-read fault like
-  // a mid-stream socket reset) becomes a generic DockerError so routes map it to 502
-  // rather than a 500, and a non-2xx status throws with the engine's `message` (or the
-  // raw body / status text) as the detail — see errorDetail.
+  // the response as a Uint8Array (the demux'd exec attach stream) instead of
+  // parsed JSON. A timeout `signal` aborts the request; every await that can
+  // observe the abort maps it to DOCKER_TIMEOUT via wrapErr, and any other
+  // request/body-read fault becomes a generic DockerError (routes map it to 502).
   async #request(method, path, { body, raw = false, signal } = {}) {
     const headers = { Accept: raw ? 'application/vnd.docker.raw-stream' : 'application/json' };
     const init = { method, headers };
     if (signal) init.signal = signal;
-    if (this.dispatcher) init.dispatcher = this.dispatcher;
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
@@ -84,50 +50,25 @@ export class DockerClient {
     try {
       res = await this.fetch(`${this.base}${path}`, init);
     } catch (err) {
-      if (signal?.aborted || err?.name === 'AbortError') {
-        throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
-      }
-      throw new DockerError(`docker request failed: ${err.message}`, { cause: err });
+      throw wrapErr(err, signal, `docker ${method} ${path}`, 'request failed');
     }
 
-    if (raw) {
-      let buf;
-      try {
-        buf = new Uint8Array(await res.arrayBuffer());
-      } catch (err) {
-        if (signal?.aborted || err?.name === 'AbortError') {
-          throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
-        }
-        // A mid-stream read failure (e.g. a socket reset) is an upstream-engine
-        // fault, not a 500 — wrap it as a DockerError so routes map it to 502.
-        throw new DockerError(`docker ${method} ${path} body read failed: ${err.message}`, { cause: err });
-      }
-      if (!res.ok) {
-        // The error body was already read into `buf` — decode it so the engine's
-        // detail (e.g. "No such container") survives, matching the JSON branch.
-        const text = Buffer.from(buf).toString('utf8');
-        throw new DockerError(`docker ${method} ${path} -> ${res.status}: ${errorDetail(text, res.statusText)}`, { status: res.status });
-      }
-      return buf;
-    }
-
-    let text;
+    // Read the full body (bytes or text) — a mid-stream failure (socket reset)
+    // is an upstream fault, and an abort during the read is still a timeout.
+    let bodyOut;
     try {
-      text = await res.text();
+      bodyOut = raw ? new Uint8Array(await res.arrayBuffer()) : await res.text();
     } catch (err) {
-      if (signal?.aborted || err?.name === 'AbortError') {
-        throw new DockerError(`docker ${method} ${path} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
-      }
-      // As in the raw branch: a body-read failure is an upstream fault → 502.
-      throw new DockerError(`docker ${method} ${path} body read failed: ${err.message}`, { cause: err });
+      throw wrapErr(err, signal, `docker ${method} ${path}`, 'body read failed');
     }
-    let parsed = null;
-    if (text) { try { parsed = JSON.parse(text); } catch { /* non-JSON body */ } }
 
     if (!res.ok) {
+      const text = raw ? Buffer.from(bodyOut).toString('utf8') : bodyOut;
       throw new DockerError(`docker ${method} ${path} -> ${res.status}: ${errorDetail(text, res.statusText)}`, { status: res.status });
     }
-    return parsed;
+    if (raw) return bodyOut;
+    if (!bodyOut) return null;
+    try { return JSON.parse(bodyOut); } catch { return null; /* non-JSON body */ }
   }
 
   #c(container, suffix = '') {
@@ -135,8 +76,7 @@ export class DockerClient {
   }
 
   // ── status ──────────────────────────────────────────────────────────────────
-  // Returns the qemu-shaped payload normalizeStatus() expects:
-  //   { status: 'running'|'stopped', uptime, cpu, mem, maxmem }
+  // Returns { status: 'running'|'stopped', uptime, cpu, mem, maxmem }.
   async statusCurrent(container, { stats = true } = {}) {
     const info = await this.#request('GET', this.#c(container, '/json'));
     const running = Boolean(info?.State?.Running);
@@ -144,8 +84,7 @@ export class DockerClient {
     const uptime = running && startedAt ? secondsSince(startedAt) : 0;
 
     // cpu/mem are best-effort: a single stats sample is comparatively slow and
-    // non-essential (normalizeStatus defaults them to null), so never let it fail
-    // the status call.
+    // non-essential, so never let it fail the status call.
     let cpu = null, mem = null, maxmem = info?.HostConfig?.Memory || null;
     if (stats) {
       try {
@@ -163,7 +102,7 @@ export class DockerClient {
   start(container)    { return this.#power(container, '/start',   [304]); }
   shutdown(container) { return this.#power(container, '/stop',    [304]); }      // graceful (SIGTERM→SIGKILL)
   stop(container)     { return this.#power(container, '/kill',    [304, 409]); } // hard (SIGKILL) — force off (409 = already stopped)
-  reboot(container)   { return this.#power(container, '/restart', [304]); }       // 409 (engine refused restart) must surface, not no-op
+  reboot(container)   { return this.#power(container, '/restart', [304]); }      // 409 (engine refused restart) must surface, not no-op
 
   updateContainer(container, body = {}) {
     return this.#request('POST', this.#c(container, '/update'), { body });
@@ -187,9 +126,8 @@ export class DockerClient {
   }
 
   // ── host/engine info (container dashboard) ──────────────────────────────────
-  // Docker has no single "node status" equivalent; /info gives static host facts (engine,
-  // OS, core count, total RAM, container counts) — no live host CPU%. The service
-  // pairs this with the per-container stats the UI already pulls from /api/servers.
+  // /info gives static host facts (engine, OS, core count, total RAM, container
+  // counts) — no live host CPU%; the UI pairs this with per-container stats.
   async nodeStatus() {
     const info = await this.#request('GET', '/info');
     return {
@@ -208,21 +146,20 @@ export class DockerClient {
     const n = Math.max(1, Math.min(1000, Number.isFinite(Number(tail)) ? Math.floor(Number(tail)) : 240));
     const stream = await this.#request('GET', this.#c(container, `/logs?stdout=1&stderr=1&tail=${n}&timestamps=0`), { raw: true });
     const { stdout, stderr, combined } = demux(stream);
-    // `combined` keeps stdout/stderr frames in arrival (chronological) order, which
-    // is what a log tail wants; fall back to the split blocks if there were no frames.
+    // `combined` keeps stdout/stderr frames in arrival (chronological) order;
+    // fall back to the split blocks if there were no frames.
     return combined || [stdout, stderr].filter(Boolean).join('\n');
   }
 
-  // ── command execution (emulated guest-agent two-step) ───────────────────────
-  // agentExec runs the command to completion and stashes the result; the matching
-  // agentExecStatus then reports it as exited. This keeps BaseConnector.runCommand's
-  // exec→poll loop intact. `command` is an argv array (e.g. ['/bin/sh','-lc', …]).
+  // ── command execution ───────────────────────────────────────────────────────
+  // Run an argv to completion inside the container (create → start → inspect)
+  // and return { exitCode, signal, stdout, stderr, truncated }.
   //
   // NOTE: interactive stdin is NOT supported over the Engine exec API without a
-  // raw socket hijack, so Docker game connectors do live/RCON I/O over TCP
-  // instead (see the Docker Minecraft connector). Passing `input` throws.
-  async agentExec(container, { command, input, timeoutMs = 120_000 } = {}) {
-    if (!command) throw new Error('agentExec: command is required');
+  // raw socket hijack, so live/RCON I/O goes over TCP instead. Passing `input`
+  // throws NO_STDIN.
+  async exec(container, command, { input, timeoutMs = 120_000 } = {}) {
+    if (!command) throw new Error('exec: command is required');
     if (input !== undefined) {
       const e = new Error('docker exec does not support stdin input; use direct TCP for interactive I/O');
       e.code = 'NO_STDIN';
@@ -249,97 +186,68 @@ export class DockerClient {
       if (stderr.length > MAX_OUTPUT) stderr = stderr.slice(0, MAX_OUTPUT);
 
       const inspect = await this.#request('GET', `/exec/${id}/json`, { signal: timeout.signal });
-      // Evict the oldest entries before stashing, so a never-polled pid can't grow
-      // the map without bound (Map iterates in insertion order → first key is oldest).
-      while (this.execResults.size >= EXEC_RESULTS_CAP) {
-        this.execResults.delete(this.execResults.keys().next().value);
-      }
-      this.execResults.set(id, {
-        exitcode: inspect?.ExitCode ?? null,
-        stdout, stderr, truncated,
-      });
-      return { pid: id };
+      return { exitCode: inspect?.ExitCode ?? null, signal: null, stdout, stderr, truncated };
     } finally {
       timeout.cancel();
     }
   }
 
-  // Report a stashed exec result as already-exited. Idempotent: the result is NOT
-  // removed on read, so a repeat poll for the same pid returns the same data (a
-  // destructive read would make a second poll masquerade as an unknown-pid failure
-  // with a null exitcode). Stale entries are reclaimed by the insertion-time cap in
-  // agentExec, not by reads.
-  async agentExecStatus(container, pid) {
-    const r = this.execResults.get(pid);
-    if (!r) {
-      // Unknown pid → report a clean non-zero exit rather than hanging the poll.
-      return { exited: 1, exitcode: null, 'out-data': '', 'err-data': '' };
+  // exec that throws a DockerError on a non-zero exit — shared by the file ops.
+  async #execChecked(container, argv, what) {
+    const r = await this.exec(container, argv);
+    if (r.exitCode !== 0) {
+      throw new DockerError(`docker ${what} failed: ${r.stderr || `exit ${r.exitCode}`}`);
     }
-    return {
-      exited: 1,
-      exitcode: r.exitcode,
-      signal: null,
-      'out-data': r.stdout,
-      'err-data': r.stderr,
-      'out-truncated': r.truncated,
-      'err-truncated': false,
-    };
+    return r;
   }
 
-  // ── config files ────────────────────────────────────────────────────────────
-  // Mirror agentFileRead/Write via exec (`cat` / `tee`), returning the same
-  // { content, truncated } shape.
-  async agentFileRead(container, file) {
-    const { pid } = await this.agentExec(container, { command: ['/bin/sh', '-c', `cat -- "${shq(file)}"`] });
-    const r = await this.agentExecStatus(container, pid);
-    if (r.exitcode !== 0) {
-      throw new DockerError(`docker file-read ${file} failed: ${r['err-data'] || `exit ${r.exitcode}`}`);
-    }
-    return { content: r['out-data'] ?? '', truncated: Boolean(r['out-truncated']) };
+  // ── config files (via exec: `cat` / atomic tmp+rename write) ────────────────
+  async fileRead(container, file) {
+    const r = await this.#execChecked(container, ['/bin/sh', '-c', `cat -- "${shq(file)}"`], `file-read ${file}`);
+    return { content: r.stdout ?? '', truncated: Boolean(r.truncated) };
   }
 
-  async agentFileWrite(container, file, content) {
-    return this.agentFileWriteBytes(container, file, Buffer.from(String(content), 'utf8'));
+  async fileWrite(container, file, content) {
+    return this.fileWriteBytes(container, file, Buffer.from(String(content), 'utf8'));
   }
 
-  // Binary-safe sibling of agentFileWrite: base64-encodes the Buffer directly so
-  // arbitrary bytes (e.g. PNG skin heads for BlueMap) survive the round-trip,
-  // instead of being mangled by a utf8 String() coercion.
-  async agentFileWriteBytes(container, file, buffer) {
+  // Binary-safe sibling of fileWrite: base64-encodes the Buffer so arbitrary
+  // bytes (e.g. PNG skin heads for BlueMap) survive the round-trip. Decode into
+  // a temp file in the same dir, then atomically rename over the target, so a
+  // concurrent reader always sees a complete old-or-new file.
+  async fileWriteBytes(container, file, buffer) {
     const b64 = Buffer.from(buffer).toString('base64');
-    // Decode into a temp file in the same dir, then atomically rename over the
-    // target. A concurrent reader (e.g. BlueMap polling players.json on its own
-    // interval) then always sees a complete old-or-new file, never a half-written
-    // one from the `>` truncate window.
     const q = shq(file);
-    const { pid } = await this.agentExec(container, {
-      command: ['/bin/sh', '-c', `printf %s "${b64}" | base64 -d > "${q}.tmp.$$" && mv -f "${q}.tmp.$$" "${q}"`],
-    });
-    const r = await this.agentExecStatus(container, pid);
-    if (r.exitcode !== 0) {
-      throw new DockerError(`docker file-write ${file} failed: ${r['err-data'] || `exit ${r.exitcode}`}`);
-    }
+    await this.#execChecked(container, ['/bin/sh', '-c',
+      `printf %s "${b64}" | base64 -d > "${q}.tmp.$$" && mv -f "${q}.tmp.$$" "${q}"`,
+    ], `file-write ${file}`);
     return null;
   }
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// Map an abort to DOCKER_TIMEOUT; anything else to a generic DockerError.
+function wrapErr(err, signal, where, what) {
+  if (signal?.aborted || err?.name === 'AbortError') {
+    return new DockerError(`${where} timed out`, { code: 'DOCKER_TIMEOUT', cause: err });
+  }
+  return new DockerError(`${where} ${what}: ${err.message}`, { cause: err });
+}
+
 // Build the detail suffix for a non-2xx error from a (possibly JSON) body text:
 // prefer the engine's `{ message }`, else the raw body, else the status text.
-// Shared by both the JSON and raw request branches.
 function errorDetail(text, statusText) {
   let parsed = null;
   if (text) { try { parsed = JSON.parse(text); } catch { /* non-JSON body */ } }
   return parsed?.message ?? (text || statusText);
 }
 
-// Split DOCKER_HOST into an HTTP base URL (+ optional unix socketPath).
+// DOCKER_HOST → HTTP base URL. tcp:// (the socket-proxy) and http(s):// only.
 function parseHost(host) {
-  if (/^https?:\/\//.test(host)) return { base: host.replace(/\/+$/, ''), socketPath: null };
-  if (host.startsWith('tcp://')) return { base: 'http://' + host.slice(6).replace(/\/+$/, ''), socketPath: null };
-  if (host.startsWith('unix://')) return { base: 'http://localhost', socketPath: host.slice(7) || '/var/run/docker.sock' };
-  return { base: host, socketPath: null };
+  if (/^https?:\/\//.test(host)) return host.replace(/\/+$/, '');
+  if (host.startsWith('tcp://')) return 'http://' + host.slice(6).replace(/\/+$/, '');
+  return host;
 }
 
 // Docker StartedAt can carry nanosecond precision Date.parse() chokes on — clamp
@@ -351,12 +259,9 @@ function secondsSince(iso) {
 }
 
 // CPU as cores'-worth (0..ncpu) — one full core = 1.0; can exceed 1 on multi-core
-// — from a stats sample (delta vs the previous sample). Returns null when it can't
-// be computed. (The frontend converts this to a percent for display.)
+// — from a stats sample (delta vs the previous sample). Returns null when it
+// can't be computed (e.g. a zeroed precpu_stats on a one-shot sample).
 function cpuFraction(s) {
-  // A one-shot /stats?stream=false can return a zeroed precpu_stats (no prior
-  // sample). Differencing against that yields a cumulative-since-boot ratio, not a
-  // live %, so treat a missing previous system sample as "can't compute".
   const preSys = s?.precpu_stats?.system_cpu_usage ?? 0;
   if (!preSys) return null;
   const cpuDelta = (s?.cpu_stats?.cpu_usage?.total_usage ?? 0) - (s?.precpu_stats?.cpu_usage?.total_usage ?? 0);

@@ -22,12 +22,13 @@ as one **`docker compose` stack** on a single host, the "keeper":
 | State (volumes) | `gamertown_gt-data` (app DB + session-key), `_mc-data`, `_factorio-data`, `_gmod-data`, `_ph-data`, `_cs2-data`, `_bluemap-data` (BlueMap render state + assets), `_bluemap-web` (generated map tiles), `_caddy_data`, `_caddy_config` |
 | Edge | `gamertown.solutions` via **Cloudflare** → BGW210 `:443` forward → keeper. Caddy terminates TLS with a **Cloudflare Origin cert** (`/etc/gamertown/certs/`) + gates the site with `forward_auth` → `/api/auth/gate`. No tunnel. |
 | Secrets | `/etc/gamertown/secrets.env` (app/Caddy) + `/root/gamertown/.env` (game interpolation) — neither in git. → DR doc |
-| Backups | **weekly** host timer `gt-db-backup.timer` (Mon 04:00) → `/usr/local/bin/gt-backup.sh` (app DB + Factorio save + Minecraft world → R2); age-encrypted secret bundle (`secrets.tar.age`) on-demand. Host-driven (the app/containers hold no R2 keys). → DR doc |
-| Session tracking | host **service** `gt-session-tracker.service` → `tools/gt-session-tracker.mjs` (long-running, independent of the app). Tails `docker logs` for Minecraft/Factorio + RCON-polls the Source games, writing player join/leave rows into the app DB (`players` + `server_sessions`, FK to `games` where `hosted=1`). The app only *reads* them, for the servers panel's standalone **Events** section. Needs `node` + `sqlite3` **≥ 3.38** on the host (for `unixepoch()` + `-json`; probed at startup, fail-fast). **CS2 `status` is name-only** (redacted SteamID), so those rows don't seed the global `players` roster. |
+| Backups | **daily** host timer `gt-db-backup.timer` (04:00) → `/usr/local/bin/gt-backup.sh` (app DB + Factorio save + Minecraft world → R2); age-encrypted secret bundle (`secrets.tar.age`) on-demand. Host-driven (the app/containers hold no R2 keys). → DR doc |
+| Session tracking | host **service** `gt-session-tracker.service` → `tools/gt-session-tracker.mjs` (long-running, independent of the app). Tails `docker logs` for Minecraft/Factorio + RCON-polls the Source games, writing player join/leave rows into the app DB (`players` + `server_sessions`, FK to `games` where `hosted=1`). The app only *reads* them, for the servers panel's standalone **Activity** view. Needs `node` + `sqlite3` **≥ 3.38** on the host (for `unixepoch()` + `-json`; probed at startup, fail-fast). **CS2 `status` is name-only** (redacted SteamID), so those rows don't seed the global `players` roster. |
 
 **Per-game backend flag.** Each registry entry carries `backend: 'docker'` + a `container`
-locator; the `DockerClient` duck-types the small transport surface the connectors consume,
-so they're reused almost unchanged. RCON is spoken **over TCP**
+locator and a `connector` key; one engine (`backend/src/servers/connectors/engine.js`)
+interprets the per-game spec in `connectors/specs/`, reaching the container through the
+small `DockerClient` transport (exec + file read/write). RCON is spoken **over TCP**
 (`backend/src/servers/rcon-tcp.js`), not via an in-guest agent.
 
 **Minecraft world map (BlueMap).** The `bluemap` container renders a 3D web map from a
@@ -36,9 +37,10 @@ published). Caddy reverse-proxies it at `/map/*` behind the same `forward_auth` 
 as the rest of the panel, and `servers.html` embeds it in a **Map** tab. Config is
 bind-mounted from `docker/bluemap/config`; `bluemap-data` and `bluemap-web` must be
 preserved so restarts use BlueMap's changed-region update path instead of rebuilding the
-whole map. The app and host `gt-maintenance` daemon tune BlueMap's Docker CPU quota from
-player presence: cap low while players are online, ramp high while the game servers are
-empty. See `servers.compose.yml`, `Caddyfile`, and [`bluemap-performance.md`](bluemap-performance.md).
+whole map. The app-side tuner (`backend/src/servers/bluemap.js`) caps BlueMap's Docker CPU
+quota from player presence: low while players are online, high while the game servers are
+empty (the host `gt-maintenance` daemon no longer tunes BlueMap — it only runs idle-gated
+hourly game-update checks). See `servers.compose.yml`, `Caddyfile`, and [`bluemap-performance.md`](bluemap-performance.md).
 
 **App-side economy + presence (no new infra).** The app reads the host session-tracker's
 `players`/`server_sessions` rows to drive the panel's **Activity** view (live presence +
@@ -47,9 +49,9 @@ credits closed, linked sessions to site balances at boot + on a 5-minute timer, 
 from the admin **Economy** view. These run entirely inside `gamertown-app-1` — no extra
 container or host service. → [`backend.md`](backend.md).
 
-**Deploy:** on the keeper, `git pull` in `/root/gamertown`, then
+**Deploy:** on the keeper, `cd /root/gamertown && tools/gt.sh prod` (backup-first,
+fail-fast, rollback-capable). Manual fallback (no predeploy backup): `git pull` +
 `docker compose -f docker-compose.yml -f servers.compose.yml up -d --build`.
-*(The keeper checkout may need a one-time `git checkout -f main` to reconcile post-migration — see the DR doc §6.)*
 
 **Forwarded ports** (BGW210 → keeper MAC, so they follow it across DHCP): **443**
 (HTTPS), **25565** (Minecraft), **27066** (GMOD/TTT), **27067** (Prop Hunt),

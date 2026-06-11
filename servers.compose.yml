@@ -6,6 +6,14 @@
 #
 #   docker compose -f docker-compose.yml -f servers.compose.yml up -d --build
 
+# Shared GMOD-family base: gmod + prophunt run the same LinuxGSM image and differ
+# only in container_name / environment / ports / volume (overridden per service).
+x-gmod-base: &gmod-base
+  build: { context: ., dockerfile: docker/gmod/Dockerfile }
+  image: gamertown-gmod
+  restart: unless-stopped
+  stop_grace_period: 90s
+
 services:
   # Scoped Docker Engine proxy. The app talks to THIS (read-only socket, minimal
   # permissions) — never the raw /var/run/docker.sock, which is ~root on the host.
@@ -28,10 +36,9 @@ services:
 
   minecraft:
     image: itzg/minecraft-server
-    container_name: minecraft   # MUST equal the registry `container` locator: the
-                                # Docker Engine API finds containers by name, else
+    container_name: minecraft   # must equal the registry `container` locator, else
                                 # compose names it <project>-minecraft-1 (applies to
-                                # every game container below — keep names in sync).
+                                # every game container below).
     restart: unless-stopped
     stdin_open: true
     tty: true
@@ -80,11 +87,8 @@ services:
       - "27015:27015/udp"
 
   gmod:
-    build: { context: ., dockerfile: docker/gmod/Dockerfile }
-    image: gamertown-gmod
+    <<: *gmod-base
     container_name: gmod
-    restart: unless-stopped
-    stop_grace_period: 90s
     environment:
       GAMEMODE: terrortown
       PORT: "27066"
@@ -100,11 +104,8 @@ services:
       - "27066:27066/udp"
 
   prophunt:
-    image: gamertown-gmod
-    build: { context: ., dockerfile: docker/gmod/Dockerfile }
+    <<: *gmod-base
     container_name: prophunt
-    restart: unless-stopped
-    stop_grace_period: 90s
     environment:
       GAMEMODE: prop_hunt
       PORT: "27067"
@@ -119,27 +120,18 @@ services:
       - "27067:27067/tcp"
       - "27067:27067/udp"
 
-  # BlueMap: a 3D web map of the Minecraft world. Renders from a READ-ONLY mount
-  # of the mc-data volume (never writes the world) and serves its web UI on
-  # :8100, which Caddy reverse-proxies at /map/ behind the auth gate (NOT host-
-  # published). Tracked config is bind-mounted from docker/bluemap/config
-  # (accept-download=true so it runs unattended; maps point at /app/world).
-  # Preserve bluemap-data + bluemap-web so normal restarts update changed world
-  # regions instead of forcing a full rebuild. If those volumes are deleted, BlueMap
-  # downloads Minecraft client assets again and
-  # renders the whole world; this can take a while and use CPU; the web UI is up
-  # immediately but tiles fill in as the render progresses. The map config does NOT
-  # need editing per environment: the full mc-data volume is mounted read-only, then
-  # the container symlinks the active world (${MC_LEVEL}) to /app/world, which
-  # overworld.conf targets. Avoid Docker volume.subpath here: a clean first boot can
-  # create BlueMap before Minecraft has created the world directory.
-  # The app/host maintenance runner dynamically adjusts the Docker CPU quota from
-  # player presence. `cpus` is only the safe startup cap before that tuner runs.
+  # BlueMap: 3D web map of the Minecraft world, rendered from a READ-ONLY mc-data
+  # mount and served on :8100 (internal only; Caddy proxies it at /map/ behind the
+  # auth gate). Preserve the bluemap-data + bluemap-web volumes so restarts take
+  # the changed-region update path instead of a full re-render — see
+  # docs/bluemap-performance.md. The command below symlinks the active ${MC_LEVEL}
+  # world to /app/world (no per-env config edits; volume.subpath is avoided so
+  # BlueMap can boot before Minecraft has created the world directory).
   bluemap:
     image: ghcr.io/bluemap-minecraft/bluemap:v5.20
     container_name: bluemap
     restart: unless-stopped
-    cpus: ${BLUEMAP_CPUS:-4}
+    cpus: ${BLUEMAP_CPUS:-4}    # startup cap; the app-side tuner adjusts it live
     depends_on:
       minecraft:
         condition: service_healthy

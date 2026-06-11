@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { validateLiveCommand } from '../src/servers/rcon.js';
+import { validateLiveCommand } from '../src/servers/rcon-tcp.js';
 import {
   badSetting, notFound, notSupported, duplicateError, MAP_NAME_RE, SAFE_NAME_RE,
 } from '../src/servers/errors.js';

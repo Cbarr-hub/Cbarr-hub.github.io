@@ -52,11 +52,14 @@ test.afterEach(() => {
   global.fetch = originalFetch;
 });
 
+// The servers wrappers were collapsed into the exported api() — exercise the
+// CSRF self-heal through it directly (same path every mutating helper takes).
 const START = '/api/servers/minecraft/actions/start';
 const CSRF = '/api/csrf';
+const startAction = (db) => db.api('/servers/minecraft/actions/start', { method: 'POST' });
 
 test('a CSRF-shaped 403 on a mutating request clears the cache and retries once', async () => {
-  const { dbServerAction } = await freshDb();
+  const db = await freshDb();
 
   let postCount = 0;
   let csrfCount = 0;
@@ -74,7 +77,7 @@ test('a CSRF-shaped 403 on a mutating request clears the cache and retries once'
     return undefined;
   });
 
-  const result = await dbServerAction('minecraft', 'start');
+  const result = await startAction(db);
 
   assert.deepEqual(result, { ok: true }, 'retried POST resolves with the 200 body');
   assert.equal(csrfCount, 2, '/api/csrf is fetched a second time after the cache clear');
@@ -87,7 +90,7 @@ test('a CSRF-shaped 403 on a mutating request clears the cache and retries once'
 });
 
 test('a CSRF-403 on BOTH attempts rejects exactly once (no infinite retry)', async () => {
-  const { dbServerAction } = await freshDb();
+  const db = await freshDb();
 
   let postCount = 0;
   let csrfCount = 0;
@@ -104,7 +107,7 @@ test('a CSRF-403 on BOTH attempts rejects exactly once (no infinite retry)', asy
   });
 
   await assert.rejects(
-    dbServerAction('minecraft', 'start'),
+    startAction(db),
     (err) => err.status === 403 && /csrf/i.test(err.message),
   );
 
@@ -113,7 +116,7 @@ test('a CSRF-403 on BOTH attempts rejects exactly once (no infinite retry)', asy
 });
 
 test('a non-CSRF 403 is NOT retried and rejects immediately', async () => {
-  const { dbServerAction } = await freshDb();
+  const db = await freshDb();
 
   let postCount = 0;
   let csrfCount = 0;
@@ -130,7 +133,7 @@ test('a non-CSRF 403 is NOT retried and rejects immediately', async () => {
   });
 
   await assert.rejects(
-    dbServerAction('minecraft', 'start'),
+    startAction(db),
     (err) => err.status === 403 && err.message === 'admin required',
   );
 

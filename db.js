@@ -25,7 +25,9 @@ async function getCsrfToken() {
   return token;
 }
 
-// Single fetch wrapper every db* helper goes through. Contract:
+// Single fetch wrapper every db* helper goes through — ALSO exported directly:
+// the servers panel (servers.html) calls api() with raw /servers, /admin/db and
+// /admin/economy paths instead of one named wrapper per endpoint. Contract:
 //   - Always same-origin with cookies (the session is an HttpOnly cookie).
 //   - GET/HEAD send no body and no CSRF header; any other method sends a JSON
 //     body (when `body` is given) and an `x-csrf-token` header.
@@ -34,7 +36,7 @@ async function getCsrfToken() {
 //     for an empty body). Non-2xx throws an Error whose `.message` is the
 //     server's `error` field (falling back to `request failed (<status>)`),
 //     with `.status` and `.data` attached for callers that need them.
-async function api(path, { method = 'GET', body, query, _retried = false } = {}) {
+export async function api(path, { method = 'GET', body, query, _retried = false } = {}) {
   const headers = { 'Accept': 'application/json' };
   const init = { method, credentials: 'same-origin', headers };
 
@@ -178,244 +180,14 @@ export async function dbAddReview({ name, rating, message }) {
   return api('/reviews', { method: 'POST', body: { name, rating, message } });
 }
 
-// ── game-server control (servers page, admin-only) ────────────────────────────
-
-export async function dbGetServers({ mode } = {}) {
-  return (await api('/servers', { query: { mode } })) ?? [];
-}
-
-export async function dbGetServerStatus(id, { mode } = {}) {
-  return api(`/servers/${encodeURIComponent(id)}`, { query: { mode } });
-}
-
-// Host-level Proxmox node snapshot (CPU/RAM/load/uptime) for the dashboard.
-export async function dbGetNodeStatus() {
-  return api('/servers/node');
-}
-
-// action ∈ start | shutdown | reboot | stop
-export async function dbServerAction(id, action) {
-  return api(`/servers/${encodeURIComponent(id)}/actions/${encodeURIComponent(action)}`, {
-    method: 'POST',
-  });
-}
-
-export async function dbListServerConfig(id) {
-  return api(`/servers/${encodeURIComponent(id)}/config`);
-}
-
-export async function dbReadServerConfig(id, file) {
-  return api(`/servers/${encodeURIComponent(id)}/config/${encodeURIComponent(file)}`);
-}
-
-export async function dbWriteServerConfig(id, file, content) {
-  return api(`/servers/${encodeURIComponent(id)}/config/${encodeURIComponent(file)}`, {
-    method: 'PUT',
-    body: { content },
-  });
-}
-
-export async function dbUpdateServer(id) {
-  return api(`/servers/${encodeURIComponent(id)}/update`, { method: 'POST' });
-}
-
-export async function dbGetServerSettings(id) {
-  return api(`/servers/${encodeURIComponent(id)}/settings`);
-}
-
-export async function dbSaveServerSettings(id, values) {
-  return api(`/servers/${encodeURIComponent(id)}/settings`, { method: 'PUT', body: values });
-}
-
-// ── CS workshop-map catalog ───────────────────────────────────────────────────
-export async function dbListServerMaps(id) {
-  return (await api(`/servers/${encodeURIComponent(id)}/maps`)) ?? [];
-}
-
-// name is optional — omit it and the backend auto-fetches the Workshop title.
-export async function dbAddServerMap(id, workshopId, name) {
-  const body = name == null || name === '' ? { workshopId } : { workshopId, name };
-  return api(`/servers/${encodeURIComponent(id)}/maps`, { method: 'POST', body });
-}
-
-// Import every map in a public Steam Workshop collection (CS). Returns { ok, imported, maps }.
-export async function dbImportServerCollection(id, collectionId) {
-  return api(`/servers/${encodeURIComponent(id)}/maps/collection`, { method: 'POST', body: { collectionId } });
-}
-
-// Install collection maps into the single maps source (GMOD). Returns { ok, maps }.
-export async function dbSyncServerMaps(id) {
-  return api(`/servers/${encodeURIComponent(id)}/maps/sync`, { method: 'POST' });
-}
-
-export async function dbRenameServerMap(id, workshopId, name) {
-  return api(`/servers/${encodeURIComponent(id)}/maps/${encodeURIComponent(workshopId)}`, { method: 'PATCH', body: { name } });
-}
-
-export async function dbDeleteServerMap(id, workshopId) {
-  return api(`/servers/${encodeURIComponent(id)}/maps/${encodeURIComponent(workshopId)}`, { method: 'DELETE' });
-}
-
-// ── CS saved game-state config library ────────────────────────────────────────
-export async function dbListServerConfigs(id) {
-  return (await api(`/servers/${encodeURIComponent(id)}/configs`)) ?? [];
-}
-
-export async function dbGetServerConfigBody(id, configId) {
-  return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`);
-}
-
-export async function dbCreateServerConfig(id, name, body) {
-  return api(`/servers/${encodeURIComponent(id)}/configs`, { method: 'POST', body: { name, body } });
-}
-
-export async function dbDeleteServerConfig(id, configId) {
-  return api(`/servers/${encodeURIComponent(id)}/configs/${encodeURIComponent(configId)}`, { method: 'DELETE' });
-}
-
-// ── live / runtime commands (RCON / console) ──────────────────────────────────
-export async function dbGetServerLive(id) {
-  return api(`/servers/${encodeURIComponent(id)}/live`);
-}
-
-export async function dbServerLiveCommand(id, command) {
-  return api(`/servers/${encodeURIComponent(id)}/live/command`, { method: 'POST', body: { command } });
-}
-
-export async function dbServerLiveAction(id, action, value) {
-  const body = value === undefined ? { action } : { action, value };
-  return api(`/servers/${encodeURIComponent(id)}/live/action`, { method: 'POST', body });
-}
-
-// ── presence + cross-game activity timeline ───────────────────────────────────
-// Who's online across every hosted server, right now.
-export async function dbGetOnline() {
-  return (await api('/servers/online')) ?? [];
-}
-// Newest-first join/leave feed merged across all servers (the Activity view).
-export async function dbGetActivity({ limit } = {}) {
-  return (await api('/servers/activity', { query: { limit } })) ?? [];
-}
-
-export async function dbGetActivityAll({ limit } = {}) {
-  return (await api('/servers/activity', { query: { limit, includeUnlinked: true } })) ?? [];
-}
-
-// Aggregate session analytics for the "Pulse" view. days: 7|30|90|0(all); tz is the
-// viewer's UTC offset in minutes (-new Date().getTimezoneOffset()) for local buckets.
-export async function dbGetServerStats({ days, tz } = {}) {
-  return (await api('/servers/stats', { query: { days, tz } })) ?? null;
-}
-
-export async function dbGetServerMapSession(id, sessionId) {
-  return api(`/servers/${encodeURIComponent(id)}/map/sessions/${encodeURIComponent(sessionId)}`);
-}
-
-export async function dbGetServerMapPlayer(id, playerName) {
-  return api(`/servers/${encodeURIComponent(id)}/map/players/${encodeURIComponent(playerName)}`);
-}
-
-export async function dbGetBlueMapStatus() {
-  return api('/servers/map/status');
-}
-
-// ── startup-config profiles (named, structured loadouts) ──────────────────────
-export async function dbListProfiles(id) {
-  return api(`/servers/${encodeURIComponent(id)}/profiles`);
-}
-
-export async function dbGetProfileSchema(id) {
-  return api(`/servers/${encodeURIComponent(id)}/profiles/schema`);
-}
-
-export async function dbGetProfile(id, profileId) {
-  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}`);
-}
-
-// settings omitted → backend seeds the new profile from connector defaults.
-export async function dbCreateProfile(id, name, settings) {
-  const body = settings === undefined ? { name } : { name, settings };
-  return api(`/servers/${encodeURIComponent(id)}/profiles`, { method: 'POST', body });
-}
-
-export async function dbUpdateProfile(id, profileId, patch) {
-  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}`, { method: 'PUT', body: patch });
-}
-
-export async function dbDeleteProfile(id, profileId) {
-  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
-}
-
-export async function dbApplyProfile(id, profileId) {
-  return api(`/servers/${encodeURIComponent(id)}/profiles/${encodeURIComponent(profileId)}/apply`, { method: 'POST' });
-}
-
-export async function dbCaptureProfile(id, name) {
-  return api(`/servers/${encodeURIComponent(id)}/profiles/capture`, { method: 'POST', body: { name } });
-}
-
-// ── admin DB viewer (read-only, admin-only) ───────────────────────────────────
-// All GET → no CSRF needed; api() supplies cookies. Return shapes are exactly the
-// /api/admin/db/* route responses (see backend/src/routes/admin-db.js).
-export async function dbAdminTables() {
-  return (await api('/admin/db/tables')) ?? [];
-}
-
-export async function dbAdminTableRows(table, { limit, offset, sort, dir, q } = {}) {
-  return api(`/admin/db/tables/${encodeURIComponent(table)}`, {
-    query: { limit, offset, sort, dir, q },
-  });
-}
-
-export async function dbAdminQuery(sql) {
-  return api('/admin/db/query', { query: { sql } });
-}
-
-// ── playtime economy (admin-only) ─────────────────────────────────────────────
-// The earning rate ($/hour) + per-session cap, the seen-players roster with their
-// linked site account, and the admin actions to set the rate / link / credit now.
-export async function dbGetEconomySettings() {
-  return api('/admin/economy/settings');
-}
-
-export async function dbSetEconomySettings(patch) {
-  return api('/admin/economy/settings', { method: 'PUT', body: patch });
-}
-
-export async function dbGetEconomyPlayers() {
-  return (await api('/admin/economy/players')) ?? [];
-}
-
-export async function dbGetEconomyUsers() {
-  return (await api('/admin/economy/users')) ?? [];
-}
-
-export async function dbAdminUsers() {
-  return (await api('/admin/users')) ?? [];
-}
-
-export async function dbAdminCreateUser({ username, displayName, password, isAdmin = false }) {
-  return api('/admin/users', { method: 'POST', body: { username, displayName, password, isAdmin } });
-}
-
-// userId: a users.id, or null to unlink.
-export async function dbLinkPlayerAccount(playerId, userId) {
-  return api(`/admin/economy/players/${encodeURIComponent(playerId)}/account`, {
-    method: 'PUT',
-    body: { userId },
-  });
-}
-
-// Dismiss (ignored=true) or restore (false) a tracked identity in the link queue.
-export async function dbSetPlayerIgnored(playerId, ignored) {
-  return api(`/admin/economy/players/${encodeURIComponent(playerId)}/ignore`, {
-    method: 'PUT',
-    body: { ignored },
-  });
-}
-
-export async function dbCreditPlaytime() {
-  return api('/admin/economy/credit', { method: 'POST' });
+// ── game-server presence (servers page) ──────────────────────────────────────
+// The rest of the servers/admin-db/admin-economy surface is reached straight
+// through api() above (see servers.html); only the activity feed keeps a named
+// wrapper. includeUnlinked:true folds in the old dbGetActivityAll (link queue).
+export async function dbGetActivity({ limit, includeUnlinked } = {}) {
+  return (await api('/servers/activity', {
+    query: { limit, includeUnlinked: includeUnlinked ? true : undefined },
+  })) ?? [];
 }
 
 // ── leaderboard (fishtank page) ───────────────────────────────────────────────

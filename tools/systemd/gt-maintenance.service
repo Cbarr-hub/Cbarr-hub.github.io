@@ -1,4 +1,5 @@
-# Gamertown maintenance daemon: BlueMap resource tuning + no-player updates.
+# Gamertown maintenance daemon: idle-gated (no-player) game-update checks.
+# (BlueMap CPU tuning is app-side only — backend/src/servers/bluemap.js.)
 #
 # Install on the keeper:
 #   cp tools/systemd/gt-maintenance.service /etc/systemd/system/
@@ -8,7 +9,7 @@
 # Needs host `node`, `sqlite3`, Docker, and Docker Compose. Runs on the host
 # because image pulls / compose recreates are intentionally unavailable to the app.
 [Unit]
-Description=Gamertown maintenance daemon (BlueMap CPU tuning + no-player updates)
+Description=Gamertown maintenance daemon (idle-gated game-update checks)
 After=docker.service gt-session-tracker.service
 Requires=docker.service
 

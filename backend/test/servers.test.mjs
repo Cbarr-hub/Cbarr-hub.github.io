@@ -3,16 +3,15 @@ import test from 'node:test';
 
 import { testDb } from './test-db.js';
 import { connectString, getServer, launchUrl, listServers } from '../src/servers/registry.js';
-import { BaseConnector, normalizeStatus } from '../src/servers/connectors/base.js';
+import { GameConnector, normalizeStatus } from '../src/servers/connectors/engine.js';
 import { createServerService, ServerControlError } from '../src/servers/service.js';
 import { createServerStore } from '../src/servers/store.js';
-import { getVar, setVar, setVars } from '../src/servers/cfgvars.js';
-import { getCvar, setCvars } from '../src/servers/cvars.js';
+import { getVar, setVar, setVars, getCvar, setCvars } from '../src/servers/line-config.js';
 
 // A fake DockerClient. It duck-types the transport surface the connectors consume
-// (statusCurrent / start / stop / shutdown / reboot / agentExec / agentExecStatus /
-// agentFileRead / agentFileWrite / nodeStatus), records calls, and returns canned
-// data — no containers, no RCON sockets. `files` backs agentFileRead/Write by path.
+// (statusCurrent / start / stop / shutdown / reboot / exec / fileRead / fileWrite /
+// nodeStatus), records calls, and returns canned data — no containers, no RCON
+// sockets. `files` backs fileRead/fileWrite by path.
 //
 // This file exercises the backend-agnostic SERVICE layer (orchestration, registry,
 // whitelist, DB-backed catalog/config, connect strings). The Docker connectors'
@@ -41,11 +40,10 @@ function fakeDocker(overrides = {}) {
     stop: rec('stop'),
     shutdown: rec('shutdown'),
     reboot: rec('reboot'),
-    agentExec: overrides.agentExec ?? (() => Promise.resolve({ pid: 'p' })),
-    agentExecStatus: overrides.agentExecStatus
-      ?? (() => Promise.resolve({ exited: 1, exitcode: 0, 'out-data': '', 'err-data': '' })),
-    agentFileRead: overrides.agentFileRead ?? ((_c, path) => Promise.resolve({ content: files[path] ?? '' })),
-    agentFileWrite: overrides.agentFileWrite ?? ((_c, path, content) => { files[path] = content; return Promise.resolve(null); }),
+    exec: overrides.exec
+      ?? (() => Promise.resolve({ exitCode: 0, signal: null, stdout: '', stderr: '', truncated: false })),
+    fileRead: overrides.fileRead ?? ((_c, path) => Promise.resolve({ content: files[path] ?? '', truncated: false })),
+    fileWrite: overrides.fileWrite ?? ((_c, path, content) => { files[path] = content; return Promise.resolve(null); }),
   };
 }
 
@@ -72,11 +70,12 @@ test('normalizeStatus maps the qemu/container status payload to a stable shape',
 
 // ── service: not configured ──────────────────────────────────────────────────────
 test('service without a docker client reports not-configured', async () => {
-  const svc = createServerService({});
-  assert.equal(svc.isConfigured(), false);
+  const svc = createServerService({ dockerClient: null });
   await assert.rejects(() => svc.listServers(), (e) =>
     e instanceof ServerControlError && e.code === 'NOT_CONFIGURED');
   await assert.rejects(() => svc.doAction('factorio', 'start'), (e) => e.code === 'NOT_CONFIGURED');
+  // the OPS-dispatch seam reports the same typed error
+  assert.throws(() => svc.connectorFor('factorio'), (e) => e.code === 'NOT_CONFIGURED');
 });
 
 // ── service: list + status ──────────────────────────────────────────────────────
@@ -157,18 +156,21 @@ test('doAction rejects unknown actions and unknown servers', async () => {
   await assert.rejects(() => svc.doAction('halflife', 'start'), (e) => e.code === 'UNKNOWN_SERVER');
 });
 
-// ── service: config (whitelist) ──────────────────────────────────────────────────
+// ── connector dispatch: config (whitelist) ────────────────────────────────────────
+// Connector ops are reached through the service's connectorFor seam (the same
+// path the route layer's OPS table dispatches through).
 test('config read/write only allows whitelisted files', async () => {
   const client = fakeDocker({ files: { '/data/server.properties': 'level-name=world\n' } });
   const svc = createServerService({ dockerClient: client });
+  assert.throws(() => svc.connectorFor('halflife'), (e) => e.code === 'UNKNOWN_SERVER');
+  const mc = svc.connectorFor('minecraft');
 
-  const { files } = svc.listConfig('minecraft');
-  assert.ok(files.includes('server.properties'));
+  assert.ok(mc.listConfigFiles().includes('server.properties'));
 
-  const read = await svc.readConfig('minecraft', 'server.properties');
+  const read = await mc.readConfig('server.properties');
   assert.equal(read.content, 'level-name=world\n');
 
-  await assert.rejects(() => svc.readConfig('minecraft', '/etc/shadow'), (e) => e.code === 'UNKNOWN_CONFIG');
+  await assert.rejects(() => mc.readConfig('/etc/shadow'), (e) => e.code === 'UNKNOWN_CONFIG');
 });
 
 // ── cfgvars helper (LinuxGSM shell-style cfg) ────────────────────────────────────
@@ -205,51 +207,50 @@ test('cvars reads/sets Source cfg cvars without matching prefix collisions', () 
 // ── CS workshop catalog + config library (DB-backed, via the docker connector) ───
 test('CS map catalog: add, rename, delete via the service', async () => {
   const svc = createServerService({ dockerClient: fakeDocker(), db: testDb() });
-  assert.ok((await svc.listMaps('counterstrike')).some((m) => m.workshopId === '3071005299')); // seed
+  const cs = svc.connectorFor('counterstrike');
+  assert.ok((await cs.listMaps()).some((m) => m.workshopId === '3071005299')); // seed
 
-  const added = await svc.addMap('counterstrike', { workshopId: '555', name: 'Mirage WS' });
+  const added = await cs.addMap({ workshopId: '555', name: 'Mirage WS' });
   assert.equal(added.name, 'Mirage WS');
-  const renamed = await svc.renameMap('counterstrike', '555', 'Mirage WS2');
+  const renamed = await cs.renameMap('555', 'Mirage WS2');
   assert.equal(renamed.name, 'Mirage WS2');
-  await svc.deleteMap('counterstrike', '555');
-  assert.equal((await svc.listMaps('counterstrike')).some((m) => m.workshopId === '555'), false);
+  await cs.deleteMap('555');
+  assert.equal((await cs.listMaps()).some((m) => m.workshopId === '555'), false);
 
-  await assert.rejects(async () => svc.addMap('counterstrike', { workshopId: 'abc', name: 'x' }), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(async () => svc.renameMap('counterstrike', 'nope', 'x'), (e) => e.code === 'NOT_FOUND');
+  await assert.rejects(async () => cs.addMap({ workshopId: 'abc', name: 'x' }), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(async () => cs.renameMap('nope', 'x'), (e) => e.code === 'NOT_FOUND');
 });
 
-test('CS config library: CRUD + unique name + validation', async () => {
+test('CS config library: create/get/list/delete + unique name + validation', async () => {
   const svc = createServerService({ dockerClient: fakeDocker(), db: testDb() });
-  const c = await svc.createConfig('counterstrike', { name: 'bunnyhop', body: 'sv_autobunnyhopping 1\n' });
+  const cs = svc.connectorFor('counterstrike');
+  const c = await cs.createConfig({ name: 'bunnyhop', body: 'sv_autobunnyhopping 1\n' });
   assert.ok(c.id > 0);
-  assert.equal((await svc.getConfig('counterstrike', c.id)).body, 'sv_autobunnyhopping 1\n');
+  assert.equal((await cs.getConfig(c.id)).body, 'sv_autobunnyhopping 1\n');
+  assert.ok((await cs.listConfigs()).some((x) => x.name === 'bunnyhop'));
 
-  const u = await svc.updateConfig('counterstrike', c.id, { body: 'sv_autobunnyhopping 0\n' });
-  assert.equal(u.name, 'bunnyhop');            // unchanged
-  assert.equal(u.body, 'sv_autobunnyhopping 0\n');
-  assert.ok((await svc.listConfigs('counterstrike')).some((x) => x.name === 'bunnyhop'));
+  await assert.rejects(async () => cs.createConfig({ name: 'bunnyhop', body: '' }), (e) => e.code === 'BAD_SETTING'); // dup
+  await assert.rejects(async () => cs.createConfig({ name: 'bad name!', body: '' }), (e) => e.code === 'BAD_SETTING'); // chars
 
-  await assert.rejects(async () => svc.createConfig('counterstrike', { name: 'bunnyhop', body: '' }), (e) => e.code === 'BAD_SETTING'); // dup
-  await assert.rejects(async () => svc.createConfig('counterstrike', { name: 'bad name!', body: '' }), (e) => e.code === 'BAD_SETTING'); // chars
-
-  await svc.deleteConfig('counterstrike', c.id);
-  await assert.rejects(async () => svc.getConfig('counterstrike', c.id), (e) => e.code === 'NOT_FOUND');
+  await cs.deleteConfig(c.id);
+  await assert.rejects(async () => cs.getConfig(c.id), (e) => e.code === 'NOT_FOUND');
 });
 
 test('non-CS servers reject catalog + config ops as unsupported', async () => {
   const svc = createServerService({ dockerClient: fakeDocker(), db: testDb() });
-  await assert.rejects(async () => svc.listMaps('factorio'), (e) => e.code === 'NOT_SUPPORTED');
-  await assert.rejects(async () => svc.listConfigs('minecraft'), (e) => e.code === 'NOT_SUPPORTED');
+  await assert.rejects(async () => svc.connectorFor('factorio').listMaps(), (e) => e.code === 'NOT_SUPPORTED');
+  await assert.rejects(async () => svc.connectorFor('minecraft').listConfigs(), (e) => e.code === 'NOT_SUPPORTED');
 });
 
 // ── live control gating (these paths never open an RCON socket) ──────────────────
 test('CS live control gates on CS2_RCON_PASSWORD', async () => {
   const svc = createServerService({ dockerClient: fakeDocker(), db: testDb() });
+  const cs = svc.connectorFor('counterstrike');
   delete process.env.CS2_RCON_PASSWORD;
-  assert.equal((await svc.getLive('counterstrike')).available, false);
+  assert.equal((await cs.getLive()).available, false);
 
   process.env.CS2_RCON_PASSWORD = 'secret';
-  const live = await svc.getLive('counterstrike');
+  const live = await cs.getLive();
   assert.equal(live.available, true);
   assert.equal(live.changeMap, true);
   assert.ok(Array.isArray(live.actions) && live.actions.length > 0);
@@ -258,39 +259,41 @@ test('CS live control gates on CS2_RCON_PASSWORD', async () => {
 
 test('CS sendCommand + runLiveAction reject bad input before opening a socket', async () => {
   const svc = createServerService({ dockerClient: fakeDocker(), db: testDb() });
-  await assert.rejects(async () => svc.sendCommand('counterstrike', ''), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(async () => svc.sendCommand('counterstrike', 'a\nb'), (e) => e.code === 'BAD_SETTING');
-  await assert.rejects(async () => svc.runLiveAction('counterstrike', 'nope'), (e) => e.code === 'BAD_SETTING');
+  const cs = svc.connectorFor('counterstrike');
+  await assert.rejects(async () => cs.sendCommand(''), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(async () => cs.sendCommand('a\nb'), (e) => e.code === 'BAD_SETTING');
+  await assert.rejects(async () => cs.runLiveAction('nope'), (e) => e.code === 'BAD_SETTING');
 });
 
 test('Factorio live availability reflects the rcon password file', async () => {
   const off = createServerService({ dockerClient: fakeDocker() });
-  assert.equal((await off.getLive('factorio')).available, false); // no rconpw file
+  assert.equal((await off.connectorFor('factorio').getLive()).available, false); // no rconpw file
 
   const on = createServerService({ dockerClient: fakeDocker({
     files: { '/factorio/config/rconpw': 'sekret\n' },
   }) });
-  assert.equal((await on.getLive('factorio')).available, true);
+  assert.equal((await on.connectorFor('factorio').getLive()).available, true);
 });
 
 test('Factorio Quick Settings exposes the Save-As operation', async () => {
   const svc = createServerService({ dockerClient: fakeDocker() });
-  const s = await svc.getSettings('factorio');
+  const s = await svc.connectorFor('factorio').getSettings();
   assert.deepEqual(s.sections.map((sec) => sec.key), ['saveAs']);
 });
 
 test('Minecraft live control gates on MINECRAFT_RCON_PASSWORD', async () => {
   const svc = createServerService({ dockerClient: fakeDocker() });
+  const mc = svc.connectorFor('minecraft');
   delete process.env.MINECRAFT_RCON_PASSWORD;
-  assert.equal((await svc.getLive('minecraft')).available, false);
+  assert.equal((await mc.getLive()).available, false);
   process.env.MINECRAFT_RCON_PASSWORD = 'pw';
-  assert.equal((await svc.getLive('minecraft')).available, true);
+  assert.equal((await mc.getLive()).available, true);
   delete process.env.MINECRAFT_RCON_PASSWORD;
 });
 
-// ── BaseConnector defaults ──────────────────────────────────────────────────────
+// ── engine defaults (a spec-less connector) ─────────────────────────────────────
 test('a base server reports live unavailable and has no quick settings', async () => {
-  const base = new BaseConnector({ id: 'x', name: 'X', vmid: 1 }, fakeDocker());
+  const base = new GameConnector({ id: 'x', name: 'X', container: 'x' }, {}, fakeDocker());
   assert.equal((await base.getLive()).available, false);
   await assert.rejects(async () => base.sendCommand('x'), (e) => e.code === 'NO_RCON');
   assert.deepEqual(await base.getSettings(), { fields: [] });

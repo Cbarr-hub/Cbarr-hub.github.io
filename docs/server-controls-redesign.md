@@ -1,5 +1,14 @@
 # Server-Controls Redesign — Implementation Spec
 
+> **SUPERSEDED (2026-06-11, `feature/servers-halving`) — historical record only.**
+> The architecture this spec targets is gone: the per-game connector classes
+> (`BaseConnector`/`GmodConnector`/`connectors/docker/*.js`/`*-profile.js`) were replaced by
+> one engine (`backend/src/servers/connectors/engine.js`) interpreting per-game specs
+> (`connectors/specs/*.js`), and the Connect · Tweak · Full "Intent Switch" below was
+> replaced by a single detail sheet with Overview/Runtime/Profiles/Maps/Config tabs
+> (a "Basics only" filter on Profiles covers the old Tweak surface). File paths and
+> class/method references below are stale by design — do not implement against them.
+
 > Generated from the Phase-1 ultracode research+design workflow (run wf_da0bf12a-18b), then
 > reconciled against the live code. This is the build contract for the feature/server-controls-redesign branch.
 

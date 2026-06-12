@@ -1,15 +1,15 @@
 // Service / orchestration layer for game-server control.
 //
-// Sits between the HTTP routes and the connectors. Responsibilities:
-//   - validate a logical server id against the registry
-//   - dispatch the requested operation to that server's connector
-//   - normalize results and raise typed errors the route layer maps to HTTP
-// It knows nothing about Fastify, requests, auth, or transport HTTP details.
+// Sits between the HTTP routes and the connectors, but only for the genuinely
+// composite reads/mutations (status caches, presence overlay, power actions,
+// session analytics, BlueMap). Plain per-connector operations are NOT wrapped
+// here — the route layer's OPS table dispatches them via connectorFor(id)
+// directly. It knows nothing about Fastify, requests, auth, or transport.
 
 import { listServers, getServer, connectString, launchUrl } from './registry.js';
 import { buildConnectors } from './connectors/index.js';
 import { createServerStore } from './store.js';
-import { parseBlueMapStatus } from './bluemap-status.js';
+import { parseBlueMapStatus } from './bluemap.js';
 
 export class ServerControlError extends Error {
   constructor(message, code) {
@@ -19,7 +19,10 @@ export class ServerControlError extends Error {
   }
 }
 
-const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop', 'startGame', 'stopGame', 'restartGame']);
+const POWER_ACTIONS = new Set(['start', 'shutdown', 'reboot', 'stop']);
+// The container IS the game, so the legacy game-service action names alias to
+// container power at this boundary ("never BAD_ACTION" — see docker.test.mjs).
+const LEGACY_POWER_ALIAS = { startGame: 'start', stopGame: 'shutdown', restartGame: 'reboot' };
 // Status-cache freshness windows. 'quick' lists skip per-container stats so they
 // poll fast and tolerate only ~1s of staleness; 'full' lists carry cpu/mem and
 // refresh less often. The host dashboard (containers count etc.) moves slowly, so
@@ -264,8 +267,6 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
   }
 
   return {
-    isConfigured: () => Boolean(connectors),
-
     // Host-level dashboard: the Docker host/engine facts (kind:'docker'); the UI
     // pairs that with the per-container cpu/mem it already gets from /api/servers.
     // Throws NOT_CONFIGURED when the backend isn't wired.
@@ -308,135 +309,33 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
       return { ...(await publicMeta(server, connector)), ...status };
     },
 
-    // action ∈ start|shutdown|reboot|stop. Returns { ok, action } (the backend
-    // returns a task id we don't surface yet).
+    // action ∈ start|shutdown|reboot|stop (+ the legacy aliases). Returns
+    // { ok, action } (the backend returns a task id we don't surface yet).
     async doAction(id, action) {
-      if (!POWER_ACTIONS.has(action)) {
+      const verb = LEGACY_POWER_ALIAS[action] ?? action;
+      if (!POWER_ACTIONS.has(verb)) {
         throw new ServerControlError(`invalid action: ${action}`, 'BAD_ACTION');
       }
       const connector = connectorFor(id);
-      await connector[action]();
+      await connector[verb]();
       clearStatusCache();
       return { ok: true, action };
     },
 
-    // ── config + update (Phase 3) ────────────────────────────────────────────
-    listConfig(id) {
-      return { id, files: connectorFor(id).listConfigFiles() };
-    },
-    readConfig(id, file) {
-      return connectorFor(id).readConfig(file);
-    },
-    writeConfig(id, file, content) {
-      return connectorFor(id).writeConfig(file, content);
-    },
-    runUpdate(id) {
-      clearStatusCache();
-      return connectorFor(id).update();
-    },
-
-    // ── structured quick settings ────────────────────────────────────────────
-    getSettings(id) {
-      return connectorFor(id).getSettings();
-    },
-    setSettings(id, values) {
-      clearStatusCache();
-      return connectorFor(id).setSettings(values);
-    },
-
-    // ── workshop map catalog (Phase 2; CS) ───────────────────────────────────
-    listMaps(id) {
-      return connectorFor(id).listMaps();
-    },
-    syncMaps(id) {
-      return connectorFor(id).syncMaps();
-    },
-    addMap(id, body) {
-      return connectorFor(id).addMap(body);
-    },
-    importCollection(id, collectionId) {
-      return connectorFor(id).importCollection(collectionId);
-    },
-    renameMap(id, workshopId, name) {
-      return connectorFor(id).renameMap(workshopId, name);
-    },
-    deleteMap(id, workshopId) {
-      return connectorFor(id).deleteMap(workshopId);
-    },
-
-    // ── config library (Phase 2; CS) ─────────────────────────────────────────
-    listConfigs(id) {
-      return connectorFor(id).listConfigs();
-    },
-    getConfig(id, configId) {
-      return connectorFor(id).getConfig(configId);
-    },
-    createConfig(id, body) {
-      return connectorFor(id).createConfig(body);
-    },
-    updateConfig(id, configId, body) {
-      return connectorFor(id).updateConfig(configId, body);
-    },
-    deleteConfig(id, configId) {
-      return connectorFor(id).deleteConfig(configId);
-    },
-
-    // ── startup-config profiles ──────────────────────────────────────────────
-    listProfiles(id) {
-      return connectorFor(id).listProfiles();
-    },
-    profileSchema(id) {
-      return connectorFor(id).profileSchema();
-    },
-    getProfile(id, profileId) {
-      return connectorFor(id).getProfile(profileId);
-    },
-    createProfile(id, body) {
-      return connectorFor(id).createProfile(body);
-    },
-    updateProfile(id, profileId, body) {
-      return connectorFor(id).updateProfile(profileId, body);
-    },
-    deleteProfile(id, profileId) {
-      return connectorFor(id).deleteProfile(profileId);
-    },
-    applyProfile(id, profileId) {
-      clearStatusCache();
-      return connectorFor(id).applyProfile(profileId);
-    },
-    captureProfile(id, name) {
-      return connectorFor(id).captureProfile(name);
-    },
-
-    // ── live commands (Phase 3) ──────────────────────────────────────────────
-    getLive(id) {
-      return connectorFor(id).getLive();
-    },
-    sendCommand(id, command) {
-      return connectorFor(id).sendCommand(command);
-    },
-    runLiveAction(id, action, value) {
-      return connectorFor(id).runLiveAction(action, value);
-    },
-
-    // ── player sessions (read-only; written host-side by the collector) ───────
-    // Validate the id against the registry (like getStatus) so an unknown server
-    // 404s instead of silently returning []. With no DB, sessions are empty.
-    listSessions(id, opts = {}) {
-      if (!getServer(id)) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
-      return store ? store.listSessions(id, opts) : [];
-    },
+    // ── connector dispatch seam (the route layer's OPS table) ────────────────
+    // Resolve one server's connector (typed NOT_CONFIGURED / UNKNOWN_SERVER
+    // errors). The per-connector operations (settings/maps/configs/profiles/
+    // live/config-files/update) are invoked on the connector directly;
+    // clearStatusCache is exposed alongside so the mutating ops can bust the
+    // status caches after success.
+    connectorFor,
+    clearStatusCache,
 
     // ── presence + activity (read-only; written host-side) ───────────────────
     // Who's online across every hosted server, right now.
     async listOnline() {
       const rows = store ? store.listOnline() : [];
       return mergeLiveOnlineRows(rows, await readLivePresence());
-    },
-    // Host-tracked open sessions only (no cross-server RCON live-presence fan-out).
-    // Cheap enough to call on a tight loop.
-    listTrackedOnline() {
-      return store ? store.listOnline() : [];
     },
     // Live online players for ONE server, each with a current position — the source
     // for the BlueMap live-marker writer. Unlike listTrackedOnline() (host-tracker
@@ -516,38 +415,6 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
         heatmap: raw.heatmap,
         busiest,
       };
-    },
-
-    async getCurrentPlayerPosition(id, userId) {
-      const server = getServer(id);
-      if (!server) throw new ServerControlError(`unknown server: ${id}`, 'UNKNOWN_SERVER');
-      if (!server.identityKind) throw new ServerControlError(`${server.name} has no player identity namespace`, 'NOT_SUPPORTED');
-      if (!store) return { serverId: id, serverName: server.name, linked: false, online: false, reason: 'database unavailable' };
-      const player = store.linkedPlayerForUser(userId, server.identityKind);
-      if (!player) return { serverId: id, serverName: server.name, linked: false, online: false, reason: `no linked ${server.name} account` };
-      const session = store.openSessionForPlayer(id, player.id);
-      if (!session) return { serverId: id, serverName: server.name, linked: true, online: false, player, reason: `linked ${server.name} account is not online` };
-      const connector = connectorFor(id);
-      if (!connector.getPlayerPosition) {
-        throw new ServerControlError(`${server.name} position lookup is not supported`, 'NOT_SUPPORTED');
-      }
-      const target = player.uid || player.name;
-      const position = await connector.getPlayerPosition(target, player);
-      const online = position?.connected === false ? false : true;
-      return {
-        serverId: id,
-        serverName: server.name,
-        linked: true,
-        online,
-        player,
-        session,
-        position,
-        ...(online ? {} : { reason: position?.reason || `${server.name} position unavailable` }),
-      };
-    },
-
-    getCurrentMinecraftPosition(userId) {
-      return this.getCurrentPlayerPosition('minecraft', userId);
     },
 
     async getOnlinePlayerPosition(id, sessionId) {

@@ -97,6 +97,10 @@ services:
       WORKSHOP_COLLECTION: ${GMOD_WORKSHOP_COLLECTION:-3736674438}
       DEFAULT_MAP: ${GMOD_DEFAULT_MAP:-ttt_clue_se}
       SKIP_CSS: ${SKIP_CSS:-}
+      # Addons with custom assets that connecting CLIENTS must download
+      # (resource.AddWorkshop — the collection mount is server-side only):
+      # Advanced Silenced AWP + TTT Weapon Collection + Detective P90.
+      WORKSHOP_CLIENT_DL: ${GMOD_CLIENT_DL:-2058216025,194965598,253737433}
     volumes:
       - gmod-data:/data
     ports:
@@ -114,6 +118,9 @@ services:
       WORKSHOP_COLLECTION: ${PROPHUNT_WORKSHOP_COLLECTION:-3737190377}
       DEFAULT_MAP: ${PROPHUNT_DEFAULT_MAP:-ph_restaurant}
       SKIP_CSS: ${SKIP_CSS:-}
+      # Same client-download hook as gmod; off by default (PH clients get the
+      # gamemode pushed automatically — list taunt/asset packs here if needed).
+      WORKSHOP_CLIENT_DL: ${PROPHUNT_CLIENT_DL:-}
     volumes:
       - ph-data:/data
     ports:

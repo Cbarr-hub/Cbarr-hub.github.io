@@ -45,6 +45,7 @@ test('gmod spec applyProfileSettings -> captureProfileSettings round-trips', asy
     detectivePct: 0.13, detectiveMax: 20, minPlayers: 3,
     // expanded TTT_FIELDS (round + roles groups)
     prepTime: 45, haste: '0', hasteStart: 6, postroundDm: '1', allTalk: '0',
+    proximityVoice: '1',
     detMinPlayers: 4, creditsStart: 3, karma: '1', karmaAutokick: '1', karmaBan: '0',
   };
   await conn.applyProfileSettings(profile);
@@ -53,6 +54,7 @@ test('gmod spec applyProfileSettings -> captureProfileSettings round-trips', asy
   assert.equal(files[CYCLE].trim(), 'ttt_clue\nttt_minecraft_b5');
   // bool cvars serialize to quoted 0/1 in the game cfg
   assert.match(files[GAME], /sv_alltalk\s+"0"/);
+  assert.match(files[GAME], /ttt_locational_voice\s+"1"/);
   assert.match(files[GAME], /ttt_karma_low_autokick\s+"1"/);
 
   const cap = await conn.captureProfileSettings();
@@ -67,8 +69,17 @@ test('gmod spec applyProfileSettings -> captureProfileSettings round-trips', asy
   // expanded fields round-trip (bool stays '1'/'0'-derived number, numeric stays number)
   assert.equal(cap.prepTime, 45);
   assert.equal(cap.allTalk, 0);
+  assert.equal(cap.proximityVoice, 1);
   assert.equal(cap.karmaAutokick, 1);
   assert.equal(cap.creditsStart, 3);
+});
+
+// ── profiles saved before a field existed still validate (missing key → default) ─
+test('gmod spec validates a profile missing a newer field by defaulting it', () => {
+  const doc = gmodSpec.profile.defaults();
+  delete doc.proximityVoice; // simulates a DB profile saved before the field shipped
+  const out = gmodSpec.profile.validate(null, doc);
+  assert.equal(out.proximityVoice, 0);
 });
 
 // ── capture tolerates a mixed-case mapcycle.txt (lowercases boot map AND rotation) ─

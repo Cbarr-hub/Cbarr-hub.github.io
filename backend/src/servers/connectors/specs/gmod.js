@@ -196,6 +196,8 @@ const TTT_LIVE_ACTIONS = [
   { key: 'bhop_off',      label: 'Bunnyhop Off' },
   { key: 'alltalk_on',    label: 'All-talk On' },
   { key: 'alltalk_off',   label: 'All-talk Off' },
+  { key: 'proximity_on',  label: 'Proximity Chat On' },
+  { key: 'proximity_off', label: 'Proximity Chat Off' },
   { key: 'cheats_on',     label: 'Cheats On' },
   { key: 'cheats_off',    label: 'Cheats Off' },
   { key: 'players',       label: 'List Players' },
@@ -206,6 +208,11 @@ const TTT_ACTION_CMDS = {
   ...GMOD_BHOP_CMDS,
   alltalk_on:    'sv_alltalk 1',
   alltalk_off:   'sv_alltalk 0',
+  // Proximity = TTT's locational (3D, range-falloff) voice for living players.
+  // sv_alltalk 1 is global voice and overrides it, so On forces alltalk off;
+  // Off restores the global-voice default.
+  proximity_on:  'ttt_locational_voice 1; sv_alltalk 0',
+  proximity_off: 'ttt_locational_voice 0; sv_alltalk 1',
   ...GMOD_CHEATS_CMDS,
   players:       'status',
 };
@@ -227,10 +234,12 @@ const TTT_FIELDS = [
   { cvar: 'ttt_round_limit',          key: 'roundLimit',     label: 'Rounds per Map',        def: 6,    min: 1,  max: 100,  int: true,             group: 'round' },
   { cvar: 'ttt_time_limit_minutes',   key: 'timeLimit',      label: 'Time Limit (min)',      def: 75,   min: 1,  max: 600,  int: true,             group: 'round' },
   { cvar: 'ttt_preptime_seconds',     key: 'prepTime',       label: 'Prep Time (s)',         def: 30,   min: 5,  max: 120,  int: true,             group: 'round' },
+  { cvar: 'ttt_posttime_seconds',     key: 'postTime',       label: 'Post-round Time (s)',   def: 30,   min: 0,  max: 120,  int: true,             group: 'round' },
   { cvar: 'ttt_haste',                key: 'haste',          label: 'Haste Mode',            def: 1,    min: 0,  max: 1,    int: true, bool: true, group: 'round' },
   { cvar: 'ttt_haste_starting_minutes', key: 'hasteStart',   label: 'Haste Start (min)',     def: 5,    min: 1,  max: 20,   int: true,             group: 'round' },
   { cvar: 'ttt_postround_dm',         key: 'postroundDm',    label: 'Post-round Deathmatch',  def: 0,    min: 0,  max: 1,    int: true, bool: true, group: 'round' },
   { cvar: 'sv_alltalk',               key: 'allTalk',        label: 'All-talk Voice',         def: 1,    min: 0,  max: 1,    int: true, bool: true, group: 'round' },
+  { cvar: 'ttt_locational_voice',     key: 'proximityVoice', label: 'Proximity Voice',        def: 0,    min: 0,  max: 1,    int: true, bool: true, group: 'round' },
   { cvar: 'ttt_traitor_pct',          key: 'traitorPct',     label: 'Traitor Ratio (0–1)',   def: 0.25, min: 0,  max: 1,                           group: 'roles' },
   { cvar: 'ttt_traitor_max',          key: 'traitorMax',     label: 'Max Traitors',          def: 32,   min: 1,  max: 64,   int: true,             group: 'roles' },
   { cvar: 'ttt_detective_pct',        key: 'detectivePct',   label: 'Detective Ratio (0–1)', def: 0.13, min: 0,  max: 1,                           group: 'roles' },
@@ -244,7 +253,7 @@ const TTT_FIELDS = [
 ];
 
 // `basic` flags: the knobs the panel's Tweak mode shows (the rest stay in Full).
-const TTT_BASIC = new Set(['roundLimit', 'prepTime', 'haste', 'traitorPct', 'detMinPlayers', 'minPlayers', 'creditsStart', 'karma']);
+const TTT_BASIC = new Set(['roundLimit', 'prepTime', 'postTime', 'haste', 'proximityVoice', 'traitorPct', 'detMinPlayers', 'minPlayers', 'creditsStart', 'karma']);
 
 function tttDefaults() {
   // The server boots into the FIRST map of the rotation; the known collection
@@ -269,7 +278,9 @@ function tttValidate(s = {}) {
   out.workshopCollection = coll;
 
   for (const f of TTT_FIELDS) {
-    const n = Number(s[f.key]);
+    // Missing key = a profile saved before this field existed → its default.
+    // A present-but-non-numeric value is still an error.
+    const n = Number(s[f.key] ?? f.def);
     if (Number.isNaN(n)) throw badSetting(`${f.label} must be a number`);
     if (n < f.min || n > f.max) throw badSetting(`${f.label} must be ${f.min}–${f.max}`);
     if (f.int && !Number.isInteger(n)) throw badSetting(`${f.label} must be a whole number`);

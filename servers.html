@@ -2772,11 +2772,13 @@ async function loadRaw(){
   const body = detail.querySelector('#dBody')
   body.innerHTML = `<div class="pane on"><div class="note-block">Loading config…</div></div>`
   try {
+    // configs: null = this game has no config library (CS-only feature) — the
+    // sidebar section + "Save current as…" render only when it's an array.
     const [{ files }, configs] = await Promise.all([
       api(sv(DS.id, '/config')),
-      api(sv(DS.id, '/configs')).then(r => r ?? []).catch(() => []),
+      api(sv(DS.id, '/configs')).then(r => r ?? []).catch(() => null),
     ])
-    DS.files = files || []; DS.configs = configs || []
+    DS.files = files || []; DS.configs = configs
   } catch (e) { body.innerHTML = `<div class="pane on"><div class="note-block pane-err">config unavailable: ${esc(errMsg(e))}</div></div>`; return }
   if (!DS.schema) { try { DS.schema = await api(sv(DS.id, '/profiles/schema')) } catch {} }
   DS.cvarRef = DS.schema?.cvarRef || []
@@ -2787,6 +2789,7 @@ function renderRaw(){
   const body = detail.querySelector('#dBody')
   const fileOpts = DS.files.length ? DS.files.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('') : '<option value="">(no editable files)</option>'
   const hasRef = (DS.cvarRef || []).length > 0
+  const hasLib = Array.isArray(DS.configs)
   const snipRows = (DS.configs || []).length
     ? DS.configs.map(c => `<div class="rc-snip-row" data-snip-row="${esc(c.id)}"><span class="rc-snip-name" title="${esc(c.name)}">${esc(c.name)}</span><button type="button" class="mini-btn" data-snip-load>load</button><button type="button" class="mini-btn x" data-snip-del>✕</button></div>`).join('')
     : `<div class="note-block">No saved configs.</div>`
@@ -2803,9 +2806,9 @@ function renderRaw(){
     </div>
     <div class="rc-side">
       ${hasRef ? `<div class="rc-side-title">Cvar Reference</div><input type="text" class="rc-filter" data-rc-filter placeholder="filter…" /><div class="rc-ref-list" data-rc-reflist></div>` : ''}
-      <div class="rc-side-title" style="margin-top:14px">Config Library</div>
+      ${hasLib ? `<div class="rc-side-title" style="margin-top:14px">Config Library</div>
       <div data-rc-sniplist>${snipRows}</div>
-      <button type="button" class="mini-btn" data-snip-add style="margin-top:8px">＋ Save current as…</button>
+      <button type="button" class="mini-btn" data-snip-add style="margin-top:8px">＋ Save current as…</button>` : ''}
     </div>
     ${consoleHTML(DS.id)}
   </div>`
@@ -2831,8 +2834,10 @@ function wireRaw(){
       lint()
     } catch (e) { toast(errMsg(e), 'err'); text.value = ''; text.disabled = true; saveBtn.disabled = true }
   }
-  // JSON files hard-block save on a parse error; cvar files warn on unknown
-  // names / out-of-bounds numbers using the schema's embedded cvarRef.
+  // JSON files hard-block save on a parse error; cvar files warn on out-of-bounds
+  // numbers for cvars in the schema's embedded cvarRef. The ref is a curated
+  // subset, NOT the engine's cvar universe — names it doesn't know (hostname,
+  // sv_password, …) are left alone, never flagged.
   function lint(){
     const file = sel.value || ''; const val = text.value
     if (/\.json$/i.test(file)) {
@@ -2840,16 +2845,19 @@ function wireRaw(){
       catch (e) { lintEl.className = 'rc-lint err'; lintEl.textContent = `⚠ JSON error: ${e.message} — fix before saving`; blockSave = true }
     } else {
       blockSave = false
-      const ref = DS.cvarRef || []; const known = new Set(ref.map(c => String(c.name))); const warns = []
+      const ref = DS.cvarRef || []; const warns = []
       val.split('\n').forEach((line, i) => {
         const ln = line.trim()
         if (!ln || ln.startsWith('//') || ln.startsWith('#') || ln.startsWith('"')) return
         const m = ln.match(/^([a-zA-Z0-9_]+)\s+(.+)$/); if (!m) return
         const [, name, rawv] = m
-        if (ref.length && !known.has(name)) { warns.push(`line ${i+1}: unknown cvar '${name}'`); return }
         const def = ref.find(c => String(c.name) === name)
         if (def && def.type === 'number') {
-          const n = Number(rawv.replace(/["';].*$/, '').trim())
+          // Values are often quoted (`ttt_round_limit "6"` — the form profile-apply
+          // writes): unwrap a leading quoted token, else strip trailing comment.
+          const v = rawv.trim()
+          const q = v.match(/^"([^"]*)"/)
+          const n = Number(q ? q[1] : v.replace(/["';].*$/, '').trim())
           if (!Number.isNaN(n)) { if (def.min != null && n < def.min) warns.push(`line ${i+1}: ${name} ${n} < min ${def.min}`); if (def.max != null && n > def.max) warns.push(`line ${i+1}: ${name} ${n} > max ${def.max}`) }
         }
       })

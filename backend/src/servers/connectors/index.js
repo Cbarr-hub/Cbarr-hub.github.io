@@ -10,6 +10,7 @@ import { minecraftSpec } from './specs/minecraft.js';
 import { counterstrikeSpec } from './specs/counterstrike.js';
 import { gmodSpec } from './specs/gmod.js';
 import { prophuntSpec } from './specs/prophunt.js';
+import { rlcraftSpec } from './specs/rlcraft.js';
 
 const SPECS = {
   factorio: factorioSpec,
@@ -17,6 +18,7 @@ const SPECS = {
   counterstrike: counterstrikeSpec,
   gmod: gmodSpec,
   prophunt: prophuntSpec,
+  rlcraft: rlcraftSpec,
 };
 
 /**

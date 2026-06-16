@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { testDb } from './test-db.js';
-import { fakeDockerClient } from './harness.mjs';
+import { fakeDockerClient, withRconCapture, withEnvMany } from './harness.mjs';
 import { createServerStore } from '../src/servers/store.js';
 import { buildConnector } from '../src/servers/connectors/engine.js';
 import { gmodSpec } from '../src/servers/connectors/specs/gmod.js';
 import { prophuntSpec } from '../src/servers/connectors/specs/prophunt.js';
+import { minecraftSpec } from '../src/servers/connectors/specs/minecraft.js';
 
 // CS / Factorio / Minecraft profile logic is covered by the docker-*.test.mjs
 // files. This file covers the store + the GMOD-family specs (GMOD/Prop Hunt)
@@ -290,4 +291,60 @@ test('prophunt: listProfiles seeds a Default the first time', () => {
   const { profiles } = conn.listProfiles();
   assert.equal(profiles.length, 1);
   assert.equal(profiles[0].name, 'Default');
+});
+
+// ── startup commands: persisted on the profile, validated, replayed on Apply ─────
+const MC = { id: 'minecraft', name: 'Minecraft', backend: 'docker', container: 'minecraft', port: 25565 };
+
+test('profiles: startup commands round-trip + partial update preserves them', () => {
+  const store = createServerStore(testDb());
+  const p = store.createProfile('gmod', { name: 'Boot', settings: { a: 1 }, commands: ['cmd one', 'cmd two'] });
+  assert.deepEqual(p.commands, ['cmd one', 'cmd two']);
+  assert.deepEqual(store.getProfile('gmod', p.id).commands, ['cmd one', 'cmd two']);
+  assert.equal('commands' in store.listProfiles('gmod')[0], false);                  // list omits the body
+  assert.deepEqual(store.updateProfile('gmod', p.id, { settings: { a: 2 } }).commands, ['cmd one', 'cmd two']); // settings-only update keeps commands
+  assert.deepEqual(store.updateProfile('gmod', p.id, { commands: ['only', 5, 'kept'] }).commands, ['only', 'kept']); // replaced; non-strings filtered
+  assert.deepEqual(store.createProfile('gmod', { name: 'Bare', settings: {} }).commands, []); // defaults to []
+});
+
+test('profiles: createProfile validates + trims startup commands', () => {
+  const conn = buildConnector(MC, minecraftSpec, fakeDockerClient(), createServerStore(testDb()));
+  const base = conn.defaultProfileSettings();
+  assert.throws(() => conn.createProfile({ name: 'b1', settings: base, commands: ['ok', ''] }), /required/);
+  assert.throws(() => conn.createProfile({ name: 'b2', settings: base, commands: ['a\nb'] }), /newline/);
+  assert.throws(() => conn.createProfile({ name: 'b3', settings: base, commands: ['x'.repeat(513)] }), /too long/);
+  assert.throws(() => conn.createProfile({ name: 'b4', settings: base, commands: Array(26).fill('cmd') }), /at most/);
+  assert.throws(() => conn.createProfile({ name: 'b5', settings: base, commands: 'nope' }), /must be a list/);
+  const p = conn.createProfile({ name: 'good', settings: base, commands: ['  say hi  ', 'time set day'] });
+  assert.deepEqual(p.commands, ['say hi', 'time set day']); // validateLiveCommand trims each
+});
+
+test('runProfileCommands replays the saved commands over RCON in order', async () => {
+  const store = createServerStore(testDb());
+  const { commands } = await withEnvMany({ MINECRAFT_RCON_PASSWORD: 'secret' }, () =>
+    withRconCapture({ responder: () => 'ok' }, async ({ port }) => {
+      const conn = buildConnector({ ...MC, container: '127.0.0.1', rconPort: port }, minecraftSpec, fakeDockerClient(), store);
+      const p = conn.createProfile({ name: 'Boot', settings: conn.defaultProfileSettings(),
+        commands: ['gamerule keepInventory true', 'say hello'] });
+      const out = await conn.runProfileCommands(p.id);
+      assert.equal(out.ok, true);
+      assert.equal(out.ran, 2);
+    }));
+  assert.deepEqual(commands, ['gamerule keepInventory true', 'say hello']);
+});
+
+test('runProfileCommands skips gracefully when RCON is unconfigured (Apply never half-fails)', async () => {
+  await withEnvMany({ MINECRAFT_RCON_PASSWORD: undefined }, async () => {
+    const conn = buildConnector(MC, minecraftSpec, fakeDockerClient(), createServerStore(testDb()));
+    const p = conn.createProfile({ name: 'Boot', settings: conn.defaultProfileSettings(), commands: ['say hi'] });
+    const out = await conn.runProfileCommands(p.id);
+    assert.equal(out.skipped, true);
+    assert.equal(out.ok, false);
+  });
+});
+
+test('runProfileCommands is a no-op when the profile has no commands', async () => {
+  const conn = buildConnector(MC, minecraftSpec, fakeDockerClient(), createServerStore(testDb()));
+  const p = conn.createProfile({ name: 'Empty', settings: conn.defaultProfileSettings() });
+  assert.deepEqual(await conn.runProfileCommands(p.id), { ok: true, ran: 0, results: [] });
 });

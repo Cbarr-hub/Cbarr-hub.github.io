@@ -444,12 +444,12 @@ test('minecraft spec getLive is unavailable without an RCON password', async () 
 // ── factory wiring: backend selection ───────────────────────────────────────────
 test('buildConnectors builds every docker-backed entry, and skips when no client', () => {
   const docker = fakeDockerClient();
-  // A docker client → all five (docker-backed) registry entries build, EACH wired
+  // A docker client → all six (docker-backed) registry entries build, EACH wired
   // to its spec (engine GameConnector) or its concrete legacy class (a missing
   // spec/class would now throw, not fall back).
   const built = buildConnectors({ docker });
-  assert.equal(built.size, 5);
-  for (const id of ['minecraft', 'factorio', 'counterstrike', 'gmod', 'prophunt']) {
+  assert.equal(built.size, 6);
+  for (const id of ['minecraft', 'factorio', 'counterstrike', 'gmod', 'prophunt', 'rlcraft']) {
     assert.ok(built.get(id) instanceof GameConnector, `${id} builds on the engine`);
   }
 

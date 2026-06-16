@@ -8,7 +8,7 @@
 // placeholders. Change a statement here and the collector port must follow
 // (and vice versa). Migrations 005/006 define the schema these write to.
 
-// The five game servers live in the party-games `games` table tagged hosted=1.
+// The hosted game servers live in the party-games `games` table tagged hosted=1.
 // The conflict target MUST carry the partial-index predicate — migration 006's
 // `idx_games_slug … WHERE hosted = 1` is a PARTIAL unique index, and SQLite
 // requires the WHERE clause in the ON CONFLICT target to match it exactly.

@@ -37,7 +37,7 @@ export function createServerStore(db) {
     'id, name, body, created_at, updated_at');
   const profiles = crud('server_profiles', 'id',
     'id, name, created_at, updated_at',
-    'id, name, settings, created_at, updated_at');
+    'id, name, settings, commands, created_at, updated_at');
   // The session-projection reads all surface the linked site account (if any) via
   // the same player_accounts→users hop. `kind` is INNER `JOIN` (linked-only) or
   // `LEFT JOIN` (include unlinked); ACCOUNT_COLS are the two columns it contributes.
@@ -95,10 +95,10 @@ export function createServerStore(db) {
       `SELECT COUNT(*) AS n FROM server_profiles WHERE server_id = ?`,
     ),
     insertProfile: db.prepare(
-      `INSERT INTO server_profiles (server_id, name, settings) VALUES (?, ?, ?)`,
+      `INSERT INTO server_profiles (server_id, name, settings, commands) VALUES (?, ?, ?, ?)`,
     ),
     updateProfile: db.prepare(
-      `UPDATE server_profiles SET name = ?, settings = ?, updated_at = unixepoch()
+      `UPDATE server_profiles SET name = ?, settings = ?, commands = ?, updated_at = unixepoch()
         WHERE server_id = ? AND id = ?`,
     ),
     clearActiveForProfile: db.prepare(
@@ -113,7 +113,7 @@ export function createServerStore(db) {
     ),
 
     // ── player-session tracking ──
-    // The five game servers live in the party-games `games` table tagged
+    // The hosted game servers live in the party-games `games` table tagged
     // hosted=1; sessions FK to games(id). slug→id is cached below. The SQL
     // itself is the canonical copy in ./session-sql.js (shared with the host
     // collector) — prepare it, never inline a duplicate here.
@@ -200,6 +200,11 @@ export function createServerStore(db) {
   // else (null/array/scalar) to {} on the way in so getProfile never yields a
   // non-object back to callers.
   const asSettings = (s) => (s && typeof s === 'object' && !Array.isArray(s) ? s : {});
+  // Profile startup commands are a JSON string array (replayed over RCON after
+  // apply). NULL/garbage → []; asCommands keeps only strings so a malformed
+  // payload can't persist non-strings.
+  const parseCommands = (json) => { try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; } };
+  const asCommands = (c) => (Array.isArray(c) ? c.filter((x) => typeof x === 'string') : []);
 
   // Lazy slug→games.id cache for the hosted servers (rebuilt by seedHostedGames).
   let gameIdBySlug = null;
@@ -258,23 +263,25 @@ export function createServerStore(db) {
     getProfile(serverId, id) {
       const row = profiles.get.get(serverId, id);
       if (!row) return null;
-      return { ...row, settings: parseSettings(row.settings) };
+      return { ...row, settings: parseSettings(row.settings), commands: parseCommands(row.commands) };
     },
     countProfiles(serverId) {
       return stmts.countProfiles.get(serverId).n;
     },
-    createProfile(serverId, { name, settings = {} }) {
-      const { lastInsertRowid } = stmts.insertProfile.run(serverId, name, JSON.stringify(asSettings(settings)));
+    createProfile(serverId, { name, settings = {}, commands = [] }) {
+      const { lastInsertRowid } = stmts.insertProfile.run(
+        serverId, name, JSON.stringify(asSettings(settings)), JSON.stringify(asCommands(commands)));
       return this.getProfile(serverId, lastInsertRowid);
     },
     // Partial update: only provided fields change. Returns the updated row or null.
-    updateProfile(serverId, id, { name, settings } = {}) {
+    updateProfile(serverId, id, { name, settings, commands } = {}) {
       const existing = this.getProfile(serverId, id);
       if (!existing) return null;
       const nextName = name ?? existing.name;
-      // existing.settings is already a parsed object; only sanitize a fresh value.
+      // existing.settings/commands are already parsed; only sanitize a fresh value.
       const nextSettings = settings === undefined ? existing.settings : asSettings(settings);
-      stmts.updateProfile.run(nextName, JSON.stringify(nextSettings), serverId, id);
+      const nextCommands = commands === undefined ? existing.commands : asCommands(commands);
+      stmts.updateProfile.run(nextName, JSON.stringify(nextSettings), JSON.stringify(nextCommands), serverId, id);
       return this.getProfile(serverId, id);
     },
     // Delete a profile and clear the active pointer if it referenced it (explicit

@@ -55,9 +55,10 @@ test('registry maps ids to their containers (all docker-backed)', () => {
   assert.equal(getServer('minecraft').container, 'minecraft');
   assert.equal(getServer('gmod').container, 'gmod');
   assert.equal(getServer('prophunt').container, 'prophunt');
+  assert.equal(getServer('rlcraft').container, 'rlcraft');
   assert.ok(listServers().every((s) => s.backend === 'docker'));
   assert.equal(getServer('nope'), undefined);
-  assert.equal(listServers().length, 5);
+  assert.equal(listServers().length, 6);
 });
 
 // ── status normalization ────────────────────────────────────────────────────────
@@ -82,7 +83,7 @@ test('service without a docker client reports not-configured', async () => {
 test('listServers returns every server with normalized status', async () => {
   const svc = createServerService({ dockerClient: fakeDocker() });
   const list = await svc.listServers();
-  assert.equal(list.length, 5);
+  assert.equal(list.length, 6);
   assert.ok(list.every((s) => s.status === 'running'));
   // a single-purpose game container that's running == hosting
   assert.ok(list.every((s) => s.gameStatus === 'hosting'));
@@ -99,7 +100,7 @@ test('listServers quick mode skips per-container stats', async () => {
     },
   }) });
   const quick = await svc.listServers({ mode: 'quick' });
-  assert.equal(quick.length, 5);
+  assert.equal(quick.length, 6);
   assert.ok(seen.every(([, opts]) => opts?.stats === false));
   assert.ok(quick.every((s) => s.cpu == null));
 });

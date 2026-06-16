@@ -234,7 +234,12 @@ function startLogTail(server) {
   // connection), so the same-name guard below is safe.
   const open = new Map();
   const pendingUuid = new Map(); // Minecraft: name → uuid seen just before join
-  const parse = slug === 'minecraft' ? parseMinecraftLog : parseFactorioLog;
+  // RLCraft is also a Minecraft-family server (Forge 1.12.2): same vanilla log
+  // format + Mojang-UUID pairing as vanilla MC. Gate on the identity namespace,
+  // not the slug, so every Minecraft-family game takes the MC parser/UUID path
+  // (keeps the collector registry-driven — no per-game list to drift).
+  const isMinecraftLike = identityKind === 'minecraft';
+  const parse = isMinecraftLike ? parseMinecraftLog : parseFactorioLog;
 
   const spawnTail = async () => {
     if (!(await isRunning(container))) { setTimeout(spawnTail, 5_000); return; }
@@ -283,7 +288,7 @@ function startLogTail(server) {
     if (ev.kind === 'uuid') { pendingUuid.set(ev.name, ev.uuid); return; }
     if (ev.kind === 'join') {
       if (open.has(ev.name)) return; // already tracked
-      const uid = slug === 'minecraft' ? (pendingUuid.get(ev.name) ?? null) : ev.name;
+      const uid = isMinecraftLike ? (pendingUuid.get(ev.name) ?? null) : ev.name;
       pendingUuid.delete(ev.name);
       const id = await recordJoin(slug, { name: ev.name, uid, identityKind }, ts, 'log');
       if (id != null) open.set(ev.name, id);

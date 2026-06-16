@@ -113,7 +113,7 @@ export function createServerStore(db) {
     ),
 
     // ── player-session tracking ──
-    // The five game servers live in the party-games `games` table tagged
+    // The hosted game servers live in the party-games `games` table tagged
     // hosted=1; sessions FK to games(id). slug→id is cached below. The SQL
     // itself is the canonical copy in ./session-sql.js (shared with the host
     // collector) — prepare it, never inline a duplicate here.

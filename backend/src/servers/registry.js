@@ -3,7 +3,7 @@
 // The locator (container name) MUST only ever come from this table — never from
 // a request parameter. The HTTP layer accepts an opaque `id` ("factorio"), looks
 // it up here, and the locator never crosses the API boundary. That guarantees the
-// control panel can only ever touch these five servers, no matter what a client
+// control panel can only ever touch these six servers, no matter what a client
 // sends.
 //
 // GMOD shares the Source `connect` join style with CS but uses port 27066 —
@@ -35,6 +35,11 @@ export const SERVERS = [
   { id: 'gmod',          name: 'TTT',                backend: 'docker', container: 'gmod', connector: 'gmod',          port: 27066, connect: 'cs',      identityKind: 'steam',     collect: 'rcon', rconEnvKey: 'GMOD_RCON_PASSWORD',     steam: { appid: 4000,   arg: '+connect' } },
   { id: 'prophunt',      name: 'Prop Hunt',          backend: 'docker', container: 'prophunt', connector: 'prophunt',      port: 27067, connect: 'cs',      identityKind: 'steam',     collect: 'rcon', rconEnvKey: 'PROPHUNT_RCON_PASSWORD', steam: { appid: 4000,   arg: '+connect' } },
   { id: 'minecraft',     name: 'Minecraft',          backend: 'docker', container: 'minecraft', connector: 'minecraft',     port: 25565, connect: 'address', identityKind: 'minecraft', collect: 'log' },
+  // RLCraft (modded Minecraft, Forge 1.12.2) — its own connector spec (1.12.2
+  // gamerules/cvars differ from vanilla). Shares the Mojang-UUID identity
+  // namespace; log-collected like vanilla MC. No rconPort → spec portFallback
+  // 25575. No `steam` (Java MC has no launch URL → copy-only join string).
+  { id: 'rlcraft',       name: 'RLCraft',            backend: 'docker', container: 'rlcraft', connector: 'rlcraft',       port: 25566, connect: 'address', identityKind: 'minecraft', collect: 'log' },
 ];
 
 function quoteConsole(value) {

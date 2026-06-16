@@ -1,40 +1,29 @@
-// Minecraft spec — image `itzg/minecraft-server`. World + config under /data;
-// live control is RCON (itzg default 25575, overridable via registry `rconPort`)
-// with the password from MINECRAFT_RCON_PASSWORD. A profile materializes onto
-// server.properties keys (bools '1'/'0' here, 'true'/'false' on disk); capture
-// runs the read back through the validator so it bounds-checks too.
+// RLCraft spec — modded Minecraft (Forge 1.12.2, modpack v2.9.3) on the
+// `itzg/minecraft-server:java8` image. Same /data layout + vanilla RCON as the
+// regular Minecraft server, so it REUSES minecraft.js's version-agnostic plumbing
+// (server.properties text helpers, world discovery, usercache UUID resolution,
+// the player-list parser). It OVERRIDES only what differs on 1.12.2:
+//   • gamerules are camelCase (keepInventory, doDaylightCycle, …) and a smaller
+//     set — the modern snake_case rules (do_insomnia, players_sleeping_percentage,
+//     do_immediate_respawn, fall_damage) don't exist here, so they're dropped;
+//   • `simulation-distance` is a 1.18+ property — dropped from the profile;
+//   • there's no `data get entity` command (1.13+), so getPlayerPosition is
+//     omitted (BlueMap doesn't support 1.12.2 anyway — no web map for RLCraft).
+// Live control is RCON (itzg default 25575, password from RLCRAFT_RCON_PASSWORD).
 
 import { badSetting, SAFE_NAME_RE } from '../../errors.js';
+import {
+  getProp, setProp, listWorlds, currentWorld, usercache,
+  parseMinecraftPlayerList, GAMEMODES, DIFFICULTIES, PROFILE_NOTE,
+} from './minecraft.js';
 
 const DATA  = '/data';
 const PROPS = `${DATA}/server.properties`;
-const MC_TARGET_RE = /^[A-Za-z0-9_.-]{1,64}$/;
-const DIMENSION_MAP_IDS = {
-  'minecraft:overworld': 'overworld',
-  'minecraft:the_nether': 'nether',
-  'minecraft:the_end': 'end',
-};
 
-export const GAMEMODES    = ['survival', 'creative', 'adventure', 'spectator'];
-export const DIFFICULTIES = ['peaceful', 'easy', 'normal', 'hard'];
+export { GAMEMODES, DIFFICULTIES };
 
-// Exported (with the text/world/usercache helpers below) so the RLCraft spec
-// can reuse this version-agnostic plumbing without duplicating it.
-export const PROFILE_NOTE =
-  'A profile is the startup config the server boots as. Changes apply on the next restart.';
-
-// ── server.properties text helpers (plain key=value, no quotes) ──────────────
-// setProp uses a function replacer so a `$` in a value isn't a backreference.
-export function getProp(text, key) {
-  const m = text.match(new RegExp(`^${key}=(.*)$`, 'm'));
-  return m ? m[1].trim() : undefined;
-}
-export function setProp(text, key, value) {
-  const re = new RegExp(`^${key}=.*$`, 'm');
-  const line = `${key}=${value}`;
-  return re.test(text) ? text.replace(re, () => line) : text.replace(/\n*$/, '') + `\n${line}\n`;
-}
-
+// ── profile validation (server.properties; bools as '1'/'0' here, 'true'/'false'
+// on disk). Mirrors minecraft.js minus `simulationDistance` (1.18+ only). ───────
 function validateProfileSettings(s = {}) {
   const out = {};
   out.world = String(s.world ?? '').trim();
@@ -49,7 +38,6 @@ function validateProfileSettings(s = {}) {
   out.maxPlayers      = intIn(s.maxPlayers ?? 20, 1, 200, 'max players');
   out.viewDistance    = intIn(s.viewDistance ?? 10, 3, 32, 'view distance');
   out.spawnProtection = intIn(s.spawnProtection ?? 16, 0, 1000, 'spawn protection');
-  out.simulationDistance = intIn(s.simulationDistance ?? 10, 3, 32, 'simulation distance');
   out.playerIdleTimeout  = intIn(s.playerIdleTimeout ?? 0, 0, 1440, 'idle timeout');
   const motd = String(s.motd ?? '');
   if (motd.length > 200 || /[\n\r]/.test(motd)) throw badSetting('motd must be ≤200 chars, single line');
@@ -82,7 +70,6 @@ function applyProps(text, settings) {
   set('allow-nether', s.allowNether === '1' ? 'true' : 'false');
   set('spawn-monsters', s.spawnMonsters === '1' ? 'true' : 'false');
   set('enable-command-block', s.commandBlocks === '1' ? 'true' : 'false');
-  set('simulation-distance', String(s.simulationDistance));
   set('player-idle-timeout', String(s.playerIdleTimeout));
   return out;
 }
@@ -106,12 +93,12 @@ function captureProps(text) {
     allowNether: boolp('allow-nether', '1'),
     spawnMonsters: boolp('spawn-monsters', '1'),
     commandBlocks: boolp('enable-command-block', '0'),
-    simulationDistance: nump('simulation-distance', 10),
     playerIdleTimeout: nump('player-idle-timeout', 0),
   });
 }
 
-// The Profiles editor groups (World / Gameplay / Access).
+// The Profiles editor groups (World / Gameplay / Access) — minecraft.js minus
+// the simulationDistance field.
 function profileGroups(worldOpts) {
   const enumOpts = (arr) => arr.map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }));
   return [
@@ -119,7 +106,7 @@ function profileGroups(worldOpts) {
       key: 'world', title: 'World',
       fields: [
         { key: 'world', label: 'Active World', type: 'select', options: worldOpts, basic: true,
-          help: 'Which world the server loads on (re)start. Snapshot/back up worlds in Quick Settings below.' },
+          help: 'Which world the server loads on (re)start. RLCraft worlds are large — back up before switching.' },
       ],
     },
     {
@@ -134,7 +121,6 @@ function profileGroups(worldOpts) {
         { key: 'commandBlocks', label: 'Command Blocks',  type: 'bool' },
         { key: 'maxPlayers',      label: 'Max Players',   type: 'number', min: 1, max: 200, step: 1, basic: true },
         { key: 'viewDistance',    label: 'View Distance', type: 'number', min: 3, max: 32, step: 1 },
-        { key: 'simulationDistance', label: 'Simulation Distance', type: 'number', min: 3, max: 32, step: 1 },
         { key: 'spawnProtection', label: 'Spawn Protection (blocks)', type: 'number', min: 0, max: 1000, step: 1 },
         { key: 'playerIdleTimeout',  label: 'Idle Kick (min, 0=off)', type: 'number', min: 0, max: 1440, step: 1 },
       ],
@@ -151,7 +137,7 @@ function profileGroups(worldOpts) {
   ];
 }
 
-// Raw Config tab reference (names are the on-disk keys, not the camelCase ones).
+// Raw Config tab reference (on-disk keys). 1.12.2 set — no simulation-distance.
 const CVAR_REF = [
   { name: 'gamemode',             type: 'select', default: 'survival', group: 'gameplay', help: GAMEMODES.join(' / ') },
   { name: 'difficulty',           type: 'select', default: 'normal',   group: 'gameplay', help: DIFFICULTIES.join(' / ') },
@@ -159,102 +145,20 @@ const CVAR_REF = [
   { name: 'pvp',                  type: 'bool',   default: 'true',     group: 'gameplay' },
   { name: 'allow-nether',         type: 'bool',   default: 'true',     group: 'gameplay' },
   { name: 'spawn-monsters',       type: 'bool',   default: 'true',     group: 'gameplay' },
-  { name: 'enable-command-block', type: 'bool',   default: 'false',    group: 'gameplay' },
+  { name: 'enable-command-block', type: 'bool',   default: 'true',     group: 'gameplay', help: 'RLCraft structures depend on this' },
   { name: 'max-players',          type: 'number', default: 20, min: 1, max: 200,  group: 'gameplay' },
   { name: 'view-distance',        type: 'number', default: 10, min: 3, max: 32,   group: 'gameplay' },
-  { name: 'simulation-distance',  type: 'number', default: 10, min: 3, max: 32,   group: 'gameplay' },
   { name: 'spawn-protection',     type: 'number', default: 16, min: 0, max: 1000, group: 'gameplay' },
   { name: 'player-idle-timeout',  type: 'number', default: 0,  min: 0, max: 1440, group: 'gameplay', help: 'minutes; 0 = off' },
   { name: 'white-list',           type: 'bool',   default: 'false',    group: 'access' },
   { name: 'online-mode',          type: 'bool',   default: 'true',     group: 'access' },
   { name: 'motd',                 type: 'text',   default: 'Gamertown', group: 'access' },
   { name: 'level-name',           type: 'text',   default: 'world',    group: 'world' },
+  { name: 'level-type',           type: 'text',   default: 'BIOMESOP', group: 'world', help: 'first-boot only (set via LEVEL_TYPE env)' },
 ];
 
-// ── world discovery (for the profile world picker) ────────────────────────────
-export async function currentWorld(conn) {
-  try {
-    const { content = '' } = await conn.client.fileRead(conn.vmid, PROPS);
-    return content.match(/^level-name\s*=\s*(.+)$/m)?.[1]?.trim() || 'world';
-  } catch {
-    return 'world';
-  }
-}
-
-export async function listWorlds(conn) {
-  try {
-    const res = await conn.runShell(
-      `find "${DATA}" -maxdepth 2 -name level.dat -printf '%h\\n' 2>/dev/null | while read d; do basename "$d"; done`,
-      { timeoutMs: 15_000 },
-    );
-    return (res.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-// ── presence / position parsing (BlueMap live markers) ────────────────────────
-function parseMinecraftVector(text, count) {
-  const m = String(text || '').match(/\[\s*([-+]?\d+(?:\.\d+)?)(?:[dDfF])?\s*,\s*([-+]?\d+(?:\.\d+)?)(?:[dDfF])?(?:\s*,\s*([-+]?\d+(?:\.\d+)?)(?:[dDfF])?)?\s*\]/);
-  if (!m) return null;
-  const values = [Number(m[1]), Number(m[2]), m[3] === undefined ? undefined : Number(m[3])];
-  if (values.slice(0, count).some((n) => !Number.isFinite(n))) return null;
-  return values;
-}
-
-// A "no entity" reply (offline player) carries no `[…]` bracket; a bracketed
-// reply whose numbers don't parse is genuine corruption.
-function hasVectorBracket(text) {
-  return /\[/.test(String(text || ''));
-}
-
-function parseMinecraftDimension(text) {
-  return String(text || '').match(/"([^"]+)"/)?.[1]
-    || String(text || '').match(/\b(minecraft:[a-z0-9_./-]+)\b/)?.[1]
-    || 'minecraft:overworld';
-}
-
-function mapIdForDimension(dimension) {
-  return DIMENSION_MAP_IDS[dimension] || 'overworld';
-}
-
-function blueMapAnchor({ x, y, z, mapId }) {
-  return `${mapId}:${Math.round(x)}:${Math.round(y)}:${Math.round(z)}:390:0.1:0.19:0:0:perspective`;
-}
-
-export function parseMinecraftPlayerList(text) {
-  const body = String(text || '').split(':').slice(1).join(':').trim();
-  if (!body) return [];
-  return body
-    .split(',')
-    .map((p) => p.trim())
-    .filter((p) => MC_TARGET_RE.test(p));
-}
-
-// Lowercased name→uuid map from /data/usercache.json, TTL-cached per connector:
-// the ~2s BlueMap tick made a docker-exec cat per tick the biggest proxy cost.
-// Trade-off: a brand-new player gets a default head for up to 60s; read/parse
-// failures serve the last good map.
-const USERCACHE_TTL_MS = 60_000;
-const usercacheByConn = new WeakMap();
-export async function usercache(conn) {
-  const hit = usercacheByConn.get(conn);
-  if (hit && Date.now() - hit.at < USERCACHE_TTL_MS) return hit.map;
-  try {
-    const { content = '' } = await conn.client.fileRead(conn.vmid, `${DATA}/usercache.json`);
-    const map = new Map();
-    for (const entry of JSON.parse(content || '[]')) {
-      if (entry?.name && entry?.uuid) map.set(String(entry.name).toLowerCase(), String(entry.uuid));
-    }
-    usercacheByConn.set(conn, { at: Date.now(), map });
-    return map;
-  } catch {
-    return hit?.map ?? new Map();
-  }
-}
-
-export const minecraftSpec = {
-  id: 'minecraft',
+export const rlcraftSpec = {
+  id: 'rlcraft',
 
   configFiles: {
     'server.properties':   PROPS,
@@ -267,11 +171,14 @@ export const minecraftSpec = {
   rcon: {
     port: 'rconPort',
     portFallback: 25575,
-    password: { env: 'MINECRAFT_RCON_PASSWORD' },
-    gateReason: 'MINECRAFT_RCON_PASSWORD is not set',
+    password: { env: 'RLCRAFT_RCON_PASSWORD' },
+    gateReason: 'RLCRAFT_RCON_PASSWORD is not set',
   },
 
   // No changeMapCmd — switching worlds is restart-only (the profile world picker).
+  // 1.12.2 gamerules are camelCase; only rules that exist in 1.12.2 are advertised
+  // (dropped vs vanilla minecraft: fall_damage, do_immediate_respawn, do_insomnia,
+  // players_sleeping_percentage — none exist on 1.12.2).
   live: {
     actions: [
       { key: 'list', label: 'List Players' },
@@ -280,61 +187,42 @@ export const minecraftSpec = {
       { key: 'night', label: 'Set Night' },
       { key: 'clear', label: 'Clear Weather' },
       { key: 'rain',  label: 'Rain' },
+      { key: 'thunder', label: 'Thunderstorm' },
       { key: 'keepinv_on',  label: 'Keep Inventory On' },
       { key: 'keepinv_off', label: 'Keep Inventory Off' },
       { key: 'mobs_on',  label: 'Mob Spawning On' },
       { key: 'mobs_off', label: 'Mob Spawning Off' },
-      // Gamerules persist per-world in level.dat (NOT ephemeral like Source cvars);
-      // only `thunder` is transient. snake_case names — see the controls note below.
-      { key: 'daycycle_on',     label: 'Day/Night Cycle On' },
-      { key: 'daycycle_off',    label: 'Day/Night Cycle Off' },
-      { key: 'griefing_on',     label: 'Mobs Break Blocks On' },
-      { key: 'griefing_off',    label: 'Mobs Break Blocks Off' },
-      { key: 'falldmg_on',      label: 'Fall Damage On' },
-      { key: 'falldmg_off',     label: 'Fall Damage Off' },
-      { key: 'instarespawn_on', label: 'Instant Respawn On' },
-      { key: 'instarespawn_off',label: 'Instant Respawn Off' },
-      { key: 'phantoms_on',     label: 'Phantoms On' },
-      { key: 'phantoms_off',    label: 'Phantoms Off' },
-      { key: 'firetick_on',     label: 'Fire Spreads On' },
-      { key: 'firetick_off',    label: 'Fire Spreads Off' },
-      { key: 'thunder',         label: 'Thunderstorm' },
+      { key: 'daycycle_on',  label: 'Day/Night Cycle On' },
+      { key: 'daycycle_off', label: 'Day/Night Cycle Off' },
+      { key: 'griefing_on',  label: 'Mobs Break Blocks On' },
+      { key: 'griefing_off', label: 'Mobs Break Blocks Off' },
+      { key: 'firetick_on',  label: 'Fire Spreads On' },
+      { key: 'firetick_off', label: 'Fire Spreads Off' },
     ],
     actionCmds: {
       list: 'list', save: 'save-all',
       day: 'time set day', night: 'time set night',
-      clear: 'weather clear', rain: 'weather rain',
-      keepinv_on:  'gamerule keep_inventory true',
-      keepinv_off: 'gamerule keep_inventory false',
-      mobs_on:  'gamerule spawn_mobs true',
-      mobs_off: 'gamerule spawn_mobs false',
-      daycycle_on:      'gamerule do_daylight_cycle true',
-      daycycle_off:     'gamerule do_daylight_cycle false',
-      griefing_on:      'gamerule mob_griefing true',
-      griefing_off:     'gamerule mob_griefing false',
-      falldmg_on:       'gamerule fall_damage true',
-      falldmg_off:      'gamerule fall_damage false',
-      instarespawn_on:  'gamerule do_immediate_respawn true',
-      instarespawn_off: 'gamerule do_immediate_respawn false',
-      phantoms_on:      'gamerule do_insomnia true',
-      phantoms_off:     'gamerule do_insomnia false',
-      firetick_on:      'gamerule do_fire_tick true',
-      firetick_off:     'gamerule do_fire_tick false',
-      thunder:          'weather thunder',
+      clear: 'weather clear', rain: 'weather rain', thunder: 'weather thunder',
+      keepinv_on:  'gamerule keepInventory true',
+      keepinv_off: 'gamerule keepInventory false',
+      mobs_on:  'gamerule doMobSpawning true',
+      mobs_off: 'gamerule doMobSpawning false',
+      daycycle_on:  'gamerule doDaylightCycle true',
+      daycycle_off: 'gamerule doDaylightCycle false',
+      griefing_on:  'gamerule mobGriefing true',
+      griefing_off: 'gamerule mobGriefing false',
+      firetick_on:  'gamerule doFireTick true',
+      firetick_off: 'gamerule doFireTick false',
     },
-    // Sliders use the SOFT clamp (no `strict`): 0 is a real value, empty/non-numeric
-    // falls back to `default`. Gamerule ids are snake_case on the deployed build
-    // (validated live, v26.1.2); mob spawning is `spawn_mobs` (NOT do_mob_spawning).
-    // Re-validate with backend/test-live/rcon-smoke.mjs if the pinned VERSION changes.
+    // Soft clamp (no `strict`): 0 is a real value, empty/non-numeric → default.
+    // randomTickSpeed is camelCase on 1.12.2; sleeppct dropped (1.17+ rule).
     controls: [
       { key: 'time',       label: 'Time of Day',       min: 0, max: 24000, step: 1000, default: 6000,
         cmd: (n) => `time set ${n}` },
       { key: 'randomtick', label: 'Random Tick Speed', min: 0, max: 20,    step: 1,    default: 3,
-        cmd: (n) => `gamerule random_tick_speed ${n}` },
-      { key: 'sleeppct',   label: 'Sleep %',           min: 0, max: 100,   step: 5,    default: 100, suffix: '%',
-        cmd: (n) => `gamerule players_sleeping_percentage ${n}` },
+        cmd: (n) => `gamerule randomTickSpeed ${n}` },
     ],
-    commandHint: 'Minecraft RCON',
+    commandHint: 'Minecraft RCON (Forge 1.12.2)',
   },
 
   profile: {
@@ -344,7 +232,7 @@ export const minecraftSpec = {
         motd: 'Gamertown', pvp: '1', hardcore: '0', whitelist: '0', onlineMode: '1',
         viewDistance: 10, spawnProtection: 16,
         allowNether: '1', spawnMonsters: '1', commandBlocks: '0',
-        simulationDistance: 10, playerIdleTimeout: 0,
+        playerIdleTimeout: 0,
       };
     },
 
@@ -371,8 +259,7 @@ export const minecraftSpec = {
   },
 
   async listOnlinePlayers(conn) {
-    // Match getLive()'s gate: with no RCON password there's nothing to ask the server,
-    // so short-circuit instead of opening a socket that rconExchange would just reject.
+    // Match getLive()'s gate: no RCON password → nothing to ask the server.
     const { password } = await conn.rconCreds();
     if (!password) return [];
     const { output } = await conn.runRcon('list');
@@ -388,49 +275,15 @@ export const minecraftSpec = {
     }));
   },
 
-  async getPlayerPosition(conn, target) {
-    const entity = String(target ?? '').trim();
-    if (!MC_TARGET_RE.test(entity)) throw badSetting('invalid Minecraft player id');
+  // No getPlayerPosition: 1.12.2 has no `data get entity`, and BlueMap doesn't
+  // support < 1.13, so there's no map to feed positions to. The engine
+  // feature-detects this, so omitting it cleanly disables position queries.
 
-    const rcon = (cmd) => conn.runRcon(cmd).then((r) => r.output);
-    const [posOut, dimOut, rotOut] = await Promise.all([
-      rcon(`data get entity ${entity} Pos`),
-      rcon(`data get entity ${entity} Dimension`),
-      rcon(`data get entity ${entity} Rotation`).catch(() => ''),
-    ]);
-    const pos = parseMinecraftVector(posOut, 3);
-    if (!pos) {
-      // Offline player → not-found reply with no vector: return `connected:false`
-      // (the graceful offline shape) instead of a 400.
-      if (!hasVectorBracket(posOut)) {
-        return {
-          connected: false,
-          reason: 'player is not online',
-          name: entity,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      throw badSetting('could not parse Minecraft player position');
-    }
-    const rot = parseMinecraftVector(rotOut, 2) || [null, null];
-    const dimension = parseMinecraftDimension(dimOut);
-    const out = {
-      x: pos[0],
-      y: pos[1],
-      z: pos[2],
-      dimension,
-      mapId: mapIdForDimension(dimension),
-      yaw: rot[0],
-      pitch: rot[1],
-      updatedAt: new Date().toISOString(),
-    };
-    return { ...out, anchor: blueMapAnchor(out) };
-  },
-
-  // The image re-resolves the configured VERSION on every start — update = restart.
+  // The image re-resolves the configured pack/VERSION on every start — update =
+  // restart. A true RLCraft pack bump is a CF_FILE_ID change + redeploy.
   update: {
     kind: 'reboot',
-    note: 'Restarted — itzg/minecraft-server re-downloaded the configured VERSION on boot. '
-      + 'Set VERSION=LATEST in servers.compose.yml to always pull the newest release.',
+    note: 'Restarted — itzg/minecraft-server re-resolved the configured RLCraft pack on boot. '
+      + 'To move to a new RLCraft release, bump CF_FILE_ID in servers.compose.yml and redeploy.',
   },
 };

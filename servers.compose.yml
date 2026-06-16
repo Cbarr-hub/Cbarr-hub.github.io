@@ -53,6 +53,49 @@ services:
     ports:
       - "25565:25565"
 
+  # RLCraft — modded Minecraft (Forge 1.12.2, modpack v2.9.3). Same itzg image
+  # FAMILY as vanilla MC but the java8 tag (Forge < 1.18 needs Java 8).
+  # KEYLESS install (no CurseForge API key): itzg installs vanilla Forge 1.12.2
+  # from the official Forge maven, then overlays the RLCraft *server pack*
+  # (mods + config, ~179 mods) via GENERIC_PACK straight from CurseForge's CDN
+  # (forgecdn — no account/key). The server pack ships NO Forge jar or start
+  # script, so GENERIC_PACK-over-TYPE=FORGE is the correct shape (AUTO_CURSEFORGE
+  # would need a CF_API_KEY). Bump RLCRAFT_SERVER_PACK_URL (+ FORGE_VERSION if the
+  # new release needs it) to move to a newer RLCraft. First boot installs Forge +
+  # ~179 mods + preps spawn (several min), so the image healthcheck is disabled
+  # (it would mark the container unhealthy mid-prep). NOT wired into the bluemap
+  # service: BlueMap requires MC >= 1.13, so RLCraft has no web map. Host port
+  # 25566 (vanilla MC owns 25565); RCON stays internal on the image default 25575
+  # (reached as rlcraft:25575 over the compose network — not published).
+  rlcraft:
+    image: itzg/minecraft-server:java8
+    container_name: rlcraft     # must equal the registry `container` locator
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      EULA: "TRUE"
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: ${RLCRAFT_RCON_PASSWORD:?set RLCRAFT_RCON_PASSWORD in project .env}
+      MEMORY: "6G"                # verify keeper headroom first; Aikar flags below
+      USE_AIKAR_FLAGS: "true"
+      TYPE: FORGE
+      VERSION: "1.12.2"
+      FORGE_VERSION: "14.23.5.2860"   # RLCraft v2.9.3's Forge build
+      GENERIC_PACK: ${RLCRAFT_SERVER_PACK_URL:-https://mediafilez.forgecdn.net/files/4612/990/RLCraft+Server+Pack+1.12.2+-+Release+v2.9.3.zip}
+      LEVEL: ${RLCRAFT_LEVEL:-rlcraft}
+      LEVEL_TYPE: BIOMESOP        # Biomes O' Plenty worldgen — FIRST-BOOT ONLY
+      DIFFICULTY: "3"             # Hard (RLCraft is balanced for it)
+      ENABLE_COMMAND_BLOCK: "true"   # RLCraft structures/villagers depend on it
+      ALLOW_FLIGHT: "true"           # else flying mounts/abilities get kicked
+      MAX_TICK_TIME: "-1"            # large RLCraft structures exceed the 60s watchdog
+    volumes:
+      - rlcraft-data:/data
+    ports:
+      - "25566:25565"
+    healthcheck:
+      disable: true               # modded boot far exceeds the default start_period
+
   factorio:
     image: factoriotools/factorio
     container_name: factorio
@@ -162,6 +205,7 @@ services:
 
 volumes:
   mc-data:
+  rlcraft-data:
   factorio-data:
   cs2-data:
   gmod-data:

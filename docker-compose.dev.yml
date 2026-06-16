@@ -52,3 +52,11 @@ services:
   prophunt:
     environment:
       LAN_INSECURE: "1"
+
+  # RLCraft: the base install (servers.compose.yml) is already keyless
+  # (TYPE=FORGE + GENERIC_PACK from forgecdn), so dev only trims the heap to suit
+  # a laptop. Set RLCRAFT_SERVER_PACK_URL in .env.local to point at a different
+  # pack build for testing.
+  rlcraft:
+    environment:
+      MEMORY: "4G"

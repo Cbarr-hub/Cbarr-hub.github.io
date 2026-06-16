@@ -1,5 +1,5 @@
 // Parametrized golden suite — asserts every Docker game connector against its
-// GOLDENS table (goldens.mjs). ONE suite covers, for all five games:
+// GOLDENS table (goldens.mjs). ONE suite covers, for all six games:
 //   - getLive(): exact advertised action/control key inventory (in order),
 //     the changeMap flag, and the credentials gate (reason + NO_RCON fast-fail);
 //   - every advertised live action -> its exact RCON command (loopback capture);

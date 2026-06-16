@@ -25,7 +25,7 @@ import { DockerClient } from './src/docker/client.js';
 import { buildConnectors } from './src/servers/connectors/index.js';
 
 const ONLY = (process.argv[2] || '').split(',').map((s) => s.trim()).filter(Boolean);
-const ORDER = ['counterstrike', 'gmod', 'prophunt', 'factorio', 'minecraft'];
+const ORDER = ['counterstrike', 'gmod', 'prophunt', 'factorio', 'minecraft', 'rlcraft'];
 
 // Output that means the game rejected the command.
 const ERR_RE = /unknown command|incorrect argument|bad command|not ?found|cannot execute|invalid|unknown or incomplete|<--\[HERE\]|usage:|syntax error|no such|error running|attempt to/i;
@@ -41,7 +41,7 @@ const READBACK = {
 // A sanity read per game (proves RCON is alive + shows current state).
 const SANITY = {
   counterstrike: 'status', gmod: 'status', prophunt: 'status',
-  factorio: '/players', minecraft: 'list',
+  factorio: '/players', minecraft: 'list', rlcraft: 'list',
 };
 
 const tag = { CONFIRMED: '✓ CONFIRMED', ACCEPTED: '· accepted ', FAILED: '✗ FAILED   ', UNREACHABLE: '? UNREACH  ' };

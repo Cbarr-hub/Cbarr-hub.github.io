@@ -1,4 +1,4 @@
-// GOLDEN TABLES — the pinned per-game behavioral canon for the five Docker game
+// GOLDEN TABLES — the pinned per-game behavioral canon for the six Docker game
 // connectors, asserted by connector-goldens.test.mjs.
 //
 // These tables were transcribed from the CURRENT connectors (the code is canon);
@@ -32,6 +32,7 @@ import { minecraftSpec } from '../src/servers/connectors/specs/minecraft.js';
 import { counterstrikeSpec } from '../src/servers/connectors/specs/counterstrike.js';
 import { gmodSpec } from '../src/servers/connectors/specs/gmod.js';
 import { prophuntSpec } from '../src/servers/connectors/specs/prophunt.js';
+import { rlcraftSpec } from '../src/servers/connectors/specs/rlcraft.js';
 
 export const GOLDENS = [
   // ── GMOD (TTT) ────────────────────────────────────────────────────────────────
@@ -451,6 +452,86 @@ export const GOLDENS = [
         fieldKeys: ['gamemode', 'difficulty', 'hardcore', 'pvp', 'allowNether', 'spawnMonsters',
           'commandBlocks', 'maxPlayers', 'viewDistance', 'simulationDistance',
           'spawnProtection', 'playerIdleTimeout'],
+        basicKeys: ['gamemode', 'difficulty', 'hardcore', 'pvp', 'maxPlayers'],
+      },
+      {
+        key: 'access',
+        fieldKeys: ['whitelist', 'onlineMode', 'motd'],
+        basicKeys: ['whitelist', 'motd'],
+      },
+    ],
+    update: { kind: 'reboot' },
+  },
+
+  // ── RLCraft (modded Minecraft, Forge 1.12.2) ───────────────────────────────────
+  // Same /data layout + vanilla RCON as Minecraft, but a 1.12.2-divergent spec:
+  // camelCase gamerules, a smaller action set (no fall_damage / do_immediate_respawn
+  // / do_insomnia), no sleeppct control, and no simulationDistance profile field.
+  {
+    id: 'rlcraft',
+    build: (row, client, store) => buildConnector(row, rlcraftSpec, client, store),
+    serverRow: { id: 'rlcraft', name: 'RLCraft', backend: 'docker', container: 'rlcraft', port: 25566 },
+    rcon: { passwordSource: { env: 'RLCRAFT_RCON_PASSWORD' }, port: 'server.rconPort' },
+    getLiveGate: { reason: 'RLCRAFT_RCON_PASSWORD is not set' },
+    configFiles: {
+      'server.properties':   '/data/server.properties',
+      'whitelist.json':      '/data/whitelist.json',
+      'ops.json':            '/data/ops.json',
+      'banned-players.json': '/data/banned-players.json',
+      'banned-ips.json':     '/data/banned-ips.json',
+    },
+    liveActions: [
+      { key: 'list',    cmd: 'list' },
+      { key: 'save',    cmd: 'save-all' },
+      { key: 'day',     cmd: 'time set day' },
+      { key: 'night',   cmd: 'time set night' },
+      { key: 'clear',   cmd: 'weather clear' },
+      { key: 'rain',    cmd: 'weather rain' },
+      { key: 'thunder', cmd: 'weather thunder' },
+      { key: 'keepinv_on',   cmd: 'gamerule keepInventory true' },
+      { key: 'keepinv_off',  cmd: 'gamerule keepInventory false' },
+      { key: 'mobs_on',      cmd: 'gamerule doMobSpawning true' },
+      { key: 'mobs_off',     cmd: 'gamerule doMobSpawning false' },
+      { key: 'daycycle_on',  cmd: 'gamerule doDaylightCycle true' },
+      { key: 'daycycle_off', cmd: 'gamerule doDaylightCycle false' },
+      { key: 'griefing_on',  cmd: 'gamerule mobGriefing true' },
+      { key: 'griefing_off', cmd: 'gamerule mobGriefing false' },
+      { key: 'firetick_on',  cmd: 'gamerule doFireTick true' },
+      { key: 'firetick_off', cmd: 'gamerule doFireTick false' },
+    ],
+    liveControls: [
+      { key: 'time', samples: [
+        { value: 12345, cmd: 'time set 12345' },
+        { value: -5,    cmd: 'time set 0' },
+        { value: 99999, cmd: 'time set 24000' },
+        { value: '',    cmd: 'time set 6000' },
+      ] },
+      { key: 'randomtick', samples: [
+        { value: 7,     cmd: 'gamerule randomTickSpeed 7' },
+        { value: -1,    cmd: 'gamerule randomTickSpeed 0' },
+        { value: 99,    cmd: 'gamerule randomTickSpeed 20' },
+        { value: 'abc', cmd: 'gamerule randomTickSpeed 3' },
+      ] },
+    ],
+    changeMap: null, // world switch is restart-only (the profile world picker)
+    sendCommand: { input: '  say hello  ', cmd: 'say hello' },
+    profileDefaults: {
+      world: '', gamemode: 'survival', difficulty: 'normal', maxPlayers: 20,
+      motd: 'Gamertown', pvp: '1', hardcore: '0', whitelist: '0', onlineMode: '1',
+      viewDistance: 10, spawnProtection: 16,
+      allowNether: '1', spawnMonsters: '1', commandBlocks: '0',
+      playerIdleTimeout: 0,
+    },
+    schemaGroups: [
+      {
+        key: 'world',
+        fieldKeys: ['world'],
+        basicKeys: ['world'],
+      },
+      {
+        key: 'gameplay',
+        fieldKeys: ['gamemode', 'difficulty', 'hardcore', 'pvp', 'allowNether', 'spawnMonsters',
+          'commandBlocks', 'maxPlayers', 'viewDistance', 'spawnProtection', 'playerIdleTimeout'],
         basicKeys: ['gamemode', 'difficulty', 'hardcore', 'pvp', 'maxPlayers'],
       },
       {

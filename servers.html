@@ -407,6 +407,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .field input:focus{border-color:var(--acc);outline:none}
 .field select{background:var(--bg-2);border:1px solid var(--line);border-radius:7px;padding:7px 10px;color:var(--txt);max-width:200px}
 .field textarea{flex-basis:100%;min-height:120px;background:#070707;border:1px solid var(--line);border-radius:7px;padding:10px;color:var(--txt);font-size:var(--t-sm);line-height:1.6;resize:vertical}
+.cmd-editor{width:100%;min-height:92px;background:#070707;border:1px solid var(--line);border-radius:7px;padding:10px;color:var(--txt);font-size:var(--t-sm);line-height:1.6;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;tab-size:2}
 .pf-info{flex-basis:100%}
 .pf-info b{color:var(--txt)}
 .pf-range{display:flex;align-items:center;gap:8px;flex:1;min-width:180px;justify-content:flex-end}
@@ -1744,7 +1745,7 @@ async function openDetail(id){
   activeId = id
   DS = {
     id, server: s, schema: null, cvarRef: [],
-    list: [], activeProfileId: null, editId: null, values: {}, dirty: false, profBasic: false,
+    list: [], activeProfileId: null, editId: null, values: {}, commands: [], dirty: false, profBasic: false,
     maps: [], live: null, liveSettings: null, files: [], curFile: null, fileBaseline: '', configs: [],
     loaded: {}, activeTab: null,
   }
@@ -2164,10 +2165,10 @@ async function reloadProfileList(selectId){
 async function openProfile(profileId){
   DS.editId = profileId == null ? null : Number(profileId)
   DS.dirty = false
-  if (DS.editId == null) DS.values = {}
+  if (DS.editId == null) { DS.values = {}; DS.commands = [] }
   else {
-    try { const full = await api(svProf(DS.editId)); DS.values = { ...(full?.settings || {}) } }
-    catch (e) { toast(errMsg(e), 'err'); DS.values = {} }
+    try { const full = await api(svProf(DS.editId)); DS.values = { ...(full?.settings || {}) }; DS.commands = [...(full?.commands || [])] }
+    catch (e) { toast(errMsg(e), 'err'); DS.values = {}; DS.commands = [] }
   }
   if (DS.activeTab === 'profiles') renderProfiles()
 }
@@ -2213,6 +2214,16 @@ function renderProfiles(){
   const applyNote = liveApply
     ? `${apply.note ? esc(apply.note) + ' ' : ''}Applies instantly over RCON — reverts on container restart.`
     : `${DS.schema.note ? esc(DS.schema.note) + ' ' : ''}Written to boot config; container restarts to take effect.`
+  // Startup commands (game-agnostic, advanced): replayed over RCON after Apply.
+  // Hidden in Basics-only, like the advanced groups.
+  const cmdsHTML = DS.profBasic ? '' : `
+    <details class="fgroup">
+      <summary>Startup commands</summary>
+      <div class="gbody">
+        <div class="field-help">RCON commands, one per line, run in order right after Apply once the server is back up — for runtime-only state (cvars, gamerules) the boot config can't hold.</div>
+        <textarea class="cmd-editor" data-prof-cmds rows="5" spellcheck="false" placeholder="one RCON command per line">${esc((DS.commands || []).join('\n'))}</textarea>
+      </div>
+    </details>`
   body.innerHTML = `
   <div class="pane on">
     <div>
@@ -2228,7 +2239,7 @@ function renderProfiles(){
         ${basicFields.length ? `<button class="mini-btn" data-prof-basic>${DS.profBasic ? '⊞ All settings' : '☰ Basics only'}</button>` : ''}
       </div>
     </div>
-    <div>${groups}</div>
+    <div>${groups}${cmdsHTML}</div>
     <div class="applybar">
       <button class="btn-primary" data-prof-apply>${ICONS.apply} ${esc(apply.label || '▶ Apply & Restart')}</button>
       <button class="btn-ghost" data-prof-save>Save</button>
@@ -2373,6 +2384,11 @@ function readProfileForm(){
     if (t === 'number') { if (el.value !== '') DS.values[key] = Number(el.value); return }
     DS.values[key] = el.value
   })
+  // Startup commands live outside the schema (data-prof-cmds, not data-pf). When
+  // the editor is collapsed (Basics-only), the textarea isn't present — leave
+  // DS.commands untouched so a Basics save can't wipe them.
+  const cmdEl = detail.querySelector('#dBody [data-prof-cmds]')
+  if (cmdEl) DS.commands = cmdEl.value.split('\n').map(s => s.trim()).filter(Boolean)
   return DS.values
 }
 
@@ -2420,6 +2436,7 @@ function wireProfiles(){
   }
   wireFieldWidgets(body, markDirty)
   wireSchemaWidgets(body, markDirty, renderProfiles)
+  body.querySelector('[data-prof-cmds]')?.addEventListener('input', markDirty)
   const curName = () => (DS.list.find(p => p.id === DS.editId)?.name) || 'profile'
   const onClick = (sel, fn) => { const b = body.querySelector(sel); if (b) b.addEventListener('click', () => fn(b)) }
 
@@ -2432,12 +2449,14 @@ function wireProfiles(){
 
   onClick('[data-prof-save]', (b) => attempt(b, 'Save', async () => {
     if (DS.editId == null) return
-    readProfileForm(); await put(svProf(DS.editId), { settings: DS.values }); DS.dirty = false
+    readProfileForm(); await put(svProf(DS.editId), { settings: DS.values, commands: DS.commands }); DS.dirty = false
     logLine(`Profile "${curName()}" saved ✓`); await reloadProfileList(DS.editId)
   }))
   onClick('[data-prof-apply]', applyProfile)
-  const createFlow = (b, name, settings, verb) => attempt(b, verb, async () => {
-    const p = await post(sv(DS.id, '/profiles'), settings === undefined ? { name } : { name, settings })
+  const createFlow = (b, name, settings, verb, commands) => attempt(b, verb, async () => {
+    const body = settings === undefined ? { name } : { name, settings }
+    if (commands && commands.length) body.commands = commands
+    const p = await post(sv(DS.id, '/profiles'), body)
     logLine(`${verb} "${p.name}" ✓`); await reloadProfileList(p.id)
   })
   onClick('[data-prof-new]', (b) => {
@@ -2446,7 +2465,7 @@ function wireProfiles(){
   })
   onClick('[data-prof-clone]', (b) => {
     const name = (window.prompt('Clone this profile — name the copy:') || '').trim()
-    if (name) { readProfileForm(); createFlow(b, name, DS.values, 'Cloned as') }
+    if (name) { readProfileForm(); createFlow(b, name, DS.values, 'Cloned as', DS.commands) }
   })
   onClick('[data-prof-capture]', (b) => {
     const name = (window.prompt('Capture the server’s current live config as a profile named:') || '').trim(); if (!name) return
@@ -2494,9 +2513,24 @@ function wireProfiles(){
   })
 }
 
+/* Replay a profile's saved startup commands over RCON after Apply, logging each
+   result. No-op when the profile has none; tolerant when RCON is unavailable. */
+async function runStartupCommands(pid){
+  if (!DS.commands?.length) return
+  try {
+    const res = await post(svProf(pid) + '/commands')
+    if (res?.skipped) { logLine(`Startup commands skipped — ${res.reason || 'RCON unavailable'}`); return }
+    const results = res?.results || []
+    for (const r of results) logLine(r.ok ? `startup » ${r.cmd}` : `startup ✕ ${r.cmd} — ${r.error}`, r.ok ? r.output : '')
+    logLine(`Startup commands: ${results.filter(r => r.ok).length}/${results.length} ran`)
+  } catch (e) { logLine(`Startup commands — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
+}
+
 /* The ONE profile apply flow. Honors the schema's apply descriptor: CS declares
    mode:'live' (push over RCON, NO reboot — the button/confirm say "Apply Live");
-   everyone else saves then reboots and waits for the container to come back. */
+   everyone else saves then reboots and waits for the container to come back.
+   After the server is up (or right away for live), any saved startup commands
+   are replayed so the profile is the complete known state. */
 function applyProfile(btn){
   if (DS.editId == null) return
   const apply = DS.schema?.apply || {}
@@ -2506,9 +2540,9 @@ function applyProfile(btn){
     if (!ok) return
     attempt(btn, 'Apply', async () => {
       readProfileForm()
-      await put(svProf(DS.editId), { settings: DS.values }); DS.dirty = false
+      await put(svProf(DS.editId), { settings: DS.values, commands: DS.commands }); DS.dirty = false
       const r = await post(svProf(DS.editId) + '/apply')
-      if (liveApply) logLine(`Applied "${r?.name}" live ✓`)
+      if (liveApply) { logLine(`Applied "${r?.name}" live ✓`); await runStartupCommands(DS.editId) }
       else {
         logLine(`Applied "${r?.name}" ✓`)
         try {
@@ -2518,6 +2552,8 @@ function applyProfile(btn){
           try { await refreshActive() }
           catch (e) { logLine(`Status refresh — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
           logLine(up ? `Restarted ✓ — now running "${r?.name}"` : 'Restarting… still starting — hit Refresh shortly')
+          if (up) await runStartupCommands(DS.editId)
+          else if (DS.commands?.length) logLine('Startup commands deferred — re-Apply once it finishes starting')
         } catch (e) { logLine(`Restart — error: ${errMsg(e)}`); toast(errMsg(e), 'err') }
       }
       await reloadProfileList(DS.editId)

@@ -16,6 +16,9 @@ const PLAYER_PARAM = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
 const FILE_PARAM = { type: 'string', minLength: 1, maxLength: 128 };
 const CONFIG_BODY_MAX = 16_000;
 const PROFILE_NAME = { type: 'string', minLength: 1, maxLength: 48 };
+// Profile startup commands: a capped list of RCON strings (the connector
+// re-validates each via validateLiveCommand). Matches MAX_PROFILE_COMMANDS in engine.js.
+const PROFILE_COMMANDS = { type: 'array', items: { type: 'string', maxLength: 512 }, maxItems: 25 };
 
 // Querystring for the activity-timeline read (`limit` bound + linked/unlinked
 // toggle). Fastify's default ajv strips unknown query params (removeAdditional).
@@ -86,14 +89,14 @@ const S = {
   },
   profile: {
     type: 'object',
-    properties: { name: PROFILE_NAME, settings: { type: 'object' } },
+    properties: { name: PROFILE_NAME, settings: { type: 'object' }, commands: PROFILE_COMMANDS },
     required: ['name'],
     additionalProperties: false,
   },
   profileName: { type: 'object', properties: { name: PROFILE_NAME }, required: ['name'], additionalProperties: false },
   profilePatch: {
     type: 'object',
-    properties: { name: PROFILE_NAME, settings: { type: 'object' } },
+    properties: { name: PROFILE_NAME, settings: { type: 'object' }, commands: PROFILE_COMMANDS },
     additionalProperties: false,
   },
   command: { type: 'object', properties: { command: { type: 'string', minLength: 1, maxLength: 512 } }, required: ['command'], additionalProperties: false },
@@ -152,6 +155,7 @@ const OPS = [
   ['put',    '/:id/profiles/:profileId',       'updateProfile',   { csrf: true, params: { profileId: CONFIG_ID_PARAM }, body: S.profilePatch, args: (r) => [r.params.profileId, r.body] }],
   ['delete', '/:id/profiles/:profileId',       'deleteProfile',   { csrf: true, params: { profileId: CONFIG_ID_PARAM }, args: (r) => [r.params.profileId] }],
   ['post',   '/:id/profiles/:profileId/apply', 'applyProfile',    { csrf: true, bust: true, params: { profileId: CONFIG_ID_PARAM }, args: (r) => [r.params.profileId] }],
+  ['post',   '/:id/profiles/:profileId/commands', 'runProfileCommands', { csrf: true, params: { profileId: CONFIG_ID_PARAM }, args: (r) => [r.params.profileId] }],
   // ── live commands (Phase 3; RCON / console) ──
   ['get',    '/:id/live',                      'getLive'],
   ['post',   '/:id/live/command',              'sendCommand',     { csrf: true, body: S.command, args: (r) => [r.body.command] }],

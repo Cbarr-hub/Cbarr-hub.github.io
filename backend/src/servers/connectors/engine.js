@@ -45,6 +45,18 @@ function validProfileName(name) {
   return nm;
 }
 
+// Validate a profile's startup commands: an array of RCON command strings, each
+// run through the same guard as the live console (trim / non-empty / ≤512 / no
+// newline), capped so a profile apply can't fire an unbounded batch. `undefined`
+// passes through so a partial update leaves existing commands untouched.
+const MAX_PROFILE_COMMANDS = 25;
+function validProfileCommands(list) {
+  if (list === undefined) return undefined;
+  if (!Array.isArray(list)) throw badSetting('startup commands must be a list');
+  if (list.length > MAX_PROFILE_COMMANDS) throw badSetting(`at most ${MAX_PROFILE_COMMANDS} startup commands`);
+  return list.map((c) => validateLiveCommand(c));
+}
+
 export class GameConnector {
   /**
    * @param {object} server  registry entry { id, name, container, port, rconPort, … }
@@ -268,19 +280,21 @@ export class GameConnector {
     return p;
   }
 
-  createProfile({ name, settings } = {}) {
+  createProfile({ name, settings, commands } = {}) {
     const store = this.requireStore();
     const nm = validProfileName(name);
     const st = this.validateProfileSettings(settings ?? this.defaultProfileSettings() ?? {});
-    try { return store.createProfile(this.server.id, { name: nm, settings: st }); }
+    const cmds = validProfileCommands(commands) ?? [];
+    try { return store.createProfile(this.server.id, { name: nm, settings: st, commands: cmds }); }
     catch (e) { throw duplicateError(e, nm, 'profile'); }
   }
 
-  updateProfile(id, { name, settings } = {}) {
+  updateProfile(id, { name, settings, commands } = {}) {
     const store = this.requireStore();
     const patch = {};
     if (name !== undefined) patch.name = validProfileName(name);
     if (settings !== undefined) patch.settings = this.validateProfileSettings(settings);
+    if (commands !== undefined) patch.commands = validProfileCommands(commands);
     let updated;
     try { updated = store.updateProfile(this.server.id, id, patch); }
     catch (e) { throw duplicateError(e, patch.name, 'profile'); }
@@ -308,6 +322,28 @@ export class GameConnector {
     const settings = await this.captureProfileSettings();
     try { return store.createProfile(this.server.id, { name: nm, settings }); }
     catch (e) { throw duplicateError(e, nm, 'profile'); }
+  }
+
+  // Replay a profile's saved startup commands over RCON, in order. The panel
+  // calls this right after Apply (once the server is back up) so a profile can
+  // pin runtime-only state the boot config can't hold. Per-command try/catch so
+  // one failure doesn't abort the rest; a graceful skip (never throws) when RCON
+  // is unconfigured, so the Apply flow can't half-fail on it.
+  async runProfileCommands(id) {
+    const p = this.requireStore().getProfile(this.server.id, id);
+    if (!p) throw notFound('profile not found');
+    const cmds = p.commands ?? [];
+    if (!cmds.length) return { ok: true, ran: 0, results: [] };
+    const { password } = await this.rconCreds();
+    if (!password) {
+      return { ok: false, skipped: true, reason: this.spec.rcon?.gateReason ?? 'RCON is not configured', results: [] };
+    }
+    const results = [];
+    for (const cmd of cmds) {
+      try { const { output } = await this.runRcon(cmd); results.push({ cmd, ok: true, output }); }
+      catch (e) { results.push({ cmd, ok: false, error: e.message }); }
+    }
+    return { ok: results.every((r) => r.ok), ran: results.length, results };
   }
 
   // ── live control (Source RCON over TCP) ─────────────────────────────────────

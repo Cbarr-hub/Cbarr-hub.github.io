@@ -54,8 +54,8 @@ fail-fast, rollback-capable). Manual fallback (no predeploy backup): `git pull` 
 `docker compose -f docker-compose.yml -f servers.compose.yml up -d --build`.
 
 **Forwarded ports** (BGW210 → keeper MAC, so they follow it across DHCP): **443**
-(HTTPS), **25565** (Minecraft), **27066** (GMOD/TTT), **27067** (Prop Hunt),
-**27000–27039** (CS), **34197** (Factorio).
+(HTTPS), **25565** (Minecraft), **25566** (RLCraft), **27066** (GMOD/TTT), **27067**
+(Prop Hunt), **27000–27039** (CS), **34197/udp** (Factorio), **2456–2457/udp** (Valheim).
 
 ---
 

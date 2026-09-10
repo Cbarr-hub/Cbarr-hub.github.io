@@ -3,13 +3,14 @@
 // The locator (container name) MUST only ever come from this table — never from
 // a request parameter. The HTTP layer accepts an opaque `id` ("factorio"), looks
 // it up here, and the locator never crosses the API boundary. That guarantees the
-// control panel can only ever touch these six servers, no matter what a client
+// control panel can only ever touch these seven servers, no matter what a client
 // sends.
 //
 // GMOD shares the Source `connect` join style with CS but uses port 27066 —
 // CS already reserves the 27000-27039 external forward range on the router.
 // `steam` powers the one-click "Play" launch (`steam://run/<appid>//<args>`):
-// Source games take `+connect host:port`, Factorio `--mp-connect host:port`;
+// Source games take `+connect host:port`, Factorio `--mp-connect host:port`,
+// Valheim `+connect host:port +password pw`;
 // Minecraft (Java) has no launch-and-connect scheme, so no `steam` entry
 // (copy-only in the panel). Array order drives the panel's tab order + Quick
 // Connect list (Minecraft kept last for a cleaner layout).
@@ -40,6 +41,11 @@ export const SERVERS = [
   // namespace; log-collected like vanilla MC. No rconPort → spec portFallback
   // 25575. No `steam` (Java MC has no launch URL → copy-only join string).
   { id: 'rlcraft',       name: 'RLCraft',            backend: 'docker', container: 'rlcraft', connector: 'rlcraft',       port: 25566, connect: 'address', identityKind: 'minecraft', collect: 'log' },
+  // Valheim — NO RCON (the spec has no rcon/live block). Player IDs are SteamID64
+  // (shares the Source games' roster namespace); log-collected via the Valheim
+  // handshake/ZDOID/socket lines. UDP 2456 (game) + 2457 (query) are published;
+  // the launch URL passes `+connect host:port +password pw` to the Steam client.
+  { id: 'valheim',       name: 'Valheim',            backend: 'docker', container: 'valheim', connector: 'valheim',       port: 2456,  connect: 'address', identityKind: 'steam',     collect: 'log', steam: { appid: 892970, arg: '+connect' } },
 ];
 
 function quoteConsole(value) {
@@ -53,7 +59,7 @@ export function connectString(server, host, password = '') {
   if (server.connect === 'cs') {
     return password ? `password ${quoteConsole(password)}; connect ${addr}` : `connect ${addr}`;
   }
-  if (server.id === 'factorio' && password) return `${addr} (password: ${password})`;
+  if ((server.id === 'factorio' || server.id === 'valheim') && password) return `${addr} (password: ${password})`;
   return addr;
 }
 
@@ -69,6 +75,7 @@ export function launchUrl(server, host, password = '') {
   if (password) {
     if (server.connect === 'cs') args = `+password ${quoteConsole(password)} ${args}`;
     else if (server.id === 'factorio') args = `${args} --password ${password}`;
+    else if (server.id === 'valheim') args = `${args} +password ${password}`;
   }
   return `steam://run/${server.steam.appid}//${encodeURIComponent(args)}`;
 }

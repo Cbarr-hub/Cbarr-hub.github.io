@@ -256,6 +256,10 @@ export function createServerService({ dockerClient = null, publicHost = '', db =
     return {
       id: server.id,
       name: server.name,
+      // Capability flags the panel gates UI on (not status): `live` = the spec has
+      // a Runtime (RCON) surface at all — false for a console-less game like Valheim,
+      // so the panel hides the Runtime tab instead of showing an empty "unavailable".
+      capabilities: { live: Boolean(connector?.spec?.live) },
       connect: {
         host: publicHost,
         port: server.port,

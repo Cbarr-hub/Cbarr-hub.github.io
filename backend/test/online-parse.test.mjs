@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  steamId64, parseSourceStatus, parseMinecraftLog, parseFactorioLog,
+  steamId64, parseSourceStatus, parseMinecraftLog, parseFactorioLog, parseValheimLog,
 } from '../src/servers/connectors/online-parse.js';
 
 // ── SteamID → SteamID64 (BigInt) ─────────────────────────────────────────────────
@@ -187,4 +187,38 @@ test('parseFactorioLog does NOT treat a [JOIN] embedded in chat as a join (anti-
   // Sanity: the same tag at message start (with that timestamp) still parses.
   assert.deepEqual(parseFactorioLog('2026-06-06 12:00:00 [JOIN] Ghost joined the game'),
     { kind: 'join', name: 'Ghost' });
+});
+
+// ── Valheim log parser ───────────────────────────────────────────────────────────
+// Valheim has no RCON, so this parser is the collector's ONLY presence source. A
+// join is three lines (SteamID handshake → character spawn by NAME) and a leave is
+// keyed by SteamID again; the collector pairs them, the parser is stateless.
+test('parseValheimLog yields connect (SteamID64) / spawn (name) / disconnect (SteamID64) events', () => {
+  assert.deepEqual(parseValheimLog('05/13/2024 20:23:07: Got connection SteamID 76561198012345678'),
+    { kind: 'connect', uid: '76561198012345678' });
+  assert.deepEqual(parseValheimLog('05/13/2024 20:23:07: Got handshake from client 76561198012345678'),
+    { kind: 'connect', uid: '76561198012345678' });
+  assert.deepEqual(parseValheimLog('05/13/2024 20:23:15: Got character ZDOID from Bjorn : -1234567:1'),
+    { kind: 'spawn', name: 'Bjorn' });
+  assert.deepEqual(parseValheimLog('05/13/2024 21:00:01: Closing socket 76561198012345678'),
+    { kind: 'disconnect', uid: '76561198012345678' });
+  // The game's own timestamp prefix is optional (docker's -t prefix is stripped upstream).
+  assert.deepEqual(parseValheimLog('Got handshake from client 76561198012345678'),
+    { kind: 'connect', uid: '76561198012345678' });
+});
+
+test('parseValheimLog treats a ZDOID of 0:0 as a DEATH, not a join', () => {
+  // A dying character despawns (0:0) and respawns with a fresh ZDOID; only the
+  // collector's open-map guard keeps the respawn from double-opening a session.
+  assert.equal(parseValheimLog('05/13/2024 20:30:00: Got character ZDOID from Bjorn : 0:0'), null);
+  assert.deepEqual(parseValheimLog('05/13/2024 20:30:05: Got character ZDOID from Bjorn : -1234567:2'),
+    { kind: 'spawn', name: 'Bjorn' });
+});
+
+test('parseValheimLog anchors to the message start — chat/names cannot forge events (anti-injection)', () => {
+  assert.equal(parseValheimLog('<color=orange>Evil</color>: Got handshake from client 76561198012345678'), null);
+  assert.equal(parseValheimLog('05/13/2024 20:23:07: Got handshake from client 76561198012345678 lol'), null);
+  assert.equal(parseValheimLog('Got character ZDOID from Evil : Closing socket 76561198012345678'), null);
+  assert.equal(parseValheimLog('Random event set:army_eikthyr'), null);
+  assert.equal(parseValheimLog(''), null);
 });

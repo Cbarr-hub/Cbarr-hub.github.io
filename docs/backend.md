@@ -145,14 +145,14 @@ node src/cli.js delete-user
 > `backend: 'docker'` flag + a container-name locator and a `connector` key that
 > `src/servers/connectors/index.js` maps to a per-game **spec** (fail-loud if the
 > mapping is missing). One engine — `connectors/engine.js` (`GameConnector`) —
-> interprets the specs in `connectors/specs/{gmod,prophunt,counterstrike,factorio,minecraft}.js`
+> interprets the specs in `connectors/specs/{gmod,prophunt,counterstrike,factorio,minecraft,rlcraft,valheim}.js`
 > (data tables + the genuinely imperative functions; `prophunt` composes `gmod`'s
 > exported shared pieces — no class hierarchy). `routes/servers.js` dispatches every
 > per-connector operation through a declarative OPS table
 > (`svc.connectorFor(id)[op]`); `src/servers/service.js` keeps only the composites
 > (status caches, presence overlay, power aliasing, Pulse shaping, BlueMap status).
-> **All five — Counter-Strike, Factorio, Minecraft, Garry's Mod / TTT, Prop Hunt —
-> run as Docker containers.** GMOD/PH reuse the LinuxGSM + Source-RCON pattern;
+> **All seven — Counter-Strike, Factorio, Minecraft, RLCraft, Garry's Mod / TTT, Prop
+> Hunt, Valheim — run as Docker containers.** GMOD/PH reuse the LinuxGSM + Source-RCON pattern;
 > `getSettings`/profiles expose the TTT/PH knobs (map, workshop collection, round/time
 > limits, ratios + caps, map cycle) and the Runtime panel drives them live over RCON
 > (TCP). Prop Hunt shows its Workshop collection as read-only in Profiles because
@@ -165,14 +165,18 @@ node src/cli.js delete-user
 > the connector engine (`connectors/engine.js`:
 > list/get/create/update/delete/apply/capture + an auto-seeded "Default"); each
 > game's spec supplies the semantics via
-> `spec.profile.{schema,defaults,validate,apply,capture}`. **All five games (GMOD,
-> Prop Hunt, Factorio, CS, Minecraft) are wired.** For GMOD/PH/Minecraft/Factorio, `…/apply` writes the config + marks
+> `spec.profile.{schema,defaults,validate,apply,capture}`. **All seven games are
+> wired.** For GMOD/PH/Minecraft/RLCraft/Factorio/Valheim, `…/apply` writes the config + marks
 > the profile active; the panel pairs it with a restart so boot-only settings mount
 > or load. Counter-Strike is the exception: Apply pushes the profile live over RCON
 > and does not restart, because persistent boot defaults live in `servers.compose.yml`.
 > A game wired for profiles trims its `getSettings` to operations only (or just the
 > live-map block) so config doesn't double-render beside the Profiles panel. See
-> the CLAUDE.md GMOD gotchas.
+> the CLAUDE.md GMOD gotchas. **Valheim has no RCON at all**: its spec omits the
+> `rcon`/`live` blocks (the server row carries `capabilities.live=false`, so the panel
+> hides the Runtime tab; `sendCommand`/startup commands report `NO_RCON`/skip), its
+> profile is an env-override file (`/config/gamertown.env`) the image sources before
+> launch, and `update` HUPs the image's in-container steamcmd updater.
 
 > **Presence + Activity** (`/api/servers/online`, `/api/servers/activity`) are
 > read-only views over the player-session rows the **host** session-tracker writes

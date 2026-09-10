@@ -156,17 +156,18 @@ const openCount = (db, slug) =>
       WHERE g.slug = ? AND s.left_at IS NULL`,
   ).get(slug).n;
 
-test('seedHostedGames registers the six servers in games(hosted=1)', () => {
+test('seedHostedGames registers the seven servers in games(hosted=1)', () => {
   const db = storeDb();
   const store = createServerStore(db);
   store.seedHostedGames(listServers());
   const hosted = db.prepare('SELECT slug, identity_kind AS k FROM games WHERE hosted = 1 ORDER BY slug').all();
-  assert.deepEqual(hosted.map((r) => r.slug), ['counterstrike', 'factorio', 'gmod', 'minecraft', 'prophunt', 'rlcraft']);
+  assert.deepEqual(hosted.map((r) => r.slug), ['counterstrike', 'factorio', 'gmod', 'minecraft', 'prophunt', 'rlcraft', 'valheim']);
   assert.equal(hosted.find((r) => r.slug === 'minecraft').k, 'minecraft');
   assert.equal(hosted.find((r) => r.slug === 'rlcraft').k, 'minecraft');
+  assert.equal(hosted.find((r) => r.slug === 'valheim').k, 'steam');
   // idempotent re-seed doesn't duplicate
   store.seedHostedGames(listServers());
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM games WHERE hosted = 1').get().n, 6);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM games WHERE hosted = 1').get().n, 7);
   // party-games rows are untouched (still hosted=0)
 });
 

@@ -3,8 +3,9 @@
 // purpose: the collector runs on the keeper with no node_modules and imports this
 // directly, so keep this module to language builtins only.
 //
-// Three identity namespaces: SteamID64 (the Source games — GMOD/Prop Hunt/CS2),
-// the Mojang UUID (Minecraft), and the Factorio account name (its only handle).
+// Three identity namespaces: SteamID64 (the Source games — GMOD/Prop Hunt/CS2 —
+// and Valheim), the Mojang UUID (Minecraft), and the Factorio account name (its
+// only handle).
 
 // SteamID64 base offset (the "Y" account-universe constant). The result exceeds
 // Number.MAX_SAFE_INTEGER, so the math MUST be BigInt; we return a decimal string.
@@ -182,5 +183,33 @@ export function parseFactorioLog(line) {
   if (m) return { kind: 'join', name: m[1] };
   m = new RegExp(`${TS}\\[LEAVE\\]\\s+(.+?)\\s+left the game\\b`).exec(s);
   if (m) return { kind: 'leave', name: m[1] };
+  return null;
+}
+
+/**
+ * Parse one Valheim dedicated-server log line (the lloesche image relays the
+ * game's stdout; each line carries a `MM/DD/YYYY HH:MM:SS: ` prefix). Valheim has
+ * no single join/leave line: a connection announces its SteamID64 first
+ * (`Got connection SteamID <id>` / `Got handshake from client <id>`), the character
+ * NAME only shows up when it spawns (`Got character ZDOID from <name> : <peer>:<n>`),
+ * and a leave is keyed by the SteamID again (`Closing socket <id>`). The collector
+ * pairs them (FIFO) — this parser stays stateless. A ZDOID of `0:0` is a DEATH
+ * (the character despawns and respawns with a fresh id), not a join → null.
+ * Returns { kind:'connect'|'disconnect', uid } | { kind:'spawn', name } | null.
+ */
+export function parseValheimLog(line) {
+  const s = String(line ?? '');
+  // Anchor every pattern to the START of the message (after the game's own
+  // timestamp) so a chat/name that embeds these phrases can't forge an event.
+  const TS = /^(?:\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}: )?/.source;
+  let m = new RegExp(`${TS}Got (?:connection SteamID|handshake from client) (\\d{17})\\s*$`).exec(s);
+  if (m) return { kind: 'connect', uid: m[1] };
+  m = new RegExp(`${TS}Closing socket (\\d{17})\\s*$`).exec(s);
+  if (m) return { kind: 'disconnect', uid: m[1] };
+  m = new RegExp(`${TS}Got character ZDOID from (.+?) : (-?\\d+):(\\d+)\\s*$`).exec(s);
+  if (m) {
+    if (m[2] === '0' && m[3] === '0') return null; // death, not a join
+    return { kind: 'spawn', name: m[1].trim() };
+  }
   return null;
 }

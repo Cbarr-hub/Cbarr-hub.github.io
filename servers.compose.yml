@@ -96,6 +96,47 @@ services:
     healthcheck:
       disable: true               # modded boot far exceeds the default start_period
 
+  # Valheim — `ghcr.io/community-valheim-tools/valheim-server` (lloesche's image:
+  # steamcmd install on first boot (~1 GB, several min → healthcheck disabled),
+  # idle-gated in-container auto-update (UPDATE_CRON) + zip backups of
+  # /config/worlds_local (BACKUPS_CRON), all under supervisord). Valheim has NO
+  # RCON: the panel's Runtime tab is unavailable, presence comes from the host
+  # session-tracker tailing this container's log, and the in-panel Update button
+  # HUPs the image's updater. SERVER_PUBLIC stays 1 (listed, but password-locked):
+  # the image's idle detection is an A2S query that only answers on public servers,
+  # and both the update + backup crons are idle-gated on it. CROSSPLAY stays off so
+  # player IDs are SteamID64 (the roster namespace the tracker keys on) — turning it
+  # on would switch to PlayFab ids AND need UDP 2458. Profiles: the panel writes
+  # /config/gamertown.env and PRE_SERVER_RUN_HOOK sources it in the launcher's own
+  # shell right before the command line is built, so the file overrides the env
+  # below on every (re)start (empty profile field = inherit the value here).
+  valheim:
+    image: ghcr.io/community-valheim-tools/valheim-server:latest
+    container_name: valheim     # must equal the registry `container` locator
+    restart: unless-stopped
+    stop_grace_period: 120s     # SIGINT → world save → exit; don't SIGKILL a saving world
+    cap_add:
+      - SYS_NICE
+    environment:
+      SERVER_NAME: ${VALHEIM_SERVER_NAME:-Gamertown}
+      WORLD_NAME: ${VALHEIM_WORLD:-gamertown}
+      SERVER_PASS: ${VALHEIM_SERVER_PASS:?set VALHEIM_SERVER_PASS in project .env}
+      SERVER_PUBLIC: "1"
+      CROSSPLAY: "false"
+      TZ: ${TZ:-America/New_York}
+      STATUS_HTTP: "true"         # /status.json on :80 inside the compose network (player COUNT only)
+      BACKUPS_IF_IDLE: "false"    # hourly world zips even while people play (they're small)
+      BACKUPS_MAX_AGE: "3"        # days of in-volume zips; the host R2 timer keeps the long tail
+      UPDATE_IF_IDLE: "true"
+      PRE_SERVER_RUN_HOOK: '[ -f /config/gamertown.env ] && . /config/gamertown.env'
+    volumes:
+      - valheim-config:/config          # worlds_local/, adminlist.txt, backups/, gamertown.env
+      - valheim-data:/opt/valheim       # the steamcmd game install (re-downloadable)
+    ports:
+      - "2456-2457:2456-2457/udp"       # 2456 game (matches the registry) + 2457 Steam query
+    healthcheck:
+      disable: true               # first boot = steamcmd download; the image's check would flap
+
   factorio:
     image: factoriotools/factorio
     container_name: factorio
@@ -206,6 +247,8 @@ services:
 volumes:
   mc-data:
   rlcraft-data:
+  valheim-config:
+  valheim-data:
   factorio-data:
   cs2-data:
   gmod-data:

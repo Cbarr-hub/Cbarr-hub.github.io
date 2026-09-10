@@ -34,7 +34,10 @@ const COMPOSE_FILES = (process.env.GT_COMPOSE_FILES || 'docker-compose.yml,serve
   .map((s) => s.trim())
   .filter(Boolean);
 
-const IMAGE_SERVICES = ['minecraft', 'factorio'];
+// Image-pulled games. Valheim's GAME updates in-container (the lloesche image's own
+// idle-gated steamcmd cron / the panel's Update = HUP its updater); this pull only
+// refreshes the wrapper image, and the world lives in the valheim-config volume.
+const IMAGE_SERVICES = ['minecraft', 'factorio', 'valheim'];
 // In-container SteamCMD update commands come from the connector specs (the single
 // source of truth the panel's in-app Update button also runs): spec.update.argv is
 // ['/bin/bash', '-lc', <command>] — the command is the last element, executed here

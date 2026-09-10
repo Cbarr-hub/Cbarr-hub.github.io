@@ -1,4 +1,4 @@
-// GOLDEN TABLES — the pinned per-game behavioral canon for the six Docker game
+// GOLDEN TABLES — the pinned per-game behavioral canon for the seven Docker game
 // connectors, asserted by connector-goldens.test.mjs.
 //
 // These tables were transcribed from the CURRENT connectors (the code is canon);
@@ -13,6 +13,9 @@
 //   serverRow       the registry-shaped row the per-game tests construct
 //                   (container is swapped for '127.0.0.1' by the RCON capture)
 //   rcon            { passwordSource: {env}|{file}, port: 'server.port'|'server.rconPort' }
+//                   or null for a game with NO RCON at all (Valheim): the RCON-driven
+//                   tests are skipped and getLive()/sendCommand are pinned to the
+//                   engine's "no live control" / NO_RCON shape instead
 //   getLiveGate     { reason } — getLive()'s unavailable report when creds are missing
 //   configFiles     exact logical-name -> in-container path whitelist
 //   liveActions     EVERY advertised action key -> its exact RCON command
@@ -25,6 +28,8 @@
 //   schemaGroups    profileSchema() group keys in order + each group's field
 //                   keys + which fields carry basic:true
 //   update          { kind:'exec', argv, timeoutMs } | { kind:'reboot' }
+//   profileApply    (optional) { settings, files: {path: exactContent} } — the exact
+//                   in-container files Apply writes for a fully-set profile doc
 
 import { buildConnector } from '../src/servers/connectors/engine.js';
 import { factorioSpec } from '../src/servers/connectors/specs/factorio.js';
@@ -33,6 +38,7 @@ import { counterstrikeSpec } from '../src/servers/connectors/specs/counterstrike
 import { gmodSpec } from '../src/servers/connectors/specs/gmod.js';
 import { prophuntSpec } from '../src/servers/connectors/specs/prophunt.js';
 import { rlcraftSpec } from '../src/servers/connectors/specs/rlcraft.js';
+import { valheimSpec } from '../src/servers/connectors/specs/valheim.js';
 
 export const GOLDENS = [
   // ── GMOD (TTT) ────────────────────────────────────────────────────────────────
@@ -541,5 +547,75 @@ export const GOLDENS = [
       },
     ],
     update: { kind: 'reboot' },
+  },
+
+  // ── Valheim ───────────────────────────────────────────────────────────────────
+  // NO RCON: no live actions/controls, getLive() reports the engine's "no live
+  // control" shape and sendCommand fails NO_RCON without opening a socket. The
+  // profile is an env-override file (/config/gamertown.env) the image sources
+  // before launch; the update recipe HUPs the image's own steamcmd updater.
+  {
+    id: 'valheim',
+    build: (row, client, store) => buildConnector(row, valheimSpec, client, store),
+    serverRow: { id: 'valheim', name: 'Valheim', backend: 'docker', container: 'valheim', port: 2456 },
+    rcon: null,
+    getLiveGate: { reason: 'no live control for this server' },
+    configFiles: {
+      'adminlist.txt':     '/config/adminlist.txt',
+      'permittedlist.txt': '/config/permittedlist.txt',
+      'bannedlist.txt':    '/config/bannedlist.txt',
+      'gamertown.env':     '/config/gamertown.env',
+    },
+    liveActions: [],
+    liveControls: [],
+    changeMap: null,
+    sendCommand: null,
+    profileDefaults: {
+      serverName: '', world: '', newWorld: '', password: '',
+      preset: '', combat: '', deathpenalty: '', resources: '', raids: '', portals: '',
+      nobuildcost: '0', playerevents: '0', passivemobs: '0', nomap: '0',
+      saveInterval: 1800, backups: 4,
+    },
+    schemaGroups: [
+      {
+        key: 'server',
+        fieldKeys: ['serverName', 'world', 'newWorld', 'password'],
+        basicKeys: ['serverName', 'world', 'password'],
+      },
+      {
+        key: 'modifiers',
+        fieldKeys: ['preset', 'combat', 'deathpenalty', 'resources', 'raids', 'portals',
+          'nobuildcost', 'playerevents', 'passivemobs', 'nomap'],
+        basicKeys: ['preset'],
+      },
+      {
+        key: 'saves',
+        fieldKeys: ['saveInterval', 'backups'],
+        basicKeys: [],
+      },
+    ],
+    // -preset FIRST, then -modifier, then -setkey (later flags win in the launcher),
+    // then the save cadence; every value single-quoted for the sourcing shell.
+    profileApply: {
+      settings: {
+        serverName: "Odin's Hall", world: 'midgard', newWorld: '', password: 'skol1234',
+        preset: 'hard', combat: 'veryhard', deathpenalty: '', resources: 'more', raids: '', portals: 'casual',
+        nobuildcost: '0', playerevents: '1', passivemobs: '0', nomap: '1',
+        saveInterval: 900, backups: 6,
+      },
+      files: {
+        '/config/gamertown.env': [
+          '# Managed by the Gamertown servers panel (Profiles → Apply).',
+          "# Sourced by the container's PRE_SERVER_RUN_HOOK right before each server start;",
+          '# keys here override the compose environment. Delete this file to fall back to compose.',
+          "SERVER_NAME='Odin'\\''s Hall'",
+          "WORLD_NAME='midgard'",
+          "SERVER_PASS='skol1234'",
+          "SERVER_ARGS='-preset hard -modifier combat veryhard -modifier resources more -modifier portals casual -setkey playerevents -setkey nomap -saveinterval 900 -backups 6'",
+          '',
+        ].join('\n'),
+      },
+    },
+    update: { kind: 'exec', argv: ['/bin/bash', '-lc', 'supervisorctl signal HUP valheim-updater'], timeoutMs: 30_000 },
   },
 ];

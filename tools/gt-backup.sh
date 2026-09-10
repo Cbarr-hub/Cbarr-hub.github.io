@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gamertown backup -> Cloudflare R2: app DB + Factorio save + Minecraft world.
+# Gamertown backup -> Cloudflare R2: app DB + Factorio save + Minecraft world + Valheim world.
 #
 # Version-controlled mirror of the host runner. Installed on the keeper at
 #   /usr/local/bin/gt-backup.sh
@@ -9,14 +9,16 @@
 # (chmod +x). Full backup map + restore steps -> docs/disaster-recovery.md.
 #
 # Usage:
-#   gt-backup.sh                    # ALL three, default prefixes/retention (the daily timer)
+#   gt-backup.sh                    # ALL four, default prefixes/retention (the daily timer)
 #   gt-backup.sh all                # same as no args
 #   gt-backup.sh db        [--prefix P] [--keep N]   # default prefix=app       keep=14
 #   gt-backup.sh factorio  [--prefix P] [--keep N]   # default prefix=factorio  keep=14
 #   gt-backup.sh minecraft [--prefix P] [--keep N]   # default prefix=minecraft keep=1
+#   gt-backup.sh valheim   [--prefix P] [--keep N]   # default prefix=valheim   keep=14
 #
 # Retention is sized to a ~10 GB R2 budget: the Minecraft world (~5 GB gz) keeps 1; the
-# cheap DB + Factorio save keep 14 (~2 weeks of daily snapshots). Total ~5.6 GB.
+# cheap DB + Factorio save + Valheim world zip (tens of MB) keep 14 (~2 weeks of daily
+# snapshots). Total ~6 GB.
 #
 # Env:
 #   GT_STRICT=1   drop the `|| true` masking on the Minecraft flush, and VERIFY each
@@ -95,6 +97,20 @@ backup_minecraft() {
   prune "$prefix" "\.tar\.gz$" "$keep"
 }
 
+# --- Valheim world: the lloesche image already zips /config/worlds_local on its own
+#     BACKUPS cron (hourly, consistent — it's the game's own save path), so we just ship
+#     the NEWEST in-volume zip. No RCON exists to flush; no container exec needed. ---
+backup_valheim() {
+  local prefix="${1:-valheim}" keep="${2:-14}"
+  local bdir=/var/lib/docker/volumes/gamertown_valheim-config/_data/backups newest obj
+  newest="$(ls -1t "$bdir"/*.zip 2>/dev/null | head -n 1 || true)"
+  [ -n "${newest:-}" ] || { echo "valheim: no in-volume backup zip yet — skipping" >&2; return 0; }
+  obj="worlds_${TS}.zip"
+  rclone copyto "$newest" "${REMOTE}:${BUCKET}/${prefix}/${obj}"
+  verify_landed "$prefix" "$obj"
+  prune "$prefix" "^worlds_" "$keep"
+}
+
 # Parse [--prefix P] [--keep N] after a target name; sets PREFIX/KEEP from the passed defaults.
 parse_opts() {   # $1=default-prefix $2=default-keep, then the remaining CLI args
   PREFIX="$1"; KEEP="$2"; shift 2
@@ -113,10 +129,12 @@ case "${1:-}" in
     backup_db        app       14
     backup_factorio  factorio  14
     backup_minecraft minecraft 1
-    echo "backed up app DB + factorio save + minecraft world (ts=$TS)"
+    backup_valheim   valheim   14
+    echo "backed up app DB + factorio save + minecraft world + valheim world (ts=$TS)"
     ;;
   db)        shift; parse_opts app       14 "$@"; backup_db        "$PREFIX" "$KEEP"; echo "backed up app DB -> $PREFIX (ts=$TS)" ;;
   factorio)  shift; parse_opts factorio  14 "$@"; backup_factorio  "$PREFIX" "$KEEP"; echo "backed up factorio save -> $PREFIX (ts=$TS)" ;;
   minecraft) shift; parse_opts minecraft 1 "$@"; backup_minecraft "$PREFIX" "$KEEP"; echo "backed up minecraft world -> $PREFIX (ts=$TS)" ;;
-  *) echo "usage: gt-backup.sh [all|db|factorio|minecraft] [--prefix P] [--keep N]" >&2; exit 1 ;;
+  valheim)   shift; parse_opts valheim   14 "$@"; backup_valheim   "$PREFIX" "$KEEP"; echo "backed up valheim world -> $PREFIX (ts=$TS)" ;;
+  *) echo "usage: gt-backup.sh [all|db|factorio|minecraft|valheim] [--prefix P] [--keep N]" >&2; exit 1 ;;
 esac

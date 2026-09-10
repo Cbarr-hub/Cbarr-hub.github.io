@@ -1013,6 +1013,7 @@ const TILE_BG = {
   prophunt:      { src:'assets/tiles/prophunt.jpg',      accent:'40,210,210' },
   minecraft:     { src:'assets/tiles/minecraft.png',     accent:'95,110,255', fit:'contain' },
   rlcraft:       { src:'assets/tiles/rlcraft.webp',      accent:'222,150,70' },
+  valheim:       { src:'assets/tiles/valheim.jpg',       accent:'90,170,230' },
 }
 function tileArt(bg){
   if (!bg) return `<div class="glow" style="background:linear-gradient(160deg,#14161c,#0a0a0a 92%)"></div>`
@@ -1814,13 +1815,15 @@ function snapshotFormIfDirty(){
   if (DS && DS.dirty && detail.querySelector('#dBody [data-pf]')) { try { readProfileForm() } catch {} }
 }
 
-/* Tab visibility gates: overview always; runtime when hosting; profiles/maps/raw when running. */
+/* Tab visibility gates: overview always; runtime when hosting AND the game has a live
+   (RCON) surface at all (Valheim has no console → no Runtime tab); profiles/maps/raw when running. */
 function gateTabs(){
   const s = DS.server
   const running = s.status === 'running'
   const hasMaps = !!(DS.schema && (DS.schema.groups || []).some(g => (g.fields || []).some(f =>
     f.type === 'maplist' || (f.type === 'select' && f.addWorkshop)))) || (DS.maps || []).length > 0
-  const vis = { overview:true, runtime:s.gameStatus === 'hosting', profiles:running, maps:running && hasMaps, raw:running }
+  const hasLive = s.capabilities?.live !== false
+  const vis = { overview:true, runtime:s.gameStatus === 'hosting' && hasLive, profiles:running, maps:running && hasMaps, raw:running }
   DTABS.forEach(t => { const b = detail.querySelector(`#dTabs button[data-pane="${t.key}"]`); if (b) b.hidden = !vis[t.key] })
   activatePane(DS.activeTab && vis[DS.activeTab] ? DS.activeTab : DTABS.map(t => t.key).find(k => vis[k]), true)
 }

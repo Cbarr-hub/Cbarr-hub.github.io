@@ -1,5 +1,7 @@
 // Parametrized golden suite — asserts every Docker game connector against its
-// GOLDENS table (goldens.mjs). ONE suite covers, for all six games:
+// GOLDENS table (goldens.mjs). ONE suite covers, for all seven games (a game
+// with `rcon: null` — Valheim — skips the RCON-capture tests and is pinned to
+// the engine's "no live control" / NO_RCON shape instead):
 //   - getLive(): exact advertised action/control key inventory (in order),
 //     the changeMap flag, and the credentials gate (reason + NO_RCON fast-fail);
 //   - every advertised live action -> its exact RCON command (loopback capture);
@@ -27,9 +29,9 @@ import { GOLDENS } from './goldens.mjs';
 // ── credential plumbing (per golden) ──────────────────────────────────────────
 // Env-password games get the var set/unset via withEnvMany; the file-password
 // game (Factorio) gets its rconpw seeded into the fake client's file map.
-const credEnv   = (g) => (g.rcon.passwordSource.env ? { [g.rcon.passwordSource.env]: 'secret' } : {});
-const noCredEnv = (g) => (g.rcon.passwordSource.env ? { [g.rcon.passwordSource.env]: undefined } : {});
-const credFiles = (g) => (g.rcon.passwordSource.file ? { [g.rcon.passwordSource.file]: 'secret\n' } : {});
+const credEnv   = (g) => (g.rcon?.passwordSource.env ? { [g.rcon.passwordSource.env]: 'secret' } : {});
+const noCredEnv = (g) => (g.rcon?.passwordSource.env ? { [g.rcon.passwordSource.env]: undefined } : {});
+const credFiles = (g) => (g.rcon?.passwordSource.file ? { [g.rcon.passwordSource.file]: 'secret\n' } : {});
 
 // Loopback-capture the RCON commands `run(conn)` issues. The connector reaches
 // RCON at server.container:<port-field>, so the row points container at
@@ -46,10 +48,19 @@ function capture(g, run) {
 }
 
 for (const g of GOLDENS) {
+  const hasRcon = g.rcon != null;
+
   test(`goldens/${g.id}: getLive advertises exactly the golden actions + controls`, async () => {
     await withEnvMany(credEnv(g), async () => {
       const conn = g.build(g.serverRow, fakeDockerClient(credFiles(g)));
       const live = await conn.getLive();
+      if (!hasRcon) {
+        // No console at all: the engine's spec-less shape, even with nothing missing.
+        assert.deepEqual(live, { available: false, reason: g.getLiveGate.reason });
+        assert.deepEqual(g.liveActions, []);
+        assert.deepEqual(g.liveControls, []);
+        return;
+      }
       assert.equal(live.available, true);
       assert.deepEqual(live.actions.map((a) => a.key), g.liveActions.map((a) => a.key));
       assert.deepEqual(live.controls.map((c) => c.key), g.liveControls.map((c) => c.key));
@@ -70,20 +81,22 @@ for (const g of GOLDENS) {
     });
   });
 
-  test(`goldens/${g.id}: every advertised live action sends its exact RCON command`, async () => {
-    const commands = await capture(g, async (conn) => {
-      for (const a of g.liveActions) await conn.runLiveAction(a.key);
+  if (hasRcon) {
+    test(`goldens/${g.id}: every advertised live action sends its exact RCON command`, async () => {
+      const commands = await capture(g, async (conn) => {
+        for (const a of g.liveActions) await conn.runLiveAction(a.key);
+      });
+      assert.deepEqual(commands, g.liveActions.map((a) => a.cmd));
     });
-    assert.deepEqual(commands, g.liveActions.map((a) => a.cmd));
-  });
 
-  test(`goldens/${g.id}: every live control sample (incl. clamps) sends its exact RCON command`, async () => {
-    const samples = g.liveControls.flatMap((c) => c.samples.map((s) => ({ key: c.key, ...s })));
-    const commands = await capture(g, async (conn) => {
-      for (const s of samples) await conn.runLiveAction(s.key, s.value);
+    test(`goldens/${g.id}: every live control sample (incl. clamps) sends its exact RCON command`, async () => {
+      const samples = g.liveControls.flatMap((c) => c.samples.map((s) => ({ key: c.key, ...s })));
+      const commands = await capture(g, async (conn) => {
+        for (const s of samples) await conn.runLiveAction(s.key, s.value);
+      });
+      assert.deepEqual(commands, samples.map((s) => s.cmd));
     });
-    assert.deepEqual(commands, samples.map((s) => s.cmd));
-  });
+  }
 
   if (g.changeMap) {
     test(`goldens/${g.id}: change_map samples send exact commands; invalid map rejects`, async () => {
@@ -98,21 +111,36 @@ for (const g of GOLDENS) {
     });
   }
 
-  test(`goldens/${g.id}: unknown live action rejects BAD_SETTING before any RCON I/O`, async () => {
+  test(`goldens/${g.id}: unknown live action rejects ${hasRcon ? 'BAD_SETTING' : 'NO_RCON'} before any RCON I/O`, async () => {
     const conn = g.build(g.serverRow, fakeDockerClient(credFiles(g)));
-    await assert.rejects(() => conn.runLiveAction('bogus_action'), (e) => e.code === 'BAD_SETTING');
+    await assert.rejects(() => conn.runLiveAction('bogus_action'), (e) => e.code === (hasRcon ? 'BAD_SETTING' : 'NO_RCON'));
   });
 
   test(`goldens/${g.id}: sendCommand trims + forwards, and rejects bad console input`, async () => {
-    const commands = await capture(g, (conn) => conn.sendCommand(g.sendCommand.input));
-    assert.deepEqual(commands, [g.sendCommand.cmd]);
+    if (hasRcon) {
+      const commands = await capture(g, (conn) => conn.sendCommand(g.sendCommand.input));
+      assert.deepEqual(commands, [g.sendCommand.cmd]);
+    }
 
-    // Validation trio: empty / newline / >512 chars all reject before RCON.
+    // Validation trio: empty / newline / >512 chars all reject before RCON —
+    // even for a game with no RCON (validation precedes the credential check).
     const conn = g.build(g.serverRow, fakeDockerClient(credFiles(g)));
     for (const bad of ['', 'status\nquit', 'x'.repeat(513)]) {
       await assert.rejects(() => conn.sendCommand(bad), (e) => e.code === 'BAD_SETTING');
     }
   });
+
+  if (g.profileApply) {
+    test(`goldens/${g.id}: profile Apply writes exactly the golden in-container files`, async () => {
+      const client = fakeDockerClient();
+      const conn = g.build(g.serverRow, client);
+      const res = await conn.applyProfileSettings(g.profileApply.settings);
+      assert.equal(res.ok, true);
+      assert.deepEqual(Object.fromEntries(client.writes), g.profileApply.files);
+      // …and capture() reads the same doc back (the round-trip is lossless).
+      assert.deepEqual(await conn.captureProfileSettings(), g.profileApply.settings);
+    });
+  }
 
   test(`goldens/${g.id}: defaultProfileSettings matches the golden profile doc`, () => {
     const conn = g.build(g.serverRow, fakeDockerClient());

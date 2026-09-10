@@ -9,8 +9,9 @@
 // this lives host-side. Mirror of the gt-backup.sh model.
 //
 // Hybrid collection (per the design):
-//   • Minecraft + Factorio → tail `docker logs -f -t` and parse join/leave lines
-//     (accurate timestamps; Minecraft also yields the Mojang UUID).
+//   • Minecraft + Factorio + Valheim → tail `docker logs -f -t` and parse join/leave
+//     lines (accurate timestamps; Minecraft also yields the Mojang UUID, Valheim
+//     the SteamID64 — it has no RCON at all).
 //   • GMOD / Prop Hunt / CS2 → poll RCON `status` every 60s and diff (±60s).
 //     GMOD/PH give SteamID64; CS2 redacts it → name-only.
 //
@@ -30,7 +31,7 @@ import { promisify } from 'node:util';
 import { listServers } from '../backend/src/servers/registry.js';
 import { rconExchange } from '../backend/src/servers/rcon-tcp.js';
 import {
-  parseSourceStatus, parseMinecraftLog, parseFactorioLog,
+  parseSourceStatus, parseMinecraftLog, parseFactorioLog, parseValheimLog,
 } from '../backend/src/servers/connectors/online-parse.js';
 import * as sessionSql from '../backend/src/servers/session-sql.js';
 
@@ -234,17 +235,27 @@ function startLogTail(server) {
   // connection), so the same-name guard below is safe.
   const open = new Map();
   const pendingUuid = new Map(); // Minecraft: name → uuid seen just before join
-  // RLCraft is also a Minecraft-family server (Forge 1.12.2): same vanilla log
-  // format + Mojang-UUID pairing as vanilla MC. Gate on the identity namespace,
-  // not the slug, so every Minecraft-family game takes the MC parser/UUID path
-  // (keeps the collector registry-driven — no per-game list to drift).
+  // Valheim announces the SteamID64 BEFORE the character name (handshake → spawn)
+  // and leaves by SteamID again (`Closing socket`), so keep a FIFO of ids that
+  // handshook but haven't spawned, plus uid → name for the uid-keyed leave.
+  // Accepted edge: two players spawning within the same second could cross-pair
+  // uid ↔ name (names are still right; only the SteamID link could swap).
+  const pendingUid = [];
+  const uidName = new Map();
+  // The log parser is chosen by identity namespace, NOT slug, so the collector
+  // stays registry-driven (no per-game list to drift): every Minecraft-family
+  // game (vanilla, RLCraft/Forge) shares the vanilla log format + Mojang-UUID
+  // pairing; 'steam' + collect:'log' is Valheim's handshake/ZDOID/socket format;
+  // anything else is Factorio's [JOIN]/[LEAVE].
   const isMinecraftLike = identityKind === 'minecraft';
-  const parse = isMinecraftLike ? parseMinecraftLog : parseFactorioLog;
+  const parse = isMinecraftLike ? parseMinecraftLog
+    : identityKind === 'steam' ? parseValheimLog
+    : parseFactorioLog;
 
   const spawnTail = async () => {
     if (!(await isRunning(container))) { setTimeout(spawnTail, 5_000); return; }
     await reconcile(slug, nowSec()).catch((e) => log(`${slug}: reconcile failed`, e.message));
-    open.clear(); pendingUuid.clear();
+    open.clear(); pendingUuid.clear(); pendingUid.length = 0; uidName.clear();
     log(`${slug}: tailing docker logs`);
 
     const child = spawn('docker', ['logs', '-f', '-t', '--tail=0', container]);
@@ -286,6 +297,29 @@ function startLogTail(server) {
 
   const handleEvent = async (ev, ts) => {
     if (ev.kind === 'uuid') { pendingUuid.set(ev.name, ev.uuid); return; }
+    // ── Valheim (uid-first pairing) ──
+    if (ev.kind === 'connect') {
+      // `Got connection SteamID` and `Got handshake from client` both fire per join.
+      if (!pendingUid.includes(ev.uid) && !uidName.has(ev.uid)) pendingUid.push(ev.uid);
+      return;
+    }
+    if (ev.kind === 'spawn') {
+      if (open.has(ev.name)) return; // respawn after a death (ZDOID 0:0 → new id)
+      const uid = pendingUid.shift() ?? null;
+      const id = await recordJoin(slug, { name: ev.name, uid, identityKind }, ts, 'log');
+      if (id != null) { open.set(ev.name, id); if (uid) uidName.set(uid, ev.name); }
+      return;
+    }
+    if (ev.kind === 'disconnect') {
+      const i = pendingUid.indexOf(ev.uid);
+      if (i >= 0) { pendingUid.splice(i, 1); return; } // never spawned (wrong password / abort)
+      const name = uidName.get(ev.uid);
+      if (name == null) return;
+      uidName.delete(ev.uid);
+      const id = open.get(name);
+      if (id != null) { await closeSession(id, ts); open.delete(name); }
+      return;
+    }
     if (ev.kind === 'join') {
       if (open.has(ev.name)) return; // already tracked
       const uid = isMinecraftLike ? (pendingUuid.get(ev.name) ?? null) : ev.name;
@@ -434,6 +468,15 @@ if (process.env.GT_SELF_TEST) {
   check(render(sessionSql.closeSession, [1700000000, 7]),
     'UPDATE server_sessions SET left_at = 1700000000 WHERE id = 7 AND left_at IS NULL',
     'canonical closeSession');
+  // The Valheim log format (no RCON — the tracker is its ONLY presence source).
+  const vh = (l) => JSON.stringify(parseValheimLog(l));
+  check(vh('05/13/2024 20:23:07: Got handshake from client 76561198012345678'),
+    '{"kind":"connect","uid":"76561198012345678"}', 'valheim handshake');
+  check(vh('05/13/2024 20:23:15: Got character ZDOID from Bjorn : -1234567:1'),
+    '{"kind":"spawn","name":"Bjorn"}', 'valheim spawn');
+  check(vh('05/13/2024 20:23:15: Got character ZDOID from Bjorn : 0:0'), 'null', 'valheim death ≠ join');
+  check(vh('05/13/2024 21:00:01: Closing socket 76561198012345678'),
+    '{"kind":"disconnect","uid":"76561198012345678"}', 'valheim leave');
   console.log('render self-test OK');
   process.exit(0);
 }

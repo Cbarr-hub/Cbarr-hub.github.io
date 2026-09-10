@@ -56,9 +56,10 @@ test('registry maps ids to their containers (all docker-backed)', () => {
   assert.equal(getServer('gmod').container, 'gmod');
   assert.equal(getServer('prophunt').container, 'prophunt');
   assert.equal(getServer('rlcraft').container, 'rlcraft');
+  assert.equal(getServer('valheim').container, 'valheim');
   assert.ok(listServers().every((s) => s.backend === 'docker'));
   assert.equal(getServer('nope'), undefined);
-  assert.equal(listServers().length, 6);
+  assert.equal(listServers().length, 7);
 });
 
 // ── status normalization ────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ test('service without a docker client reports not-configured', async () => {
 test('listServers returns every server with normalized status', async () => {
   const svc = createServerService({ dockerClient: fakeDocker() });
   const list = await svc.listServers();
-  assert.equal(list.length, 6);
+  assert.equal(list.length, 7);
   assert.ok(list.every((s) => s.status === 'running'));
   // a single-purpose game container that's running == hosting
   assert.ok(list.every((s) => s.gameStatus === 'hosting'));
@@ -100,7 +101,7 @@ test('listServers quick mode skips per-container stats', async () => {
     },
   }) });
   const quick = await svc.listServers({ mode: 'quick' });
-  assert.equal(quick.length, 6);
+  assert.equal(quick.length, 7);
   assert.ok(seen.every(([, opts]) => opts?.stats === false));
   assert.ok(quick.every((s) => s.cpu == null));
 });
@@ -309,6 +310,7 @@ test('connect strings render per game from the registry + public host', async ()
   assert.equal(byId.factorio.string, '1.2.3.4:34197');
   assert.equal(byId.minecraft.string, '1.2.3.4:25565');
   assert.equal(byId.gmod.string, 'connect 1.2.3.4:27066');
+  assert.equal(byId.valheim.string, '1.2.3.4:2456');
 });
 
 test('launch URLs open the game + connect; Minecraft has none', async () => {
@@ -322,6 +324,8 @@ test('launch URLs open the game + connect; Minecraft has none', async () => {
   assert.equal(byId.factorio.launch, 'steam://run/427520//--mp-connect%201.2.3.4%3A34197');
   // Minecraft (Java) has no launch-and-connect scheme
   assert.equal(byId.minecraft.launch, null);
+  // Valheim: +connect (the client accepts it as a launch arg)
+  assert.equal(byId.valheim.launch, 'steam://run/892970//%2Bconnect%201.2.3.4%3A2456');
 });
 
 test('passworded connect strings include the password in copy and launch forms', () => {
@@ -331,6 +335,9 @@ test('passworded connect strings include the password in copy and launch forms',
   assert.equal(launchUrl(cs, '1.2.3.4', 'secret'), 'steam://run/730//%2Bpassword%20%22secret%22%20%2Bconnect%201.2.3.4%3A27015');
   assert.equal(connectString(factorio, '1.2.3.4', 'secret'), '1.2.3.4:34197 (password: secret)');
   assert.equal(launchUrl(factorio, '1.2.3.4', 'secret'), 'steam://run/427520//--mp-connect%201.2.3.4%3A34197%20--password%20secret');
+  const valheim = getServer('valheim');
+  assert.equal(connectString(valheim, '1.2.3.4', 'secret'), '1.2.3.4:2456 (password: secret)');
+  assert.equal(launchUrl(valheim, '1.2.3.4', 'secret'), 'steam://run/892970//%2Bconnect%201.2.3.4%3A2456%20%2Bpassword%20secret');
 });
 
 test('a launch URL needs a public host', async () => {

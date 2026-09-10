@@ -11,6 +11,7 @@ import { counterstrikeSpec } from './specs/counterstrike.js';
 import { gmodSpec } from './specs/gmod.js';
 import { prophuntSpec } from './specs/prophunt.js';
 import { rlcraftSpec } from './specs/rlcraft.js';
+import { valheimSpec } from './specs/valheim.js';
 
 const SPECS = {
   factorio: factorioSpec,
@@ -19,6 +20,7 @@ const SPECS = {
   gmod: gmodSpec,
   prophunt: prophuntSpec,
   rlcraft: rlcraftSpec,
+  valheim: valheimSpec,
 };
 
 /**

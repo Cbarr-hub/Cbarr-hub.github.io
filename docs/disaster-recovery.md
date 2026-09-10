@@ -59,7 +59,7 @@ passphrase from your password manager). Restore with `tools/secrets-restore.sh`.
 | Source | Path | Holds | In the bundle |
 |---|---|---|---|
 | App/Caddy env | `/etc/gamertown/secrets.env` (`600`) | `SITE_ADDRESS`, `CADDY_TLS`, 4× `*_RCON_PASSWORD` | ✅ |
-| Compose project env | `/root/gamertown/.env` | `GMOD_GSLT`, `PROPHUNT_GSLT`, `GMOD_WORKSHOP_COLLECTION`, `MC_LEVEL=world_GTown`, `SKIP_CSS`, dup RCON pw | ✅ |
+| Compose project env | `/root/gamertown/.env` | `GMOD_GSLT`, `PROPHUNT_GSLT`, `GMOD_WORKSHOP_COLLECTION`, `MC_LEVEL=world_GTown`, `SKIP_CSS`, `VALHEIM_SERVER_PASS` (+ optional `VALHEIM_SERVER_NAME`/`VALHEIM_WORLD`), dup RCON pw | ✅ |
 | TLS origin cert | `/etc/gamertown/certs/gamertown.solutions.{pem,key}` | Cloudflare Origin cert (the `.key` is sensitive) | ✅ |
 
 Why two env files: the app/Caddy env loads via Compose `env_file`, while the project
@@ -160,14 +160,18 @@ rclone copyto "r2:gamertown-backups/factorio/$(rclone lsf r2:gamertown-backups/f
 # Minecraft world → mc-data  (~5.4 GB; stop mc, swap world dir, start)
 rclone copyto "r2:gamertown-backups/minecraft/$(rclone lsf r2:gamertown-backups/minecraft/ | sort | tail -1)" /tmp/w.tgz
 docker compose stop minecraft && tar -xzf /tmp/w.tgz -C /var/lib/docker/volumes/gamertown_mc-data/_data/ && docker compose start minecraft
+# Valheim world → valheim-config  (the image's own worlds_local zip; stop, unzip, start)
+rclone copyto "r2:gamertown-backups/valheim/$(rclone lsf r2:gamertown-backups/valheim/ | sort | tail -1)" /tmp/vh.zip
+docker compose stop valheim && unzip -o /tmp/vh.zip -d /var/lib/docker/volumes/gamertown_valheim-config/_data/ && docker compose start valheim
 ```
 GMOD / Prop Hunt / CS2 have **no save to restore** — they reinstall game files on
 first boot and mount their Workshop collections (this needs the GSLTs from step 4;
 Prop Hunt mounts collection `3737190377`).
 
 **8. Repoint the edge:**
-- **BGW210 forwards** → the new host's MAC: `443`, `25565` (MC), `27066` (GMOD),
-  `27067` (PH), `27000-27039` (CS), `34197` (Factorio) — see
+- **BGW210 forwards** → the new host's MAC: `443`, `25565` (MC), `25566` (RLCraft),
+  `27066` (GMOD), `27067` (PH), `27000-27039` (CS), `34197/udp` (Factorio),
+  `2456-2457/udp` (Valheim; `tools/bgw-portforward.sh add Valheim 2456-2457 <device> udp`) — see
   [`infrastructure.md`](infrastructure.md) → *Forwarded ports*.
 - **Cloudflare DNS** for `gamertown.solutions` points at your WAN IP (unchanged unless
   AT&T re-leased it) — it's proxied, so the origin is just the :443 forward.

@@ -279,7 +279,12 @@ Notes:
 - The app reaches the engine only through the scoped `docker-proxy`
   (`DOCKER_HOST=tcp://docker-proxy:2375`), never the raw socket.
 - Game containers are matched by **name** (`minecraft`, `factorio`, `counterstrike`,
-  `gmod`, `prophunt`), as the panel's registry expects.
+  `gmod`, `prophunt`, `rlcraft`, `valheim`), as the panel's registry expects.
+- **Valheim** needs `VALHEIM_SERVER_PASS` in the bundle's project `.env` — compose
+  interpolation fails fast for the WHOLE project without it. It has no RCON: join with
+  `+connect <LAN-IP>:2456 +password <pw>` (Steam launch options) and watch
+  `docker logs -f valheim` for the handshake / `Got character ZDOID` / `Closing socket`
+  lines the host session-tracker parses.
 - **CS2** (`joedwards32/cs2`) is a **~30GB** Steam download — the container appears
   quickly but takes a long time to become RCON-ready. Minecraft + Factorio come up in
   minutes; GMOD/Prop Hunt build the shared `gamertown-gmod` image on first run.
